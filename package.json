@@ -1,0 +1,23 @@
+{
+  "name": "vp-parts-shop",
+  "version": "1.0.0",
+  "packageManager": "npm@10.9.2",
+  "description": "",
+  "main": "index.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "turbo": "^2.9.14"
+  }
+}
