@@ -38,7 +38,7 @@ graph TB
     subgraph External
         TECDOC[TecDoc API]
         INTERCARS[Intercars API]
-        PAY["Stripe · Borica"]
+        PAY["Stripe · myPOS"]
         SHIP["Econt · Speedy"]
     end
 
@@ -252,7 +252,7 @@ Pre-checkout: fresh non-cached call to backoffice
   All good? → proceed to payment
         │
         ▼
-Payment processed (Stripe / Borica)
+Payment processed (Stripe / myPOS)
         │
         ▼
 NestJS writes shop.orders (status: PROCESSING)
@@ -367,7 +367,7 @@ src/
 │   └── tecdoc/     # TecDocClient, Redis cache service, DTOs
 ├── inventory/      # Calls backoffice /internal/price-and-availability
 ├── orders/         # Order state machine, checkout, SQS publisher, SSE streams
-├── payments/       # Stripe, Borica, COD adapters
+├── payments/       # Stripe, myPOS, COD adapters
 ├── customers/      # Accounts, mechanic approval flow
 ├── auth/           # Keycloak JWT guard, client credentials + token cache
 ├── events/         # SQS consumers (fulfillment-events), email worker
