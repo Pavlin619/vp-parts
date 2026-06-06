@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -12,4 +6,194 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum CustomerRole {
+  CUSTOMER
+  MECHANIC
+}
+
+enum MechanicApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PROCESSING
+  ITEMS_PREPARED
+  ON_THE_WAY
+  DELIVERED
+  CANCELLED
+  FULFILLMENT_FAILED
+}
+
+enum ShippingMethod {
+  ECONT
+  SPEEDY
+}
+
+enum PaymentMethod {
+  MYPOS
+  CASH_ON_DELIVERY
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id          String       @id @default(uuid())
+  keycloakId  String       @unique
+  email       String       @unique
+  firstName   String
+  lastName    String
+  phoneNumber String
+  role        CustomerRole @default(CUSTOMER)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  mechanicProfile MechanicProfile?
+  addresses       Address[]
+  carts           Cart[]
+  orders          Order[]
+  savedVehicles   SavedVehicle[]
+}
+
+model MechanicProfile {
+  id              String                 @id @default(uuid())
+  customerId      String                 @unique
+  businessName    String
+  eik             String                 @unique
+  vatNumber       String?
+  businessAddress String
+  businessPhone   String
+  status          MechanicApprovalStatus @default(PENDING)
+  rejectionReason String?
+  appliedAt       DateTime               @default(now())
+  reviewedAt      DateTime?
+
+  customer Customer @relation(fields: [customerId], references: [id])
+}
+
+model Address {
+  id           String   @id @default(uuid())
+  customerId   String
+  fullName     String
+  city         String
+  postcode     String
+  street       String
+  streetNumber String
+  apartment    String?
+  phoneNumber  String
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+}
+
+model Cart {
+  id         String   @id @default(uuid())
+  customerId String
+  name       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer   @relation(fields: [customerId], references: [id])
+  items    CartItem[]
+
+  @@index([customerId])
+}
+
+model CartItem {
+  id                String @id @default(uuid())
+  cartId            String
+  articleNumber     String
+  brandName         String
+  description       String
+  quantity          Int
+  unitPriceCaptured Int
+
+  cart Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, articleNumber])
+  @@index([cartId])
+}
+
+model Order {
+  id               String         @id @default(uuid())
+  orderReference   String         @unique
+  customerId       String
+  deliverySnapshot Json
+  status           OrderStatus    @default(PROCESSING)
+  shippingMethod   ShippingMethod
+  shippingCost     Int
+  subtotal         Int
+  vatAmount        Int
+  total            Int
+  paymentMethod    PaymentMethod
+  paymentReference  String?
+  courierName      String?
+  trackingReference String?
+  vehicleTag       String?
+  jobReference     String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  customer      Customer             @relation(fields: [customerId], references: [id])
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id            String @id @default(uuid())
+  orderId       String
+  articleNumber String
+  brandName     String
+  description   String
+  quantity      Int
+  unitPrice     Int
+  lineTotal     Int
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id         String      @id @default(uuid())
+  orderId    String
+  status     OrderStatus
+  occurredAt DateTime    @default(now())
+  source     String
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+}
+
+model SavedVehicle {
+  id              String   @id @default(uuid())
+  customerId      String
+  tecdocVehicleId String
+  manufacturer    String
+  modelSeries     String
+  variant         String
+  addedAt         DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@unique([customerId, tecdocVehicleId])
+  @@index([customerId])
 }

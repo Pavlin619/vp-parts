@@ -30,8 +30,8 @@
 
 **Purpose**: The monorepo skeleton exists (Turborepo, NestJS bootstrap, Next.js bootstrap, Prisma config). This phase fills in everything else the whole project depends on: Prisma schema, shared contract layer, NestJS core infrastructure, Next.js core infrastructure.
 
-- [ ] T001 Define Prisma schema with all entities (Customer, MechanicProfile, Address, Cart, CartItem, Order, OrderItem, OrderStatusHistory, SavedVehicle) plus all enums and indexes from data-model.md in `apps/api/prisma/schema.prisma`
-- [ ] T002 Run initial Prisma migration and regenerate Prisma client in `apps/api/` (`npx prisma migrate dev --name init && npx prisma generate`)
+- [X] T001 Define Prisma schema with all entities (Customer, MechanicProfile, Address, Cart, CartItem, Order, OrderItem, OrderStatusHistory, SavedVehicle) plus all enums and indexes from data-model.md in `apps/api/prisma/schema.prisma`
+- [X] T002 Run initial Prisma migration and regenerate Prisma client in `apps/api/` (`npx prisma migrate dev --name init && npx prisma generate`)
 - [ ] T003 [P] Define all shared enums (CustomerRole, MechanicApprovalStatus, OrderStatus, ShippingMethod, PaymentMethod) in `packages/shared/src/enums.ts`
 - [ ] T004 [P] Define AppErrorCode enum and ApiErrorResponse interface in `packages/shared/src/errors.ts`
 - [ ] T005 [P] Define value objects Money, ArticleNumber, VehicleId as branded types in `packages/shared/src/types/value-objects.ts`
