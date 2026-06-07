@@ -51,10 +51,10 @@
 - [X] T018 [P] Implement @Public() decorator for opt-out of JwtGuard in `apps/api/src/auth/public.decorator.ts`
 - [X] T019 Create AuthModule barrel and export JwtGuard, InternalGuard, and @Public() in `apps/api/src/auth/index.ts`
 - [X] T020 Create CommonModule barrel exporting exception filter, logging interceptor, PriceCalculator in `apps/api/src/common/index.ts`
-- [ ] T020b [P] Configure Tailwind theme with all design tokens from `specs/002-autoparts-shop-spec/design.md` (colors, Inter + Space Grotesk + JetBrains Mono fonts, spacing scale, border-radius, shadows) in `apps/web/tailwind.config.ts` and `apps/web/src/app/globals.css`
-- [ ] T021 [P] Implement apiFetch wrapper (base URL, Authorization header injection, ApiErrorResponse error parsing) in `apps/web/src/lib/api/index.ts`
-- [ ] T022 [P] Configure TanStack Query provider (QueryClient with defaults) in `apps/web/src/app/providers.tsx`
-- [ ] T023 [P] Implement cn() utility and formatDate() helper in `apps/web/src/lib/utils.ts`
+- [X] T020b [P] Configure Tailwind theme with all design tokens from `specs/002-autoparts-shop-spec/design.md` (colors, Inter + Space Grotesk + JetBrains Mono fonts, spacing scale, border-radius, shadows) in `apps/web/tailwind.config.ts` and `apps/web/src/app/globals.css`
+- [X] T021 [P] Implement apiFetch wrapper (base URL, Authorization header injection, ApiErrorResponse error parsing) in `apps/web/src/lib/api/index.ts`
+- [X] T022 [P] Configure TanStack Query provider (QueryClient with defaults) in `apps/web/src/app/providers.tsx`
+- [X] T023 [P] Implement cn() utility and formatDate() helper in `apps/web/src/lib/utils.ts`
 
 ---
 
