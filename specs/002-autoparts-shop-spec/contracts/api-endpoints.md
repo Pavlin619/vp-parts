@@ -6,7 +6,7 @@ Base URL: `https://api.vpparts.bg` (production) / `http://localhost:3001` (local
 
 All request and response types are defined in `packages/shared/src/dto/`. All error responses conform to `ApiErrorResponse` from `packages/shared/src/errors.ts`: `{ statusCode: number, errorCode: AppErrorCode }`.
 
-**Authentication**: Bearer JWT in `Authorization` header on all protected endpoints. Public endpoints are marked `[PUBLIC]`.
+**Authentication**: Clerk-issued Bearer JWT in `Authorization` header on all protected endpoints. Public endpoints are marked `[PUBLIC]`. Internal endpoints (called by the Spring Boot backoffice) use a shared-secret bearer token (`INTERNAL_API_TOKEN`) and are only reachable from the Lightsail private network.
 
 > **Money convention**: All monetary values in requests and responses are **integer EUR cents**. `1500` = €15.00. The frontend uses `formatPrice(cents)` from `@vp-parts-shop/shared` for all display formatting. The backend never returns floats or decimal strings for monetary fields.
 
@@ -598,30 +598,29 @@ Errors: `422 COD_THRESHOLD_EXCEEDED`
 
 ---
 
-## Customers Module
+## Clerk Webhook
 
-### Register
+### Clerk User Event
 
-**`POST /customers/register`** `[PUBLIC]`
+**`POST /webhooks/clerk`** `[PUBLIC — Clerk signature required]`
 
-Request body:
-```json
-{
-  "email": "ivan@example.com",
-  "password": "SecurePass1",
-  "firstName": "Ivan",
-  "lastName": "Petrov",
-  "phoneNumber": "+359887123456"
-}
-```
+Receives lifecycle events from Clerk. Verifies the `svix-id`, `svix-timestamp`, and `svix-signature` headers using the `CLERK_WEBHOOK_SECRET` environment variable via the `svix` library.
 
-Response `201`: `{ "message": "Verification email sent." }`
+**Handled events**:
+- `user.created` — creates a `Customer` record in Postgres (`clerkId`, `email`, `firstName`, `lastName`; `phoneNumber` left blank until onboarding step)
+- `user.updated` — syncs `email`, `firstName`, `lastName` changes from Clerk to Postgres
 
-Errors: `409 EMAIL_ALREADY_EXISTS`, `422 VALIDATION_ERROR`
+Response `200`: `{ "received": true }`
+
+Returns `400` if signature verification fails.
 
 ---
 
+## Customers Module
+
 ### Get Current Customer
+
+**`GET /customers/me`** (Protected)
 
 **`GET /customers/me`** (Protected)
 
@@ -724,11 +723,11 @@ Response `200`:
 
 ### Approve Mechanic
 
-**`POST /internal/mechanic-approve/:customerId`** (Service-to-service: client credentials auth)
+**`POST /internal/mechanic-approve/:customerId`** (Service-to-service: `InternalGuard` — shared-secret bearer token, private network only)
 
 Called by the backoffice when the operator approves a mechanic application.
 
-Request body: `{ "approvedBy": "operator-keycloak-id" }`
+Request body: `{ "approvedBy": "operator-id" }`
 
 Response `200`: `{ "success": true }`
 
@@ -736,9 +735,9 @@ Response `200`: `{ "success": true }`
 
 ### Reject Mechanic
 
-**`POST /internal/mechanic-reject/:customerId`** (Service-to-service: client credentials auth)
+**`POST /internal/mechanic-reject/:customerId`** (Service-to-service: `InternalGuard` — shared-secret bearer token, private network only)
 
-Request body: `{ "rejectedBy": "operator-keycloak-id", "reason": "EIK could not be verified" }`
+Request body: `{ "rejectedBy": "operator-id", "reason": "EIK could not be verified" }`
 
 Response `200`: `{ "success": true }`
 
