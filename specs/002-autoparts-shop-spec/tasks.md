@@ -64,10 +64,10 @@
 
 **⚠️ CRITICAL**: No user story implementation can start until this phase is complete.
 
-- [ ] T024 Wire AuthModule, CommonModule, ThrottlerModule (rate limiting on all public endpoints), and ConfigModule (isGlobal: true) into AppModule in `apps/api/src/app.module.ts`
-- [ ] T025 [P] Create `.env.example` at repo root documenting all required environment variables (Clerk: CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET; internal: INTERNAL_API_TOKEN; DB, Redis, SQS, Stripe, myPOS, Econt, Speedy, TecDoc, email provider)
-- [ ] T026 [P] Set up NestJS e2e test helper (createTestApp factory with test database override) in `apps/api/test/helpers/create-test-app.ts`
-- [ ] T027 [P] Configure Playwright for Next.js e2e tests (baseURL, test directory, browser targets) in `apps/web/playwright.config.ts`
+- [X] T024 Wire AuthModule, CommonModule, ThrottlerModule (rate limiting on all public endpoints), and ConfigModule (isGlobal: true) into AppModule in `apps/api/src/app.module.ts`
+- [X] T025 [P] Create `.env.example` at repo root documenting all required environment variables (Clerk: CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET; internal: INTERNAL_API_TOKEN; DB, Redis, SQS, myPOS, Econt, Speedy, TecDoc, email provider)
+- [X] T026 [P] Set up NestJS e2e test helper (createTestApp factory with test database override) in `apps/api/test/helpers/create-test-app.ts`
+- [X] T027 [P] Configure Playwright for Next.js e2e tests (baseURL, test directory, browser targets) in `apps/web/playwright.config.ts`
 
 **Checkpoint**: NestJS starts, JWT auth is active globally, global error handling and rate limiting are wired, Prisma migration is applied — user story implementation can begin.
 
@@ -201,11 +201,10 @@
 
 - [ ] T082 [P] [US5] Write unit tests for Order aggregate state machine (all valid transitions, all invalid transitions throw, terminal states reject further transitions) in `apps/api/src/orders/order.aggregate.spec.ts`
 - [ ] T083 [P] [US5] Write unit tests for CheckoutService (live confirm calls backoffice, price-change detection, out-of-stock halt prevents order creation, PriceCalculator used for totals) in `apps/api/src/orders/checkout.service.spec.ts`
-- [ ] T084 [P] [US5] Write unit tests for StripeAdapter (createPaymentIntent, webhook signature verification using Stripe SDK) in `apps/api/src/payments/stripe/stripe.adapter.spec.ts`
 - [ ] T085 [P] [US5] Write unit tests for MyPosAdapter (initiate hosted checkout, IPN HMAC-SHA256 signature verification) in `apps/api/src/payments/mypos/mypos.adapter.spec.ts`
 - [ ] T086 [P] [US5] Write unit tests for CodAdapter (COD threshold enforcement: reject when total > COD_MAX_ORDER_TOTAL_CENTS) in `apps/api/src/payments/cod/cod.adapter.spec.ts`
 - [ ] T087 [P] [US5] Write unit tests for EcontClient and SpeedyClient (shipping cost calculation, flat-rate fallback when API unavailable) in `apps/api/src/shipping/econt.client.spec.ts` and `apps/api/src/shipping/speedy.client.spec.ts`
-- [ ] T088 [US5] Write integration tests for full checkout flow (POST /orders/checkout/confirm, POST /payments/stripe/intent, POST /orders, order confirmation response) in `apps/api/test/checkout.e2e-spec.ts`
+- [ ] T088 [US5] Write integration tests for full checkout flow (POST /orders/checkout/confirm, POST /payments/mypos/initiate, POST /payments/mypos/ipn, POST /orders, order confirmation response) in `apps/api/test/checkout.e2e-spec.ts`
 
 ### Implementation for User Story 5
 
@@ -221,18 +220,16 @@
 - [ ] T098 [US5] Implement ShippingService (orchestrate Econt + Speedy; return flat-rate fallback on API error with "estimate" note) in `apps/api/src/shipping/shipping.service.ts`
 - [ ] T099 [US5] Implement ShippingController (@Public; GET /shipping/rates?method&city&postcode&weightGrams) in `apps/api/src/shipping/shipping.controller.ts`
 - [ ] T100 [US5] Create ShippingModule and barrel in `apps/api/src/shipping/index.ts`
-- [ ] T101 [P] [US5] Implement StripeAdapter (createPaymentIntent with integer cents amount) in `apps/api/src/payments/stripe/stripe.adapter.ts`
-- [ ] T102 [P] [US5] Implement StripeWebhookController (@Public; POST /payments/stripe/webhook; Stripe-Signature verification; on payment_intent.succeeded trigger order creation + SqsPublisher) in `apps/api/src/payments/stripe/stripe-webhook.controller.ts`
 - [ ] T103 [P] [US5] Implement MyPosAdapter (server-side Checkout API call → return checkoutUrl) in `apps/api/src/payments/mypos/mypos.adapter.ts`
 - [ ] T104 [P] [US5] Implement MyPosIpnController (@Public; POST /payments/mypos/ipn; HMAC-SHA256 verification; on success trigger order creation + SqsPublisher) in `apps/api/src/payments/mypos/mypos-ipn.controller.ts`
 - [ ] T105 [P] [US5] Implement CodAdapter (threshold check against COD_MAX_ORDER_TOTAL_CENTS, direct order creation for COD orders) in `apps/api/src/payments/cod/cod.adapter.ts`
 - [ ] T106 [US5] Create PaymentsModule and barrel in `apps/api/src/payments/index.ts`
 - [ ] T107 [US5] Implement ConfigController (@Public; GET /config/checkout → { codMaxOrderTotal, vatRate }) in `apps/api/src/config/config.controller.ts`
-- [ ] T108 [US5] Implement checkout and orders API functions (confirmCheckout, createOrder, initiateStripePayment, initiateMyPosPayment, confirmCodOrder) in `apps/web/src/lib/api/orders.ts` and `apps/web/src/lib/api/payments.ts`
+- [ ] T108 [US5] Implement checkout and orders API functions (confirmCheckout, createOrder, initiateMyPosPayment, confirmCodOrder) in `apps/web/src/lib/api/orders.ts` and `apps/web/src/lib/api/payments.ts`
 - [ ] T109 [US5] Implement shipping API function (getShippingRates) in `apps/web/src/lib/api/shipping.ts`
 - [ ] T110 [P] [US5] Create AddressForm component (Bulgarian address validation: city, 4-digit postcode, street, street number required; apartment optional) in `apps/web/src/components/checkout/address-form.tsx`
 - [ ] T111 [P] [US5] Create ShippingSelector component (Econt/Speedy options with cost via formatPrice and estimated delivery days) in `apps/web/src/components/checkout/shipping-selector.tsx`
-- [ ] T112 [P] [US5] Create PaymentStep component (Stripe Elements card form; myPOS redirect button; COD option conditional on order total vs. threshold) in `apps/web/src/components/checkout/payment-step.tsx`
+- [ ] T112 [P] [US5] Create PaymentStep component (myPOS redirect button that calls POST /payments/mypos/initiate and redirects to checkoutUrl; COD option conditional on order total vs. threshold) in `apps/web/src/components/checkout/payment-step.tsx`
 - [ ] T113 [US5] Implement multi-step checkout page (Client Component: address → shipping → payment → confirmation; preserve all data on payment failure; redirect to login for anonymous visitors with destination preserved) in `apps/web/src/app/(shop)/checkout/page.tsx`
 
 **Checkpoint**: Full checkout flow functional end-to-end with test payments. Order created, on-screen confirmation shown, confirmation email sent. Revenue-generating MVP.

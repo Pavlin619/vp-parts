@@ -160,8 +160,8 @@ A confirmed purchase. Created atomically with payment confirmation. Status trans
 | `subtotal` | Int | NOT NULL | Items total ex-VAT, EUR cents — exact integer sum of line totals |
 | `vatAmount` | Int | NOT NULL | `Math.round(subtotal * 0.20)` — rounding applied exactly once here |
 | `total` | Int | NOT NULL | `subtotal + vatAmount + shippingCost` — exact integer sum |
-| `paymentMethod` | PaymentMethod enum | NOT NULL | `STRIPE`, `MYPOS`, `CASH_ON_DELIVERY` |
-| `paymentReference` | String | NULL | Stripe PaymentIntent ID or myPOS order/session reference |
+| `paymentMethod` | PaymentMethod enum | NOT NULL | `MYPOS`, `CASH_ON_DELIVERY` |
+| `paymentReference` | String | NULL | myPOS order/session reference |
 | `courierName` | String | NULL | Set on `OrderShipped` event |
 | `trackingReference` | String | NULL | Set on `OrderShipped` event |
 | `vehicleTag` | String | NULL | Mechanic: vehicle registration for this job |
@@ -285,7 +285,6 @@ export enum ShippingMethod {
 }
 
 export enum PaymentMethod {
-  STRIPE           = 'STRIPE',
   MYPOS            = 'MYPOS',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
 }

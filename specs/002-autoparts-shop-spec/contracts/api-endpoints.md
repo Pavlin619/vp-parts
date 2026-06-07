@@ -413,7 +413,7 @@ Response `422 PRICE_CHANGED` or `422 ARTICLE_UNAVAILABLE` if anything has change
 
 **`POST /orders`** (Protected)
 
-Called after payment is confirmed (Stripe webhook or myPOS IPN has been processed). Creates the order record and publishes `OrderPlaced` to SQS.
+Called after payment is confirmed (myPOS IPN has been processed). Creates the order record and publishes `OrderPlaced` to SQS.
 
 Request body:
 ```json
@@ -421,7 +421,7 @@ Request body:
   "cartId": "uuid",
   "addressId": "uuid",
   "shippingMethod": "ECONT",
-  "paymentMethod": "STRIPE",
+  "paymentMethod": "MYPOS",
   "paymentReference": "pi_abc123",
   "vehicleTag": "CB1234AB",
   "jobReference": "Golf service Jul-2026"
@@ -492,7 +492,7 @@ Response `200`:
   "subtotalExVat": 6500,
   "vatAmount": 1300,
   "totalIncVat": 8400,
-  "paymentMethod": "STRIPE",
+  "paymentMethod": "MYPOS",
   "courierName": "Econt",
   "trackingReference": "1234567890",
   "vehicleTag": "CB1234AB",
@@ -536,24 +536,6 @@ Errors: `409 ORDER_CANNOT_BE_CANCELLED` if status is not `PROCESSING`.
 ---
 
 ## Payments Module
-
-### Stripe — Create Payment Intent
-
-**`POST /payments/stripe/intent`** (Protected)
-
-Request body: `{ "cartId": "uuid", "confirmedTotal": 8400 }`
-
-Response `200`: `{ "clientSecret": "pi_abc123_secret_xyz" }`
-
----
-
-### Stripe Webhook
-
-**`POST /payments/stripe/webhook`** `[PUBLIC]`
-
-Stripe-signed webhook. Verifies `Stripe-Signature` header. On `payment_intent.succeeded`, triggers order creation and `OrderPlaced` SQS event. Returns `200` immediately.
-
----
 
 ### myPOS — Initiate Payment
 
