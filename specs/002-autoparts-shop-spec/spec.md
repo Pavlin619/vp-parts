@@ -116,7 +116,7 @@ A logged-in customer completes a purchase by providing a delivery address, selec
 
 1. **Given** a customer at checkout step 1, **When** they enter a delivery address, **Then** the address form validates Bulgarian address fields (city, postcode, street) before allowing progression.
 2. **Given** a valid address, **When** the customer reaches the shipping step, **Then** they see available courier options (Econt, Speedy) with calculated shipping costs and estimated delivery times displayed per option.
-3. **Given** an order total below the cash-on-delivery threshold, **When** the payment step is reached, **Then** Cash on Delivery is offered as a payment option alongside Stripe card payment and myPOS card payment.
+3. **Given** an order total below the cash-on-delivery threshold, **When** the payment step is reached, **Then** Cash on Delivery is offered as a payment option alongside myPOS card payment.
 4. **Given** an order total at or above the cash-on-delivery threshold, **When** the payment step is reached, **Then** Cash on Delivery is not offered; only card payment options are shown.
 5. **Given** the customer reaches the payment step, **When** the system performs the pre-payment availability and price confirmation, **Then** if any item's price has changed since the cart was built, the customer is shown the exact price differences and must confirm before payment is taken.
 6. **Given** the customer reaches the payment step, **When** any item is found to be out of stock at this moment, **Then** the customer cannot proceed until the affected item is removed; the order MUST NOT be placed for an unavailable part.
@@ -283,7 +283,7 @@ The backoffice operator sees all incoming online orders, manages a fulfilment ta
 - **FR-026**: The checkout flow MUST collect, in order: delivery address, shipping method, payment method, and a final order review before payment.
 - **FR-027**: The delivery address form MUST validate Bulgarian address fields: city/town, postcode (4-digit Bulgarian format), street name, and street number. A house/apartment number field MUST be optional.
 - **FR-028**: Shipping methods MUST include at least Econt and Speedy courier delivery. Each option MUST show the calculated shipping cost and an estimated delivery window.
-- **FR-029**: Payment methods MUST include: Stripe (international card), myPOS (card payment — the existing merchant POS provider, supports all Bulgarian bank-issued cards), Cash on Delivery. Cash on Delivery MUST NOT be offered when the order total exceeds the configured COD threshold.
+- **FR-029**: Payment methods MUST include: myPOS (card payment — the existing merchant POS provider, supports all Bulgarian bank-issued cards via a hosted payment page and 3DS 2.0), Cash on Delivery. Cash on Delivery MUST NOT be offered when the order total exceeds the configured COD threshold.
 - **FR-030**: Immediately before payment is initiated, the system MUST perform a real-time confirmation of every item's availability and current price against the live backoffice data. This check MUST NOT use any cached price data.
 - **FR-031**: If the pre-payment check reveals a price change, the customer MUST be shown the old price, the new price, and the difference for each affected item, and MUST explicitly confirm before payment proceeds.
 - **FR-032**: If the pre-payment check reveals an item is out of stock, the customer MUST NOT be charged; the checkout flow MUST halt and prompt the customer to remove the affected item.

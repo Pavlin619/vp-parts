@@ -182,12 +182,11 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 **Display**: `formatPrice(cents: number)` in `@vp-parts-shop/shared` is the only permitted display formatter. It uses `Intl.NumberFormat({ style: 'currency', currency: 'EUR' })`. All component code calls this function — no inline arithmetic or string formatting.
 
 **Payment providers**:
-- Stripe `amount` field: integer cents — matches Stripe's documented format
 - myPOS Checkout: amount sent as integer cents; currency sent as `EUR`
 
 **`PriceCalculator` domain service**: Single location in `apps/api/src/common/price-calculator.ts` for all VAT and total calculations. 100% unit test coverage with explicit rounding edge-case tests.
 
-**Rationale**: Floating-point arithmetic is unsuitable for money — `0.1 + 0.2 !== 0.3` in IEEE 754. Integer cents eliminate this class of bugs entirely. Both Stripe and myPOS expect integer amounts, making this the natural representation for the full stack.
+**Rationale**: Floating-point arithmetic is unsuitable for money — `0.1 + 0.2 !== 0.3` in IEEE 754. Integer cents eliminate this class of bugs entirely. myPOS expects integer amounts, making this the natural representation for the full stack.
 
 **Alternatives considered**:
 - `Decimal` type (arbitrary precision) — rejected: adds a library dependency (`decimal.js`), more complex than integer arithmetic for a two-decimal-place currency, and both payment providers require integers anyway
