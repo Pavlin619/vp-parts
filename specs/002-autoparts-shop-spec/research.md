@@ -113,15 +113,15 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 ---
 
-## 5. Keycloak Service-to-Service Auth
+## 5. Internal API Auth (Shared-Secret Bearer Token)
 
-**Decision**: OAuth2 client credentials flow. `BackofficeClient` holds a single Keycloak client (`shop-api`). The access token is cached in memory as a private field. Before every backoffice HTTP call, the client checks if remaining token lifetime is above 60 seconds; if not, it fetches a fresh token. On receiving a 401 response from the backoffice, it fetches a fresh token once and retries — this handles the edge case of the backoffice restarting and invalidating sessions.
+**Decision**: A long random secret (`INTERNAL_API_TOKEN`) is shared between NestJS and the Spring Boot backoffice via environment variables. `BackofficeClient` includes `Authorization: Bearer <INTERNAL_API_TOKEN>` on every call to the backoffice. The NestJS `InternalGuard` verifies the same token on incoming calls from the backoffice to NestJS internal endpoints. Internal endpoints are only accessible within the Lightsail private network — the Lightsail container service and the VM are in the same region; public-network access to internal routes is blocked at the network/firewall layer.
 
-**Rationale**: Client credentials is the correct OAuth2 flow for machine-to-machine communication. Token caching avoids a Keycloak roundtrip on every backoffice call. The 60-second refresh threshold prevents calls failing due to token expiry between fetch and backoffice processing. One retry on 401 handles clock skew and deployment edge cases without looping.
+**Rationale**: The services communicate only over the private network, which is the primary access control. The shared secret is defence-in-depth — it ensures that even if a misconfiguration ever exposed an internal endpoint, unauthenticated callers would be rejected. OAuth2 client credentials were the original design when Keycloak was planned, but Keycloak is no longer part of the stack. A simple shared secret eliminates the OAuth2 infrastructure dependency for M2M auth, significantly reduces operational complexity, and adds no perceptible latency (no token fetch or cache management required).
 
 **Alternatives considered**:
-- API key in a shared secret — rejected: Keycloak is already deployed and provides proper token rotation, revocation, and audit logging
-- Per-request token fetch — rejected: unnecessary Keycloak load and adds ~100ms to every backoffice call
+- OAuth2 client credentials (Keycloak) — rejected: Keycloak removed from the stack; the complexity overhead is not justified for two internal services on the same private network
+- Per-request JWT signed with a shared private key — rejected: unnecessary complexity for the same security boundary
 
 ---
 
@@ -145,15 +145,15 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 ## 7. Mechanic Approval via Backoffice
 
-**Decision**: Mechanic approval is executed in two steps: (1) NestJS persists the `MechanicProfile` in `shop.customers` with status `PENDING`; (2) the backoffice operator approves in the Spring Boot dashboard, which calls `POST /internal/mechanic-approve/:customerId` on NestJS; (3) NestJS upgrades the customer's role to `MECHANIC` in Postgres and calls the Keycloak Admin API to assign `ROLE_MECHANIC` to the Keycloak user; (4) the mechanic's next JWT (issued on their next login) will contain `ROLE_MECHANIC`, activating trade pricing.
+**Decision**: Mechanic approval is executed in two steps: (1) NestJS persists the `MechanicProfile` in `shop.customers` with status `PENDING`; (2) the backoffice operator approves in the Spring Boot dashboard, which calls `POST /internal/mechanic-approve/:customerId` on NestJS using the shared-secret bearer token; (3) NestJS upgrades the customer's role to `MECHANIC` in Postgres **and** calls the Clerk Backend API to set `publicMetadata.role = 'MECHANIC'` on the Clerk user; (4) the mechanic's next Clerk session (issued on their next sign-in or session refresh) will carry `role: MECHANIC` in JWT claims, activating trade pricing.
 
-**Trade pricing**: The backoffice `GET /internal/price-and-availability/:articleNumber` endpoint accepts a `role` parameter or customer context. For `ROLE_MECHANIC`, it returns the trade price. NestJS passes the authenticated customer's role on every availability call.
+**Trade pricing**: The backoffice `GET /internal/price-and-availability/:articleNumber` endpoint accepts a `role` query parameter. For `MECHANIC`, it returns the trade price. NestJS reads the role from the validated JWT claims and passes it on every availability call.
 
-**Rationale**: Keycloak is the source of truth for roles and access control. Updating the role in Keycloak ensures the mechanic's JWT reflects the new role on their next login without requiring a separate session-invalidation mechanism.
+**Rationale**: Clerk is the source of truth for authentication. Storing `role` in Clerk `publicMetadata` propagates it into the JWT session token automatically. NestJS `JwtGuard` reads the role from the JWT claims — no DB lookup needed per request. The mechanic receives an approval email; trade pricing activates on their next session, which is acceptable per spec.
 
 **Alternatives considered**:
-- Role stored only in Postgres, not Keycloak — rejected: NestJS JwtGuard reads roles from the JWT; without the role in Keycloak, the guard cannot enforce mechanic-specific access controls
-- Real-time JWT update — not required: the mechanic receives an email on approval and the spec states trade pricing activates on their next session; a brief delay is acceptable
+- Role stored only in Postgres, looked up per request — rejected: adds a DB lookup on every authenticated request; JWT claims approach is stateless and more performant
+- Real-time session invalidation after role upgrade — not required: the mechanic is emailed on approval and the spec states trade pricing activates on their next session; brief delay is acceptable
 
 ---
 

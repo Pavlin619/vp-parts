@@ -18,7 +18,7 @@ Build a customer-facing automotive parts e-commerce shop as a TypeScript monorep
 
 **Primary Dependencies**:
 - Frontend (`apps/web`): Next.js 15 (App Router), shadcn/ui, Tailwind CSS v4, TanStack Query v5, Zustand v5
-- Backend (`apps/api`): NestJS 11, Prisma 6, `@aws-sdk/client-sqs`, `passport-jwt`, `@nestjs/throttler`
+- Backend (`apps/api`): NestJS 11, Prisma 6, `@aws-sdk/client-sqs`, `@clerk/backend`, `svix`, `@nestjs/throttler`
 - Shared (`packages/shared`): Zod v3 (validation schemas + TypeScript inference)
 
 **Storage**: PostgreSQL (shop schema — Prisma managed), Redis (TecDoc + availability cache), AWS SQS (two queues — async event bus)
@@ -61,7 +61,7 @@ Build a customer-facing automotive parts e-commerce shop as a TypeScript monorep
 | IV. Shared Contract Layer | All request/response DTOs, Zod schemas, `OrderStatus` enum, domain enums, and shared types live in `packages/shared`. Never defined inline in either app. Breaking changes update both apps in the same commit. | ✅ PASS |
 | V. Test-First Development | TDD cycle mandatory: failing test → implementation → refactor. Unit tests (≥ 80% coverage, 100% for domain logic). Integration tests for every controller. E2E (Playwright) for vehicle search → cart → checkout and order status. | ✅ PASS |
 | VI. Code Quality & TypeScript | Strict mode, no `any`, no `ts-ignore` without explanation. Named exports preferred. No dead code. Imports ordered: external → `@vp-parts-shop/shared` → internal. | ✅ PASS |
-| VII. Security by Default | Global `JwtGuard`; public endpoints use `@Public()`. All checkout confirmation calls are live (non-cached). Rate limiting via `@nestjs/throttler` on all public endpoints. CORS explicitly configured. Error responses return only `{ statusCode, errorCode }`. | ✅ PASS |
+| VII. Security by Default | Global `JwtGuard` (Clerk JWT via `@clerk/backend`); public endpoints use `@Public()`. Internal backoffice endpoints use `InternalGuard` (shared-secret bearer token, private-network only). All checkout confirmation calls are live (non-cached). Rate limiting via `@nestjs/throttler` on all public endpoints. CORS explicitly configured. Error responses return only `{ statusCode, errorCode }`. | ✅ PASS |
 | VIII. Performance & Caching | Redis TTLs from ARCHITECTURE.md enforced exactly: vehicle tree 7d, article detail 24h, search 1h, autocomplete 30m, price+availability 5m. Pre-checkout call bypasses Redis entirely. No N+1 queries — Prisma `include`/`select` used. | ✅ PASS |
 | IX. Money Handling | All monetary DB fields are `Int` (EUR cents). `PriceCalculator` domain service is the single calculation point with 100% unit test coverage. `formatPrice(cents)` from `@vp-parts-shop/shared` is the only display formatter. Stripe and myPOS both receive integer cents. Rounding applied exactly once at VAT step. | ✅ PASS |
 
@@ -195,9 +195,10 @@ apps/
         │   ├── sqs.consumer.ts
         │   ├── email.worker.ts
         │   └── index.ts
-        ├── auth/                      # Global JwtGuard, @Public() decorator
+        ├── auth/                      # Global JwtGuard (Clerk), InternalGuard, @Public() decorator
         │   ├── jwt.guard.ts
-        │   ├── jwt.strategy.ts
+        │   ├── clerk-jwt.strategy.ts
+        │   ├── internal.guard.ts
         │   ├── public.decorator.ts
         │   └── index.ts
         └── common/                    # Global exception filter, interceptors, pipes

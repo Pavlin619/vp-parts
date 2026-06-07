@@ -35,7 +35,7 @@ The registered user of the shop. Role determines pricing context and available f
 | Field | Type | Constraints | Notes |
 |---|---|---|---|
 | `id` | UUID | PK | Internal identifier |
-| `keycloakId` | String | UNIQUE NOT NULL | Keycloak user ID — used to correlate JWT subject |
+| `clerkId` | String | UNIQUE NOT NULL | Clerk user ID — used to correlate JWT `sub` claim |
 | `email` | String | UNIQUE NOT NULL | Primary contact and login identifier |
 | `firstName` | String | NOT NULL | |
 | `lastName` | String | NOT NULL | |
@@ -44,7 +44,7 @@ The registered user of the shop. Role determines pricing context and available f
 | `createdAt` | Timestamp | NOT NULL | |
 | `updatedAt` | Timestamp | NOT NULL | |
 
-**Indexes**: `keycloakId` (unique), `email` (unique)
+**Indexes**: `clerkId` (unique), `email` (unique)
 
 **Validation rules** (Zod schema in `packages/shared`):
 - `email`: valid email format
@@ -73,7 +73,7 @@ Trade account application details for a customer. One per customer, created on a
 
 **State transitions**: `PENDING → APPROVED` or `PENDING → REJECTED`
 
-**Business rule**: When status transitions to `APPROVED`, the Customer's `role` is updated to `MECHANIC` and Keycloak is updated via Admin API.
+**Business rule**: When status transitions to `APPROVED`, the Customer's `role` is updated to `MECHANIC` in Postgres **and** the Clerk Backend API is called to set `publicMetadata.role = 'MECHANIC'` on the Clerk user. The mechanic's next Clerk session will carry the role in JWT claims.
 
 ---
 
@@ -373,7 +373,7 @@ These permissions are enforced at the Postgres role level, not by application co
 | Table | Index | Reason |
 |---|---|---|
 | `Customer` | `email` (unique) | Login lookup |
-| `Customer` | `keycloakId` (unique) | JWT subject resolution |
+| `Customer` | `clerkId` (unique) | JWT `sub` claim resolution |
 | `Cart` | `customerId` | Active cart fetch |
 | `CartItem` | `cartId` | Cart item fetch |
 | `Order` | `customerId` | Order history |

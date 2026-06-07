@@ -45,10 +45,11 @@
 - [ ] T013 [P] Register global ValidationPipe `{ whitelist: true, forbidNonWhitelisted: true, transform: true }` and configure CORS in `apps/api/src/main.ts`
 - [ ] T014 [P] Implement global exception filter (strips internals, returns only `{ statusCode, errorCode }`) in `apps/api/src/common/exception.filter.ts`
 - [ ] T015 [P] Implement request logging interceptor using NestJS Logger (no PII or payment data in logs) in `apps/api/src/common/logging.interceptor.ts`
-- [ ] T016 Implement JwtGuard (validates Keycloak shop realm JWT) in `apps/api/src/auth/jwt.guard.ts`
-- [ ] T017 [P] Implement JwtStrategy (Keycloak JWKS endpoint, shop realm) in `apps/api/src/auth/jwt.strategy.ts`
+- [ ] T016 Implement JwtGuard (validates Clerk-issued JWT using `@clerk/backend` `verifyToken`; reads `clerkId` from `sub` claim, `role` from `publicMetadata.role`) in `apps/api/src/auth/jwt.guard.ts`
+- [ ] T017 [P] Implement ClerkJwtStrategy (CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY from ConfigService; JWKS auto-configured by Clerk SDK) in `apps/api/src/auth/clerk-jwt.strategy.ts`
+- [ ] T017b [P] Implement InternalGuard (compares `Authorization: Bearer <token>` to `INTERNAL_API_TOKEN` env var; rejects with 401 on mismatch) in `apps/api/src/auth/internal.guard.ts`
 - [ ] T018 [P] Implement @Public() decorator for opt-out of JwtGuard in `apps/api/src/auth/public.decorator.ts`
-- [ ] T019 Create AuthModule barrel and export JwtGuard and @Public() in `apps/api/src/auth/index.ts`
+- [ ] T019 Create AuthModule barrel and export JwtGuard, InternalGuard, and @Public() in `apps/api/src/auth/index.ts`
 - [ ] T020 Create CommonModule barrel exporting exception filter, logging interceptor, PriceCalculator in `apps/api/src/common/index.ts`
 - [ ] T020b [P] Configure Tailwind theme with all design tokens from `specs/002-autoparts-shop-spec/design.md` (colors, Inter + Space Grotesk + JetBrains Mono fonts, spacing scale, border-radius, shadows) in `apps/web/tailwind.config.ts` and `apps/web/src/app/globals.css`
 - [ ] T021 [P] Implement apiFetch wrapper (base URL, Authorization header injection, ApiErrorResponse error parsing) in `apps/web/src/lib/api/index.ts`
@@ -64,7 +65,7 @@
 **⚠️ CRITICAL**: No user story implementation can start until this phase is complete.
 
 - [ ] T024 Wire AuthModule, CommonModule, ThrottlerModule (rate limiting on all public endpoints), and ConfigModule (isGlobal: true) into AppModule in `apps/api/src/app.module.ts`
-- [ ] T025 [P] Create `.env.example` at repo root documenting all required environment variables (Keycloak, DB, Redis, SQS, Stripe, myPOS, Econt, Speedy, TecDoc, email provider)
+- [ ] T025 [P] Create `.env.example` at repo root documenting all required environment variables (Clerk: CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET; internal: INTERNAL_API_TOKEN; DB, Redis, SQS, Stripe, myPOS, Econt, Speedy, TecDoc, email provider)
 - [ ] T026 [P] Set up NestJS e2e test helper (createTestApp factory with test database override) in `apps/api/test/helpers/create-test-app.ts`
 - [ ] T027 [P] Configure Playwright for Next.js e2e tests (baseURL, test directory, browser targets) in `apps/web/playwright.config.ts`
 
@@ -141,13 +142,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T057 [P] [US3] Write unit tests for BackofficeClient (OAuth2 client credentials token fetch, in-memory token cache, 60-second refresh threshold, single retry on 401) in `apps/api/src/inventory/backoffice-client.spec.ts`
+- [ ] T057 [P] [US3] Write unit tests for BackofficeClient (attaches `Authorization: Bearer <INTERNAL_API_TOKEN>` header, throws `BACKOFFICE_UNAVAILABLE` on non-2xx response, passes customer `role` query param) in `apps/api/src/inventory/backoffice-client.spec.ts`
 - [ ] T058 [P] [US3] Write unit tests for InventoryService (returns live price/availability, passes customer role for trade price, no Redis cache for this service) in `apps/api/src/inventory/inventory.service.spec.ts`
 - [ ] T059 [US3] Write integration tests for availability endpoint (GET /inventory/articles/:articleNumber/availability — no cached response headers) in `apps/api/test/inventory.e2e-spec.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T060 [P] [US3] Implement BackofficeClient (OAuth2 client credentials flow, in-memory token cache with 60s expiry buffer, automatic retry on 401) in `apps/api/src/inventory/backoffice.client.ts`
+- [ ] T060 [P] [US3] Implement BackofficeClient (plain HTTP client; adds `Authorization: Bearer <INTERNAL_API_TOKEN>` from ConfigService on every request; throws `BackofficeUnavailableException` on non-2xx) in `apps/api/src/inventory/backoffice.client.ts`
 - [ ] T061 [US3] Implement InventoryService (call backoffice GET /internal/price-and-availability/:articleNumber with customer role; return stockStatus, estimatedDeliveryDays, priceExVat, priceIncVat, tradePriceExVat for MECHANIC) in `apps/api/src/inventory/inventory.service.ts`
 - [ ] T062 [US3] Implement InventoryController (GET /inventory/articles/:articleNumber/availability — protected, no cache) in `apps/api/src/inventory/inventory.controller.ts`
 - [ ] T063 [US3] Create InventoryModule and barrel in `apps/api/src/inventory/index.ts`
@@ -277,17 +278,18 @@
 
 ### Tests for User Story 7
 
-- [ ] T129 [P] [US7] Write unit tests for CustomersService (register creates Keycloak user and persists Customer; email verification activates account; profile update; address CRUD with isDefault constraint; password reset token expiry) in `apps/api/src/customers/customers.service.spec.ts`
+- [ ] T129 [P] [US7] Write unit tests for CustomersService (handleClerkWebhook creates Customer on user.created event; handleClerkWebhook syncs email/name on user.updated; profile update via PATCH /customers/me; address CRUD with isDefault constraint) in `apps/api/src/customers/customers.service.spec.ts`
 - [ ] T130 [US7] Write integration tests for CustomersController (POST /customers/register, GET /customers/me, PATCH /customers/me, CRUD /customers/me/addresses) in `apps/api/test/customers.e2e-spec.ts`
 
 ### Implementation for User Story 7
 
-- [ ] T131 [US7] Implement CustomersRepository (customer CRUD, address CRUD, lookup by keycloakId and email) in `apps/api/src/customers/customers.repository.ts`
-- [ ] T132 [US7] Implement CustomersService (register via Keycloak Admin API, send verification email, profile update, address management with max-default enforcement) in `apps/api/src/customers/customers.service.ts`
-- [ ] T133 [US7] Implement CustomersController (@Public POST /customers/register; protected GET/PATCH /customers/me; protected CRUD /customers/me/addresses) in `apps/api/src/customers/customers.controller.ts`
+- [ ] T131 [US7] Implement CustomersRepository (customer CRUD, address CRUD, lookup by `clerkId` and email) in `apps/api/src/customers/customers.repository.ts`
+- [ ] T132 [US7] Implement CustomersService (handleClerkUserCreated: verify Clerk webhook signature via `svix`, upsert Customer; handleClerkUserUpdated: sync email/name; profile update; address management with max-default enforcement) in `apps/api/src/customers/customers.service.ts`
+- [ ] T132b [US7] Implement ClerkWebhookController (@Public POST /webhooks/clerk; verify svix signature using CLERK_WEBHOOK_SECRET; dispatch to CustomersService.handleClerkUserCreated or handleClerkUserUpdated) in `apps/api/src/customers/clerk-webhook.controller.ts`
+- [ ] T133 [US7] Implement CustomersController (protected GET/PATCH /customers/me; protected CRUD /customers/me/addresses) in `apps/api/src/customers/customers.controller.ts`
 - [ ] T134 [US7] Create CustomersModule and barrel in `apps/api/src/customers/index.ts`
-- [ ] T135 [US7] Implement customers API functions (register, getProfile, updateProfile, listAddresses, addAddress, updateAddress, deleteAddress) in `apps/web/src/lib/api/customers.ts`
-- [ ] T136 [P] [US7] Create RegisterForm component (first name, last name, email, phone, password with requirements displayed before submit per FR-044) in `apps/web/src/components/auth/register-form.tsx`
+- [ ] T135 [US7] Implement customers API functions (getProfile, updateProfile, listAddresses, addAddress, updateAddress, deleteAddress) in `apps/web/src/lib/api/customers.ts`
+- [ ] T135b [US7] Implement onboarding page (Client Component; shown once after Clerk sign-up to collect phone number; calls PATCH /customers/me; redirects to shop on completion) in `apps/web/src/app/(shop)/onboarding/page.tsx`
 - [ ] T137 [P] [US7] Create AddressManager component (list saved addresses, add/edit/delete, set default, used at checkout address step) in `apps/web/src/components/account/address-manager.tsx`
 - [ ] T138 [US7] Implement account settings page (Client Component: profile details, AddressManager, links to order history and mechanic application section) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/account/page.tsx`
 
@@ -303,17 +305,17 @@
 
 ### Tests for User Story 8
 
-- [ ] T139 [P] [US8] Write unit tests for mechanic application flow (submit creates MechanicProfile with PENDING status; approve → Customer.role = MECHANIC + Keycloak role assignment + email; reject → reason stored + email, Customer.role remains CUSTOMER) extending `apps/api/src/customers/customers.service.spec.ts`
+- [ ] T139 [P] [US8] Write unit tests for mechanic application flow (submit creates MechanicProfile with PENDING status; approve → Customer.role = MECHANIC + Clerk publicMetadata.role = MECHANIC via Clerk Backend API + activation email; reject → reason stored + rejection email + Customer.role remains CUSTOMER) extending `apps/api/src/customers/customers.service.spec.ts`
 - [ ] T140 [US8] Write integration tests for mechanic endpoints (POST /customers/mechanic-application, POST /internal/mechanic-approve/:customerId, POST /internal/mechanic-reject/:customerId) in `apps/api/test/mechanic.e2e-spec.ts`
 
 ### Implementation for User Story 8
 
-- [ ] T141 [US8] Implement mechanic application logic in CustomersService (createMechanicProfile → PENDING; approveMechanic → update Customer.role + Keycloak Admin API assign ROLE_MECHANIC + activation email; rejectMechanic → store reason + rejection email + Customer remains CUSTOMER) extending `apps/api/src/customers/customers.service.ts`
-- [ ] T142 [US8] Implement internal mechanic approve/reject endpoints (service-to-service client credentials auth guard; POST /internal/mechanic-approve/:customerId; POST /internal/mechanic-reject/:customerId) extending `apps/api/src/customers/customers.controller.ts`
+- [ ] T141 [US8] Implement mechanic application logic in CustomersService (createMechanicProfile → PENDING; approveMechanic → update Customer.role in Postgres + call Clerk Backend API `clerkClient.users.updateUser(clerkId, { publicMetadata: { role: 'MECHANIC' } })` + activation email; rejectMechanic → store reason + rejection email + Customer.role remains CUSTOMER) extending `apps/api/src/customers/customers.service.ts`
+- [ ] T142 [US8] Implement internal mechanic approve/reject endpoints (InternalGuard; POST /internal/mechanic-approve/:customerId; POST /internal/mechanic-reject/:customerId) extending `apps/api/src/customers/customers.controller.ts`
 - [ ] T143 [P] [US8] Create MechanicApplicationForm component (businessName, EIK, optional VAT number, businessAddress, businessPhone; show PENDING/APPROVED/REJECTED status if application exists) in `apps/web/src/components/account/mechanic-application-form.tsx`
 - [ ] T144 [US8] Extend account settings page to include mechanic application section (show form if no application; show pending/approved/rejected state) in `apps/web/src/app/(shop)/account/page.tsx`
 
-**Checkpoint**: Mechanic applies → enters PENDING → operator approves → customer's next login shows ROLE_MECHANIC in JWT → trade prices display everywhere.
+**Checkpoint**: Mechanic applies → enters PENDING → operator approves → Clerk publicMetadata updated → customer's next session carries `role: MECHANIC` in JWT claims → trade prices display everywhere.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Online shop built as a TypeScript monorepo, extending an existing Spring Boot backoffice. The two systems share a single PostgreSQL database, communicate via internal REST APIs secured with Keycloak client credentials, and exchange async events through AWS SQS in both directions. The backoffice is the single source of truth for all supplier logic — pricing, stock availability, and order fulfillment routing.
+Online shop built as a TypeScript monorepo, extending an existing Spring Boot backoffice. The two systems share a single PostgreSQL database, communicate via internal REST APIs secured with a shared-secret bearer token (private-network only), and exchange async events through AWS SQS in both directions. The backoffice is the single source of truth for all supplier logic — pricing, stock availability, and order fulfillment routing.
 
 ---
 
@@ -30,7 +30,6 @@ graph TB
 
     subgraph VM ["Lightsail VM 4 GB — eu-central-1 (~$20/mo)"]
         SPRING["Spring Boot Backoffice\nprice · fulfillment · dashboard · reports"]
-        KC["Keycloak\nshop realm · backoffice realm"]
         PGBOUNCER["PgBouncer — port 6432"]
         PG[(PostgreSQL — port 5432)]
     end
@@ -40,14 +39,15 @@ graph TB
         INTERCARS[Intercars API]
         PAY["Stripe · myPOS"]
         SHIP["Econt · Speedy"]
+        CLERK["Clerk\nauth · user management"]
     end
 
     U -->|HTTPS| WEB
     WEB -->|REST + SSE| API
     API <-->|cache| REDIS
     API -->|PgBouncer private net| PGBOUNCER
-    API -->|GET price+availability\nbefore checkout| SPRING
-    API -->|POST mechanic-approve| SPRING
+    API -->|GET price+availability\nbefore checkout\nshared-secret bearer| SPRING
+    API -->|POST mechanic-approve\nshared-secret bearer| SPRING
     API -->|publish OrderPlaced| SQS1
     SQS1 -->|consume OrderPlaced| SPRING
     SPRING -->|publish OrderFulfilled\nOrderShipped · OrderDelivered| SQS2
@@ -55,9 +55,9 @@ graph TB
     SPRING -->|Intercars auto-order| INTERCARS
     SPRING --> PGBOUNCER
     PGBOUNCER --> PG
-    KC --> PG
-    API -->|client credentials| KC
-    SPRING -->|client credentials| KC
+    WEB -->|hosted sign-in / sign-up| CLERK
+    API -->|verify JWT · update user metadata| CLERK
+    CLERK -->|user.created webhook| API
     API -->|JSON / HTTPS| TECDOC
     API --> PAY
     API --> SHIP
@@ -96,7 +96,7 @@ Managed with **Turborepo**. `npm run dev` from root starts both apps. The `share
 | Database | PostgreSQL | Shared with backoffice (existing Lightsail VM) |
 | Cache | Redis | TecDoc cache, sessions, cart |
 | Real-time | Server-Sent Events (SSE) | Order status push from NestJS to browser |
-| Auth | Keycloak | Existing instance, new `shop` realm |
+| Auth | Clerk | Hosted sign-in/sign-up UI, JWT issuance, webhook-driven DB sync |
 | Message queue | AWS SQS | Async events — two queues, both directions |
 | Language | TypeScript | Both frontend and backend |
 
@@ -119,9 +119,13 @@ AWS SQS (~$0/mo at launch)
 
 Lightsail VM 4GB (~$20/mo) — eu-central-1 EXISTING, unchanged
   └── Spring Boot backoffice
-  └── Keycloak
   └── PgBouncer (port 6432)
   └── PostgreSQL (port 5432) ← shared database
+
+Clerk (SaaS — external)
+  └── Hosted sign-in / sign-up pages
+  └── JWT issuance (RS256, auto-rotating keys)
+  └── Webhook: user.created → NestJS creates Customer record
 ```
 
 **Total: ~$30/mo at launch.** All components in eu-central-1 (Frankfurt) — minimal latency between services and to Bulgarian users.
@@ -165,7 +169,7 @@ Cross-schema permissions (enforced by Postgres users):
 REST/JSON over HTTPS. All API calls go through NestJS — the browser never calls TecDoc or the backoffice directly. Real-time order status updates delivered via **Server-Sent Events (SSE)** — NestJS pushes status changes to the customer's open browser connection immediately when a fulfillment event is consumed.
 
 ### NestJS → Backoffice (synchronous REST)
-Internal REST API secured with **Keycloak client credentials** (OAuth2 `client_credentials` grant). NestJS holds a `shop-api` Keycloak client. Token cached in memory within `BackofficeClient`, refreshed when remaining lifetime drops below a configurable threshold (default 60s). Retries once with a fresh token on 401 response.
+Internal REST API secured with a **shared-secret bearer token**. Both NestJS and Spring Boot hold the same secret in their environment (`INTERNAL_API_TOKEN`). NestJS includes `Authorization: Bearer <INTERNAL_API_TOKEN>` on every internal call. The backoffice verifies the token on arrival. Internal endpoints are only reachable within the Lightsail private network — they are not exposed to the public internet.
 
 Internal endpoints on the backoffice:
 - `GET  /internal/price-and-availability/:articleNumber` — best price + stock across all suppliers. Called fresh (non-cached) at checkout confirmation before payment is taken.
@@ -368,8 +372,8 @@ src/
 ├── inventory/      # Calls backoffice /internal/price-and-availability
 ├── orders/         # Order state machine, checkout, SQS publisher, SSE streams
 ├── payments/       # Stripe, myPOS, COD adapters
-├── customers/      # Accounts, mechanic approval flow
-├── auth/           # Keycloak JWT guard, client credentials + token cache
+├── customers/      # Accounts, mechanic approval flow, Clerk webhook handler
+├── auth/           # Clerk JWT guard, InternalGuard (shared-secret), @Public() decorator
 ├── events/         # SQS consumers (fulfillment-events), email worker
 └── common/         # Global exception filter, interceptors, decorators
 ```
@@ -391,9 +395,10 @@ src/
 
 ## Auth Flow
 
-- Keycloak on existing VM, new `shop` realm separate from backoffice realm.
-- **End users:** Customers self-register. Mechanics submit registration → backoffice approves → Keycloak Admin API assigns `ROLE_MECHANIC`. NestJS validates JWT on every protected request via `JwtGuard`. Mechanic accounts receive B2B pricing from the backoffice price endpoint.
-- **Service-to-service:** NestJS uses Keycloak client credentials for all backoffice calls. Token cached in memory within `BackofficeClient`. Refreshed when remaining lifetime drops below configurable threshold (default 60s). Retries once with fresh token on 401.
+- **Auth provider**: Clerk (SaaS). No self-hosted Keycloak. Clerk issues RS256 JWTs; NestJS verifies them using `@clerk/backend` SDK.
+- **End users:** Customers sign up and sign in via Clerk's hosted pages (or Clerk's embedded `<SignIn>` / `<SignUp>` components in the Next.js frontend). After registration, Clerk fires a `user.created` webhook; NestJS receives it, verifies the Clerk webhook signature, and creates a `Customer` record in Postgres. Custom fields (phone number) are collected via a short onboarding step after first sign-in — `PATCH /customers/me`.
+- **Mechanic approval:** Mechanic submits application → NestJS saves `MechanicProfile` as `PENDING`. Backoffice operator approves via `POST /internal/mechanic-approve/:customerId`. NestJS upgrades `Customer.role` to `MECHANIC` in Postgres **and** calls the Clerk Backend API to set `publicMetadata.role = 'MECHANIC'` on the Clerk user. The mechanic's next JWT session will carry `role: MECHANIC` in its public metadata claims — NestJS `JwtGuard` reads the role from the JWT without a DB lookup.
+- **Service-to-service:** Spring Boot backoffice calls NestJS internal endpoints using `Authorization: Bearer <INTERNAL_API_TOKEN>`. NestJS `InternalGuard` compares the token to `process.env.INTERNAL_API_TOKEN`. Internal endpoints are bound to the private Lightsail network interface and are not reachable from the public internet — the shared secret is a defence-in-depth measure, not the primary access control.
 
 ---
 
@@ -431,7 +436,8 @@ Secrets in GitHub Actions secrets (CI) and Lightsail console environment variabl
 - **Two SQS queues, both directions** — `shop-events` (NestJS → backoffice) carries `OrderPlaced` which triggers all fulfillment logic in the backoffice. No synchronous fulfill endpoint — SQS durability handles backoffice downtime naturally. `fulfillment-events` (backoffice → NestJS) drives the order status lifecycle and real-time customer updates via SSE.
 - **Pre-checkout live availability check** — always a fresh non-cached call to the backoffice before payment. Redis cache is for browse performance only, never used for financial decisions.
 - **SSE for real-time order status** — NestJS pushes status changes to the customer's browser when fulfillment events are consumed. No polling.
-- **Keycloak client credentials for all service-to-service calls** — token cached in memory, refreshed at 60s threshold, retries once on 401.
+- **Shared-secret bearer token for all service-to-service calls** — `INTERNAL_API_TOKEN` shared between NestJS and Spring Boot. Internal endpoints are private-network only; shared secret is defence in depth.
+- **Clerk for all user auth** — hosted sign-in/sign-up UI, JWT issuance, and user webhook (`user.created`) drive Customer DB sync. No self-hosted Keycloak required.
 - **`fulfillment_tasks` in backoffice schema** — backoffice owns and manages fulfillment entirely. Shop gets SELECT only to read task status.
 - **`shop_app` has no access to `supplier_stock`** — NestJS never reads supplier data directly. All pricing and availability queries go through the backoffice internal API.
 - **PgBouncer transaction mode + Prisma** — requires `?pgbouncer=true` in NestJS connection string. Migration user connects directly to Postgres on port 5432, bypassing PgBouncer.

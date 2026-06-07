@@ -61,7 +61,7 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 - `orders/` — State machine, checkout, SQS publisher, SSE (order status)
 - `payments/` — Stripe, Borica, COD
 - `customers/` — Accounts, mechanic approval
-- `auth/` — Keycloak JWT guard (`shop` realm)
+- `auth/` — Clerk JWT guard, `InternalGuard` (shared-secret for backoffice calls), `@Public()` decorator
 - `events/` — SQS consumers, email worker
 - `common/` — Global filters, interceptors, pipes
 
@@ -78,7 +78,7 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 - **Prisma** uses `?pgbouncer=true` in `DATABASE_URL` because PgBouncer runs in transaction mode.
 - **Pre-checkout availability check** is always fresh (no cache) to avoid selling unavailable stock.
 - **TecDoc data** is cached in Redis with TTL; no Postgres cache at launch.
-- **Auth** is Keycloak — all NestJS routes validate JWT from the `shop` realm.
+- **Auth** is Clerk — all NestJS routes validate Clerk-issued JWTs via `@clerk/backend` SDK. Clerk handles sign-in/sign-up UI; a `user.created` webhook creates the `Customer` record in Postgres. Internal backoffice endpoints are protected by `InternalGuard` (shared-secret bearer token, private-network only).
 - `packages/shared` is the contract layer between `web` and `api`; put Zod schemas and TS types there, never inline them in one app only.
 
 ### Path aliases
