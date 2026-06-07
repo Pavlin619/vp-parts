@@ -32,13 +32,13 @@
 
 - [X] T001 Define Prisma schema with all entities (Customer, MechanicProfile, Address, Cart, CartItem, Order, OrderItem, OrderStatusHistory, SavedVehicle) plus all enums and indexes from data-model.md in `apps/api/prisma/schema.prisma`
 - [X] T002 Run initial Prisma migration and regenerate Prisma client in `apps/api/` (`npx prisma migrate dev --name init && npx prisma generate`)
-- [ ] T003 [P] Define all shared enums (CustomerRole, MechanicApprovalStatus, OrderStatus, ShippingMethod, PaymentMethod) in `packages/shared/src/enums.ts`
-- [ ] T004 [P] Define AppErrorCode enum and ApiErrorResponse interface in `packages/shared/src/errors.ts`
-- [ ] T005 [P] Define value objects Money, ArticleNumber, VehicleId as branded types in `packages/shared/src/types/value-objects.ts`
-- [ ] T006 [P] Implement formatPrice(cents) using Intl.NumberFormat (EUR, currency style) in `packages/shared/src/utils.ts`
-- [ ] T007 Define Zod validation schemas (address.schema.ts, cart.schema.ts, checkout.schema.ts, customers.schema.ts) in `packages/shared/src/schemas/`
-- [ ] T008 Define all request/response DTOs (catalog.dto.ts, cart.dto.ts, checkout.dto.ts, orders.dto.ts, customers.dto.ts) in `packages/shared/src/dto/`
-- [ ] T009 Export all types, schemas, DTOs, enums, value objects, and utilities from `packages/shared/src/index.ts`
+- [X] T003 [P] Define all shared enums (CustomerRole, MechanicApprovalStatus, OrderStatus, ShippingMethod, PaymentMethod) in `packages/shared/src/enums.ts`
+- [X] T004 [P] Define AppErrorCode enum and ApiErrorResponse interface in `packages/shared/src/errors.ts`
+- [X] T005 [P] Define value objects Money, ArticleNumber, VehicleId as branded types in `packages/shared/src/types/value-objects.ts`
+- [X] T006 [P] Implement formatPrice(cents) using Intl.NumberFormat (EUR, currency style) in `packages/shared/src/utils.ts`
+- [X] T007 Define Zod validation schemas (address.schema.ts, cart.schema.ts, checkout.schema.ts, customers.schema.ts) in `packages/shared/src/schemas/`
+- [X] T008 Define all request/response DTOs (catalog.dto.ts, cart.dto.ts, checkout.dto.ts, orders.dto.ts, customers.dto.ts) in `packages/shared/src/dto/`
+- [X] T009 Export all types, schemas, DTOs, enums, value objects, and utilities from `packages/shared/src/index.ts`
 - [ ] T010 [P] Write unit tests for PriceCalculator covering all rounding edge cases (1 cent, 999 cents, multi-item aggregation) in `apps/api/src/common/price-calculator.spec.ts` — mandatory 100% coverage per Constitution IX
 - [ ] T011 Implement PriceCalculator domain service (lineTotal, subtotal, vatAmount with single Math.round, orderTotal) in `apps/api/src/common/price-calculator.ts` — implement AFTER T010 tests fail
 - [ ] T012 [P] Configure ConfigModule with Joi env validation schema (all env vars validated at startup) in `apps/api/src/app.module.ts`
