@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ShippingMethod, PaymentMethod } from '../enums.js';
+import { ShippingMethod, PaymentMethod } from '../enums';
 
 export const confirmCheckoutSchema = z.object({
   cartId: z.string().uuid(),

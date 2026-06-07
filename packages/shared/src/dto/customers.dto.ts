@@ -1,4 +1,4 @@
-import { CustomerRole, MechanicApprovalStatus } from '../enums.js';
+import { CustomerRole, MechanicApprovalStatus } from '../enums';
 
 export interface CustomerProfileDto {
   id: string;

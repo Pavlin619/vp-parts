@@ -1,4 +1,4 @@
-import { ShippingMethod, PaymentMethod } from '../enums.js';
+import { ShippingMethod, PaymentMethod } from '../enums';
 
 export interface ConfirmedItemDto {
   articleNumber: string;

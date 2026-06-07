@@ -1,4 +1,4 @@
-import { OrderStatus, ShippingMethod, PaymentMethod } from '../enums.js';
+import { OrderStatus, ShippingMethod, PaymentMethod } from '../enums';
 
 export interface OrderListItemDto {
   orderId: string;
