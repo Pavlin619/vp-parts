@@ -45,12 +45,12 @@
 - [X] T013 [P] Register global ValidationPipe `{ whitelist: true, forbidNonWhitelisted: true, transform: true }` and configure CORS in `apps/api/src/main.ts`
 - [X] T014 [P] Implement global exception filter (strips internals, returns only `{ statusCode, errorCode }`) in `apps/api/src/common/exception.filter.ts`
 - [X] T015 [P] Implement request logging interceptor using NestJS Logger (no PII or payment data in logs) in `apps/api/src/common/logging.interceptor.ts`
-- [ ] T016 Implement JwtGuard (validates Clerk-issued JWT using `@clerk/backend` `verifyToken`; reads `clerkId` from `sub` claim, `role` from `publicMetadata.role`) in `apps/api/src/auth/jwt.guard.ts`
-- [ ] T017 [P] Implement ClerkJwtStrategy (CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY from ConfigService; JWKS auto-configured by Clerk SDK) in `apps/api/src/auth/clerk-jwt.strategy.ts`
-- [ ] T017b [P] Implement InternalGuard (compares `Authorization: Bearer <token>` to `INTERNAL_API_TOKEN` env var; rejects with 401 on mismatch) in `apps/api/src/auth/internal.guard.ts`
-- [ ] T018 [P] Implement @Public() decorator for opt-out of JwtGuard in `apps/api/src/auth/public.decorator.ts`
-- [ ] T019 Create AuthModule barrel and export JwtGuard, InternalGuard, and @Public() in `apps/api/src/auth/index.ts`
-- [ ] T020 Create CommonModule barrel exporting exception filter, logging interceptor, PriceCalculator in `apps/api/src/common/index.ts`
+- [X] T016 Implement JwtGuard (validates Clerk-issued JWT using `@clerk/backend` `verifyToken`; reads `clerkId` from `sub` claim, `role` from `publicMetadata.role`) in `apps/api/src/auth/jwt.guard.ts`
+- [X] T017 [P] Implement ClerkJwtStrategy (CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY from ConfigService; JWKS auto-configured by Clerk SDK) in `apps/api/src/auth/clerk-jwt.strategy.ts`
+- [X] T017b [P] Implement InternalGuard (compares `Authorization: Bearer <token>` to `INTERNAL_API_TOKEN` env var; rejects with 401 on mismatch) in `apps/api/src/auth/internal.guard.ts`
+- [X] T018 [P] Implement @Public() decorator for opt-out of JwtGuard in `apps/api/src/auth/public.decorator.ts`
+- [X] T019 Create AuthModule barrel and export JwtGuard, InternalGuard, and @Public() in `apps/api/src/auth/index.ts`
+- [X] T020 Create CommonModule barrel exporting exception filter, logging interceptor, PriceCalculator in `apps/api/src/common/index.ts`
 - [ ] T020b [P] Configure Tailwind theme with all design tokens from `specs/002-autoparts-shop-spec/design.md` (colors, Inter + Space Grotesk + JetBrains Mono fonts, spacing scale, border-radius, shadows) in `apps/web/tailwind.config.ts` and `apps/web/src/app/globals.css`
 - [ ] T021 [P] Implement apiFetch wrapper (base URL, Authorization header injection, ApiErrorResponse error parsing) in `apps/web/src/lib/api/index.ts`
 - [ ] T022 [P] Configure TanStack Query provider (QueryClient with defaults) in `apps/web/src/app/providers.tsx`
