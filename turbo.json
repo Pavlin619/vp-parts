@@ -6,6 +6,7 @@
       "outputs": [".next/**", "dist/**", ".turbo/**"]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },

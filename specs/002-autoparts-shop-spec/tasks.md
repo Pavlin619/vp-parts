@@ -39,12 +39,12 @@
 - [X] T007 Define Zod validation schemas (address.schema.ts, cart.schema.ts, checkout.schema.ts, customers.schema.ts) in `packages/shared/src/schemas/`
 - [X] T008 Define all request/response DTOs (catalog.dto.ts, cart.dto.ts, checkout.dto.ts, orders.dto.ts, customers.dto.ts) in `packages/shared/src/dto/`
 - [X] T009 Export all types, schemas, DTOs, enums, value objects, and utilities from `packages/shared/src/index.ts`
-- [ ] T010 [P] Write unit tests for PriceCalculator covering all rounding edge cases (1 cent, 999 cents, multi-item aggregation) in `apps/api/src/common/price-calculator.spec.ts` — mandatory 100% coverage per Constitution IX
-- [ ] T011 Implement PriceCalculator domain service (lineTotal, subtotal, vatAmount with single Math.round, orderTotal) in `apps/api/src/common/price-calculator.ts` — implement AFTER T010 tests fail
-- [ ] T012 [P] Configure ConfigModule with Joi env validation schema (all env vars validated at startup) in `apps/api/src/app.module.ts`
-- [ ] T013 [P] Register global ValidationPipe `{ whitelist: true, forbidNonWhitelisted: true, transform: true }` and configure CORS in `apps/api/src/main.ts`
-- [ ] T014 [P] Implement global exception filter (strips internals, returns only `{ statusCode, errorCode }`) in `apps/api/src/common/exception.filter.ts`
-- [ ] T015 [P] Implement request logging interceptor using NestJS Logger (no PII or payment data in logs) in `apps/api/src/common/logging.interceptor.ts`
+- [X] T010 [P] Write unit tests for PriceCalculator covering all rounding edge cases (1 cent, 999 cents, multi-item aggregation) in `apps/api/src/common/price-calculator.spec.ts` — mandatory 100% coverage per Constitution IX
+- [X] T011 Implement PriceCalculator domain service (lineTotal, subtotal, vatAmount with single Math.round, orderTotal) in `apps/api/src/common/price-calculator.ts` — implement AFTER T010 tests fail
+- [X] T012 [P] Configure ConfigModule with Joi env validation schema (all env vars validated at startup) in `apps/api/src/app.module.ts`
+- [X] T013 [P] Register global ValidationPipe `{ whitelist: true, forbidNonWhitelisted: true, transform: true }` and configure CORS in `apps/api/src/main.ts`
+- [X] T014 [P] Implement global exception filter (strips internals, returns only `{ statusCode, errorCode }`) in `apps/api/src/common/exception.filter.ts`
+- [X] T015 [P] Implement request logging interceptor using NestJS Logger (no PII or payment data in logs) in `apps/api/src/common/logging.interceptor.ts`
 - [ ] T016 Implement JwtGuard (validates Clerk-issued JWT using `@clerk/backend` `verifyToken`; reads `clerkId` from `sub` claim, `role` from `publicMetadata.role`) in `apps/api/src/auth/jwt.guard.ts`
 - [ ] T017 [P] Implement ClerkJwtStrategy (CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY from ConfigService; JWKS auto-configured by Clerk SDK) in `apps/api/src/auth/clerk-jwt.strategy.ts`
 - [ ] T017b [P] Implement InternalGuard (compares `Authorization: Bearer <token>` to `INTERNAL_API_TOKEN` env var; rejects with 401 on mismatch) in `apps/api/src/auth/internal.guard.ts`
