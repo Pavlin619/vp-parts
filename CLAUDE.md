@@ -81,6 +81,48 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 - **Auth** is Clerk — all NestJS routes validate Clerk-issued JWTs via `@clerk/backend` SDK. Clerk handles sign-in/sign-up UI; a `user.created` webhook creates the `Customer` record in Postgres. Internal backoffice endpoints are protected by `InternalGuard` (shared-secret bearer token, private-network only).
 - `packages/shared` is the contract layer between `web` and `api`; put Zod schemas and TS types there, never inline them in one app only.
 
+### TecDoc Pegasus 3.0 API integration
+
+**Critical: TecDoc is NOT a REST API.** It is a JSON RPC service. Do not invent REST-style paths — they do not exist and calls will fail silently or with unexpected errors.
+
+**Protocol:** All calls are `HTTP POST` to a single endpoint:
+```
+POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
+```
+
+**Request shape:** The function name is the top-level JSON key, and every call includes `provider` (the ProviderId assigned by TecAlliance during onboarding):
+```json
+{
+  "getFunctionName": {
+    "provider": PROVIDER_ID,
+    "lang": "bg",
+    "linkageTargetCountry": "BG",
+    ...other params
+  }
+}
+```
+
+**Authentication:** `X-Api-Key: YOUR_KEY` HTTP header (correct as implemented).
+
+**Required env vars:** `TECDOC_BASE_URL`, `TECDOC_API_KEY`, `TECDOC_PROVIDER_ID`.
+
+**Key functions used in this project:**
+
+| Function | Purpose |
+|---|---|
+| `getLinkageTargets` | Manufacturers, model series, vehicle variants |
+| `getArticles` | Assembly group tree, article list, article search by number |
+| `getBrands` | Brand logos (future) |
+| `getAutoCompleteSuggestions` | Search autocomplete (future) |
+| `getArticleLinkedAllLinkingTarget4` | Compatible vehicles for an article (future, doc section 8.4) |
+
+**Where to verify the contract before implementing any TecDoc call:**
+- Interactive docs + test client: `https://webservice.tecalliance.services/pegasus-3-0/info/`
+- Service Index tab: every function with full request/response parameter documentation
+- Use the Test Client tab to verify actual response shapes before writing mapping code
+
+**Never assume a field name or endpoint path.** Always check the Service Index or the onboarding guide (`specs/002-autoparts-shop-spec/TecDoc Pegasus 3.0 API - Onboarding Guide 3.0.pdf`) before adding a new TecDoc call.
+
 ### Path aliases
 - `apps/web`: `@/*` → `./src/*`
 - `apps/api`: no aliases; use relative imports

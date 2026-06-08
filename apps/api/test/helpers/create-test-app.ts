@@ -1,5 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
@@ -15,11 +15,11 @@ export interface TestAppOptions {
 /**
  * Creates a fully-bootstrapped NestJS test application that mirrors the
  * production setup in main.ts (ValidationPipe, GlobalExceptionFilter,
- * LoggingInterceptor). Pass provider overrides via the moduleBuilder callback
- * to replace real services with mocks.
+ * LoggingInterceptor). Pass a moduleCustomizer to override providers
+ * BEFORE module compilation (e.g. replace real services with mocks).
  */
 export async function createTestApp(
-  moduleCustomizer?: (builder: TestingModule) => void,
+  moduleCustomizer?: (builder: TestingModuleBuilder) => void,
   options: TestAppOptions = {},
 ): Promise<INestApplication> {
   const databaseUrl =
@@ -31,15 +31,17 @@ export async function createTestApp(
     process.env.DATABASE_URL = databaseUrl;
   }
 
-  const moduleBuilder = await Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  });
 
   if (moduleCustomizer) {
-    moduleCustomizer(moduleBuilder);
+    moduleCustomizer(builder);
   }
 
-  const app = moduleBuilder.createNestApplication();
+  const moduleRef = await builder.compile();
+
+  const app = moduleRef.createNestApplication();
 
   app.useGlobalPipes(
     new ValidationPipe({
