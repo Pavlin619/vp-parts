@@ -5,6 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AuthModule } from './auth';
 import { CommonModule } from './common';
+import { CatalogModule } from './catalog';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -68,6 +69,7 @@ import { AppService } from './app.service';
     ]),
     AuthModule,
     CommonModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [
