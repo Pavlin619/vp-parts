@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      // TecDoc / TecAlliance CDN (article thumbnails)
+      { protocol: "https", hostname: "**.tecalliance.net" },
+      { protocol: "https", hostname: "**.tecdoc.net" },
+    ],
+  },
 };
 
 export default nextConfig;
