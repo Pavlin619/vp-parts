@@ -37,8 +37,9 @@ export function listArticles(
   page = 1,
   pageSize = 20,
 ): Promise<PaginatedArticlesDto> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   return apiFetch<PaginatedArticlesDto>(
-    `/catalog/vehicles/${vehicleId}/categories/${categoryId}/articles?page=${page}&pageSize=${pageSize}`,
+    `/catalog/vehicles/${vehicleId}/categories/${categoryId}/articles?${params}`,
   );
 }
 
@@ -46,9 +47,9 @@ export function getArticleDetail(
   articleNumber: string,
   vehicleId?: string,
 ): Promise<ArticleDetailDto> {
-  const vehicleParam = vehicleId ? `?vehicleId=${vehicleId}` : "";
+  const search = vehicleId ? `?${new URLSearchParams({ vehicleId })}` : "";
   return apiFetch<ArticleDetailDto>(
-    `/catalog/articles/${encodeURIComponent(articleNumber)}${vehicleParam}`,
+    `/catalog/articles/${encodeURIComponent(articleNumber)}${search}`,
   );
 }
 
@@ -70,4 +71,16 @@ export const variantsQueryOptions = (seriesId: string) =>
   queryOptions({
     queryKey: ["catalog", "variants", seriesId],
     queryFn: () => getVariants(seriesId),
+  });
+
+export const categoriesQueryOptions = (vehicleId: string) =>
+  queryOptions({
+    queryKey: ["catalog", "categories", vehicleId],
+    queryFn: () => getCategories(vehicleId),
+  });
+
+export const articleDetailQueryOptions = (articleNumber: string, vehicleId?: string) =>
+  queryOptions({
+    queryKey: ["catalog", "articles", articleNumber, vehicleId ?? null],
+    queryFn: () => getArticleDetail(articleNumber, vehicleId),
   });

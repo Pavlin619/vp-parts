@@ -8,6 +8,8 @@ import {
   manufacturersQueryOptions,
   modelSeriesQueryOptions,
   variantsQueryOptions,
+  categoriesQueryOptions,
+  articleDetailQueryOptions,
 } from './catalog'
 import { apiFetch } from './index'
 
@@ -132,6 +134,48 @@ describe('variantsQueryOptions', () => {
   it('produces a different query key for a different series ID', () => {
     expect(variantsQueryOptions('series-789').queryKey).not.toEqual(
       variantsQueryOptions('series-456').queryKey,
+    )
+  })
+})
+
+describe('categoriesQueryOptions', () => {
+  it('has the correct query key for a given vehicle ID', () => {
+    expect(categoriesQueryOptions('v-1').queryKey).toEqual([
+      'catalog',
+      'categories',
+      'v-1',
+    ])
+  })
+
+  it('produces a different query key for a different vehicle ID', () => {
+    expect(categoriesQueryOptions('v-2').queryKey).not.toEqual(
+      categoriesQueryOptions('v-1').queryKey,
+    )
+  })
+})
+
+describe('articleDetailQueryOptions', () => {
+  it('has the correct query key without vehicleId', () => {
+    expect(articleDetailQueryOptions('ABC-123').queryKey).toEqual([
+      'catalog',
+      'articles',
+      'ABC-123',
+      null,
+    ])
+  })
+
+  it('has the correct query key with vehicleId', () => {
+    expect(articleDetailQueryOptions('ABC-123', 'v-789').queryKey).toEqual([
+      'catalog',
+      'articles',
+      'ABC-123',
+      'v-789',
+    ])
+  })
+
+  it('produces a different query key when vehicleId differs', () => {
+    expect(articleDetailQueryOptions('ABC-123', 'v-1').queryKey).not.toEqual(
+      articleDetailQueryOptions('ABC-123', 'v-2').queryKey,
     )
   })
 })

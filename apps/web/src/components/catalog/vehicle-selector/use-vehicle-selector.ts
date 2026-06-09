@@ -41,7 +41,7 @@ export interface VehicleSelectorState {
 // This hook is intended to be used inside a component that is remounted each time the
 // modal opens (via a key prop in VehicleSelector). That is why lazy state initializers
 // can safely read storedVehicle once at mount time — no synchronous effects needed.
-export function useVehicleSelector(onClose: () => void): VehicleSelectorState {
+export function useVehicleSelector(onClose: () => void, onConfirm?: () => void): VehicleSelectorState {
   const { setVehicle, selectedVehicle: storedVehicle } = useVehicleContext();
 
   const [step, setStep] = useState<Step>(() =>
@@ -146,7 +146,11 @@ export function useVehicleSelector(onClose: () => void): VehicleSelectorState {
       yearTo: pendingVariant.yearTo,
     };
     setVehicle(vehicle);
-    onClose();
+    if (onConfirm) {
+      onConfirm();
+    } else {
+      onClose();
+    }
   }
 
   function handleStepClick(targetStep: Step) {

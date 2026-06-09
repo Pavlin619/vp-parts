@@ -7,10 +7,11 @@ import { VehicleSelectorFooter } from "./footer";
 
 interface VehicleSelectorContentProps {
   onClose: () => void;
+  onConfirm?: () => void;
 }
 
-export function VehicleSelectorContent({ onClose }: VehicleSelectorContentProps) {
-  const selector = useVehicleSelector(onClose);
+export function VehicleSelectorContent({ onClose, onConfirm }: VehicleSelectorContentProps) {
+  const selector = useVehicleSelector(onClose, onConfirm);
 
   return (
     <div
