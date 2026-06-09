@@ -23,6 +23,10 @@ npm run test                        # Run Jest unit tests
 npm run test:e2e                    # Run e2e tests (jest --config ./test/jest-e2e.json)
 npx jest src/some/file.spec.ts      # Run a single test file
 
+# From within apps/web:
+npm run test                        # Run Jest unit tests (Jest + React Testing Library)
+npx jest src/some/file.spec.ts      # Run a single test file
+
 # Prisma (from apps/api):
 npx prisma migrate dev              # Apply pending migrations
 npx prisma generate                 # Regenerate Prisma client after schema change
@@ -130,13 +134,17 @@ POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
 
 ## Quality Gate
 
-After every code change, run all three checks and fix any failures before considering the task done:
+After every code change, run all checks relevant to the workspace you touched and fix any failures before considering the task done:
 
 ```bash
 # In apps/api:
 npm run lint        # must produce zero errors
 npm run test        # all unit tests must pass
 npm run test:e2e    # all e2e tests must pass
+
+# In apps/web:
+npm run lint
+npm run test        # all Jest + RTL unit tests must pass
 
 # In root (covers web + shared):
 npm run lint
@@ -147,12 +155,13 @@ npm run type-check
 - Never introduce a new failing test, lint error, or type error — even in unrelated files you touched.
 - If a pre-existing test is already failing, note it explicitly before starting work; do not mask it.
 - Do not disable lint rules (`// eslint-disable`) or skip tests (`it.skip`, `xit`) to make the gate pass.
+- **Every new feature must ship with tests.** Any new file added to `apps/web/src/` or `apps/api/src/` must be accompanied by a corresponding `.spec.ts`/`.spec.tsx` file covering its non-trivial logic. Where full test coverage is not feasible (e.g. thin route wrappers, loading skeletons), note the exception explicitly in the PR description.
 
 ## Test-Driven Development
 
 **Workflow for every new feature:**
-1. Write the unit tests first (`.spec.ts`) — define expected inputs, outputs, and edge cases.
-2. Run the tests to confirm they fail (`npm run test` in `apps/api`).
+1. Write the unit tests first (`.spec.ts`/`.spec.tsx`) — define expected inputs, outputs, and edge cases.
+2. Run the tests to confirm they fail (`npm run test` in the relevant workspace).
 3. Implement the feature until all tests pass.
 4. Add or update e2e tests in `apps/api/test/` if the feature touches HTTP endpoints.
 5. Never merge code that makes tests pass by special-casing the test input.
@@ -161,7 +170,12 @@ npm run type-check
 
 **NestJS e2e tests** — spin up the full app with `supertest`; run against a test database or in-memory substitute.
 
-**Frontend** — Next.js Server Components and Server Actions are pure functions; test them with Jest. Client Components require React Testing Library.
+**Frontend unit tests** — `apps/web` uses Jest + React Testing Library (configured via `next/jest`). Test strategy by type:
+- **Pure functions** (`lib/utils.ts`, `lib/api/*.ts`): Jest only — mock `fetch`/`apiFetch`, assert URL construction, headers, and error handling.
+- **Algorithms** (e.g. `buildTree` in `category-nav.tsx`): export the function and test it in isolation with Jest. No rendering needed.
+- **Zustand stores** (`hooks/use-vehicle-context.ts`): call `store.getState()` and `store.setState()` directly — no React rendering needed.
+- **Client Components** with conditional rendering logic (e.g. `ArticleCard`): use React Testing Library — `render()`, query by role/label/text, simulate events with `userEvent`.
+- **Skip tests for**: loading skeletons, thin route wrappers with no logic, shadcn UI primitives under `components/ui/`.
 
 ## Next.js Best Practices
 
@@ -211,6 +225,36 @@ src/
 - Use `class-variance-authority` (CVA) to define component variants; keep variant definitions co-located with the component file.
 - No inline `style={{}}` props except for truly dynamic values that Tailwind cannot express (e.g. CSS custom properties for runtime colors). Use Tailwind utilities for everything else.
 - One component per file. File name matches the component name in kebab-case (`product-card.tsx` → `ProductCard`).
+- **Split page sections into named components.** When a route page (`page.tsx`) contains distinct visual sections (breadcrumbs, grids, pagination, headers), extract each into its own file under `components/[feature]/`. Route pages should only compose components — no inline JSX blocks.
+
+## React & Next.js Patterns
+
+### TanStack Query v5
+- **Define queries with `queryOptions()` factories** in `lib/api/` — never inline `queryKey`/`queryFn` pairs directly in components. Components import and spread the factory: `useQuery({ ...manufacturersQueryOptions, enabled: isOpen })`.
+- **Key structure:** `['domain', 'entity', id?]` tuple arrays (e.g. `['catalog', 'manufacturers']`). Centralising keys in one place prevents drift.
+- **Always handle loading and error states explicitly.** Destructure `isPending` / `isError` and render a skeleton or error message — never silently show an empty list while data loads.
+- **Prefer `useSuspenseQuery` + `<Suspense fallback={<Skeleton />}>`** for new components where the loading UI can be a skeleton; it removes the need for manual `isPending` checks inside the component.
+- For mutations: use `useMutation` with `onSuccess: () => queryClient.invalidateQueries(...)` — avoid manually patching the cache unless optimistic updates are required.
+
+### Zustand v5 with Next.js (SSR)
+- **Hydration guard:** Zustand `persist` reads from `localStorage`, which only exists on the client. Any component that branches on persisted state must guard with `useHydration()` (exported from `hooks/use-vehicle-context.ts`). While `isHydrated` is `false`, render a neutral skeleton — this keeps the server HTML and the initial client render identical, preventing React hydration mismatches.
+- **Always subscribe with selectors:** `useStore(state => state.field)`, never `useStore()`. The whole-store subscription re-renders the component on any state change, even unrelated slices.
+- One Zustand store per independent concern. Do not combine unrelated state into one store.
+
+### Next.js navigation
+- Use `<Link>` from `next/link` for **every internal link.** Never use `<a href="/path">` for same-origin navigation — it causes a full page reload and bypasses prefetching.
+- External links (different origin, open in new tab) use `<a target="_blank" rel="noopener noreferrer">`.
+
+### Next.js Image
+- Use `<Image>` from `next/image` for all content images — never a bare `<img>` tag. `next/image` handles lazy loading, WebP conversion, and responsive sizing automatically.
+- Use `fill` inside a `position: relative` container (`className="relative"`) for variable-size slots. Use explicit `width` / `height` props for fixed-dimension images.
+- Always provide a `sizes` attribute when using `fill` so the browser can choose the right source set (e.g. `sizes="(max-width: 640px) 50vw, 20vw"`).
+- Register all external image CDN hostnames in `next.config.ts` under `images.remotePatterns` **before** using them. An unregistered hostname causes a build/runtime error.
+
+### `'use cache'` directive
+- Every `'use cache'` function must call `cacheLife(preset)` and `cacheTag(tag)` before returning data. Without them the entry has no TTL and cannot be selectively invalidated.
+- Tag granularity: use the smallest logical unit that changes together (e.g. `articles-${vehicleId}-${categoryId}`), not a broad sweep like `catalog`.
+- Invalidate at the data layer with `revalidateTag(tag)` inside Server Actions. Never use `revalidatePath()` as a substitute — it blows the cache for an entire route, not just the changed data.
 
 ## NestJS Best Practices
 

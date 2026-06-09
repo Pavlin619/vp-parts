@@ -7,6 +7,8 @@ import {
   ArticleDetailDto,
 } from '@vp-parts-shop/shared';
 
+// TODO: delete this class ones we have finished the contract with TECDOC
+
 const MANUFACTURERS: ManufacturerDto[] = [
   { id: '16', name: 'Volkswagen' },
   { id: '5', name: 'BMW' },

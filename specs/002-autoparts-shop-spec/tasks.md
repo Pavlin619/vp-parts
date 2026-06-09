@@ -81,28 +81,28 @@
 
 ### Tests for User Story 1 (write first — confirm they FAIL before implementing)
 
-- [ ] T028 [P] [US1] Write unit tests for TecDocClient (getManufacturers, getModelSeries, getVehicleTypes, getAssemblyGroupTree, getArticles, getArticleDetails — mock HTTP calls) in `apps/api/src/catalog/tecdoc/tecdoc-client.spec.ts`
-- [ ] T029 [P] [US1] Write unit tests for TecDocCacheService (Redis hit returns cached value, Redis miss calls TecDocClient and populates cache, TTLs: vehicle tree 7d, article 24h per ARCHITECTURE.md) in `apps/api/src/catalog/tecdoc/tecdoc-cache.service.spec.ts`
-- [ ] T030 [P] [US1] Write unit tests for CatalogService (manufacturer list, model series filter by manufacturerId, category tree, article listing with best-price derivation and unavailability labelling) in `apps/api/src/catalog/catalog.service.spec.ts`
-- [ ] T031 [US1] Write integration tests for CatalogController (all GET /catalog/* endpoints, caching headers, pagination) in `apps/api/test/catalog.e2e-spec.ts`
+- [X] T028 [P] [US1] Write unit tests for TecDocClient (getManufacturers, getModelSeries, getVehicleTypes, getAssemblyGroupTree, getArticles, getArticleDetails — mock HTTP calls) in `apps/api/src/catalog/tecdoc/tecdoc-client.spec.ts`
+- [X] T029 [P] [US1] Write unit tests for TecDocCacheService (Redis hit returns cached value, Redis miss calls TecDocClient and populates cache, TTLs: vehicle tree 7d, article 24h per ARCHITECTURE.md) in `apps/api/src/catalog/tecdoc/tecdoc-cache.service.spec.ts`
+- [X] T030 [P] [US1] Write unit tests for CatalogService (manufacturer list, model series filter by manufacturerId, category tree, article listing with best-price derivation and unavailability labelling) in `apps/api/src/catalog/catalog.service.spec.ts`
+- [X] T031 [US1] Write integration tests for CatalogController (all GET /catalog/* endpoints, caching headers, pagination) in `apps/api/test/catalog.e2e-spec.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T032 [P] [US1] Implement TecDocClient (HTTP proxy to TecDoc Pegasus 3.0 API, API key from ConfigService) in `apps/api/src/catalog/tecdoc/tecdoc-client.ts`
-- [ ] T033 [US1] Implement TecDocCacheService (Redis check-then-set with per-operation TTLs; cache key `tecdoc:{operation}:{params-hash}`) in `apps/api/src/catalog/tecdoc/tecdoc-cache.service.ts`
-- [ ] T034 [US1] Implement CatalogRepository (TecDoc data is Redis-cached only at launch — no Postgres; stub for future Postgres cache) in `apps/api/src/catalog/catalog.repository.ts`
-- [ ] T035 [US1] Implement CatalogService (delegate to TecDocCacheService; expose vehicle tree, category tree, article listing with best price and availability via InventoryService) in `apps/api/src/catalog/catalog.service.ts`
-- [ ] T036 [US1] Implement CatalogController (@Public; GET /catalog/manufacturers, /manufacturers/:id/model-series, /model-series/:id/variants, /vehicles/:vehicleId/categories, /vehicles/:vehicleId/categories/:categoryId/articles, /articles/:articleNumber) in `apps/api/src/catalog/catalog.controller.ts`
-- [ ] T037 [US1] Create CatalogModule and barrel in `apps/api/src/catalog/index.ts`
-- [ ] T038 [US1] Implement catalog API functions (getManufacturers, getModelSeries, getVariants, getCategories, listArticles, getArticleDetail) in `apps/web/src/lib/api/catalog.ts`
-- [ ] T039 [US1] Implement use-vehicle-context hook (Zustand store; persist selected vehicle in localStorage; sync to server for logged-in users via PATCH /customers/me) in `apps/web/src/hooks/use-vehicle-context.ts`
-- [ ] T040 [P] [US1] Create VehicleSelector client component (full-screen modal on mobile, step-by-step make/model/year, current selection always visible, no horizontal scroll at 360px) in `apps/web/src/components/catalog/vehicle-selector.tsx`
-- [ ] T041 [P] [US1] Create CategoryNav component (assembly group tree sidebar/accordion) in `apps/web/src/components/catalog/category-nav.tsx`
-- [ ] T042 [P] [US1] Create ArticleCard component (thumbnail, article number, brand, "Currently Unavailable" badge for no-stock, bestPriceIncVat via formatPrice, "Add to Cart" button) in `apps/web/src/components/catalog/article-card.tsx`
-- [ ] T043 [US1] Implement shop layout (vehicle context provider, CartDrawer slot, VehicleSelector trigger) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/layout.tsx`
-- [ ] T044 [US1] Implement vehicle selector page (Client Component, renders VehicleSelector) in `apps/web/src/app/(shop)/vehicles/page.tsx`
-- [ ] T045 [US1] Implement category listing page (ISR 1 h, `revalidateTag('catalog')`, ArticleCard grid) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/catalog/[categorySlug]/page.tsx`
-- [ ] T046 [US1] Implement homepage (ISR 6 h, vehicle selector entry point, TecAlliance "TecDoc Inside" signet per licensing requirement) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(marketing)/page.tsx`
+- [X] T032 [P] [US1] Implement TecDocClient (HTTP proxy to TecDoc Pegasus 3.0 API, API key from ConfigService) in `apps/api/src/catalog/tecdoc/tecdoc-client.ts`
+- [X] T033 [US1] Implement TecDocCacheService (Redis check-then-set with per-operation TTLs; cache key `tecdoc:{operation}:{params-hash}`) in `apps/api/src/catalog/tecdoc/tecdoc-cache.service.ts`
+- [X] T034 [US1] Implement CatalogRepository (TecDoc data is Redis-cached only at launch — no Postgres; stub for future Postgres cache) in `apps/api/src/catalog/catalog.repository.ts`
+- [X] T035 [US1] Implement CatalogService (delegate to TecDocCacheService; expose vehicle tree, category tree, article listing with best price and availability via InventoryService) in `apps/api/src/catalog/catalog.service.ts`
+- [X] T036 [US1] Implement CatalogController (@Public; GET /catalog/manufacturers, /manufacturers/:id/model-series, /model-series/:id/variants, /vehicles/:vehicleId/categories, /vehicles/:vehicleId/categories/:categoryId/articles, /articles/:articleNumber) in `apps/api/src/catalog/catalog.controller.ts`
+- [X] T037 [US1] Create CatalogModule and barrel in `apps/api/src/catalog/index.ts`
+- [X] T038 [US1] Implement catalog API functions (getManufacturers, getModelSeries, getVariants, getCategories, listArticles, getArticleDetail) in `apps/web/src/lib/api/catalog.ts`
+- [X] T039 [US1] Implement use-vehicle-context hook (Zustand store; persist selected vehicle in localStorage; sync to server for logged-in users via PATCH /customers/me) in `apps/web/src/hooks/use-vehicle-context.ts`
+- [X] T040 [P] [US1] Create VehicleSelector client component (full-screen modal on mobile, step-by-step make/model/year, current selection always visible, no horizontal scroll at 360px) in `apps/web/src/components/catalog/vehicle-selector.tsx`
+- [X] T041 [P] [US1] Create CategoryNav component (assembly group tree sidebar/accordion) in `apps/web/src/components/catalog/category-nav.tsx`
+- [X] T042 [P] [US1] Create ArticleCard component (thumbnail, article number, brand, "Currently Unavailable" badge for no-stock, bestPriceIncVat via formatPrice, "Add to Cart" button) in `apps/web/src/components/catalog/article-card.tsx`
+- [X] T043 [US1] Implement shop layout (vehicle context provider, CartDrawer slot, VehicleSelector trigger) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/layout.tsx`
+- [X] T044 [US1] Implement vehicle selector page (Client Component, renders VehicleSelector) in `apps/web/src/app/(shop)/vehicles/page.tsx`
+- [X] T045 [US1] Implement category listing page (ISR 1 h, `revalidateTag('catalog')`, ArticleCard grid) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/catalog/[categorySlug]/page.tsx`
+- [X] T046 [US1] Implement homepage (ISR 6 h, vehicle selector entry point, TecAlliance "TecDoc Inside" signet per licensing requirement) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(marketing)/page.tsx`
 
 **Checkpoint**: Vehicle selection → category browse independently functional. A tester can select a vehicle and see compatible parts. Deploy/demo as MVP increment.
 
