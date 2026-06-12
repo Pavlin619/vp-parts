@@ -15,7 +15,9 @@ export class SearchController {
   }
 
   @Get('autocomplete')
-  autocomplete(@Query() dto: AutocompleteQueryDto): Promise<AutocompleteItemDto[]> {
+  autocomplete(
+    @Query() dto: AutocompleteQueryDto,
+  ): Promise<AutocompleteItemDto[]> {
     return this.search.autocomplete(dto.q ?? '');
   }
 }

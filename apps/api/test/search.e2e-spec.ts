@@ -6,7 +6,10 @@ import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
 import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
 import { ArticleListItemDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
 
-const makeArticle = (articleNumber: string, description = 'Oil Filter'): ArticleListItemDto => ({
+const makeArticle = (
+  articleNumber: string,
+  description = 'Oil Filter',
+): ArticleListItemDto => ({
   articleNumber,
   brandName: 'WIX',
   description,
@@ -56,7 +59,9 @@ describe('SearchController (e2e)', () => {
 
   describe('GET /search', () => {
     it('redirects to the article page when the exact-match tier returns a single result', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce([makeArticle('WL6340')]);
+      mockTecDocClient.searchArticles.mockResolvedValueOnce([
+        makeArticle('WL6340'),
+      ]);
 
       const res = await request(app.getHttpServer())
         .get('/search?q=WL6340')
@@ -137,7 +142,9 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results).toHaveLength(0);
       expect(res.body.suggestions).toHaveLength(2);
       // SearchService takes the first 5 chars of the normalised query as prefix
-      expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith('XYZNO');
+      expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith(
+        'XYZNO',
+      );
     });
 
     it('returns 400 when the q param is missing', async () => {
@@ -165,14 +172,18 @@ describe('SearchController (e2e)', () => {
   describe('GET /search/autocomplete', () => {
     it('returns suggestions for a query of 3 or more characters', async () => {
       const suggestions = [makeSuggestion('WL6340'), makeSuggestion('WL6341')];
-      mockTecDocClient.getAutocompleteSuggestions.mockResolvedValueOnce(suggestions);
+      mockTecDocClient.getAutocompleteSuggestions.mockResolvedValueOnce(
+        suggestions,
+      );
 
       const res = await request(app.getHttpServer())
         .get('/search/autocomplete?q=WL6')
         .expect(200);
 
       expect(res.body).toEqual(suggestions);
-      expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith('WL6');
+      expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith(
+        'WL6',
+      );
     });
 
     it('returns an empty list for a query shorter than 3 characters without calling TecDoc', async () => {
@@ -181,7 +192,9 @@ describe('SearchController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
-      expect(mockTecDocClient.getAutocompleteSuggestions).not.toHaveBeenCalled();
+      expect(
+        mockTecDocClient.getAutocompleteSuggestions,
+      ).not.toHaveBeenCalled();
     });
 
     it('returns an empty list when q is absent without calling TecDoc', async () => {
@@ -190,7 +203,9 @@ describe('SearchController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
-      expect(mockTecDocClient.getAutocompleteSuggestions).not.toHaveBeenCalled();
+      expect(
+        mockTecDocClient.getAutocompleteSuggestions,
+      ).not.toHaveBeenCalled();
     });
   });
 });

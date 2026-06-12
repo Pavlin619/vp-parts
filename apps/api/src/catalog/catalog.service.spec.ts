@@ -136,8 +136,26 @@ describe('CatalogService', () => {
 
       getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
         new Map([
-          ['WL6340', { available: true, priceExVat: 1250, priceIncVat: 1500, stockStatus: 'IN_STOCK', estimatedDeliveryDays: null }],
-          ['OC123', { available: false, priceExVat: null, priceIncVat: null, stockStatus: 'UNKNOWN', estimatedDeliveryDays: null }],
+          [
+            'WL6340',
+            {
+              available: true,
+              priceExVat: 1250,
+              priceIncVat: 1500,
+              stockStatus: 'IN_STOCK',
+              estimatedDeliveryDays: null,
+            },
+          ],
+          [
+            'OC123',
+            {
+              available: false,
+              priceExVat: null,
+              priceIncVat: null,
+              stockStatus: 'UNKNOWN',
+              estimatedDeliveryDays: null,
+            },
+          ],
         ]),
       );
 
@@ -173,7 +191,16 @@ describe('CatalogService', () => {
       findArticlesMock.mockResolvedValueOnce(rawArticles);
       getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
         new Map([
-          ['NOSTOCK', { available: false, priceExVat: null, priceIncVat: null, stockStatus: 'UNKNOWN', estimatedDeliveryDays: null }],
+          [
+            'NOSTOCK',
+            {
+              available: false,
+              priceExVat: null,
+              priceIncVat: null,
+              stockStatus: 'UNKNOWN',
+              estimatedDeliveryDays: null,
+            },
+          ],
         ]),
       );
 
@@ -244,7 +271,16 @@ describe('CatalogService', () => {
       searchArticlesRepoMock.mockResolvedValueOnce([rawResult]);
       getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
         new Map([
-          ['WL6340', { available: true, priceExVat: 1250, priceIncVat: 1500, stockStatus: 'IN_STOCK', estimatedDeliveryDays: 1 }],
+          [
+            'WL6340',
+            {
+              available: true,
+              priceExVat: 1250,
+              priceIncVat: 1500,
+              stockStatus: 'IN_STOCK',
+              estimatedDeliveryDays: 1,
+            },
+          ],
         ]),
       );
 
