@@ -86,6 +86,7 @@ export interface SearchResponseDto {
   query?: string;
   normalisedQuery?: string;
   results?: SearchResultItemDto[];
+  suggestions?: AutocompleteItemDto[];
 }
 
 export interface AutocompleteItemDto {

@@ -387,4 +387,109 @@ describe('TecDocClient', () => {
       );
     });
   });
+
+  describe('searchArticles', () => {
+    const searchResponse = {
+      totalMatchingArticles: 1,
+      articles: [
+        {
+          articleNumber: 'WL6340',
+          mfrName: 'WIX',
+          genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+          images: [],
+        },
+      ],
+    };
+
+    it('returns mapped article list items', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
+
+      const result = await client.searchArticles('WL6340');
+
+      expect(result).toEqual([
+        {
+          articleNumber: 'WL6340',
+          brandName: 'WIX',
+          description: 'Oil Filter',
+          thumbnailUrl: null,
+          available: false,
+          bestPriceExVat: null,
+          bestPriceIncVat: null,
+        },
+      ]);
+    });
+
+    it('sends searchQuery with searchType 10 and prefix_or_suffix matching', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
+
+      await client.searchArticles('WL6340');
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({
+        searchQuery: 'WL6340',
+        searchType: 10,
+        searchMatchType: 'prefix_or_suffix',
+      });
+      expect(body.getArticles).not.toHaveProperty('linkageTargetId');
+    });
+
+    it('scopes the search to a vehicle when vehicleId is provided', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
+
+      await client.searchArticles('WL6340', '10042');
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({
+        searchQuery: 'WL6340',
+        linkageTargetType: 'P',
+        linkageTargetId: 10042,
+      });
+    });
+  });
+
+  describe('getAutocompleteSuggestions', () => {
+    it('returns mapped suggestions limited by perPage 8 with prefix matching', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          totalMatchingArticles: 2,
+          articles: [
+            {
+              articleNumber: 'WL6340',
+              mfrName: 'WIX',
+              genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+            },
+            {
+              articleNumber: 'WL6341',
+              mfrName: 'WIX',
+              genericArticles: [],
+            },
+          ],
+        }),
+      );
+
+      const result = await client.getAutocompleteSuggestions('WL6');
+
+      expect(result).toEqual([
+        {
+          articleNumber: 'WL6340',
+          brandName: 'WIX',
+          description: 'Oil Filter',
+        },
+        { articleNumber: 'WL6341', brandName: 'WIX', description: '' },
+      ]);
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({
+        searchQuery: 'WL6',
+        searchType: 10,
+        searchMatchType: 'prefix',
+        perPage: 8,
+      });
+    });
+  });
 });

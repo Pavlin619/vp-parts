@@ -5,6 +5,8 @@ import {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  ArticleListItemDto,
+  AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
@@ -257,6 +259,36 @@ export class TecDocMockClient {
     return Promise.resolve({ total: all.length, page, pageSize, items });
   }
 
+  searchArticles(
+    query: string,
+    vehicleId?: string,
+  ): Promise<ArticleListItemDto[]> {
+    const matches = this.findMatchingArticles(query)
+      // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
+      // returns every other match so fit indicators show both states.
+      .filter((_, index) => vehicleId == null || index % 2 === 0)
+      .map((a) => ({
+        ...a,
+        available: false,
+        bestPriceExVat: null,
+        bestPriceIncVat: null,
+      }));
+
+    return Promise.resolve(matches);
+  }
+
+  getAutocompleteSuggestions(query: string): Promise<AutocompleteItemDto[]> {
+    const suggestions = this.findMatchingArticles(query)
+      .slice(0, 8)
+      .map(({ articleNumber, brandName, description }) => ({
+        articleNumber,
+        brandName,
+        description,
+      }));
+
+    return Promise.resolve(suggestions);
+  }
+
   getArticleDetails(
     articleNumber: string,
     _vehicleId?: string,
@@ -274,5 +306,17 @@ export class TecDocMockClient {
       bestPriceExVat: null,
       bestPriceIncVat: null,
     });
+  }
+
+  private findMatchingArticles(query: string) {
+    const normalisedQuery = query.replace(/[-.\s]/g, '').toUpperCase();
+    return Object.values(ARTICLES_BY_CATEGORY)
+      .flat()
+      .filter((a) =>
+        a.articleNumber
+          .replace(/[-.\s]/g, '')
+          .toUpperCase()
+          .includes(normalisedQuery),
+      );
   }
 }

@@ -1,4 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+export type SearchMatchType =
+  | 'exact'
+  | 'prefix'
+  | 'suffix'
+  | 'prefix_or_suffix';
 import { ConfigService } from '@nestjs/config';
 import {
   ManufacturerDto,
@@ -7,6 +12,8 @@ import {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  ArticleListItemDto,
+  AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
 /**
@@ -237,6 +244,72 @@ export class TecDocClient {
       bestPriceExVat: null,
       bestPriceIncVat: null,
     };
+  }
+
+  async searchArticles(
+    query: string,
+    vehicleId?: string,
+    matchType: SearchMatchType = 'prefix_or_suffix',
+  ): Promise<ArticleListItemDto[]> {
+    const data = await this.call<{
+      totalMatchingArticles: number;
+      articles: Array<{
+        articleNumber: string;
+        mfrName: string;
+        genericArticles: Array<{ genericArticleDescription: string }>;
+        images?: Array<{ imageURL800?: string }>;
+      }>;
+    }>('getArticles', {
+      articleCountry: 'BG',
+      lang: 'bg',
+      searchQuery: query,
+      searchType: 10,
+      searchMatchType: matchType,
+      perPage: 50,
+      page: 1,
+      includeAll: true,
+      ...(vehicleId != null && {
+        linkageTargetType: 'P',
+        linkageTargetId: Number(vehicleId),
+      }),
+    });
+
+    return data.articles.map((a) => ({
+      articleNumber: a.articleNumber,
+      brandName: a.mfrName,
+      description: a.genericArticles[0]?.genericArticleDescription ?? '',
+      thumbnailUrl: a.images?.[0]?.imageURL800 ?? null,
+      available: false,
+      bestPriceExVat: null,
+      bestPriceIncVat: null,
+    }));
+  }
+
+  async getAutocompleteSuggestions(
+    query: string,
+  ): Promise<AutocompleteItemDto[]> {
+    const data = await this.call<{
+      totalMatchingArticles: number;
+      articles: Array<{
+        articleNumber: string;
+        mfrName: string;
+        genericArticles: Array<{ genericArticleDescription: string }>;
+      }>;
+    }>('getArticles', {
+      articleCountry: 'BG',
+      lang: 'bg',
+      searchQuery: query,
+      searchType: 10,
+      searchMatchType: 'prefix',
+      perPage: 8,
+      page: 1,
+    });
+
+    return data.articles.map((a) => ({
+      articleNumber: a.articleNumber,
+      brandName: a.mfrName,
+      description: a.genericArticles[0]?.genericArticleDescription ?? '',
+    }));
   }
 
   private async call<T>(

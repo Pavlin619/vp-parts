@@ -11,6 +11,8 @@ const getVehicleTypesMock = jest.fn();
 const getAssemblyGroupTreeMock = jest.fn();
 const getArticlesMock = jest.fn();
 const getArticleDetailsMock = jest.fn();
+const searchArticlesMock = jest.fn();
+const getAutocompleteSuggestionsMock = jest.fn();
 
 const mockTecDocClient = {
   getManufacturers: getManufacturersMock,
@@ -19,6 +21,8 @@ const mockTecDocClient = {
   getAssemblyGroupTree: getAssemblyGroupTreeMock,
   getArticles: getArticlesMock,
   getArticleDetails: getArticleDetailsMock,
+  searchArticles: searchArticlesMock,
+  getAutocompleteSuggestions: getAutocompleteSuggestionsMock,
 } as unknown as TecDocClient;
 
 describe('TecDocCacheService', () => {
@@ -200,6 +204,118 @@ describe('TecDocCacheService', () => {
         expect.any(String),
         'EX',
         24 * 60 * 60,
+      );
+    });
+  });
+
+  describe('searchArticles', () => {
+    const data = [
+      {
+        articleNumber: 'WL6340',
+        brandName: 'WIX',
+        description: 'Oil Filter',
+        thumbnailUrl: null,
+        available: false,
+        bestPriceExVat: null,
+        bestPriceIncVat: null,
+      },
+    ];
+
+    it('returns cached value on Redis hit', async () => {
+      redisGet.mockResolvedValueOnce(JSON.stringify(data));
+
+      const result = await service.searchArticles('WL6340');
+
+      expect(result).toEqual(data);
+      expect(searchArticlesMock).not.toHaveBeenCalled();
+      expect(redisGet).toHaveBeenCalledWith(
+        'tecdoc:search:WL6340:none:prefix_or_suffix',
+      );
+    });
+
+    it('calls TecDocClient and caches for 1 hour on Redis miss with results', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      searchArticlesMock.mockResolvedValueOnce(data);
+      redisSet.mockResolvedValueOnce('OK');
+
+      const result = await service.searchArticles('WL6340');
+
+      expect(result).toEqual(data);
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'WL6340',
+        undefined,
+        'prefix_or_suffix',
+      );
+      expect(redisSet).toHaveBeenCalledWith(
+        'tecdoc:search:WL6340:none:prefix_or_suffix',
+        JSON.stringify(data),
+        'EX',
+        60 * 60,
+      );
+    });
+
+    it('caches empty results for 10 minutes on Redis miss with no results', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      searchArticlesMock.mockResolvedValueOnce([]);
+      redisSet.mockResolvedValueOnce('OK');
+
+      await service.searchArticles('WL6340');
+
+      expect(redisSet).toHaveBeenCalledWith(
+        'tecdoc:search:WL6340:none:prefix_or_suffix',
+        JSON.stringify([]),
+        'EX',
+        10 * 60,
+      );
+    });
+
+    it('includes the vehicleId and matchType in the cache key', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      searchArticlesMock.mockResolvedValueOnce(data);
+      redisSet.mockResolvedValueOnce('OK');
+
+      await service.searchArticles('WL6340', 'V10042', 'exact');
+
+      expect(redisGet).toHaveBeenCalledWith(
+        'tecdoc:search:WL6340:V10042:exact',
+      );
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'WL6340',
+        'V10042',
+        'exact',
+      );
+    });
+  });
+
+  describe('getAutocompleteSuggestions', () => {
+    const data = [
+      { articleNumber: 'WL6340', brandName: 'WIX', description: 'Oil Filter' },
+    ];
+
+    it('returns cached value on Redis hit', async () => {
+      redisGet.mockResolvedValueOnce(JSON.stringify(data));
+
+      const result = await service.getAutocompleteSuggestions('WL6');
+
+      expect(result).toEqual(data);
+      expect(getAutocompleteSuggestionsMock).not.toHaveBeenCalled();
+      expect(redisGet).toHaveBeenCalledWith('tecdoc:autocomplete:WL6');
+    });
+
+    it('calls TecDocClient and caches for 30 minutes on Redis miss', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      getAutocompleteSuggestionsMock.mockResolvedValueOnce(data);
+      redisSet.mockResolvedValueOnce('OK');
+
+      const result = await service.getAutocompleteSuggestions('WL6');
+
+      expect(result).toEqual(data);
+      expect(getAutocompleteSuggestionsMock).toHaveBeenCalledWith('WL6');
+      expect(redisSet).toHaveBeenCalledWith(
+        'tecdoc:autocomplete:WL6',
+        JSON.stringify(data),
+        'EX',
+        30 * 60,
       );
     });
   });

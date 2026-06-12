@@ -20,7 +20,7 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 | Assembly group tree | `getAssemblyGroupTree` | For selected vehicle linkage target. Cached 7 days. |
 | Compatible articles for vehicle + assembly group | `getArticles` (linked to vehicle) | Returns all matching articles including OEM cross-refs. |
 | Article detail | `getArticleDetails` | By `articleNumber` + `brandNumber`. Cached 24h. |
-| Part number search | `getArticles` with `searchType: 10`, `searchMatchType: prefix_or_suffix` | Input normalised before query. Results cached 1h. |
+| Part number search | `getArticles` with `searchType: 10`, `searchMatchType: prefix_or_suffix` | Input normalised before query. Results cached 1h. See §10 for fallback chain strategy. |
 | Autocomplete | `getArticles` with prefix match, limit 8 | Cached 30 min. |
 
 **Cache key convention**: `tecdoc:{operation}:{params-hash}` in Redis. Hash computed from all query parameters sorted alphabetically.
@@ -191,3 +191,101 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 **Alternatives considered**:
 - `Decimal` type (arbitrary precision) — rejected: adds a library dependency (`decimal.js`), more complex than integer arithmetic for a two-decimal-place currency, and both payment providers require integers anyway
 - `string` with decimal point — rejected: requires parsing at every computation boundary, error-prone
+
+---
+
+## 10. Fuzzy Part-Number Search Strategy
+
+**Decision**: Extend the search pipeline with a zero-result-driven fallback chain inside `SearchService`. When one tier returns zero results, the next tier fires automatically. No external search engine, no local catalogue data store.
+
+**Problem**: Real-world part-number input deviates from TecDoc catalogue notation in two distinct ways:
+
+1. **Notation deviations** — supplier listings append brand names, use extra hyphens/dots, mixed case, or OEM cross-reference formats. Example: "WA6546 WIX", "wa-6546", "WA 6546". These are fully recoverable with better normalization.
+2. **Typos and transpositions** — "WA6456" instead of "WA6546" (swapped digits). These require distance-based matching (Levenshtein, n-gram), which TecDoc's web service does not support.
+
+**TecDoc search capability matrix** (Pegasus 3.0 `getArticles`):
+
+| `searchType` | Meaning |
+|---|---|
+| `0` | Article number only (exact by default) |
+| `1` | OE number |
+| `2` | Trade number |
+| `3` | Comparable number |
+| `4` | Replacement number |
+| `6` | EAN number |
+| `10` | Any number — matches across article, OE, trade, comparable, replacement, EAN simultaneously |
+| `99` | Free text (description keywords) |
+
+| `searchMatchType` | Meaning |
+|---|---|
+| `exact` | Normalised string must match exactly (TecDoc strips spaces/hyphens/dots server-side before comparison) |
+| `prefix` | Query is a leading prefix of the stored number |
+| `suffix` | Query is a trailing suffix of the stored number |
+| `prefix_or_suffix` | Either end matches |
+
+TecDoc normalises numbers server-side (strips spaces, hyphens, dots) before matching. This means "WA-6546", "WA 6546", and "WA6546" are equivalent after server-side normalisation — as long as we send only the bare number, not additional brand words.
+
+**There is no typo-tolerant (Levenshtein/fuzzy) matching in the TecDoc web service.**
+
+**Proposed fallback chain** (executes inside `SearchService.search()`, each tier only fires on zero results from the previous):
+
+| Tier | `searchType` | `searchMatchType` | Normalized input | Purpose |
+|---|---|---|---|---|
+| 1 | `10` | `exact` | Standard normalisation | Precision-first: exact match across all number types |
+| 2 | `10` | `prefix_or_suffix` | Standard normalisation | Recovers partial-number queries and suffix variants |
+| 3 | `10` | `exact` | Aggressive normalisation (strip ALL non-alphanumeric) | Catches slashes, commas, extra symbols missed by standard normalisation |
+| 4 | `10` | `prefix_or_suffix` | Aggressive normalisation | Combines broader matching with the harder-cleaned input |
+
+Standard normalisation: trim → strip brand tokens → remove `-` and `.` → remove spaces → uppercase (§2).
+
+Aggressive normalisation: same as standard, then additionally replace every character that is not `[A-Z0-9]` with nothing. Only applied when the aggressively-normalised string differs from the standard one (i.e. there was something extra to strip); otherwise tiers 3–4 are skipped to avoid duplicate TecDoc calls.
+
+**Tier 1 & 2 TecDoc payload shapes** (reference against `tecdoc-client.ts:244-280`):
+
+```json
+// Tier 1
+{
+  "getArticles": {
+    "provider": 12345,
+    "articleCountry": "BG",
+    "lang": "bg",
+    "searchQuery": "WA6546",
+    "searchType": 10,
+    "searchMatchType": "exact",
+    "perPage": 50,
+    "page": 1,
+    "includeAll": true
+  }
+}
+
+// Tier 2 (current behavior, now a fallback)
+{
+  "getArticles": {
+    "provider": 12345,
+    "articleCountry": "BG",
+    "lang": "bg",
+    "searchQuery": "WA6546",
+    "searchType": 10,
+    "searchMatchType": "prefix_or_suffix",
+    "perPage": 50,
+    "page": 1,
+    "includeAll": true
+  }
+}
+```
+
+**Zero-result "did you mean" recovery**: When all tiers return zero results, the search response includes suggestions derived from the autocomplete endpoint (`searchMatchType: "prefix"`, first 4–5 characters of the normalised query). These appear on the no-results page as "Did you mean these parts?". This provides pseudo-fuzzy recovery for wrong/typoed endings (the most common transposition class) with no new infrastructure.
+
+**Supporting improvement — dynamic brand dictionary**: The static 19-brand dictionary in `normaliser.ts` is the single highest-leverage fix for notation-deviation queries. Any brand not in the list passes through to TecDoc verbatim and causes zero results. Replace the static default with a TecDoc-sourced brand list fetched via `getBrands` (or derived from the article results' `brandName` fields) and cached in Redis for 7 days. The env-var override (`SEARCH_BRAND_DICTIONARY`) remains as a manual escape hatch.
+
+**Cache strategy for fallback chains**: Cache zero-result outcomes at a short TTL (10 minutes, separate key suffix `:miss`) to prevent repeated fallback-chain execution for the same hopeless query. Successful results from any tier are cached at the normal 1-hour TTL. Worst-case TecDoc quota impact per cold zero-result search: 4 calls (tiers 1–4); mitigated by caching.
+
+**Rationale**: Notation deviations (the dominant failure mode) are fully recoverable via smarter normalization and broader `searchType: 10` coverage — no data storage required. Typo tolerance (the rarer, harder problem) requires holding data locally, which conflicts with the TecDoc web-service license and is premature at current traffic levels. The fallback chain approach is additive over the existing code, keeps all logic in `SearchService`, and requires no new infrastructure.
+
+**Alternatives considered**:
+
+- **TecDoc Data Package + search engine (Autodoc/InterCars model)**: License the bulk weekly data delivery from TecAlliance, import into our DB, index in Elasticsearch/OpenSearch with n-gram/fuzzy analyzers. This is how the large market players achieve typo tolerance. Rejected at launch: requires a separate commercial data-package license (significant cost), an ingestion pipeline, and new search infrastructure to operate. Revisit when search-miss rate and traffic volume justify the investment.
+- **pg_trgm accumulating index**: Import no data upfront; instead persist every `articleNumber` + `brandName` observed through live TecDoc traffic into a Postgres pg_trgm table and use it for "did you mean" distance matching. Middle-ground option — avoids the bulk license. Rejected at launch: low initial traffic means the index covers few numbers and provides poor recall early on; TecDoc licensing of persisted data is ambiguous; operationally adds Postgres full-text index maintenance. Revisit alongside the Data Package option.
+- **Improve `searchType` only, keep `prefix_or_suffix` as the single strategy**: Simplest change, but `prefix_or_suffix` as the primary (non-fallback) strategy produces noisy results when the exact match exists — a query for "WA6546" should show that article at the top, not bury it among all articles whose number starts or ends with "WA6546". The tiered approach solves ranking without sacrificing recall.
+
+**Future evolution path**: When traffic justifies it, implement the TecDoc Data Package + OpenSearch route and retire the fallback chain. Also consider `searchType: 99` (free-text description search) once a description-based search UX is validated with users.
