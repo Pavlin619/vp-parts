@@ -131,7 +131,9 @@ describe('CatalogController (e2e)', () => {
     it('serves the second request from cache without calling TecDoc again', async () => {
       mockTecDocClient.getManufacturers.mockResolvedValueOnce(MANUFACTURERS);
 
-      await request(app.getHttpServer()).get('/catalog/manufacturers').expect(200);
+      await request(app.getHttpServer())
+        .get('/catalog/manufacturers')
+        .expect(200);
       const res = await request(app.getHttpServer())
         .get('/catalog/manufacturers')
         .expect(200);
@@ -169,14 +171,18 @@ describe('CatalogController (e2e)', () => {
 
   describe('GET /catalog/vehicles/:vehicleId/categories', () => {
     it('returns the assembly group tree and forwards the vehicle id to TecDoc', async () => {
-      mockTecDocClient.getAssemblyGroupTree.mockResolvedValueOnce(ASSEMBLY_GROUPS);
+      mockTecDocClient.getAssemblyGroupTree.mockResolvedValueOnce(
+        ASSEMBLY_GROUPS,
+      );
 
       const res = await request(app.getHttpServer())
         .get('/catalog/vehicles/10001/categories')
         .expect(200);
 
       expect(res.body).toEqual(ASSEMBLY_GROUPS);
-      expect(mockTecDocClient.getAssemblyGroupTree).toHaveBeenCalledWith('10001');
+      expect(mockTecDocClient.getAssemblyGroupTree).toHaveBeenCalledWith(
+        '10001',
+      );
     });
   });
 
@@ -206,7 +212,9 @@ describe('CatalogController (e2e)', () => {
       });
 
       await request(app.getHttpServer())
-        .get('/catalog/vehicles/10001/categories/100001/articles?page=2&pageSize=10')
+        .get(
+          '/catalog/vehicles/10001/categories/100001/articles?page=2&pageSize=10',
+        )
         .expect(200);
 
       expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
@@ -244,7 +252,9 @@ describe('CatalogController (e2e)', () => {
       expect(res.body.articleNumber).toBe('BD-001');
       expect(res.body.brandName).toBe('Bosch');
       expect(res.body.images).toEqual(['https://example.com/bd-001.jpg']);
-      expect(res.body.technicalSpecs).toEqual([{ key: 'Diameter', value: '288 mm' }]);
+      expect(res.body.technicalSpecs).toEqual([
+        { key: 'Diameter', value: '288 mm' },
+      ]);
       // Inventory stub values applied by CatalogService.getArticleDetail
       expect(res.body.available).toBe(false);
       expect(res.body.stockStatus).toBe('UNKNOWN');

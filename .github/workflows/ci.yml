@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  api:
+    name: API — lint · unit tests · e2e
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vppartsshop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vppartsshop_test
+      REDIS_URL: redis://localhost:6379
+
+      # External services — stubbed; e2e tests mock at the service layer
+      CLERK_PUBLISHABLE_KEY: pk_test_stub
+      CLERK_SECRET_KEY: sk_test_stub
+      CLERK_WEBHOOK_SECRET: whsec_stub
+      INTERNAL_API_TOKEN: internal-stub
+      BACKOFFICE_BASE_URL: http://localhost:9999
+      SQS_FULFILLMENT_QUEUE_URL: https://sqs.eu-central-1.amazonaws.com/000000000000/stub-fulfillment
+      SQS_EVENTS_QUEUE_URL: https://sqs.eu-central-1.amazonaws.com/000000000000/stub-events
+      MYPOS_STORE_ID: stub
+      MYPOS_API_KEY: stub
+      MYPOS_WALLET_NUMBER: stub
+      ECONT_USERNAME: stub
+      ECONT_PASSWORD: stub
+      SPEEDY_USERNAME: stub
+      SPEEDY_PASSWORD: stub
+      # TECDOC_API_KEY and TECDOC_BASE_URL are never called at runtime in tests;
+      # they exist only to satisfy the Joi required() validation in ConfigModule at startup.
+      TECDOC_API_KEY: stub
+      TECDOC_BASE_URL: https://stub.tecdoc.invalid
+      RESEND_API_KEY: re_stub
+      EMAIL_FROM: noreply@example.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build --workspace=packages/shared
+
+      - name: Lint
+        run: npm run lint --workspace=apps/api
+
+      - name: Unit tests
+        run: npm run test --workspace=apps/api
+
+      - name: E2E tests
+        run: npm run test:e2e --workspace=apps/api
+
+  web:
+    name: Web — lint · type-check · unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build --workspace=packages/shared
+
+      - name: Lint
+        run: npm run lint --workspace=apps/web
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm run test --workspace=apps/web
