@@ -1,191 +1,274 @@
-import { INestApplication, NotFoundException } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
+import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
-import { CatalogService } from '../src/catalog/catalog.service';
+import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
+import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
+import {
+  ManufacturerDto,
+  ModelSeriesDto,
+  VehicleVariantDto,
+  AssemblyGroupDto,
+  PaginatedArticlesDto,
+  ArticleDetailDto,
+} from '@vp-parts-shop/shared';
 
-const mockCatalogService = {
+const MANUFACTURERS: ManufacturerDto[] = [
+  { id: '16', name: 'Volkswagen' },
+  { id: '5', name: 'BMW' },
+];
+
+const MODEL_SERIES: ModelSeriesDto[] = [
+  { id: '2', manufacturerId: '16', name: 'Golf' },
+  { id: '3', manufacturerId: '16', name: 'Passat' },
+];
+
+const VEHICLE_VARIANTS: VehicleVariantDto[] = [
+  {
+    vehicleId: '10001',
+    seriesId: '2',
+    name: 'Golf VII 2.0 TDI',
+    yearFrom: 2012,
+    yearTo: 2020,
+    engine: 'CRBC',
+    powerKw: 110,
+    fuelType: 'Diesel',
+    bodyType: 'Hatchback',
+  },
+];
+
+const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
+  { id: '100001', name: 'Brake System', parentId: null },
+  { id: '100002', name: 'Brake Discs', parentId: '100001' },
+];
+
+const PAGINATED_ARTICLES: PaginatedArticlesDto = {
+  total: 2,
+  page: 1,
+  pageSize: 20,
+  items: [
+    {
+      articleNumber: 'BD-001',
+      brandName: 'Bosch',
+      description: 'Brake Disc',
+      thumbnailUrl: null,
+      available: false,
+      bestPriceExVat: null,
+      bestPriceIncVat: null,
+    },
+    {
+      articleNumber: 'BD-002',
+      brandName: 'Ferodo',
+      description: 'Brake Disc',
+      thumbnailUrl: null,
+      available: false,
+      bestPriceExVat: null,
+      bestPriceIncVat: null,
+    },
+  ],
+};
+
+const ARTICLE_DETAIL: ArticleDetailDto = {
+  articleNumber: 'BD-001',
+  brandName: 'Bosch',
+  description: 'Brake Disc',
+  images: ['https://example.com/bd-001.jpg'],
+  technicalSpecs: [{ key: 'Diameter', value: '288 mm' }],
+  oemNumbers: ['1K0 615 301 AA'],
+  compatibleVehicles: [],
+  fitsVehicle: null,
+  available: false,
+  stockStatus: 'UNKNOWN',
+  estimatedDeliveryDays: null,
+  bestPriceExVat: null,
+  bestPriceIncVat: null,
+};
+
+const mockTecDocClient = {
   getManufacturers: jest.fn(),
   getModelSeries: jest.fn(),
-  getVehicleVariants: jest.fn(),
-  getCategoryTree: jest.fn(),
-  listArticles: jest.fn(),
-  getArticleDetail: jest.fn(),
+  getVehicleTypes: jest.fn(),
+  getAssemblyGroupTree: jest.fn(),
+  getArticles: jest.fn(),
+  getArticleDetails: jest.fn(),
+  searchArticles: jest.fn(),
+  getAutocompleteSuggestions: jest.fn(),
 };
 
 describe('CatalogController (e2e)', () => {
   let app: INestApplication;
+  let redisClient: Redis;
 
   beforeAll(async () => {
     app = await createTestApp((builder) => {
-      builder.overrideProvider(CatalogService).useValue(mockCatalogService);
+      builder.overrideProvider(TecDocClient).useValue(mockTecDocClient);
     });
+    redisClient = app.get<Redis>(REDIS_CLIENT);
   });
 
   afterAll(async () => {
     await app.close();
+    await redisClient.quit();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await redisClient.flushall();
   });
 
   describe('GET /catalog/manufacturers', () => {
-    it('returns 200 with manufacturer list (public endpoint)', async () => {
-      const manufacturers = [
-        { id: '16', name: 'Volkswagen' },
-        { id: '5', name: 'BMW' },
-      ];
-      mockCatalogService.getManufacturers.mockResolvedValueOnce(manufacturers);
+    it('returns manufacturer list from TecDoc', async () => {
+      mockTecDocClient.getManufacturers.mockResolvedValueOnce(MANUFACTURERS);
 
       const res = await request(app.getHttpServer())
         .get('/catalog/manufacturers')
         .expect(200);
 
-      expect(res.body).toEqual(manufacturers);
+      expect(res.body).toEqual(MANUFACTURERS);
+      expect(mockTecDocClient.getManufacturers).toHaveBeenCalledTimes(1);
+    });
+
+    it('serves the second request from cache without calling TecDoc again', async () => {
+      mockTecDocClient.getManufacturers.mockResolvedValueOnce(MANUFACTURERS);
+
+      await request(app.getHttpServer()).get('/catalog/manufacturers').expect(200);
+      const res = await request(app.getHttpServer())
+        .get('/catalog/manufacturers')
+        .expect(200);
+
+      expect(res.body).toEqual(MANUFACTURERS);
+      expect(mockTecDocClient.getManufacturers).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('GET /catalog/manufacturers/:manufacturerId/model-series', () => {
-    it('returns 200 with model series list', async () => {
-      const series = [{ id: '16_2', manufacturerId: '16', name: 'Golf' }];
-      mockCatalogService.getModelSeries.mockResolvedValueOnce(series);
+    it('returns model series for the manufacturer and forwards the id to TecDoc', async () => {
+      mockTecDocClient.getModelSeries.mockResolvedValueOnce(MODEL_SERIES);
 
       const res = await request(app.getHttpServer())
         .get('/catalog/manufacturers/16/model-series')
         .expect(200);
 
-      expect(res.body).toEqual(series);
+      expect(res.body).toEqual(MODEL_SERIES);
+      expect(mockTecDocClient.getModelSeries).toHaveBeenCalledWith('16');
     });
   });
 
   describe('GET /catalog/model-series/:seriesId/variants', () => {
-    it('returns 200 with vehicle variant list', async () => {
-      const variants = [
-        {
-          vehicleId: 'V10042',
-          seriesId: '16_2',
-          name: 'Golf VII',
-          yearFrom: 2012,
-          yearTo: 2020,
-          engine: '2.0 TDI',
-          powerKw: 110,
-          fuelType: 'Diesel',
-          bodyType: 'Hatchback',
-        },
-      ];
-      mockCatalogService.getVehicleVariants.mockResolvedValueOnce(variants);
+    it('returns vehicle variants and forwards the series id to TecDoc', async () => {
+      mockTecDocClient.getVehicleTypes.mockResolvedValueOnce(VEHICLE_VARIANTS);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/model-series/16_2/variants')
+        .get('/catalog/model-series/2/variants')
         .expect(200);
 
-      expect(res.body).toEqual(variants);
+      expect(res.body).toEqual(VEHICLE_VARIANTS);
+      expect(mockTecDocClient.getVehicleTypes).toHaveBeenCalledWith('2');
     });
   });
 
   describe('GET /catalog/vehicles/:vehicleId/categories', () => {
-    it('returns 200 with category tree', async () => {
-      const tree = [
-        { id: '1001', name: 'Brakes', parentId: null },
-        { id: '2001', name: 'Brake Discs', parentId: '1001' },
-      ];
-      mockCatalogService.getCategoryTree.mockResolvedValueOnce(tree);
+    it('returns the assembly group tree and forwards the vehicle id to TecDoc', async () => {
+      mockTecDocClient.getAssemblyGroupTree.mockResolvedValueOnce(ASSEMBLY_GROUPS);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/vehicles/V10042/categories')
+        .get('/catalog/vehicles/10001/categories')
         .expect(200);
 
-      expect(res.body).toEqual(tree);
+      expect(res.body).toEqual(ASSEMBLY_GROUPS);
+      expect(mockTecDocClient.getAssemblyGroupTree).toHaveBeenCalledWith('10001');
     });
   });
 
   describe('GET /catalog/vehicles/:vehicleId/categories/:categoryId/articles', () => {
-    it('returns 200 with paginated articles', async () => {
-      const paginated = {
-        total: 1,
-        page: 1,
-        pageSize: 20,
-        items: [
-          {
-            articleNumber: 'WL6340',
-            brandName: 'WIX',
-            description: 'Oil Filter',
-            thumbnailUrl: null,
-            available: true,
-            bestPriceExVat: 1250,
-            bestPriceIncVat: 1500,
-          },
-        ],
-      };
-      mockCatalogService.listArticles.mockResolvedValueOnce(paginated);
+    it('returns articles enriched with inventory data', async () => {
+      mockTecDocClient.getArticles.mockResolvedValueOnce(PAGINATED_ARTICLES);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/vehicles/V10042/categories/1001/articles')
+        .get('/catalog/vehicles/10001/categories/100001/articles')
         .expect(200);
 
-      const body = res.body as {
-        total: number;
-        items: Array<{ articleNumber: string }>;
-      };
-      expect(body.total).toBe(1);
-      expect(body.items).toHaveLength(1);
-      expect(body.items[0].articleNumber).toBe('WL6340');
+      expect(res.body.total).toBe(2);
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.items[0].articleNumber).toBe('BD-001');
+      // InventoryService stub overwrites these fields on every article
+      expect(res.body.items[0].available).toBe(false);
+      expect(res.body.items[0].bestPriceExVat).toBeNull();
+      expect(res.body.items[0].bestPriceIncVat).toBeNull();
     });
 
-    it('passes page and pageSize query params', async () => {
-      mockCatalogService.listArticles.mockResolvedValueOnce({
-        total: 0,
+    it('forwards page and pageSize query params to TecDoc', async () => {
+      mockTecDocClient.getArticles.mockResolvedValueOnce({
+        ...PAGINATED_ARTICLES,
         page: 2,
         pageSize: 10,
         items: [],
       });
 
       await request(app.getHttpServer())
-        .get(
-          '/catalog/vehicles/V10042/categories/1001/articles?page=2&pageSize=10',
-        )
+        .get('/catalog/vehicles/10001/categories/100001/articles?page=2&pageSize=10')
         .expect(200);
 
-      expect(mockCatalogService.listArticles).toHaveBeenCalledWith(
-        'V10042',
-        '1001',
+      expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
+        '10001',
+        '100001',
         2,
         10,
+      );
+    });
+
+    it('defaults to page 1 and pageSize 20 when query params are absent', async () => {
+      mockTecDocClient.getArticles.mockResolvedValueOnce(PAGINATED_ARTICLES);
+
+      await request(app.getHttpServer())
+        .get('/catalog/vehicles/10001/categories/100001/articles')
+        .expect(200);
+
+      expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
+        '10001',
+        '100001',
+        1,
+        20,
       );
     });
   });
 
   describe('GET /catalog/articles/:articleNumber', () => {
-    it('returns 200 with article detail', async () => {
-      const detail = {
-        articleNumber: 'WL6340',
-        brandName: 'WIX',
-        description: 'Oil Filter',
-        images: [],
-        technicalSpecs: [],
-        oemNumbers: [],
-        compatibleVehicles: [],
-        fitsVehicle: null,
-        available: true,
-        stockStatus: 'IN_STOCK',
-        estimatedDeliveryDays: 2,
-        bestPriceExVat: 1250,
-        bestPriceIncVat: 1500,
-      };
-      mockCatalogService.getArticleDetail.mockResolvedValueOnce(detail);
+    it('returns article detail enriched with inventory data', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles/WL6340')
+        .get('/catalog/articles/BD-001')
         .expect(200);
 
-      const resBody = res.body as { articleNumber: string; available: boolean };
-      expect(resBody.articleNumber).toBe('WL6340');
-      expect(resBody.available).toBe(true);
+      expect(res.body.articleNumber).toBe('BD-001');
+      expect(res.body.brandName).toBe('Bosch');
+      expect(res.body.images).toEqual(['https://example.com/bd-001.jpg']);
+      expect(res.body.technicalSpecs).toEqual([{ key: 'Diameter', value: '288 mm' }]);
+      // Inventory stub values applied by CatalogService.getArticleDetail
+      expect(res.body.available).toBe(false);
+      expect(res.body.stockStatus).toBe('UNKNOWN');
+      expect(res.body.estimatedDeliveryDays).toBeNull();
+      expect(res.body.bestPriceExVat).toBeNull();
+      expect(res.body.bestPriceIncVat).toBeNull();
     });
 
-    it('returns 404 when article is not found', async () => {
-      mockCatalogService.getArticleDetail.mockRejectedValueOnce(
-        new NotFoundException(),
+    it('forwards the optional vehicleId query param to TecDoc', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
+
+      await request(app.getHttpServer())
+        .get('/catalog/articles/BD-001?vehicleId=10001')
+        .expect(200);
+
+      expect(mockTecDocClient.getArticleDetails).toHaveBeenCalledWith(
+        'BD-001',
+        '10001',
+      );
+    });
+
+    it('returns 404 when TecDoc does not find the article', async () => {
+      mockTecDocClient.getArticleDetails.mockRejectedValueOnce(
+        new Error('Article not found: NOTFOUND'),
       );
 
       await request(app.getHttpServer())

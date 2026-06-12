@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TecDocCacheService } from './tecdoc/tecdoc-cache.service';
+import { SearchMatchType } from './tecdoc/tecdoc-client';
 import {
   ManufacturerDto,
   ModelSeriesDto,
@@ -7,6 +8,8 @@ import {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  ArticleListItemDto,
+  AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
 /**
@@ -47,5 +50,19 @@ export class CatalogRepository {
     vehicleId?: string,
   ): Promise<ArticleDetailDto> {
     return this.tecdocCache.getArticleDetails(articleNumber, vehicleId);
+  }
+
+  async searchArticles(
+    query: string,
+    vehicleId?: string,
+    matchType?: SearchMatchType,
+  ): Promise<ArticleListItemDto[]> {
+    return this.tecdocCache.searchArticles(query, vehicleId, matchType);
+  }
+
+  async findAutocompleteSuggestions(
+    query: string,
+  ): Promise<AutocompleteItemDto[]> {
+    return this.tecdocCache.getAutocompleteSuggestions(query);
   }
 }

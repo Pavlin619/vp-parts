@@ -6,14 +6,19 @@ import {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  ArticleListItemDto,
+  AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { Redis } from 'ioredis';
-import { TecDocClient } from './tecdoc-client';
+import { TecDocClient, SearchMatchType } from './tecdoc-client';
 
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
 const VEHICLE_TREE_TTL = 7 * 24 * 60 * 60;
 const ARTICLE_TTL = 24 * 60 * 60;
+const SEARCH_TTL = 60 * 60;
+const SEARCH_MISS_TTL = 10 * 60;
+const AUTOCOMPLETE_TTL = 30 * 60;
 
 @Injectable()
 export class TecDocCacheService {
@@ -80,6 +85,28 @@ export class TecDocCacheService {
     );
   }
 
+  async searchArticles(
+    query: string,
+    vehicleId?: string,
+    matchType: SearchMatchType = 'prefix_or_suffix',
+  ): Promise<ArticleListItemDto[]> {
+    const vehicleKey = vehicleId ?? 'none';
+    return this.cachedArray(
+      `tecdoc:search:${query}:${vehicleKey}:${matchType}`,
+      SEARCH_TTL,
+      SEARCH_MISS_TTL,
+      () => this.tecdocClient.searchArticles(query, vehicleId, matchType),
+    );
+  }
+
+  async getAutocompleteSuggestions(
+    query: string,
+  ): Promise<AutocompleteItemDto[]> {
+    return this.cached(`tecdoc:autocomplete:${query}`, AUTOCOMPLETE_TTL, () =>
+      this.tecdocClient.getAutocompleteSuggestions(query),
+    );
+  }
+
   private async cached<T>(
     key: string,
     ttl: number,
@@ -93,6 +120,25 @@ export class TecDocCacheService {
 
     this.logger.debug(`Cache miss: ${key}`);
     const value = await loader();
+    await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+    return value;
+  }
+
+  private async cachedArray<T>(
+    key: string,
+    hitTtl: number,
+    missTtl: number,
+    loader: () => Promise<T[]>,
+  ): Promise<T[]> {
+    const cached = await this.redis.get(key);
+    if (cached !== null) {
+      this.logger.debug(`Cache hit: ${key}`);
+      return JSON.parse(cached) as T[];
+    }
+
+    this.logger.debug(`Cache miss: ${key}`);
+    const value = await loader();
+    const ttl = value.length > 0 ? hitTtl : missTtl;
     await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
     return value;
   }

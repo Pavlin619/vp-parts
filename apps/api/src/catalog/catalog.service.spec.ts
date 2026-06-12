@@ -8,6 +8,8 @@ const findVehicleVariantsMock = jest.fn();
 const findAssemblyGroupTreeMock = jest.fn();
 const findArticlesMock = jest.fn();
 const findArticleDetailsMock = jest.fn();
+const searchArticlesRepoMock = jest.fn();
+const findAutocompleteSuggestionsMock = jest.fn();
 
 const mockCatalogRepository = {
   findManufacturers: findManufacturersMock,
@@ -16,12 +18,16 @@ const mockCatalogRepository = {
   findAssemblyGroupTree: findAssemblyGroupTreeMock,
   findArticles: findArticlesMock,
   findArticleDetails: findArticleDetailsMock,
+  searchArticles: searchArticlesRepoMock,
+  findAutocompleteSuggestions: findAutocompleteSuggestionsMock,
 } as unknown as CatalogRepository;
 
 const getBestPriceAndAvailabilityMock = jest.fn();
+const getBulkPricesAndAvailabilityMock = jest.fn();
 
 const mockInventoryService = {
   getBestPriceAndAvailability: getBestPriceAndAvailabilityMock,
+  getBulkPricesAndAvailability: getBulkPricesAndAvailabilityMock,
 };
 
 describe('CatalogService', () => {
@@ -128,17 +134,12 @@ describe('CatalogService', () => {
 
       findArticlesMock.mockResolvedValueOnce(rawArticles);
 
-      getBestPriceAndAvailabilityMock
-        .mockResolvedValueOnce({
-          available: true,
-          priceExVat: 1250,
-          priceIncVat: 1500,
-        })
-        .mockResolvedValueOnce({
-          available: false,
-          priceExVat: null,
-          priceIncVat: null,
-        });
+      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
+        new Map([
+          ['WL6340', { available: true, priceExVat: 1250, priceIncVat: 1500, stockStatus: 'IN_STOCK', estimatedDeliveryDays: null }],
+          ['OC123', { available: false, priceExVat: null, priceIncVat: null, stockStatus: 'UNKNOWN', estimatedDeliveryDays: null }],
+        ]),
+      );
 
       const result = await service.listArticles('V10042', '1001', 1, 20);
 
@@ -170,11 +171,11 @@ describe('CatalogService', () => {
       };
 
       findArticlesMock.mockResolvedValueOnce(rawArticles);
-      getBestPriceAndAvailabilityMock.mockResolvedValueOnce({
-        available: false,
-        priceExVat: null,
-        priceIncVat: null,
-      });
+      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
+        new Map([
+          ['NOSTOCK', { available: false, priceExVat: null, priceIncVat: null, stockStatus: 'UNKNOWN', estimatedDeliveryDays: null }],
+        ]),
+      );
 
       const result = await service.listArticles('V10042', '1001', 1, 20);
 
@@ -225,6 +226,73 @@ describe('CatalogService', () => {
       await expect(service.getArticleDetail('NOTFOUND')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('searchArticles', () => {
+    const rawResult = {
+      articleNumber: 'WL6340',
+      brandName: 'WIX',
+      description: 'Oil Filter',
+      thumbnailUrl: null,
+      available: false,
+      bestPriceExVat: null,
+      bestPriceIncVat: null,
+    };
+
+    it('enriches search results with best price and availability', async () => {
+      searchArticlesRepoMock.mockResolvedValueOnce([rawResult]);
+      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
+        new Map([
+          ['WL6340', { available: true, priceExVat: 1250, priceIncVat: 1500, stockStatus: 'IN_STOCK', estimatedDeliveryDays: 1 }],
+        ]),
+      );
+
+      const result = await service.searchArticles('WL6340');
+
+      expect(searchArticlesRepoMock).toHaveBeenCalledWith(
+        'WL6340',
+        undefined,
+        undefined,
+      );
+      expect(result).toEqual([
+        {
+          ...rawResult,
+          available: true,
+          bestPriceExVat: 1250,
+          bestPriceIncVat: 1500,
+        },
+      ]);
+    });
+
+    it('passes the vehicleId through to the repository', async () => {
+      searchArticlesRepoMock.mockResolvedValueOnce([]);
+
+      await service.searchArticles('WL6340', 'V10042');
+
+      expect(searchArticlesRepoMock).toHaveBeenCalledWith(
+        'WL6340',
+        'V10042',
+        undefined,
+      );
+    });
+  });
+
+  describe('getAutocompleteSuggestions', () => {
+    it('returns suggestions from the repository without enrichment', async () => {
+      const suggestions = [
+        {
+          articleNumber: 'WL6340',
+          brandName: 'WIX',
+          description: 'Oil Filter',
+        },
+      ];
+      findAutocompleteSuggestionsMock.mockResolvedValueOnce(suggestions);
+
+      const result = await service.getAutocompleteSuggestions('WL6');
+
+      expect(result).toEqual(suggestions);
+      expect(getBulkPricesAndAvailabilityMock).not.toHaveBeenCalled();
     });
   });
 });

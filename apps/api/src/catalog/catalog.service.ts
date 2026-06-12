@@ -6,8 +6,11 @@ import {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  ArticleListItemDto,
+  AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
+import { SearchMatchType } from './tecdoc/tecdoc-client';
 import { InventoryService } from '../inventory/inventory.service';
 
 @Injectable()
@@ -48,21 +51,28 @@ export class CatalogService {
       pageSize,
     );
 
-    const enriched = await Promise.all(
-      paginated.items.map(async (item) => {
-        const inv = await this.inventory.getBestPriceAndAvailability(
-          item.articleNumber,
-        );
-        return {
-          ...item,
-          available: inv.available,
-          bestPriceExVat: inv.priceExVat,
-          bestPriceIncVat: inv.priceIncVat,
-        };
-      }),
-    );
+    const enriched = await this.enrichWithInventory(paginated.items);
 
     return { ...paginated, items: enriched };
+  }
+
+  async searchArticles(
+    query: string,
+    vehicleId?: string,
+    matchType?: SearchMatchType,
+  ): Promise<ArticleListItemDto[]> {
+    const results = await this.repository.searchArticles(
+      query,
+      vehicleId,
+      matchType,
+    );
+    return this.enrichWithInventory(results);
+  }
+
+  async getAutocompleteSuggestions(
+    query: string,
+  ): Promise<AutocompleteItemDto[]> {
+    return this.repository.findAutocompleteSuggestions(query);
   }
 
   async getArticleDetail(
@@ -98,5 +108,25 @@ export class CatalogService {
         tradePriceIncVat: inv.tradePriceIncVat,
       }),
     };
+  }
+
+  private async enrichWithInventory(
+    items: ArticleListItemDto[],
+  ): Promise<ArticleListItemDto[]> {
+    if (items.length === 0) return [];
+
+    const priceMap = await this.inventory.getBulkPricesAndAvailability(
+      items.map((item) => item.articleNumber),
+    );
+
+    return items.map((item) => {
+      const inv = priceMap.get(item.articleNumber);
+      return {
+        ...item,
+        available: inv?.available ?? false,
+        bestPriceExVat: inv?.priceExVat ?? null,
+        bestPriceIncVat: inv?.priceIncVat ?? null,
+      };
+    });
   }
 }
