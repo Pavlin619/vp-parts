@@ -116,19 +116,19 @@
 
 ### Tests for User Story 2
 
-- [ ] T047 [P] [US2] Write unit tests for normaliser covering all 8 pipeline steps (trim, tokenise, strip brand tokens, join, remove hyphens/dots, collapse spaces, uppercase) and the configurable brand dictionary in `apps/api/src/search/normaliser.spec.ts`
-- [ ] T048 [P] [US2] Write unit tests for SearchService (exact match → redirect, multi-match → list, no match → empty results, autocomplete returns ≤8 for ≥3 char input, cache key convention) in `apps/api/src/search/search.service.spec.ts`
-- [ ] T049 [US2] Write integration tests for SearchController (GET /search?q and GET /search/autocomplete?q, with and without vehicleId) in `apps/api/test/search.e2e-spec.ts`
+- [X] T047 [P] [US2] Write unit tests for normaliser covering all 8 pipeline steps (trim, tokenise, strip brand tokens, join, remove hyphens/dots, collapse spaces, uppercase) and the configurable brand dictionary in `apps/api/src/search/normaliser.spec.ts`
+- [X] T048 [P] [US2] Write unit tests for SearchService (exact match → redirect, multi-match → list, no match → empty results, autocomplete returns ≤8 for ≥3 char input, cache key convention) in `apps/api/src/search/search.service.spec.ts`
+- [X] T049 [US2] Write integration tests for SearchController (GET /search?q and GET /search/autocomplete?q, with and without vehicleId) in `apps/api/test/search.e2e-spec.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T050 [P] [US2] Implement part number normaliser (8-step pipeline, brand dictionary loaded from ConfigService, output is ArticleNumber value object) in `apps/api/src/search/normaliser.ts`
-- [ ] T051 [US2] Implement SearchService (normalise input → TecDoc search via CatalogService → resolve to single redirect / multi-match list / empty; autocomplete cached 30 min; annotate vehicle fit if vehicleId provided) in `apps/api/src/search/search.service.ts`
-- [ ] T052 [US2] Implement SearchController (@Public; GET /search?q with optional vehicleId; GET /search/autocomplete?q) in `apps/api/src/search/search.controller.ts`
-- [ ] T053 [US2] Create SearchModule and barrel in `apps/api/src/search/index.ts`
-- [ ] T054 [US2] Implement search API functions (searchByPartNumber, getAutocomplete) in `apps/web/src/lib/api/catalog.ts` (extend existing file)
-- [ ] T055 [P] [US2] Create SearchBar component (debounced input, autocomplete dropdown ≤8 items, submit triggers search page navigation) in `apps/web/src/components/catalog/search-bar.tsx`
-- [ ] T056 [US2] Implement search results page (SSR; auto-redirect on single match; multi-match article list with brand/description/price/fit indicator; empty-state with contact prompt) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/search/page.tsx`
+- [X] T050 [P] [US2] Implement part number normaliser (8-step pipeline, brand dictionary loaded from ConfigService, output is ArticleNumber value object) in `apps/api/src/search/normaliser.ts`
+- [X] T051 [US2] Implement SearchService (normalise input → TecDoc search via CatalogService → resolve to single redirect / multi-match list / empty; autocomplete cached 30 min; annotate vehicle fit if vehicleId provided) in `apps/api/src/search/search.service.ts`
+- [X] T052 [US2] Implement SearchController (@Public; GET /search?q with optional vehicleId; GET /search/autocomplete?q) in `apps/api/src/search/search.controller.ts`
+- [X] T053 [US2] Create SearchModule and barrel in `apps/api/src/search/index.ts`
+- [X] T054 [US2] Implement search API functions (searchByPartNumber, getAutocomplete) in `apps/web/src/lib/api/catalog.ts` (extend existing file)
+- [X] T055 [P] [US2] Create SearchBar component (debounced input, autocomplete dropdown ≤8 items, submit triggers search page navigation) in `apps/web/src/components/catalog/search-bar.tsx`
+- [X] T056 [US2] Implement search results page (SSR; auto-redirect on single match; multi-match article list with brand/description/price/fit indicator; empty-state with contact prompt) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/search/page.tsx`
 
 **Checkpoint**: Part number search fully functional independently. Any user can search without vehicle selection or login.
 

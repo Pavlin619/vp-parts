@@ -5,11 +5,14 @@ import {
   getCategories,
   listArticles,
   getArticleDetail,
+  searchByPartNumber,
+  getAutocomplete,
   manufacturersQueryOptions,
   modelSeriesQueryOptions,
   variantsQueryOptions,
   categoriesQueryOptions,
   articleDetailQueryOptions,
+  autocompleteQueryOptions,
 } from './catalog'
 import { apiFetch } from './index'
 
@@ -96,6 +99,25 @@ describe('getArticleDetail', () => {
   })
 })
 
+describe('searchByPartNumber', () => {
+  it('calls /search with the URL-encoded query', () => {
+    searchByPartNumber('WL-6340 WIX')
+    expect(mockApiFetch).toHaveBeenCalledWith('/search?q=WL-6340+WIX')
+  })
+
+  it('includes the vehicleId query param when provided', () => {
+    searchByPartNumber('WL6340', 'v-789')
+    expect(mockApiFetch).toHaveBeenCalledWith('/search?q=WL6340&vehicleId=v-789')
+  })
+})
+
+describe('getAutocomplete', () => {
+  it('calls /search/autocomplete with the URL-encoded query', () => {
+    getAutocomplete('WL6')
+    expect(mockApiFetch).toHaveBeenCalledWith('/search/autocomplete?q=WL6')
+  })
+})
+
 describe('manufacturersQueryOptions', () => {
   it('has the correct query key', () => {
     expect(manufacturersQueryOptions.queryKey).toEqual(['catalog', 'manufacturers'])
@@ -150,6 +172,22 @@ describe('categoriesQueryOptions', () => {
   it('produces a different query key for a different vehicle ID', () => {
     expect(categoriesQueryOptions('v-2').queryKey).not.toEqual(
       categoriesQueryOptions('v-1').queryKey,
+    )
+  })
+})
+
+describe('autocompleteQueryOptions', () => {
+  it('has the correct query key for a given query', () => {
+    expect(autocompleteQueryOptions('WL6').queryKey).toEqual([
+      'catalog',
+      'autocomplete',
+      'WL6',
+    ])
+  })
+
+  it('produces a different query key for a different query', () => {
+    expect(autocompleteQueryOptions('WL63').queryKey).not.toEqual(
+      autocompleteQueryOptions('WL6').queryKey,
     )
   })
 })
