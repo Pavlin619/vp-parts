@@ -6,6 +6,8 @@ import type {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  SearchResponseDto,
+  AutocompleteItemDto,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
 
@@ -53,6 +55,23 @@ export function getArticleDetail(
   );
 }
 
+export function searchByPartNumber(
+  query: string,
+  vehicleId?: string,
+): Promise<SearchResponseDto> {
+  const params = new URLSearchParams({ q: query });
+  if (vehicleId) {
+    params.set("vehicleId", vehicleId);
+  }
+  return apiFetch<SearchResponseDto>(`/search?${params}`);
+}
+
+export function getAutocomplete(query: string): Promise<AutocompleteItemDto[]> {
+  return apiFetch<AutocompleteItemDto[]>(
+    `/search/autocomplete?${new URLSearchParams({ q: query })}`,
+  );
+}
+
 // ── TanStack Query option factories ──────────────────────────────────────────
 // Define query keys and fetchers here so components never drift out of sync.
 
@@ -83,4 +102,10 @@ export const articleDetailQueryOptions = (articleNumber: string, vehicleId?: str
   queryOptions({
     queryKey: ["catalog", "articles", articleNumber, vehicleId ?? null],
     queryFn: () => getArticleDetail(articleNumber, vehicleId),
+  });
+
+export const autocompleteQueryOptions = (query: string) =>
+  queryOptions({
+    queryKey: ["catalog", "autocomplete", query],
+    queryFn: () => getAutocomplete(query),
   });

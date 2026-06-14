@@ -1,6 +1,9 @@
 import type { ApiErrorResponse } from "@vp-parts-shop/shared";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_BASE_URL =
+  typeof window === "undefined"
+    ? (process.env.API_URL ?? "http://127.0.0.1:3001")
+    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
 
 export class ApiError extends Error {
   constructor(
