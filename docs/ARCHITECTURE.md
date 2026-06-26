@@ -159,7 +159,7 @@ Cross-schema permissions (enforced by Postgres users):
 
 **PgBouncer** on `port 6432` in front of Postgres on `port 5432`. Both NestJS and Spring Boot connect through PgBouncer only — neither connects to Postgres directly. Pool mode: transaction. Max client connections: 200. Default pool size: 20 per user.
 
-> **Note:** Prisma requires `?pgbouncer=true` in the connection string when using transaction-mode pooling. This disables prepared statements which are incompatible with PgBouncer transaction mode. The migration user (`shop_migrate`) should connect directly to Postgres on port 5432, not through PgBouncer, since migrations require session-level features.
+> **Note:** Prisma requires `?pgbouncer=true` in the connection string when using transaction-mode pooling. This disables prepared statements which are incompatible with PgBouncer transaction mode. The runtime client uses this pooled connection via `DATABASE_URL` (declared in `schema.prisma`). The migration user (`shop_migrate`) must connect directly to Postgres on port 5432, not through PgBouncer, since migrations require session-level features — this direct, non-pooled connection is supplied via `DIRECT_URL`, which `prisma.config.ts` uses for all CLI commands. `DIRECT_URL` falls back to `DATABASE_URL` for local/CI environments that have no pooler.
 
 ---
 
@@ -440,7 +440,7 @@ Secrets in GitHub Actions secrets (CI) and Lightsail console environment variabl
 - **Clerk for all user auth** — hosted sign-in/sign-up UI, JWT issuance, and user webhook (`user.created`) drive Customer DB sync. No self-hosted Keycloak required.
 - **`fulfillment_tasks` in backoffice schema** — backoffice owns and manages fulfillment entirely. Shop gets SELECT only to read task status.
 - **`shop_app` has no access to `supplier_stock`** — NestJS never reads supplier data directly. All pricing and availability queries go through the backoffice internal API.
-- **PgBouncer transaction mode + Prisma** — requires `?pgbouncer=true` in NestJS connection string. Migration user connects directly to Postgres on port 5432, bypassing PgBouncer.
+- **PgBouncer transaction mode + Prisma** — requires `?pgbouncer=true` in the pooled `DATABASE_URL` used by the runtime client. Migrations connect directly to Postgres on port 5432 via `DIRECT_URL` (consumed by `prisma.config.ts`), bypassing PgBouncer; `DIRECT_URL` falls back to `DATABASE_URL` where no pooler exists.
 - **Shared Postgres, split schemas** — Liquibase manages backoffice schema, Prisma manages shop schema. Permissions enforced at DB level.
 - **All components in eu-central-1** — Lightsail VM, Lightsail Containers, and Vercel edge all in Frankfurt. Minimal latency between services and to Bulgarian users.
 - **No TecDoc Postgres cache at launch** — Redis TTLs sufficient. Circuit breaker and Postgres cache added when Redis pressure is measurable.

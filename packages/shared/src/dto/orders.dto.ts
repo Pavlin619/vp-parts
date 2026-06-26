@@ -64,11 +64,5 @@ export interface OrderStatusSseEventDto {
   occurredAt: string;
 }
 
-export interface AvailabilityDto {
-  articleNumber: string;
-  available: boolean;
-  stockStatus: string;
-  estimatedDeliveryDays: number | null;
-  priceExVat: number;
-  priceIncVat: number;
-}
+// AvailabilityDto is the canonical live price/availability contract and lives in
+// dto/inventory.dto.ts (it is a superset: nullable prices + optional trade fields).

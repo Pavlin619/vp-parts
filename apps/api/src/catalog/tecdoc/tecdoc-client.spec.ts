@@ -412,9 +412,6 @@ describe('TecDocClient', () => {
           brandName: 'WIX',
           description: 'Oil Filter',
           thumbnailUrl: null,
-          available: false,
-          bestPriceExVat: null,
-          bestPriceIncVat: null,
         },
       ]);
     });

@@ -9,6 +9,7 @@ export * from './schemas/checkout.schema';
 export * from './schemas/customers.schema';
 
 export * from './dto/catalog.dto';
+export * from './dto/inventory.dto';
 export * from './dto/cart.dto';
 export * from './dto/checkout.dto';
 export * from './dto/orders.dto';

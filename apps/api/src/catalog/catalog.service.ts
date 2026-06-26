@@ -5,13 +5,15 @@ import {
   VehicleVariantDto,
   AssemblyGroupDto,
   PaginatedArticlesDto,
+  ArticleCatalogDetailDto,
+  ArticleCatalogListItemDto,
   ArticleDetailDto,
   ArticleListItemDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
 import { SearchMatchType } from './tecdoc/tecdoc-client';
-import { InventoryService } from '../inventory/inventory.service';
+import { InventoryService } from '../inventory';
 
 @Injectable()
 export class CatalogService {
@@ -78,9 +80,9 @@ export class CatalogService {
   async getArticleDetail(
     articleNumber: string,
     vehicleId?: string,
-    customerRole?: string,
   ): Promise<ArticleDetailDto> {
-    let detail: ArticleDetailDto;
+    let detail: ArticleCatalogDetailDto;
+
     try {
       detail = await this.repository.findArticleDetails(
         articleNumber,
@@ -91,10 +93,7 @@ export class CatalogService {
       throw new NotFoundException(`Article not found: ${articleNumber}`);
     }
 
-    const inv = await this.inventory.getBestPriceAndAvailability(
-      articleNumber,
-      customerRole,
-    );
+    const inv = await this.inventory.getBestPriceAndAvailability(articleNumber);
 
     return {
       ...detail,
@@ -103,15 +102,12 @@ export class CatalogService {
       estimatedDeliveryDays: inv.estimatedDeliveryDays,
       bestPriceExVat: inv.priceExVat,
       bestPriceIncVat: inv.priceIncVat,
-      ...(inv.tradePriceExVat != null && {
-        tradePriceExVat: inv.tradePriceExVat,
-        tradePriceIncVat: inv.tradePriceIncVat,
-      }),
+      availabilityByDelivery: inv.availabilityByDelivery,
     };
   }
 
   private async enrichWithInventory(
-    items: ArticleListItemDto[],
+    items: ArticleCatalogListItemDto[],
   ): Promise<ArticleListItemDto[]> {
     if (items.length === 0) return [];
 

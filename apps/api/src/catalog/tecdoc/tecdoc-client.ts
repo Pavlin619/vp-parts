@@ -10,9 +10,9 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
-  ArticleDetailDto,
-  ArticleListItemDto,
+  PaginatedCatalogArticlesDto,
+  ArticleCatalogDetailDto,
+  ArticleCatalogListItemDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
@@ -154,7 +154,7 @@ export class TecDocClient {
     categoryId: string,
     page: number,
     pageSize: number,
-  ): Promise<PaginatedArticlesDto> {
+  ): Promise<PaginatedCatalogArticlesDto> {
     const data = await this.call<{
       totalMatchingArticles: number;
       articles: Array<{
@@ -183,9 +183,6 @@ export class TecDocClient {
         brandName: a.mfrName,
         description: a.genericArticles[0]?.genericArticleDescription ?? '',
         thumbnailUrl: a.images[0]?.imageURL800 ?? null,
-        available: false,
-        bestPriceExVat: null,
-        bestPriceIncVat: null,
       })),
     };
   }
@@ -193,7 +190,7 @@ export class TecDocClient {
   async getArticleDetails(
     articleNumber: string,
     vehicleId?: string,
-  ): Promise<ArticleDetailDto> {
+  ): Promise<ArticleCatalogDetailDto> {
     const data = await this.call<{
       articles: Array<{
         articleNumber: string;
@@ -238,11 +235,6 @@ export class TecDocClient {
       // call sequence — see TecDoc docs section 8.4. Populated by a future task.
       compatibleVehicles: [],
       fitsVehicle: vehicleId != null ? null : null,
-      available: false,
-      stockStatus: 'UNKNOWN',
-      estimatedDeliveryDays: null,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
     };
   }
 
@@ -250,7 +242,7 @@ export class TecDocClient {
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
-  ): Promise<ArticleListItemDto[]> {
+  ): Promise<ArticleCatalogListItemDto[]> {
     const data = await this.call<{
       totalMatchingArticles: number;
       articles: Array<{
@@ -279,9 +271,6 @@ export class TecDocClient {
       brandName: a.mfrName,
       description: a.genericArticles[0]?.genericArticleDescription ?? '',
       thumbnailUrl: a.images?.[0]?.imageURL800 ?? null,
-      available: false,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
     }));
   }
 

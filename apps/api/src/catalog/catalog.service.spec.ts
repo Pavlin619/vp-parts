@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 import { CatalogRepository } from './catalog.repository';
+import { InventoryService } from '../inventory/inventory.service';
 
 const findManufacturersMock = jest.fn();
 const findModelSeriesMock = jest.fn();
@@ -28,7 +29,7 @@ const getBulkPricesAndAvailabilityMock = jest.fn();
 const mockInventoryService = {
   getBestPriceAndAvailability: getBestPriceAndAvailabilityMock,
   getBulkPricesAndAvailability: getBulkPricesAndAvailabilityMock,
-};
+} as unknown as InventoryService;
 
 describe('CatalogService', () => {
   let service: CatalogService;
@@ -116,18 +117,12 @@ describe('CatalogService', () => {
             brandName: 'WIX',
             description: 'Oil Filter',
             thumbnailUrl: null,
-            available: false,
-            bestPriceExVat: null,
-            bestPriceIncVat: null,
           },
           {
             articleNumber: 'OC123',
             brandName: 'MANN',
             description: 'Oil Filter',
             thumbnailUrl: null,
-            available: false,
-            bestPriceExVat: null,
-            bestPriceIncVat: null,
           },
         ],
       };
@@ -181,9 +176,6 @@ describe('CatalogService', () => {
             brandName: 'TEST',
             description: 'Out of Stock Part',
             thumbnailUrl: null,
-            available: false,
-            bestPriceExVat: null,
-            bestPriceIncVat: null,
           },
         ],
       };
@@ -222,11 +214,6 @@ describe('CatalogService', () => {
         oemNumbers: [],
         compatibleVehicles: [],
         fitsVehicle: null,
-        available: false,
-        stockStatus: 'UNKNOWN',
-        estimatedDeliveryDays: null,
-        bestPriceExVat: null,
-        bestPriceIncVat: null,
       };
       findArticleDetailsMock.mockResolvedValueOnce(detail);
       getBestPriceAndAvailabilityMock.mockResolvedValueOnce({
@@ -235,6 +222,10 @@ describe('CatalogService', () => {
         priceIncVat: 1500,
         stockStatus: 'IN_STOCK',
         estimatedDeliveryDays: 2,
+        quantity: 6,
+        availabilityByDelivery: [
+          { stockStatus: 'IN_STOCK', estimatedDeliveryDays: 0, quantity: 6 },
+        ],
       });
 
       const result = await service.getArticleDetail('WL6340');
@@ -243,6 +234,9 @@ describe('CatalogService', () => {
       expect(result.available).toBe(true);
       expect(result.bestPriceExVat).toBe(1250);
       expect(result.bestPriceIncVat).toBe(1500);
+      expect(result.availabilityByDelivery).toEqual([
+        { stockStatus: 'IN_STOCK', estimatedDeliveryDays: 0, quantity: 6 },
+      ]);
     });
 
     it('throws NotFoundException when article detail is not found', async () => {
@@ -262,9 +256,6 @@ describe('CatalogService', () => {
       brandName: 'WIX',
       description: 'Oil Filter',
       thumbnailUrl: null,
-      available: false,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
     };
 
     it('enriches search results with best price and availability', async () => {

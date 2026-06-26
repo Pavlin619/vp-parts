@@ -6,13 +6,15 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "prebuild": "prisma generate",
     "build": "nest build",
+    "predev": "prisma generate",
     "dev": "nest start --watch",
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "type-check": "tsc --noEmit",
     "test": "jest",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json --forceExit"
   },
   "dependencies": {
     "@clerk/backend": "^3.5.0",

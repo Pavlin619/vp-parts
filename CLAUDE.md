@@ -79,7 +79,7 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 | Order detail | Client + SSE for live status |
 
 ### Key technical decisions
-- **Prisma** uses `?pgbouncer=true` in `DATABASE_URL` because PgBouncer runs in transaction mode.
+- **Prisma** uses `?pgbouncer=true` in the pooled `DATABASE_URL` (runtime client) because PgBouncer runs in transaction mode. Migrations and other Prisma CLI commands need a direct, non-pooled connection via `DIRECT_URL` (used by `prisma.config.ts`); it falls back to `DATABASE_URL` for local/CI environments without a pooler.
 - **Pre-checkout availability check** is always fresh (no cache) to avoid selling unavailable stock.
 - **TecDoc data** is cached in Redis with TTL; no Postgres cache at launch.
 - **Auth** is Clerk — all NestJS routes validate Clerk-issued JWTs via `@clerk/backend` SDK. Clerk handles sign-in/sign-up UI; a `user.created` webhook creates the `Customer` record in Postgres. Internal backoffice endpoints are protected by `InternalGuard` (shared-secret bearer token, private-network only).
@@ -263,7 +263,8 @@ src/
 - **Keep controllers thin.** Controllers handle HTTP mapping and delegate immediately to services. No business logic in controllers.
 - **Repository pattern.** Wrap all Prisma calls in a repository class (e.g. `OrderRepository`). Services never call `this.prisma.*` directly — they call the repository. This isolates DB access and makes unit testing straightforward.
 - **Barrel files.** Each feature module exposes a public API via `index.ts`. Other modules import from the barrel, not from internal files.
-- **Services do not import other feature services directly.** Cross-feature communication goes through events (SQS / NestJS `EventEmitter`) or a shared service in `common/`. This prevents circular dependencies and keeps modules independently testable.
+- **Cross-feature _command/write_ flows go through events, never direct calls.** A service MUST NOT inject another feature's service to trigger a side effect (e.g. order placed → email sent). Use SQS / NestJS `EventEmitter` or a shared service in `common/`. This prevents circular dependencies and keeps modules independently testable.
+- **Synchronous _read_ enrichment MAY inject another feature's service** via its public barrel (`index.ts`) — e.g. `CatalogService` injecting `InventoryService` to attach live price/availability to a listing. Two rules: import from the barrel (never internal files), and keep the dependency acyclic (it must point one direction only; if you need a cycle, switch to events).
 
 ### Error contract with the frontend
 Every error response must conform to a shared structure defined in `packages/shared`:
@@ -316,12 +317,14 @@ export interface ApiErrorResponse {
 **Functions**
 - One function, one responsibility. If you need "and" to describe what it does, split it.
 - Keep functions short — aim for what fits in one screen without scrolling.
+- **Avoid large functions that do many things.** When a function grows past one screen or strings together several distinct steps (fetch → transform → assemble → return), extract each step into a small, well-named helper so the original method reads as a high-level summary of those steps.
+- **Use private helper functions where applicable.** Pull repeated or self-contained logic out of a method into a `private` method (or a module-level pure function when it has no dependency on instance state). Prefer many small, focused functions over one big one.
 - Prefer pure functions; isolate side effects (DB writes, HTTP calls) at the edges.
 - Mark helper functions `private`. Only expose what callers outside the class actually need.
 - Maximum 2–3 parameters. Group related params into an object/DTO when you exceed that.
 
 **Spacing & formatting**
-- One blank line between logical sections inside a function.
+- **Separate logically distinct parts of the code with a single blank line for readability.** Inside a function, group each step (e.g. input guards, the main read, the transform, the return) into its own visually distinct block separated by one blank line, so each block reads as a single idea.
 - Two blank lines between top-level class members (methods).
 - No trailing blank lines inside a block.
 - Keep line length under ~100 characters; break long chains or argument lists onto separate lines.

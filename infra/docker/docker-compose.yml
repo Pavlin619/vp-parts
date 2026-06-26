@@ -1,21 +1,19 @@
+# PostgreSQL is intentionally NOT defined here.
+#
+# The backoffice and the online shop share a SINGLE Postgres instance, provided by
+# the backoffice stack (autoparts.backoffice/docker-compose.yml -> container
+# "autoparts-postgres", port 5432). Running a second Postgres here would collide on
+# port 5432 and fork the data.
+#
+# The shop connects to the "shop" schema of the "autoparts" database using the
+# least-privilege "shop_app" role. Provision it once (role name + password come from
+# SHOP_DB_USER / SHOP_DB_PASSWORD in the environment):
+#   set -a && source apps/api/.env && set +a
+#   psql "postgresql://postgres_admin:postgres_password@localhost:5432/autoparts" \
+#        -v shop_db_user="$SHOP_DB_USER" \
+#        -v shop_db_password="$SHOP_DB_PASSWORD" \
+#        -f infra/db/01-shop-provisioning.sql
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: vp-parts-postgres
-    environment:
-      POSTGRES_DB: autoparts
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: vp-parts-redis
@@ -30,5 +28,4 @@ services:
       retries: 5
 
 volumes:
-  postgres_data:
   redis_data:

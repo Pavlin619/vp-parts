@@ -4,9 +4,9 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
-  ArticleDetailDto,
-  ArticleListItemDto,
+  PaginatedCatalogArticlesDto,
+  ArticleCatalogDetailDto,
+  ArticleCatalogListItemDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { Redis } from 'ioredis';
@@ -64,7 +64,7 @@ export class TecDocCacheService {
     categoryId: string,
     page: number,
     pageSize: number,
-  ): Promise<PaginatedArticlesDto> {
+  ): Promise<PaginatedCatalogArticlesDto> {
     return this.cached(
       `tecdoc:articles:${vehicleId}:${categoryId}:${page}:${pageSize}`,
       ARTICLE_TTL,
@@ -76,7 +76,7 @@ export class TecDocCacheService {
   async getArticleDetails(
     articleNumber: string,
     vehicleId?: string,
-  ): Promise<ArticleDetailDto> {
+  ): Promise<ArticleCatalogDetailDto> {
     const vehicleKey = vehicleId ?? 'none';
     return this.cached(
       `tecdoc:article-detail:${articleNumber}:${vehicleKey}`,
@@ -89,7 +89,7 @@ export class TecDocCacheService {
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
-  ): Promise<ArticleListItemDto[]> {
+  ): Promise<ArticleCatalogListItemDto[]> {
     const vehicleKey = vehicleId ?? 'none';
     return this.cachedArray(
       `tecdoc:search:${query}:${vehicleKey}:${matchType}`,

@@ -3,9 +3,9 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
-  ArticleDetailDto,
-  ArticleListItemDto,
+  PaginatedCatalogArticlesDto,
+  ArticleCatalogDetailDto,
+  ArticleCatalogListItemDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
@@ -96,15 +96,7 @@ const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
   { id: '300002', name: 'Shock Absorbers', parentId: '300001' },
 ];
 
-const ARTICLES_BY_CATEGORY: Record<
-  string,
-  Array<{
-    articleNumber: string;
-    brandName: string;
-    description: string;
-    thumbnailUrl: string | null;
-  }>
-> = {
+const ARTICLES_BY_CATEGORY: Record<string, ArticleCatalogListItemDto[]> = {
   '100002': [
     {
       articleNumber: 'BD-0986478451',
@@ -142,6 +134,13 @@ const ARTICLES_BY_CATEGORY: Record<
       description: 'Oil Filter',
       thumbnailUrl: null,
     },
+    {
+      articleNumber: 'OX 982D',
+      brandName: 'KNECHT',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
   ],
   '200003': [
     {
@@ -161,17 +160,7 @@ const ARTICLES_BY_CATEGORY: Record<
   ],
 };
 
-const ARTICLE_DETAILS: Record<
-  string,
-  Omit<
-    ArticleDetailDto,
-    | 'available'
-    | 'stockStatus'
-    | 'estimatedDeliveryDays'
-    | 'bestPriceExVat'
-    | 'bestPriceIncVat'
-  >
-> = {
+const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
   'BD-0986478451': {
     articleNumber: 'BD-0986478451',
     brandName: 'Bosch',
@@ -204,16 +193,39 @@ const ARTICLE_DETAILS: Record<
     compatibleVehicles: [],
     fitsVehicle: null,
   },
+  // Real Knecht/Mahle OX 982D oil filter insert (Mercedes-Benz M270/M274 &
+  // Infiniti). Specs sourced from the manufacturer data sheet so the data is
+  // legit for testing — this part is stocked across most of our suppliers.
+  'OX 982D': {
+    articleNumber: 'OX 982D',
+    brandName: 'KNECHT',
+    description: 'Oil Filter',
+    images: [
+      'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    ],
+    technicalSpecs: [
+      { key: 'Filter type', value: 'Filter Insert' },
+      { key: 'Diameter', value: '71.0 mm' },
+      { key: 'Height', value: '86.5 mm' },
+      { key: 'Inner Diameter 2', value: '34 mm' },
+      { key: 'Inner Diameter 3', value: '28.6 mm' },
+      { key: 'Supplementary Info', value: 'with gaskets/seals' },
+    ],
+    oemNumbers: [
+      'A2701800009',
+      'A2701800109',
+      'A2701840025',
+      'A2701840125',
+      '2701800009',
+      '2701800109',
+      '15208HG00D',
+    ],
+    compatibleVehicles: [],
+    fitsVehicle: null,
+  },
 };
 
-const DEFAULT_ARTICLE_DETAIL: Omit<
-  ArticleDetailDto,
-  | 'available'
-  | 'stockStatus'
-  | 'estimatedDeliveryDays'
-  | 'bestPriceExVat'
-  | 'bestPriceIncVat'
-> = {
+const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: '',
   brandName: 'Unknown',
   description: 'Auto Part',
@@ -246,15 +258,10 @@ export class TecDocMockClient {
     categoryId: string,
     page: number,
     pageSize: number,
-  ): Promise<PaginatedArticlesDto> {
+  ): Promise<PaginatedCatalogArticlesDto> {
     const all = ARTICLES_BY_CATEGORY[categoryId] ?? [];
     const start = (page - 1) * pageSize;
-    const items = all.slice(start, start + pageSize).map((a) => ({
-      ...a,
-      available: false,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
-    }));
+    const items = all.slice(start, start + pageSize);
 
     return Promise.resolve({ total: all.length, page, pageSize, items });
   }
@@ -262,17 +269,11 @@ export class TecDocMockClient {
   searchArticles(
     query: string,
     vehicleId?: string,
-  ): Promise<ArticleListItemDto[]> {
+  ): Promise<ArticleCatalogListItemDto[]> {
     const matches = this.findMatchingArticles(query)
       // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
       // returns every other match so fit indicators show both states.
-      .filter((_, index) => vehicleId == null || index % 2 === 0)
-      .map((a) => ({
-        ...a,
-        available: false,
-        bestPriceExVat: null,
-        bestPriceIncVat: null,
-      }));
+      .filter((_, index) => vehicleId == null || index % 2 === 0);
 
     return Promise.resolve(matches);
   }
@@ -292,20 +293,13 @@ export class TecDocMockClient {
   getArticleDetails(
     articleNumber: string,
     _vehicleId?: string,
-  ): Promise<ArticleDetailDto> {
+  ): Promise<ArticleCatalogDetailDto> {
     const base = ARTICLE_DETAILS[articleNumber] ?? {
       ...DEFAULT_ARTICLE_DETAIL,
       articleNumber,
     };
 
-    return Promise.resolve({
-      ...base,
-      available: false,
-      stockStatus: 'UNKNOWN',
-      estimatedDeliveryDays: null,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
-    });
+    return Promise.resolve(base);
   }
 
   private findMatchingArticles(query: string) {
