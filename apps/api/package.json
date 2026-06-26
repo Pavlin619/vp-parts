@@ -6,6 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "postinstall": "prisma generate",
+    "prisma:generate": "prisma generate",
     "prebuild": "prisma generate",
     "build": "nest build",
     "predev": "prisma generate",
