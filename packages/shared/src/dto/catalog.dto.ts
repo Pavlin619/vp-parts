@@ -1,3 +1,5 @@
+import { DeliveryAvailabilityDto } from './inventory.dto';
+
 export interface ManufacturerDto {
   id: string;
   name: string;
@@ -27,22 +29,39 @@ export interface AssemblyGroupDto {
   parentId: string | null;
 }
 
-export interface ArticleListItemDto {
-  articleNumber: string;
-  brandName: string;
-  description: string;
-  thumbnailUrl: string | null;
+/**
+ * Inventory summary shown next to a catalog article in lists/grids. The catalog
+ * layer (TecDoc) owns none of this; the inventory layer adds it on top of the
+ * catalog metadata below.
+ */
+export interface ArticleInventorySummaryDto {
   available: boolean;
   bestPriceExVat: number | null;
   bestPriceIncVat: number | null;
 }
 
-export interface PaginatedArticlesDto {
+/** Catalog metadata TecDoc owns for an article in a list/grid. */
+export interface ArticleCatalogListItemDto {
+  articleNumber: string;
+  brandName: string;
+  description: string;
+  thumbnailUrl: string | null;
+}
+
+/** A catalog list item enriched with its inventory summary. */
+export interface ArticleListItemDto
+  extends ArticleCatalogListItemDto,
+    ArticleInventorySummaryDto {}
+
+export interface PaginatedDto<TItem> {
   total: number;
   page: number;
   pageSize: number;
-  items: ArticleListItemDto[];
+  items: TItem[];
 }
+
+export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleCatalogListItemDto>;
+export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
 
 export interface TechnicalSpecDto {
   key: string;
@@ -54,7 +73,19 @@ export interface CompatibleVehicleDto {
   name: string;
 }
 
-export interface ArticleDetailDto {
+/**
+ * Richer inventory data shown on the article detail page: stock status,
+ * delivery estimate, and the per-delivery-window availability breakdown.
+ */
+export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
+  stockStatus: string;
+  estimatedDeliveryDays: number | null;
+  /** Available quantity per delivery window, fastest first. */
+  availabilityByDelivery: DeliveryAvailabilityDto[];
+}
+
+/** Catalog metadata TecDoc owns for a single article. */
+export interface ArticleCatalogDetailDto {
   articleNumber: string;
   brandName: string;
   description: string;
@@ -63,14 +94,12 @@ export interface ArticleDetailDto {
   oemNumbers: string[];
   compatibleVehicles: CompatibleVehicleDto[];
   fitsVehicle: boolean | null;
-  available: boolean;
-  stockStatus: string;
-  estimatedDeliveryDays: number | null;
-  bestPriceExVat: number | null;
-  bestPriceIncVat: number | null;
-  tradePriceExVat?: number;
-  tradePriceIncVat?: number;
 }
+
+/** Catalog metadata enriched with full inventory data for the detail page. */
+export interface ArticleDetailDto
+  extends ArticleCatalogDetailDto,
+    ArticleInventoryDetailDto {}
 
 export interface SearchResultItemDto {
   articleNumber: string;

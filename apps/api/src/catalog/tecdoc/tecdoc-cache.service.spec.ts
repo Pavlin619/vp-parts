@@ -186,11 +186,6 @@ describe('TecDocCacheService', () => {
         oemNumbers: [],
         compatibleVehicles: [],
         fitsVehicle: null,
-        available: false,
-        stockStatus: 'UNKNOWN',
-        estimatedDeliveryDays: null,
-        bestPriceExVat: null,
-        bestPriceIncVat: null,
       };
 
       redisGet.mockResolvedValueOnce(null);
@@ -215,9 +210,6 @@ describe('TecDocCacheService', () => {
         brandName: 'WIX',
         description: 'Oil Filter',
         thumbnailUrl: null,
-        available: false,
-        bestPriceExVat: null,
-        bestPriceIncVat: null,
       },
     ];
 

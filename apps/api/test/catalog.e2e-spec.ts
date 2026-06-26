@@ -9,8 +9,8 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
-  ArticleDetailDto,
+  PaginatedCatalogArticlesDto,
+  ArticleCatalogDetailDto,
 } from '@vp-parts-shop/shared';
 
 const MANUFACTURERS: ManufacturerDto[] = [
@@ -42,7 +42,7 @@ const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
   { id: '100002', name: 'Brake Discs', parentId: '100001' },
 ];
 
-const PAGINATED_ARTICLES: PaginatedArticlesDto = {
+const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
   total: 2,
   page: 1,
   pageSize: 20,
@@ -52,23 +52,17 @@ const PAGINATED_ARTICLES: PaginatedArticlesDto = {
       brandName: 'Bosch',
       description: 'Brake Disc',
       thumbnailUrl: null,
-      available: false,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
     },
     {
       articleNumber: 'BD-002',
       brandName: 'Ferodo',
       description: 'Brake Disc',
       thumbnailUrl: null,
-      available: false,
-      bestPriceExVat: null,
-      bestPriceIncVat: null,
     },
   ],
 };
 
-const ARTICLE_DETAIL: ArticleDetailDto = {
+const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: 'BD-001',
   brandName: 'Bosch',
   description: 'Brake Disc',
@@ -77,11 +71,6 @@ const ARTICLE_DETAIL: ArticleDetailDto = {
   oemNumbers: ['1K0 615 301 AA'],
   compatibleVehicles: [],
   fitsVehicle: null,
-  available: false,
-  stockStatus: 'UNKNOWN',
-  estimatedDeliveryDays: null,
-  bestPriceExVat: null,
-  bestPriceIncVat: null,
 };
 
 const mockTecDocClient = {
@@ -255,9 +244,9 @@ describe('CatalogController (e2e)', () => {
       expect(res.body.technicalSpecs).toEqual([
         { key: 'Diameter', value: '288 mm' },
       ]);
-      // Inventory stub values applied by CatalogService.getArticleDetail
+      // No own/supplier stock for this article -> neutral unavailable state.
       expect(res.body.available).toBe(false);
-      expect(res.body.stockStatus).toBe('UNKNOWN');
+      expect(res.body.stockStatus).toBe('OUT_OF_STOCK');
       expect(res.body.estimatedDeliveryDays).toBeNull();
       expect(res.body.bestPriceExVat).toBeNull();
       expect(res.body.bestPriceIncVat).toBeNull();

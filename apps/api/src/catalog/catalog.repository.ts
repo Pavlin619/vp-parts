@@ -6,9 +6,9 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
-  ArticleDetailDto,
-  ArticleListItemDto,
+  PaginatedCatalogArticlesDto,
+  ArticleCatalogDetailDto,
+  ArticleCatalogListItemDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
@@ -41,14 +41,14 @@ export class CatalogRepository {
     categoryId: string,
     page: number,
     pageSize: number,
-  ): Promise<PaginatedArticlesDto> {
+  ): Promise<PaginatedCatalogArticlesDto> {
     return this.tecdocCache.getArticles(vehicleId, categoryId, page, pageSize);
   }
 
   async findArticleDetails(
     articleNumber: string,
     vehicleId?: string,
-  ): Promise<ArticleDetailDto> {
+  ): Promise<ArticleCatalogDetailDto> {
     return this.tecdocCache.getArticleDetails(articleNumber, vehicleId);
   }
 
@@ -56,7 +56,7 @@ export class CatalogRepository {
     query: string,
     vehicleId?: string,
     matchType?: SearchMatchType,
-  ): Promise<ArticleListItemDto[]> {
+  ): Promise<ArticleCatalogListItemDto[]> {
     return this.tecdocCache.searchArticles(query, vehicleId, matchType);
   }
 

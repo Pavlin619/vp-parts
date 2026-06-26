@@ -5,7 +5,9 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AuthModule } from './auth';
 import { CommonModule } from './common';
+import { PrismaModule } from './prisma';
 import { CatalogModule } from './catalog';
+import { InventoryModule } from './inventory';
 import { SearchModule } from './search';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -21,6 +23,11 @@ import { AppService } from './app.service';
         PORT: Joi.number().default(3002),
 
         DATABASE_URL: Joi.string().required(),
+        // Direct (non-pooled) connection used only by Prisma CLI/migrations,
+        // which need session-level features that PgBouncer transaction mode
+        // breaks. Not read by the runtime app; optional so local/CI without a
+        // pooler fall back to DATABASE_URL (see prisma.config.ts).
+        DIRECT_URL: Joi.string().optional(),
         REDIS_URL: Joi.string().required(),
 
         CLERK_PUBLISHABLE_KEY: Joi.string().required(),
@@ -28,7 +35,6 @@ import { AppService } from './app.service';
         CLERK_WEBHOOK_SECRET: Joi.string().required(),
 
         INTERNAL_API_TOKEN: Joi.string().required(),
-        BACKOFFICE_BASE_URL: Joi.string().uri().required(),
 
         AWS_REGION: Joi.string().default('eu-central-1'),
         SQS_FULFILLMENT_QUEUE_URL: Joi.string().uri().required(),
@@ -72,7 +78,9 @@ import { AppService } from './app.service';
     ]),
     AuthModule,
     CommonModule,
+    PrismaModule,
     CatalogModule,
+    InventoryModule,
     SearchModule,
   ],
   controllers: [AppController],
