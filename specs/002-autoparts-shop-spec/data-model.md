@@ -2,7 +2,7 @@
 
 **Branch**: `002-autoparts-shop-spec` | **Date**: 2026-06-05
 
-Schema: `shop` — owned by NestJS, managed by Prisma migrations. The `backoffice` schema is owned by Spring Boot and is read-only from NestJS (`shop_app` has `SELECT` on `backoffice.nomenclature` only; no access to `supplier_stock`).
+Schema: `shop` — owned by NestJS, managed by Prisma migrations. The backoffice's `public` schema is owned by Spring Boot and is read-only from NestJS: `shop_app` has column-scoped `SELECT` on `public.autoparts` (our own stock — the primary price/availability source, no cost/internal columns) and `public.supplier_stock` (the fallback source, including `buy_price`), plus `SELECT` on `public.nomenclature`. These backoffice tables are not modelled in Prisma; the inventory module reads them with read-only raw queries.
 
 ---
 

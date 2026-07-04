@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AvailabilityDto,
-  DeliveryAvailabilityDto,
   StockStatus,
+  WarehouseAvailabilityDto,
 } from '@vp-parts-shop/shared';
 import { AutopartsRepository, OwnStockRow } from './autoparts.repository';
 import {
@@ -11,12 +11,19 @@ import {
   SupplierStockRow,
 } from './supplier-stock.repository';
 import { DeliverySpeedResolver } from './delivery-speed.resolver';
+import { DeliveryScheduleService } from './delivery-schedule.service';
 import {
   BestOffer,
   OwnOffer,
   SupplierOffer,
   selectBestOffer,
 } from './best-offer';
+import {
+  Warehouse,
+  warehouseForOwnStock,
+  warehouseForRule,
+  warehousesFastestFirst,
+} from './warehouse';
 import { InventoryUnavailableException } from './inventory-unavailable.exception';
 import { PriceAndAvailability } from './inventory.types';
 
@@ -26,11 +33,17 @@ const UNAVAILABLE: PriceAndAvailability = {
   priceIncVat: null,
   stockStatus: StockStatus.OUT_OF_STOCK,
   estimatedDeliveryDays: null,
-  quantity: 0,
-  availabilityByDelivery: [],
+  availabilityByWarehouse: [],
+  computedAt: null,
 };
 
 const DEFAULT_VAT_RATE = 0.2;
+
+/** Resolved offers for a single article, ready for both selection paths. */
+interface ResolvedOffers {
+  own: OwnOffer | null;
+  suppliers: SupplierOffer[];
+}
 
 @Injectable()
 export class InventoryService {
@@ -41,6 +54,7 @@ export class InventoryService {
     private readonly ownStock: AutopartsRepository,
     private readonly supplierStock: SupplierStockRepository,
     private readonly deliverySpeed: DeliverySpeedResolver,
+    private readonly deliverySchedule: DeliveryScheduleService,
     config: ConfigService,
   ) {
     this.vatRate = config.get<number>('VAT_RATE') ?? DEFAULT_VAT_RATE;
@@ -53,10 +67,10 @@ export class InventoryService {
    * refresh, and pre-checkout validation, all of which must never sell stale.
    */
   async getAvailability(articleNumber: string): Promise<AvailabilityDto> {
-    let offer: BestOffer;
+    let offers: ResolvedOffers;
 
     try {
-      offer = await this.resolveOffer(articleNumber);
+      offers = await this.loadOffers(articleNumber);
     } catch (error) {
       this.logger.error(
         `Live availability read failed for ${articleNumber}`,
@@ -65,15 +79,22 @@ export class InventoryService {
       throw new InventoryUnavailableException();
     }
 
+    const now = new Date();
+    const offer = this.select(offers);
+    const availabilityByWarehouse = this.buildWarehouseAvailability(
+      offers,
+      now,
+    );
+
     return {
       articleNumber,
       available: offer.available,
       stockStatus: offer.stockStatus,
       estimatedDeliveryDays: offer.estimatedDeliveryDays,
-      quantity: offer.quantity,
       priceExVat: offer.priceExVatCents,
       priceIncVat: offer.priceIncVatCents,
-      availabilityByDelivery: toDeliveryAvailability(offer),
+      availabilityByWarehouse,
+      computedAt: now.toISOString(),
     };
   }
 
@@ -81,13 +102,25 @@ export class InventoryService {
    * Best price & availability for the cached public catalog (listing + detail).
    * Browsing must never break on a database hiccup, so this path fails open:
    * any read error yields the neutral "unavailable" state instead of throwing.
+   * The article detail page is rendered dynamically, so it is safe to embed the
+   * absolute, request-time warehouse delivery dates here.
    */
   async getBestPriceAndAvailability(
     articleNumber: string,
   ): Promise<PriceAndAvailability> {
     try {
-      const offer = await this.resolveOffer(articleNumber);
-      return this.toPriceAndAvailability(offer);
+      const now = new Date();
+      const offers = await this.loadOffers(articleNumber);
+      const offer = this.select(offers);
+      const availabilityByWarehouse = this.buildWarehouseAvailability(
+        offers,
+        now,
+      );
+      return this.toPriceAndAvailability(
+        offer,
+        availabilityByWarehouse,
+        now.toISOString(),
+      );
     } catch (error) {
       this.logger.warn(
         `Best price read failed for ${articleNumber}; serving unavailable`,
@@ -97,6 +130,11 @@ export class InventoryService {
     }
   }
 
+  /**
+   * Bulk price & availability for cached listing grids. Delivery dates are
+   * intentionally omitted (availabilityByWarehouse stays empty): listings are
+   * cached, so embedding absolute, request-time dates would serve stale promises.
+   */
   async getBulkPricesAndAvailability(
     articleNumbers: string[],
   ): Promise<Map<string, PriceAndAvailability>> {
@@ -112,11 +150,14 @@ export class InventoryService {
       ]);
 
       for (const articleNumber of articleNumbers) {
-        const offer = this.select(
+        const offers = this.toOffers(
           ownByNumber.get(articleNumber) ?? [],
           suppliersByNumber.get(articleNumber) ?? [],
         );
-        result.set(articleNumber, this.toPriceAndAvailability(offer));
+        result.set(
+          articleNumber,
+          this.toPriceAndAvailability(this.select(offers)),
+        );
       }
     } catch (error) {
       this.logger.warn(
@@ -131,25 +172,75 @@ export class InventoryService {
     return result;
   }
 
-  private async resolveOffer(articleNumber: string): Promise<BestOffer> {
+  private async loadOffers(articleNumber: string): Promise<ResolvedOffers> {
     const [ownRows, supplierRows] = await Promise.all([
       this.ownStock.findByTecdocNumber(articleNumber),
       this.supplierStock.findByTecdocNumber(articleNumber),
     ]);
-    return this.select(ownRows, supplierRows);
+    return this.toOffers(ownRows, supplierRows);
   }
 
-  private select(
+  private toOffers(
     ownRows: OwnStockRow[],
     supplierRows: SupplierStockRow[],
-  ): BestOffer {
-    return selectBestOffer(
-      {
-        own: this.toOwnOffer(ownRows),
-        suppliers: this.toSupplierOffers(supplierRows),
-      },
-      { vatRate: this.vatRate },
-    );
+  ): ResolvedOffers {
+    return {
+      own: this.toOwnOffer(ownRows),
+      suppliers: this.toSupplierOffers(supplierRows),
+    };
+  }
+
+  private select(offers: ResolvedOffers): BestOffer {
+    return selectBestOffer(offers, { vatRate: this.vatRate });
+  }
+
+  /**
+   * Groups all stock into the customer-facing warehouses (by inherent supplier
+   * capability), unites the quantity per warehouse, and attaches the projected
+   * pickup/courier delivery dates. Computed at request time, so callers must
+   * only use it on dynamic (uncached) responses.
+   */
+  private buildWarehouseAvailability(
+    offers: ResolvedOffers,
+    now: Date = new Date(),
+  ): WarehouseAvailabilityDto[] {
+    const quantityByWarehouse = new Map<Warehouse, number>();
+
+    if (offers.own && offers.own.quantity > 0) {
+      addQuantity(
+        quantityByWarehouse,
+        warehouseForOwnStock(),
+        offers.own.quantity,
+      );
+    }
+
+    for (const supplier of offers.suppliers) {
+      if (supplier.quantity <= 0) continue;
+      addQuantity(
+        quantityByWarehouse,
+        warehouseForRule(supplier.rule),
+        supplier.quantity,
+      );
+    }
+
+    const warehouses: WarehouseAvailabilityDto[] = [];
+    for (const warehouse of warehousesFastestFirst()) {
+      const quantity = quantityByWarehouse.get(warehouse);
+      if (!quantity) continue;
+
+      const projection = this.deliverySchedule.projectWarehouse(warehouse, now);
+      warehouses.push({
+        warehouseId: warehouse,
+        quantity,
+        deliveryWorkDays: projection.deliveryWorkDays,
+        orderCutoffTime: projection.orderCutoffTime,
+        cutoffAt: projection.cutoffAt,
+        pickup: projection.pickup,
+        courier: projection.courier,
+      });
+    }
+
+    return warehouses;
   }
 
   /**
@@ -173,11 +264,11 @@ export class InventoryService {
         continue;
       }
 
-      const delivery = this.deliverySpeed.resolve(
+      const resolution = this.deliverySpeed.resolve(
         row.supplierSource,
         row.warehouseCode,
       );
-      if (delivery === null) {
+      if (resolution === null) {
         continue;
       }
 
@@ -187,7 +278,8 @@ export class InventoryService {
         quantity: row.availability,
         buyPriceCents: row.buyPriceCents,
         sellPriceCents: row.sellPriceCents,
-        delivery,
+        rule: resolution.rule,
+        delivery: resolution.outcome,
       });
     }
 
@@ -211,24 +303,30 @@ export class InventoryService {
     };
   }
 
-  private toPriceAndAvailability(offer: BestOffer): PriceAndAvailability {
+  private toPriceAndAvailability(
+    offer: BestOffer,
+    availabilityByWarehouse: WarehouseAvailabilityDto[] = [],
+    computedAt: string | null = null,
+  ): PriceAndAvailability {
     return {
       available: offer.available,
       priceExVat: offer.priceExVatCents,
       priceIncVat: offer.priceIncVatCents,
       stockStatus: offer.stockStatus,
       estimatedDeliveryDays: offer.estimatedDeliveryDays,
-      quantity: offer.quantity,
-      availabilityByDelivery: toDeliveryAvailability(offer),
+      availabilityByWarehouse,
+      computedAt,
     };
   }
 }
 
-/** Strips the server-side per-supplier sources, leaving client-safe totals. */
-function toDeliveryAvailability(offer: BestOffer): DeliveryAvailabilityDto[] {
-  return offer.availabilityByDelivery.map((window) => ({
-    stockStatus: window.stockStatus,
-    estimatedDeliveryDays: window.estimatedDeliveryDays,
-    quantity: window.quantity,
-  }));
+function addQuantity(
+  quantityByWarehouse: Map<Warehouse, number>,
+  warehouse: Warehouse,
+  quantity: number,
+): void {
+  quantityByWarehouse.set(
+    warehouse,
+    (quantityByWarehouse.get(warehouse) ?? 0) + quantity,
+  );
 }

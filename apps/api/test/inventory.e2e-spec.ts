@@ -1,13 +1,11 @@
 import { INestApplication } from '@nestjs/common';
-import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
 import { AutopartsRepository } from '../src/inventory/autoparts.repository';
 import { SupplierStockRepository } from '../src/inventory/supplier-stock.repository';
 import { DeliverySpeedResolver } from '../src/inventory/delivery-speed.resolver';
-import { outcomeForStatus } from '../src/inventory/delivery';
+import { DeliveryRule, outcomeForStatus } from '../src/inventory/delivery';
 import { StockStatus } from '@vp-parts-shop/shared';
-import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
 import { ClerkJwtStrategy } from '../src/auth/clerk-jwt.strategy';
 
 const ownFindByNumber = jest.fn();
@@ -30,7 +28,10 @@ const mockDeliverySpeedResolver = {
   resolve: (source: string) =>
     source === 'MYSTERY'
       ? null
-      : outcomeForStatus(StockStatus.DELIVERY_WITHIN_HOUR),
+      : {
+          rule: DeliveryRule.WITHIN_HOUR,
+          outcome: outcomeForStatus(StockStatus.DELIVERY_WITHIN_HOUR),
+        },
 };
 
 // Drives the real JwtGuard without calling Clerk: the returned payload is what
@@ -40,7 +41,6 @@ const mockClerkJwtStrategy = { verifyToken };
 
 describe('InventoryController (e2e)', () => {
   let app: INestApplication;
-  let redisClient: Redis;
 
   beforeAll(async () => {
     app = await createTestApp((builder) => {
@@ -55,12 +55,10 @@ describe('InventoryController (e2e)', () => {
         .useValue(mockDeliverySpeedResolver);
       builder.overrideProvider(ClerkJwtStrategy).useValue(mockClerkJwtStrategy);
     });
-    redisClient = app.get<Redis>(REDIS_CLIENT);
   });
 
   afterAll(async () => {
     await app.close();
-    await redisClient.quit();
   });
 
   beforeEach(() => {
@@ -108,17 +106,14 @@ describe('InventoryController (e2e)', () => {
         available: true,
         stockStatus: 'IN_STOCK',
         estimatedDeliveryDays: 0,
-        quantity: 4,
         priceExVat: 5000,
         priceIncVat: 6000,
-        availabilityByDelivery: [
-          { stockStatus: 'IN_STOCK', estimatedDeliveryDays: 0, quantity: 4 },
-          {
-            stockStatus: 'DELIVERY_WITHIN_HOUR',
-            estimatedDeliveryDays: 0,
-            quantity: 3,
-          },
+        // Own stock (4) + within-hour supplier (3) unite into Central, with
+        // request-time delivery dates. Asserted loosely as they track the clock.
+        availabilityByWarehouse: [
+          expect.objectContaining({ warehouseId: 'CENTRAL', quantity: 7 }),
         ],
+        computedAt: expect.any(String),
       });
     });
 
@@ -154,7 +149,7 @@ describe('InventoryController (e2e)', () => {
 
       expect(res.body.available).toBe(false);
       expect(res.body.stockStatus).toBe('OUT_OF_STOCK');
-      expect(res.body.quantity).toBe(0);
+      expect(res.body.availabilityByWarehouse).toEqual([]);
     });
 
     it('returns 503 INVENTORY_UNAVAILABLE when the live read fails', async () => {

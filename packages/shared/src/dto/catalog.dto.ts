@@ -1,4 +1,5 @@
-import { DeliveryAvailabilityDto } from './inventory.dto';
+import { StockStatus } from '../enums';
+import { WarehouseAvailabilityDto } from './inventory.dto';
 
 export interface ManufacturerDto {
   id: string;
@@ -75,13 +76,18 @@ export interface CompatibleVehicleDto {
 
 /**
  * Richer inventory data shown on the article detail page: stock status,
- * delivery estimate, and the per-delivery-window availability breakdown.
+ * delivery estimate, and the per-warehouse availability breakdown.
  */
 export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
-  stockStatus: string;
+  stockStatus: StockStatus;
   estimatedDeliveryDays: number | null;
-  /** Available quantity per delivery window, fastest first. */
-  availabilityByDelivery: DeliveryAvailabilityDto[];
+  /** Available quantity per customer-facing warehouse, fastest first. */
+  availabilityByWarehouse: WarehouseAvailabilityDto[];
+  /**
+   * Absolute instant (ISO UTC) the warehouse dates were computed, or null on
+   * cached paths that omit them. Drives client-side staleness detection.
+   */
+  computedAt: string | null;
 }
 
 /** Catalog metadata TecDoc owns for a single article. */

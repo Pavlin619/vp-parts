@@ -40,7 +40,7 @@ Build a customer-facing automotive parts e-commerce shop as a TypeScript monorep
 - Zero orders may be placed for out-of-stock items (SC-006, FR-032)
 - Mobile-first: all critical interactions work on screens ≥ 360px wide
 - Bulgarian delivery addresses only at launch; currency is EUR (Bulgaria adopted the Euro)
-- `shop_app` DB user has no access to `backoffice.supplier_stock` — all pricing goes through the backoffice internal REST API
+- `shop_app` DB user reads price/availability directly from the shared backoffice DB (read-only, column-scoped `SELECT` on `public.autoparts` and `public.supplier_stock`) — own stock is the primary source, suppliers are the fallback; no internal price/availability REST hop
 
 **Scale/Scope**:
 - Two apps + one shared package; ~15 frontend routes, ~35 API endpoints
@@ -55,7 +55,7 @@ Build a customer-facing automotive parts e-commerce shop as a TypeScript monorep
 
 | Principle | Gate | Status |
 |---|---|---|
-| I. Domain-Driven Architecture | Each NestJS module maps to exactly one bounded context. `Order` aggregate owns its own state transitions driven exclusively by SQS events. `Money`, `ArticleNumber`, `VehicleId` defined as value objects in `packages/shared`. NestJS never reads `supplier_stock` directly. | ✅ PASS |
+| I. Domain-Driven Architecture | Each NestJS module maps to exactly one bounded context. `Order` aggregate owns its own state transitions driven exclusively by SQS events. `Money`, `ArticleNumber`, `VehicleId` defined as value objects in `packages/shared`. The `inventory` module reads `public.autoparts` + `public.supplier_stock` read-only and owns the best-offer selection; the backoffice owns writing that data. | ✅ PASS |
 | II. NestJS Backend Conventions | Repository pattern in every module. Controllers delegate to exactly one service method. Cross-module communication via SQS/EventEmitter only. Barrel files (`index.ts`) per module. | ✅ PASS |
 | III. Next.js Frontend Conventions | App Router exclusively. Server Components by default; `'use client'` at leaf interactive islands only. All NestJS calls via `src/lib/api/` functions. TanStack Query for client-side server state. Every page has `loading.tsx` and `error.tsx`. | ✅ PASS |
 | IV. Shared Contract Layer | All request/response DTOs, Zod schemas, `OrderStatus` enum, domain enums, and shared types live in `packages/shared`. Never defined inline in either app. Breaking changes update both apps in the same commit. | ✅ PASS |
@@ -149,8 +149,11 @@ apps/
         │   ├── catalog.service.ts
         │   ├── catalog.repository.ts
         │   └── index.ts
-        ├── inventory/                 # Delegates to backoffice /internal/price-and-availability
-        │   ├── backoffice.client.ts   # HTTP client + token cache + retry logic
+        ├── inventory/                 # Direct read-only reads of public.autoparts + supplier_stock
+        │   ├── autoparts.repository.ts      # raw read-only SELECT on public.autoparts (own stock)
+        │   ├── supplier-stock.repository.ts  # raw read-only SELECT on public.supplier_stock
+        │   ├── delivery-speed.resolver.ts    # supplier_source + warehouse_code → delivery band
+        │   ├── best-offer.ts                  # pure own-stock-first best-offer selector
         │   ├── inventory.service.ts
         │   └── index.ts
         ├── orders/                    # Order aggregate, checkout orchestration, SSE

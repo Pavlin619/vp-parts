@@ -136,30 +136,42 @@
 
 ## Phase 5: User Story 3 — Part Detail Page (Priority: P1)
 
-**Goal**: A visitor viewing a specific part sees all information (specs, images, OEM refs, compatible vehicles, live availability, pricing by role) and can add to cart.
+**Goal**: A visitor viewing a specific part sees all information (specs, images, OEM refs, compatible vehicles, live availability, single locked sell price) and can add to cart.
 
-**Independent Test**: Navigate directly to a part URL and verify all information renders with accurate live availability status.
+**Independent Test**: Navigate directly to a part URL and verify all information renders with accurate live availability status and a per-delivery-window quantity breakdown.
 
-### Tests for User Story 3
+> **⚠️ Design change (see `.cursor/plans/supplier-stock-direct-read_eff71a21.plan.md`)**: US3 inventory was refactored away from the planned internal backoffice REST client (`GET /internal/price-and-availability`) to **direct, read-only reads of the shared backoffice database** over the private network. The shop checks **our own stock (`public.autoparts`) first** — locking the displayed price to our sell price — then layers `public.supplier_stock` on top via a pure **best-offer** selector (fastest delivery band → lowest `buy_price` → never undercut the sourced supplier → combined quantity per band). There is **no `customerRole` / trade-price field** in the inventory layer anymore (per-mechanic discount is a separate later phase). The result is a richer `StockStatus` enum (7 values) plus a per-delivery-window `availabilityByDelivery` breakdown.
 
-- [ ] T057 [P] [US3] Write unit tests for BackofficeClient (attaches `Authorization: Bearer <INTERNAL_API_TOKEN>` header, throws `BACKOFFICE_UNAVAILABLE` on non-2xx response, passes customer `role` query param) in `apps/api/src/inventory/backoffice-client.spec.ts`
-- [ ] T058 [P] [US3] Write unit tests for InventoryService (returns live price/availability, passes customer role for trade price, no Redis cache for this service) in `apps/api/src/inventory/inventory.service.spec.ts`
-- [ ] T059 [US3] Write integration tests for availability endpoint (GET /inventory/articles/:articleNumber/availability — no cached response headers) in `apps/api/test/inventory.e2e-spec.ts`
+### Tests for User Story 3 (write first — confirm they FAIL before implementing)
+
+- [X] T057 [P] [US3] Write unit tests for the `selectBestOffer` pure selector (own-stock primary → `IN_STOCK`; own-stock with 0 qty falls back to the fastest supplier band but keeps our locked price; supplier-only fallback picks fastest delivery band then lowest `buy_price`; never-undercut-supplier price guard; combined quantity per band; out-of-stock everywhere) in `apps/api/src/inventory/best-offer.spec.ts`
+- [X] T057b [P] [US3] Write unit tests for the delivery mapping (`delivery.ts`: `StockStatus` rank/days mapping, `ownStockOutcome`, `resolveDeliveryRule` same-day cut-off in `Europe/Sofia`) and `DeliverySpeedResolver` (config-driven `supplier_source` + `warehouse_code` → delivery band; unknown source/warehouse returns null and raises an alert) in `apps/api/src/inventory/delivery.spec.ts` and `apps/api/src/inventory/delivery-speed.resolver.spec.ts`
+- [X] T058 [P] [US3] Write unit tests for `AutopartsRepository` and `SupplierStockRepository` (read-only `$queryRaw`; single + bulk `= ANY` by `tecdoc_number`; decimal→integer-cents parsing; only the client-safe / cost columns each table is allowed to read) in `apps/api/src/inventory/autoparts.repository.spec.ts` and `apps/api/src/inventory/supplier-stock.repository.spec.ts`
+- [X] T058b [P] [US3] Write unit tests for `InventoryService` (live `getAvailability` fails **closed** → `InventoryUnavailableException`; cached-catalog `getBestPriceAndAvailability` + `getBulkPricesAndAvailability` fail **open** → neutral unavailable; supplier-path `priceExVat` derived from VAT-inclusive sell price via `VAT_RATE`; own-stock price taken directly; no Redis cache; mocked repositories — never hit a real DB) in `apps/api/src/inventory/inventory.service.spec.ts`
+- [X] T059 [US3] Write integration tests for the availability endpoint (GET /inventory/articles/:articleNumber/availability — `Cache-Control: no-store`, mocked `PrismaService`) in `apps/api/test/inventory.e2e-spec.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T060 [P] [US3] Implement BackofficeClient (plain HTTP client; adds `Authorization: Bearer <INTERNAL_API_TOKEN>` from ConfigService on every request; throws `BackofficeUnavailableException` on non-2xx) in `apps/api/src/inventory/backoffice.client.ts`
-- [ ] T061 [US3] Implement InventoryService (call backoffice GET /internal/price-and-availability/:articleNumber with customer role; return stockStatus, estimatedDeliveryDays, priceExVat, priceIncVat, tradePriceExVat for MECHANIC) in `apps/api/src/inventory/inventory.service.ts`
-- [ ] T062 [US3] Implement InventoryController (GET /inventory/articles/:articleNumber/availability — protected, no cache) in `apps/api/src/inventory/inventory.controller.ts`
-- [ ] T063 [US3] Create InventoryModule and barrel in `apps/api/src/inventory/index.ts`
-- [ ] T064 [US3] Implement inventory API function (getAvailability) in `apps/web/src/lib/api/inventory.ts`
-- [ ] T065 [P] [US3] Create ArticleImages component (image gallery, "no image available" placeholder visually distinct from product images) in `apps/web/src/components/catalog/article-images.tsx`
-- [ ] T066 [P] [US3] Create ArticleSpecs component (technical specs table, OEM cross-reference numbers, compatible vehicles list) in `apps/web/src/components/catalog/article-specs.tsx`
-- [ ] T067 [P] [US3] Create VehicleFitBadge component ("Fits your [Vehicle Name]" or "Does not fit" indicator near part title) in `apps/web/src/components/catalog/vehicle-fit-badge.tsx`
-- [ ] T068 [P] [US3] Create RelatedParts component (same category + same vehicle compatibility, Server Component) in `apps/web/src/components/catalog/related-parts.tsx`
-- [ ] T069 [US3] Implement article detail page (SSR — fresh stock/price every request; role-based price display; "Add to Cart" hidden when out-of-stock; quantity selector) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/catalog/articles/[articleNumber]/page.tsx`
+- [X] T060 [US3] Define the shared inventory contract: add `StockStatus` (7 values) + `Supplier` enums in `packages/shared/src/enums.ts`; add `DeliveryAvailabilityDto` + `AvailabilityDto` (with `quantity` and `availabilityByDelivery`, no trade fields) in `packages/shared/src/dto/inventory.dto.ts`; type `ArticleInventoryDetailDto.stockStatus` as `StockStatus` and add `availabilityByDelivery` in `packages/shared/src/dto/catalog.dto.ts`; rename the error code to `INVENTORY_UNAVAILABLE` in `packages/shared/src/errors.ts`; export all from `packages/shared/src/index.ts`
+- [X] T060b [US3] Add a global `PrismaService` (`extends PrismaClient` with `onModuleInit`/`onModuleDestroy`) + `@Global() PrismaModule` and barrel, and wire it into `AppModule`, in `apps/api/src/prisma/`
+- [X] T061 [US3] Implement `AutopartsRepository` (read-only `$queryRaw` on `public.autoparts` own stock — `tecdoc_number, brand, description, available_quantity, sell_price_net, gross_price`) and `SupplierStockRepository` (read-only `$queryRaw` on `public.supplier_stock` — `supplier_source, warehouse_code, availability, buy_price, sell_price, tecdoc_number`), each exposing `findByTecdocNumber` + bulk `findByTecdocNumbers`, with the decimal→cents helper in `apps/api/src/inventory/autoparts.repository.ts`, `supplier-stock.repository.ts`, and `db-value.ts`
+- [X] T061b [US3] Implement the delivery layer: `delivery.ts` (`DeliveryRule` enum, per-supplier warehouse→rule maps, `DeliveryOutcome` with rank + estimated days, same-day cut-off resolution, `ownStockOutcome`) and `DeliverySpeedResolver` (resolves a `supplier_source` + `warehouse_code` to a `DeliveryOutcome`, alerts and returns null on an unknown mapping) in `apps/api/src/inventory/delivery.ts` and `apps/api/src/inventory/delivery-speed.resolver.ts`
+- [X] T061c [US3] Implement the pure `selectBestOffer` selector (own-stock-first; suppliers add quantity per delivery band; the fastest band sets `stockStatus`/`estimatedDeliveryDays`/headline quantity; never undercut the sourced supplier; supplier-only fallback uses lowest `buy_price` within the fastest band to set the displayed sell price; emits the per-window `availabilityByDelivery` with the server-only per-supplier `sources` split) in `apps/api/src/inventory/best-offer.ts`
+- [X] T061d [US3] Implement `InventoryService` driven by the two repositories + `selectBestOffer` (`getAvailability` fails closed; `getBestPriceAndAvailability` + `getBulkPricesAndAvailability` group-by `tecdoc_number` and fail open; VAT-derived ex-VAT for the supplier path; strips per-supplier `sources` before returning client DTOs; no `customerRole`/trade logic) and `InventoryUnavailableException` (`INVENTORY_UNAVAILABLE`) in `apps/api/src/inventory/inventory.service.ts` and `inventory-unavailable.exception.ts`
+- [X] T062 [US3] Implement `InventoryController` (GET /inventory/articles/:articleNumber/availability — protected by the global `JwtGuard`, `Cache-Control: no-store`) in `apps/api/src/inventory/inventory.controller.ts`
+- [X] T063 [US3] Create `InventoryModule` (provides the two repositories + `DeliverySpeedResolver` + `InventoryService`, backed by the global `PrismaService`; no env-switched backoffice factory) and barrel in `apps/api/src/inventory/index.ts`; update `CatalogService.getArticleDetail` to drop `customerRole`/trade fields and surface `stockStatus`/`estimatedDeliveryDays`/`availabilityByDelivery`
+- [X] T063b [US3] Grant the shop role column-scoped read-only `SELECT` on `public.autoparts` (own stock — excluding cost/internal columns) and add `buy_price` to the `public.supplier_stock` grant, guarded by `to_regclass(...) IS NOT NULL`, in `infra/db/01-shop-provisioning.sql`
+- [X] T064 [US3] Implement the inventory API function (`getAvailability` + `availabilityQueryOptions`, `cache: 'no-store'`) in `apps/web/src/lib/api/inventory.ts`
+- [X] T065 [P] [US3] Create ArticleImages component (image gallery, "no image available" placeholder visually distinct from product images) in `apps/web/src/components/catalog/article-images.tsx`
+- [X] T066 [P] [US3] Create ArticleSpecs component (technical specs table, OEM cross-reference numbers, compatible vehicles list) in `apps/web/src/components/catalog/article-specs.tsx`
+- [X] T067 [P] [US3] Create VehicleFitBadge component ("Fits your [Vehicle Name]" or "Does not fit" indicator near part title) in `apps/web/src/components/catalog/vehicle-fit-badge.tsx`
+- [X] T068 [P] [US3] Create RelatedParts component (same category + same vehicle compatibility, Server Component) in `apps/web/src/components/catalog/related-parts.tsx`
+- [X] T068b [US3] Create ArticleBuyBox component (single locked price from `priceIncVat` with "с ДДС" label; in-stock / out-of-stock badge; precise delivery label derived from `stockStatus`; per-delivery-window "X бр. <when>" breakdown from `availabilityByDelivery`; quantity stepper; add-to-cart hidden when out of stock) in `apps/web/src/components/catalog/article-buy-box.tsx`
+- [X] T069 [US3] Implement the article detail page (dynamic under Cache Components — fresh stock/price every request, no `'use cache'`; composes ArticleImages, ArticleSpecs, VehicleFitBadge, ArticleBuyBox, RelatedParts; add-to-cart hidden when out of stock) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/catalog/articles/[articleNumber]/page.tsx`
 
-**Checkpoint**: Part detail page independently functional — all information renders, availability is live, add-to-cart button state is correct.
+**Checkpoint**: Part detail page independently functional — all information renders, availability is live (direct DB read, `no-store`), a single locked price and per-delivery-window quantity breakdown are shown, and the add-to-cart button state is correct.
+
+> **Open follow-ups (non-blocking, tracked in the plan)**: (1) per-mechanic configured trade discount applied on top of the locked sell price (separate later phase); (2) extend matching beyond `tecdoc_number` (`supplier_code` / `catalog_number` for rows without a TecDoc number).
 
 ---
 
@@ -231,6 +243,7 @@
 - [ ] T111 [P] [US5] Create ShippingSelector component (Econt/Speedy options with cost via formatPrice and estimated delivery days) in `apps/web/src/components/checkout/shipping-selector.tsx`
 - [ ] T112 [P] [US5] Create PaymentStep component (myPOS redirect button that calls POST /payments/mypos/initiate and redirects to checkoutUrl; COD option conditional on order total vs. threshold) in `apps/web/src/components/checkout/payment-step.tsx`
 - [ ] T113 [US5] Implement multi-step checkout page (Client Component: address → shipping → payment → confirmation; preserve all data on payment failure; redirect to login for anonymous visitors with destination preserved) in `apps/web/src/app/(shop)/checkout/page.tsx`
+- [ ] T113b [US5] Delivery-promise pre-action re-validation (proposal 4 from the delivery-staleness work; see `docs/DELIVERY-LOGIC.md` → "Snapshot freshness"). The detail-page delivery date is an SSR snapshot that the client only soft-refreshes (`computedAt`/`cutoffAt` staleness guard + `useDeliveryRefresh`). Before a binding commitment — add-to-cart / buy-now and the checkout confirm step — call the live, `no-store` `getAvailability` (which recomputes `availabilityByWarehouse` with a fresh `now`) and bind the **returned** delivery date as the committed promise, so a stale tab can never commit a wrong date. Surface a "delivery date changed" notice if it shifted, mirroring the existing price-change detection in `CheckoutService` (T091). Wire in `apps/web/src/lib/api/inventory.ts` (cart/checkout flows) and `apps/api/src/orders/checkout.service.ts`.
 
 **Checkpoint**: Full checkout flow functional end-to-end with test payments. Order created, on-screen confirmation shown, confirmation email sent. Revenue-generating MVP.
 
@@ -371,6 +384,19 @@
 
 ---
 
+## Phase 14: Pricing Offers & Discounts (Deferred — not in the original US scope)
+
+**Context**: The article detail buy box currently shows only the raw sell price. A placeholder "old price + −13% badge" was **removed** because it fabricated a discount. Real promotional / discount pricing needs a dedicated mechanism, sourced read-only from the backoffice (which owns all pricing per `docs/ARCHITECTURE.md`) — never fabricated in the frontend. Two distinct cases:
+- **B2C**: time-bounded promotional offers on particular parts (per article, optionally per category), shown to everyone.
+- **B2B**: per-mechanic trade discounts (simpler — the discount is configured per mechanic; feeds the "trade price shown universally" behaviour of US9). Blocked on Clerk roles.
+
+- [ ] T161 Design the pricing-offer contract: extend the inventory/catalog pricing DTOs with an optional reference/list price and an effective (promotional) price plus a validity window, sourced read-only from the backoffice pricing tables. Keep supplier-agnostic (no supplier exposed) in `packages/shared/src/dto/inventory.dto.ts`, `packages/shared/src/dto/catalog.dto.ts`, `apps/api/src/inventory/`
+- [ ] T162 [B2C] Implement B2C per-part promotional offers: backoffice-owned promo price per article (optionally category/time-bounded); resolve the effective price + reference price + discount % in `InventoryService`; render the old-price strikethrough and discount badge from real data (restore the badge in `apps/web/src/components/catalog/article-buy-box.tsx`, driven by contract fields, not a constant)
+- [ ] T163 [B2B] Implement B2B per-mechanic trade discount as the pricing source for the "trade price shown universally" behaviour (US9). Decide where the per-mechanic discount lives (flat percent vs. dedicated price list) and apply it in the pricing layer once Clerk roles are wired; cross-links US9
+- [ ] T164 Tests: unit tests for offer/discount resolution (B2C promo active vs. expired, B2B per-mechanic discount applied, no stacking/double-discount, VAT recomputed on the discounted base) and an RTL test for the price block rendering a real discount
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -472,7 +498,7 @@ After Foundational phase, assign by domain:
 - TDD is mandatory per Constitution V — unit tests MUST be written and confirmed failing before implementation in every phase
 - `packages/shared` is the merge boundary — update shared types before implementing consuming code in either app
 - All monetary values are integer EUR cents throughout every layer (Constitution IX); never use floats or decimal strings
-- Pre-checkout price/availability check MUST bypass Redis entirely — call BackofficeClient live (Constitution VII, FR-030)
-- `shop_app` Postgres user has no access to `backoffice.supplier_stock` — all pricing goes through the backoffice REST API
+- Pre-checkout price/availability check MUST bypass Redis entirely — read our own stock (`public.autoparts`) and supplier stock (`public.supplier_stock`) directly and live (Constitution VII, FR-030)
+- The shop role reads the shared backoffice DB directly (read-only, private network) via column-scoped `SELECT` grants on `public.autoparts` and `public.supplier_stock`; it never sees cost/internal columns it is not granted, and the legacy backoffice price/availability REST endpoint is no longer used
 - SSE connections MUST be cleaned up via the finalize() operator on disconnect (Constitution VIII)
 - Commit after each completed task or logical group before starting the next

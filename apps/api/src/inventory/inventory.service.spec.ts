@@ -8,7 +8,8 @@ import {
   SupplierStockRow,
 } from './supplier-stock.repository';
 import { DeliverySpeedResolver } from './delivery-speed.resolver';
-import { outcomeForStatus } from './delivery';
+import { DeliveryScheduleService } from './delivery-schedule.service';
+import { DeliveryRule, outcomeForStatus } from './delivery';
 import { InventoryUnavailableException } from './inventory-unavailable.exception';
 
 const ownFindByNumber = jest.fn();
@@ -32,20 +33,55 @@ const deliverySpeed = {
   resolve: (source: string) => {
     switch (source) {
       case 'INTERCARS':
-        return outcomeForStatus(StockStatus.DELIVERY_WITHIN_HOUR);
+        return {
+          rule: DeliveryRule.WITHIN_HOUR,
+          outcome: outcomeForStatus(StockStatus.DELIVERY_WITHIN_HOUR),
+        };
       case 'AUTOPLUS':
-        return outcomeForStatus(StockStatus.DELIVERY_SAME_DAY);
+        return {
+          rule: DeliveryRule.SAME_DAY_BEFORE_CUTOFF,
+          outcome: outcomeForStatus(StockStatus.DELIVERY_SAME_DAY),
+        };
       case 'AUTO1':
-        return outcomeForStatus(StockStatus.DELIVERY_IN_2_DAYS);
+        return {
+          rule: DeliveryRule.TWO_BUSINESS_DAYS,
+          outcome: outcomeForStatus(StockStatus.DELIVERY_IN_2_DAYS),
+        };
       default:
         return null;
     }
   },
 } as unknown as DeliverySpeedResolver;
 
+// Deterministic projection so warehouse assertions don't depend on the clock.
+const deliverySchedule = {
+  projectWarehouse: (warehouse: string) => ({
+    deliveryWorkDays: 0,
+    orderCutoffTime: '18:00',
+    cutoffAt: `cutoff:${warehouse}`,
+    pickup: { earliestAt: `pickup:${warehouse}`, granularity: 'DAY' as const },
+    courier: {
+      earliestAt: `courier:${warehouse}`,
+      granularity: 'DAY' as const,
+    },
+  }),
+} as unknown as DeliveryScheduleService;
+
 const config = {
   get: (key: string) => (key === 'VAT_RATE' ? 0.2 : undefined),
 } as unknown as ConfigService;
+
+function warehouseRow(warehouseId: string, quantity: number) {
+  return {
+    warehouseId,
+    quantity,
+    deliveryWorkDays: 0,
+    orderCutoffTime: '18:00',
+    cutoffAt: `cutoff:${warehouseId}`,
+    pickup: { earliestAt: `pickup:${warehouseId}`, granularity: 'DAY' },
+    courier: { earliestAt: `courier:${warehouseId}`, granularity: 'DAY' },
+  };
+}
 
 function ownRow(overrides: Partial<OwnStockRow> = {}): OwnStockRow {
   return {
@@ -79,6 +115,7 @@ describe('InventoryService', () => {
       ownStock,
       supplierStock,
       deliverySpeed,
+      deliverySchedule,
       config,
     );
     jest.clearAllMocks();
@@ -98,21 +135,11 @@ describe('InventoryService', () => {
         available: true,
         stockStatus: StockStatus.IN_STOCK,
         estimatedDeliveryDays: 0,
-        quantity: 4,
         priceExVat: 5000,
         priceIncVat: 6000,
-        availabilityByDelivery: [
-          {
-            stockStatus: StockStatus.IN_STOCK,
-            estimatedDeliveryDays: 0,
-            quantity: 4,
-          },
-          {
-            stockStatus: StockStatus.DELIVERY_WITHIN_HOUR,
-            estimatedDeliveryDays: 0,
-            quantity: 3,
-          },
-        ],
+        // Own stock (4) and the within-hour supplier (3) unite into Central.
+        availabilityByWarehouse: [warehouseRow('CENTRAL', 7)],
+        computedAt: expect.any(String),
       });
     });
 
@@ -135,32 +162,8 @@ describe('InventoryService', () => {
       const result = await service.getAvailability('WL6340');
 
       expect(result.stockStatus).toBe(StockStatus.IN_STOCK);
-      expect(result.quantity).toBe(4);
       expect(result.priceIncVat).toBe(4800);
       expect(result.priceExVat).toBe(Math.round(4800 / 1.2));
-    });
-
-    it('reports available quantity per delivery window (today, next day, ...)', async () => {
-      ownFindByNumber.mockResolvedValueOnce([]);
-      supplierFindByNumber.mockResolvedValueOnce([
-        supplierRow({ supplierSource: 'INTERCARS', availability: 3 }),
-        supplierRow({ supplierSource: 'AUTO1', availability: 5 }),
-      ]);
-
-      const result = await service.getAvailability('WL6340');
-
-      expect(result.availabilityByDelivery).toEqual([
-        {
-          stockStatus: StockStatus.DELIVERY_WITHIN_HOUR,
-          estimatedDeliveryDays: 0,
-          quantity: 3,
-        },
-        {
-          stockStatus: StockStatus.DELIVERY_IN_2_DAYS,
-          estimatedDeliveryDays: 2,
-          quantity: 5,
-        },
-      ]);
     });
 
     it('falls back to the lowest-buy-price supplier within the fastest band when we do not carry the part', async () => {
@@ -185,7 +188,6 @@ describe('InventoryService', () => {
       expect(result.available).toBe(true);
       expect(result.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
       expect(result.estimatedDeliveryDays).toBe(0);
-      expect(result.quantity).toBe(3);
       // Supplier sell price is VAT-inclusive; ex-VAT is derived from it.
       expect(result.priceIncVat).toBe(5300);
       expect(result.priceExVat).toBe(Math.round(5300 / 1.2));
@@ -199,7 +201,6 @@ describe('InventoryService', () => {
 
       expect(result.available).toBe(false);
       expect(result.stockStatus).toBe(StockStatus.OUT_OF_STOCK);
-      expect(result.quantity).toBe(0);
       expect(result.priceExVat).toBeNull();
       expect(result.priceIncVat).toBeNull();
     });
@@ -223,7 +224,38 @@ describe('InventoryService', () => {
 
       expect(result.available).toBe(false);
       expect(result.stockStatus).toBe(StockStatus.OUT_OF_STOCK);
-      expect(result.quantity).toBe(0);
+      expect(result.availabilityByWarehouse).toEqual([]);
+    });
+
+    it('groups stock into fastest-first warehouses by inherent capability', async () => {
+      ownFindByNumber.mockResolvedValueOnce([]);
+      supplierFindByNumber.mockResolvedValueOnce([
+        // Same-day capable -> Regional 1.
+        supplierRow({ supplierSource: 'AUTOPLUS', availability: 5 }),
+        // Within the hour -> Central.
+        supplierRow({ supplierSource: 'INTERCARS', availability: 2 }),
+        // 2 days -> Romania.
+        supplierRow({ supplierSource: 'AUTO1', availability: 9 }),
+      ]);
+
+      const result = await service.getAvailability('WL6340');
+
+      expect(result.availabilityByWarehouse).toEqual([
+        warehouseRow('CENTRAL', 2),
+        warehouseRow('REGIONAL_1', 5),
+        warehouseRow('ROMANIA', 9),
+      ]);
+    });
+
+    it('omits warehouses that hold no stock', async () => {
+      ownFindByNumber.mockResolvedValueOnce([ownRow({ availableQuantity: 3 })]);
+      supplierFindByNumber.mockResolvedValueOnce([]);
+
+      const result = await service.getAvailability('WL6340');
+
+      expect(result.availabilityByWarehouse).toEqual([
+        warehouseRow('CENTRAL', 3),
+      ]);
     });
 
     it('drops a line with an unknown quantity and raises an alert', async () => {
@@ -243,9 +275,11 @@ describe('InventoryService', () => {
 
       const result = await service.getAvailability('WL6340');
 
-      // Only the valid line counts towards the displayed quantity.
+      // Only the valid line (5) counts towards the Central warehouse quantity.
       expect(result.available).toBe(true);
-      expect(result.quantity).toBe(5);
+      expect(result.availabilityByWarehouse).toEqual([
+        warehouseRow('CENTRAL', 5),
+      ]);
       expect(errorSpy).toHaveBeenCalledTimes(1);
 
       errorSpy.mockRestore();
@@ -264,7 +298,22 @@ describe('InventoryService', () => {
       expect(result.available).toBe(true);
       expect(result.priceIncVat).toBe(5500);
       expect(result.priceExVat).toBe(Math.round(5500 / 1.2));
-      expect(result.quantity).toBe(5);
+    });
+
+    it('embeds the per-warehouse breakdown and a computedAt (dynamic detail path)', async () => {
+      ownFindByNumber.mockResolvedValueOnce([]);
+      supplierFindByNumber.mockResolvedValueOnce([
+        supplierRow({ availability: 5 }),
+      ]);
+
+      const result = await service.getBestPriceAndAvailability('WL6340');
+
+      // INTERCARS (within the hour) groups into Central; the article detail page
+      // is dynamic SSR, so the request-time dates are safe to embed here.
+      expect(result.availabilityByWarehouse).toEqual([
+        warehouseRow('CENTRAL', 5),
+      ]);
+      expect(result.computedAt).toEqual(expect.any(String));
     });
 
     it('fails open to the neutral unavailable state on a database error', async () => {
@@ -317,6 +366,27 @@ describe('InventoryService', () => {
       expect(result.get('SUPPLIED')?.available).toBe(true);
       expect(result.get('SUPPLIED')?.priceIncVat).toBe(4000);
       expect(result.get('MISSING')?.available).toBe(false);
+    });
+
+    it('omits warehouse dates on the cached bulk path (empty breakdown, null computedAt)', async () => {
+      ownFindByNumbers.mockResolvedValueOnce(new Map());
+      supplierFindByNumbers.mockResolvedValueOnce(
+        new Map([
+          [
+            'SUPPLIED',
+            [supplierRow({ tecdocNumber: 'SUPPLIED', availability: 6 })],
+          ],
+        ]),
+      );
+
+      const result = await service.getBulkPricesAndAvailability(['SUPPLIED']);
+
+      // Listings are cached, so embedding absolute request-time dates would
+      // serve stale promises: the breakdown stays empty and computedAt null.
+      const supplied = result.get('SUPPLIED');
+      expect(supplied?.available).toBe(true);
+      expect(supplied?.availabilityByWarehouse).toEqual([]);
+      expect(supplied?.computedAt).toBeNull();
     });
 
     it('fails open to unavailable for all articles on a database error', async () => {

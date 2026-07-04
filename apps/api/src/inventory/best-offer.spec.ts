@@ -5,7 +5,7 @@ import {
   BestOfferOptions,
   SupplierOffer,
 } from './best-offer';
-import { outcomeForStatus } from './delivery';
+import { DeliveryRule, outcomeForStatus } from './delivery';
 
 // Deterministic delivery mapping for tests, keyed by supplier source:
 // INTERCARS -> within hour, AUTOPLUS -> same day, AUTO1 -> 2 days, else 3 days.
@@ -15,16 +15,26 @@ const STATUS_BY_SUPPLIER: Record<string, StockStatus> = {
   AUTO1: StockStatus.DELIVERY_IN_2_DAYS,
 };
 
+// selectBestOffer buckets by the resolved outcome, not the inherent rule, so the
+// exact rule is irrelevant here — any value keeps the seeds compiling.
+const RULE_BY_STATUS: Record<string, DeliveryRule> = {
+  [StockStatus.DELIVERY_WITHIN_HOUR]: DeliveryRule.WITHIN_HOUR,
+  [StockStatus.DELIVERY_SAME_DAY]: DeliveryRule.SAME_DAY_BEFORE_CUTOFF,
+  [StockStatus.DELIVERY_IN_2_DAYS]: DeliveryRule.TWO_BUSINESS_DAYS,
+  [StockStatus.DELIVERY_IN_3_DAYS]: DeliveryRule.THREE_BUSINESS_DAYS,
+};
+
 const options: BestOfferOptions = { vatRate: 0.2 };
 
-type SupplierSeed = Omit<SupplierOffer, 'delivery'>;
+type SupplierSeed = Omit<SupplierOffer, 'delivery' | 'rule'>;
 
 function withDelivery(seed: SupplierSeed): SupplierOffer {
+  const status =
+    STATUS_BY_SUPPLIER[seed.supplierSource] ?? StockStatus.DELIVERY_IN_3_DAYS;
   return {
     ...seed,
-    delivery: outcomeForStatus(
-      STATUS_BY_SUPPLIER[seed.supplierSource] ?? StockStatus.DELIVERY_IN_3_DAYS,
-    ),
+    rule: RULE_BY_STATUS[status],
+    delivery: outcomeForStatus(status),
   };
 }
 
@@ -46,25 +56,8 @@ describe('selectBestOffer', () => {
       expect(offer.available).toBe(true);
       expect(offer.stockStatus).toBe(StockStatus.IN_STOCK);
       expect(offer.estimatedDeliveryDays).toBe(0);
-      expect(offer.quantity).toBe(4);
       expect(offer.priceExVatCents).toBe(5000);
       expect(offer.priceIncVatCents).toBe(6000);
-      expect(offer.availabilityByDelivery).toEqual([
-        {
-          stockStatus: StockStatus.IN_STOCK,
-          estimatedDeliveryDays: 0,
-          quantity: 4,
-          sources: [
-            {
-              supplierSource: null,
-              warehouseCode: null,
-              quantity: 4,
-              buyPriceCents: null,
-              sellPriceCents: 6000,
-            },
-          ],
-        },
-      ]);
     });
 
     it('keeps IN_STOCK as the fastest band over a within-hour supplier and keeps our price', () => {
@@ -81,43 +74,11 @@ describe('selectBestOffer', () => {
         ],
       });
 
-      // Our own stock (IN_STOCK) is faster than the supplier's within-hour band.
+      // Our own stock (IN_STOCK) is faster than the supplier's within-hour band,
+      // so the headline mirrors the fastest (IN_STOCK) window.
       expect(offer.stockStatus).toBe(StockStatus.IN_STOCK);
       expect(offer.estimatedDeliveryDays).toBe(0);
-      expect(offer.quantity).toBe(4);
       expect(offer.priceExVatCents).toBe(5000);
-      // Both windows are reported so the frontend can show "4 now, +3 within
-      // the hour"; the headline mirrors the fastest (IN_STOCK) window.
-      expect(offer.availabilityByDelivery).toEqual([
-        {
-          stockStatus: StockStatus.IN_STOCK,
-          estimatedDeliveryDays: 0,
-          quantity: 4,
-          sources: [
-            {
-              supplierSource: null,
-              warehouseCode: null,
-              quantity: 4,
-              buyPriceCents: null,
-              sellPriceCents: 6000,
-            },
-          ],
-        },
-        {
-          stockStatus: StockStatus.DELIVERY_WITHIN_HOUR,
-          estimatedDeliveryDays: 0,
-          quantity: 3,
-          sources: [
-            {
-              supplierSource: 'INTERCARS',
-              warehouseCode: 'B24',
-              quantity: 3,
-              buyPriceCents: 4000,
-              sellPriceCents: 5200,
-            },
-          ],
-        },
-      ]);
     });
 
     it('falls through to the fastest supplier band when we hold zero units, keeping our price', () => {
@@ -137,25 +98,8 @@ describe('selectBestOffer', () => {
       expect(offer.available).toBe(true);
       expect(offer.stockStatus).toBe(StockStatus.DELIVERY_IN_2_DAYS);
       expect(offer.estimatedDeliveryDays).toBe(2);
-      expect(offer.quantity).toBe(6);
       expect(offer.priceExVatCents).toBe(5000);
       expect(offer.priceIncVatCents).toBe(6000);
-      expect(offer.availabilityByDelivery).toEqual([
-        {
-          stockStatus: StockStatus.DELIVERY_IN_2_DAYS,
-          estimatedDeliveryDays: 2,
-          quantity: 6,
-          sources: [
-            {
-              supplierSource: 'AUTO1',
-              warehouseCode: 'REGIONAL',
-              quantity: 6,
-              buyPriceCents: 3000,
-              sellPriceCents: 4000,
-            },
-          ],
-        },
-      ]);
     });
 
     it('raises the displayed price to the cheapest supplier when our price undercuts them', () => {
@@ -175,7 +119,6 @@ describe('selectBestOffer', () => {
       // We still ship from our own stock immediately, but we never undercut the
       // supplier: the headline price is bumped up to their (VAT-inclusive) one.
       expect(offer.stockStatus).toBe(StockStatus.IN_STOCK);
-      expect(offer.quantity).toBe(4);
       expect(offer.priceIncVatCents).toBe(4800);
       expect(offer.priceExVatCents).toBe(Math.round(4800 / 1.2));
     });
@@ -280,14 +223,12 @@ describe('selectBestOffer', () => {
       expect(offer.available).toBe(false);
       expect(offer.stockStatus).toBe(StockStatus.OUT_OF_STOCK);
       expect(offer.estimatedDeliveryDays).toBeNull();
-      expect(offer.quantity).toBe(0);
       expect(offer.priceExVatCents).toBe(5000);
-      expect(offer.availabilityByDelivery).toEqual([]);
     });
   });
 
   describe('supplier-only fallback (we do not carry the part)', () => {
-    it('combines quantity and picks the lowest buy price within the same band', () => {
+    it('picks the lowest buy price within the same band', () => {
       const offer = run({
         own: null,
         suppliers: [
@@ -309,14 +250,13 @@ describe('selectBestOffer', () => {
       });
 
       expect(offer.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
-      expect(offer.quantity).toBe(5);
       // Lower buy price (3800) wins -> its VAT-inclusive sell price is shown,
       // and the ex-VAT figure is derived from it (no VAT added on top).
       expect(offer.priceIncVatCents).toBe(5300);
       expect(offer.priceExVatCents).toBe(Math.round(5300 / 1.2));
     });
 
-    it('keeps each supplier quantity segregated and sorted cheapest-first', () => {
+    it('prices from the fastest band and excludes slower, cheaper bands', () => {
       const offer = run({
         own: null,
         suppliers: [
@@ -345,46 +285,11 @@ describe('selectBestOffer', () => {
       });
 
       // Fastest band is within-hour (both INTERCARS lines); the cheaper AUTOPLUS
-      // offer is in its own (slower) same-day band and must not bleed into it.
+      // offer is in its own (slower) same-day band and must not bleed into it: if
+      // it did, the displayed price would collapse to its 200 sell price instead
+      // of the within-hour lowest-buy line's 5300.
       expect(offer.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
-      expect(offer.quantity).toBe(7);
-      expect(offer.availabilityByDelivery).toEqual([
-        {
-          stockStatus: StockStatus.DELIVERY_WITHIN_HOUR,
-          estimatedDeliveryDays: 0,
-          quantity: 7,
-          sources: [
-            {
-              supplierSource: 'INTERCARS',
-              warehouseCode: 'B24',
-              quantity: 4,
-              buyPriceCents: 3800,
-              sellPriceCents: 5300,
-            },
-            {
-              supplierSource: 'INTERCARS',
-              warehouseCode: 'B24',
-              quantity: 3,
-              buyPriceCents: 4000,
-              sellPriceCents: 5500,
-            },
-          ],
-        },
-        {
-          stockStatus: StockStatus.DELIVERY_SAME_DAY,
-          estimatedDeliveryDays: 0,
-          quantity: 10,
-          sources: [
-            {
-              supplierSource: 'AUTOPLUS',
-              warehouseCode: 'CENTRALEN_SKLAD',
-              quantity: 10,
-              buyPriceCents: 100,
-              sellPriceCents: 200,
-            },
-          ],
-        },
-      ]);
+      expect(offer.priceIncVatCents).toBe(5300);
     });
 
     it('prefers a faster band even if a slower supplier is cheaper', () => {
@@ -409,7 +314,6 @@ describe('selectBestOffer', () => {
       });
 
       expect(offer.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
-      expect(offer.quantity).toBe(1);
       expect(offer.priceIncVatCents).toBe(7000);
       expect(offer.priceExVatCents).toBe(Math.round(7000 / 1.2));
     });
@@ -436,7 +340,6 @@ describe('selectBestOffer', () => {
       });
 
       expect(offer.stockStatus).toBe(StockStatus.DELIVERY_IN_2_DAYS);
-      expect(offer.quantity).toBe(4);
       expect(offer.priceIncVatCents).toBe(4000);
       expect(offer.priceExVatCents).toBe(Math.round(4000 / 1.2));
     });
@@ -447,10 +350,8 @@ describe('selectBestOffer', () => {
       expect(offer.available).toBe(false);
       expect(offer.stockStatus).toBe(StockStatus.OUT_OF_STOCK);
       expect(offer.estimatedDeliveryDays).toBeNull();
-      expect(offer.quantity).toBe(0);
       expect(offer.priceExVatCents).toBeNull();
       expect(offer.priceIncVatCents).toBeNull();
-      expect(offer.availabilityByDelivery).toEqual([]);
     });
   });
 });

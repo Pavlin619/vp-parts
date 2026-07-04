@@ -223,9 +223,24 @@ describe('CatalogService', () => {
         stockStatus: 'IN_STOCK',
         estimatedDeliveryDays: 2,
         quantity: 6,
-        availabilityByDelivery: [
-          { stockStatus: 'IN_STOCK', estimatedDeliveryDays: 0, quantity: 6 },
+        availabilityByWarehouse: [
+          {
+            warehouseId: 'CENTRAL',
+            quantity: 6,
+            deliveryWorkDays: 0,
+            orderCutoffTime: '18:00',
+            cutoffAt: '2026-06-25T15:00:00.000Z',
+            pickup: {
+              earliestAt: '2026-06-25T08:00:00.000Z',
+              granularity: 'DAY',
+            },
+            courier: {
+              earliestAt: '2026-06-26T10:00:00.000Z',
+              granularity: 'DAY',
+            },
+          },
         ],
+        computedAt: '2026-06-25T07:00:00.000Z',
       });
 
       const result = await service.getArticleDetail('WL6340');
@@ -234,8 +249,23 @@ describe('CatalogService', () => {
       expect(result.available).toBe(true);
       expect(result.bestPriceExVat).toBe(1250);
       expect(result.bestPriceIncVat).toBe(1500);
-      expect(result.availabilityByDelivery).toEqual([
-        { stockStatus: 'IN_STOCK', estimatedDeliveryDays: 0, quantity: 6 },
+      expect(result.computedAt).toBe('2026-06-25T07:00:00.000Z');
+      expect(result.availabilityByWarehouse).toEqual([
+        {
+          warehouseId: 'CENTRAL',
+          quantity: 6,
+          deliveryWorkDays: 0,
+          orderCutoffTime: '18:00',
+          cutoffAt: '2026-06-25T15:00:00.000Z',
+          pickup: {
+            earliestAt: '2026-06-25T08:00:00.000Z',
+            granularity: 'DAY',
+          },
+          courier: {
+            earliestAt: '2026-06-26T10:00:00.000Z',
+            granularity: 'DAY',
+          },
+        },
       ]);
     });
 

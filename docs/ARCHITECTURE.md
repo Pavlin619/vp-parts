@@ -2,7 +2,7 @@
 
 ## Overview
 
-Online shop built as a TypeScript monorepo, extending an existing Spring Boot backoffice. The two systems share a single PostgreSQL database, communicate via internal REST APIs secured with a shared-secret bearer token (private-network only), and exchange async events through AWS SQS in both directions. The backoffice is the single source of truth for all supplier logic — pricing, stock availability, and order fulfillment routing.
+Online shop built as a TypeScript monorepo, extending an existing Spring Boot backoffice. The two systems share a single PostgreSQL database, exchange async events through AWS SQS in both directions, and use a small internal REST surface (secured with a shared-secret bearer token, private-network only) for a few command operations such as mechanic approval. The backoffice remains the single source of truth for all supplier logic — it computes pricing and stock and writes it into the shared database — but the shop now reads price and availability **directly** from that database (read-only, column-scoped) rather than over an internal REST endpoint. The backoffice still owns order fulfillment routing.
 
 ---
 
@@ -139,8 +139,9 @@ Lightsail Containers: rolling zero-downtime deploys, scale node count manually b
 One PostgreSQL instance, split into schemas with enforced permissions. Neither system writes to the other's tables directly.
 
 ```
-Schema: backoffice  (Spring Boot owns — Liquibase manages migrations)
-  supplier_stock        — nightly supplier sync writes here
+Schema: public  (Spring Boot owns — Liquibase manages migrations)
+  autoparts             — OUR OWN stock (primary price/availability source)
+  supplier_stock        — supplier stock projection (fallback source); nightly sync writes here
   nomenclature          — parts catalogue
   fulfillment_tasks     — created + managed entirely by backoffice
 
@@ -150,7 +151,8 @@ Schema: shop  (NestJS owns — Prisma manages migrations)
   cart                  — NestJS only
 
 Cross-schema permissions (enforced by Postgres users):
-  shop_app user    → SELECT only on backoffice.nomenclature
+  shop_app user    → SELECT (column-scoped) on public.autoparts      (own stock — no cost/internal columns)
+  shop_app user    → SELECT (column-scoped) on public.supplier_stock (incl. buy_price, to pick the best supplier)
   backoffice_app   → SELECT on shop.orders, shop.customers
   backoffice_app   → UPDATE on shop.orders (status updates from fulfillment events)
 ```
@@ -172,12 +174,14 @@ REST/JSON over HTTPS. All API calls go through NestJS — the browser never call
 Internal REST API secured with a **shared-secret bearer token**. Both NestJS and Spring Boot hold the same secret in their environment (`INTERNAL_API_TOKEN`). NestJS includes `Authorization: Bearer <INTERNAL_API_TOKEN>` on every internal call. The backoffice verifies the token on arrival. Internal endpoints are only reachable within the Lightsail private network — they are not exposed to the public internet.
 
 Internal endpoints on the backoffice:
-- `GET  /internal/price-and-availability/:articleNumber` — best price + stock across all suppliers. Called fresh (non-cached) at checkout confirmation before payment is taken.
 - `POST /internal/mechanic-approve/:customerId` — approve mechanic account registration.
+
+Price and availability is **no longer** served by an internal endpoint — NestJS reads it directly from the shared database (see next section).
 
 Fulfillment is **not triggered via a synchronous endpoint**. After payment is confirmed, NestJS publishes `OrderPlaced` to SQS. The backoffice consumes that event and handles all fulfillment logic asynchronously. SQS durability guarantees the message is processed even if the backoffice is temporarily down.
 
-> **gRPC note:** REST is used for all internal calls at launch. If `GET /internal/price-and-availability` becomes a bottleneck when rendering catalog pages with many parts, migrating this specific endpoint to gRPC is a natural next step — the contract is already defined in `packages/shared`.
+### NestJS → Shared DB (direct, read-only)
+Price and availability are read **directly from the shared PostgreSQL database** over the private network — there is no internal price/availability REST hop. The `shop_app` role holds a **column-scoped, read-only `SELECT`** grant on two backoffice tables: `public.autoparts` (our own stock — the primary source, granted only the customer-safe columns, never cost/internal columns) and `public.supplier_stock` (the fallback source, including `buy_price` so the shop can pick the best supplier). These tables are not modelled in Prisma; the `inventory` repositories read them with parameterised `prisma.$queryRaw`. This keeps live availability a single in-network query with no extra service hop, and database permissions enforce that the shop can never see anything beyond the granted columns.
 
 ### SQS Event Bus — Two Queues, Both Directions
 
@@ -218,29 +222,44 @@ JSON over HTTPS POST, proxy pattern. API key stays server-side, never exposed to
 
 ## Pricing, Availability and Pre-Checkout Check
 
-The backoffice is the **single source of truth** for all supplier logic. NestJS never reads `supplier_stock` directly.
+The backoffice computes and **writes** all supplier pricing/stock into the shared database; the shop **reads** it directly (read-only) and derives a single displayed offer per part. There is no internal price/availability REST hop. The selection logic lives in the `inventory` module — a pure `selectBestOffer` function fed by two read-only repositories.
 
-**During browsing** (user is not waiting on a critical action):
+> **Plain-language deep dive:** see [`docs/PRICING-AND-DELIVERY.md`](./PRICING-AND-DELIVERY.md) for a worked-example walkthrough of how we pick the price and the delivery date, including a decision diagram.
+
+### Own-stock-first best-offer algorithm
+
+For a given `tecdoc_number`:
+
+1. **Our own stock (`public.autoparts`) is primary.** If we carry the part, the displayed price is **always our** sell price (`sell_price_net` ex-VAT, `gross_price` inc-VAT — taken directly, no VAT recompute) and our `available_quantity` is treated as same-day (`IN_STOCK`). We never undercut the supplier we would actually source from: if our price is below that supplier's sell price we raise the displayed price up to it; otherwise we keep ours.
+2. **Suppliers (`public.supplier_stock`) layer on top.** Each supplier line is resolved to a delivery band from its `supplier_source` + `warehouse_code`. Supplier quantity is added onto the matching delivery band (today / next day / 2–3 days).
+3. **Supplier-only fallback** (no `autoparts` row): among the **fastest delivery band** that has stock, the supplier with the **lowest `buy_price`** wins and we display **their** `sell_price`; the ex-VAT figure is derived from it via `VAT_RATE`.
+4. The fastest band with stock sets the headline `stockStatus` and `estimatedDeliveryDays`. Quantity is reported only per warehouse (there is no top-level quantity field — it would just duplicate the per-warehouse totals). The per-supplier source split is kept server-side only (it carries buy prices). The customer-facing breakdown `availabilityByWarehouse` groups supplier stock into fictional warehouses (Central / Regional 1·2 / Romania / Poland) with concrete pickup and courier dates computed server-side. The warehouse model is what the detail page renders; see [DELIVERY-LOGIC.md](./DELIVERY-LOGIC.md) for the full delivery-date computation.
+
+`StockStatus` is a 7-value enum derived from the chosen delivery band: `IN_STOCK`, `DELIVERY_WITHIN_HOUR`, `DELIVERY_SAME_DAY`, `DELIVERY_NEXT_DAY`, `DELIVERY_IN_2_DAYS`, `DELIVERY_IN_3_DAYS`, `OUT_OF_STOCK`. Delivery bands are resolved from a warehouse→rule map per supplier (with an 11:00 `Europe/Sofia` same-day cut-off); own stock is fixed to same-day. The price shown to **all** customers is this single locked sell price — mechanic trade pricing is a separate per-mechanic discount applied later, not part of the inventory layer.
+
+**During browsing** (not a critical action — fails *open*):
 ```
-NestJS calls GET /internal/price-and-availability/:articleNumber
+inventory.getBestPriceAndAvailability(tecdocNumber)
+  → read public.autoparts + public.supplier_stock → selectBestOffer
+  → on a DB error: serve a neutral "unavailable" state (browsing never breaks)
         │
         ▼
-Backoffice queries supplier_stock, applies pricing rules, returns best offer
-        │
-        ▼
-NestJS caches in Redis (5 min TTL) — serves subsequent browse requests
+Result is part of the Redis-cached catalog listing/detail payload (browse perf only)
 ```
 
-**At checkout confirmation** (before payment is taken — always fresh):
+**At checkout confirmation** (before payment is taken — always fresh, fails *closed*):
 ```
-NestJS calls GET /internal/price-and-availability for each cart item
-No Redis cache used — live backoffice response only
+inventory.getAvailability(tecdocNumber) for each cart item — Cache-Control: no-store
+  → direct DB read, no Redis, every request
         │
         ├── Price / availability unchanged → proceed to payment
-        └── Something changed → show customer updated info, request re-confirmation
+        ├── Something changed → show customer updated info, request re-confirmation
+        └── DB read fails → InventoryUnavailableException (checkout fails closed)
 ```
 
-This ensures the customer is always charged based on live data. The 5-minute browse cache is a performance optimisation only, never used for financial decisions.
+This ensures the customer is always charged based on live data. The browse cache is a performance optimisation only, never used for financial decisions.
+
+> **Matching** is by `tecdoc_number` only for now (both tables). A `supplier_code` / `catalog_number` fallback for rows without a TecDoc number is a documented future enhancement.
 
 ---
 
@@ -250,9 +269,10 @@ This ensures the customer is always charged based on live data. The 5-minute bro
 Customer confirms cart
         │
         ▼
-Pre-checkout: fresh non-cached call to backoffice
-  GET /internal/price-and-availability for each cart item
+Pre-checkout: fresh non-cached direct DB read for each cart item
+  inventory.getAvailability(tecdocNumber) — reads autoparts + supplier_stock, no cache
   Price or stock changed? → show customer updated info, request re-confirmation
+  DB read fails? → InventoryUnavailableException (fail closed)
   All good? → proceed to payment
         │
         ▼
@@ -351,7 +371,7 @@ No Postgres TecDoc tables at launch. Redis handles all TecDoc caching.
 | Article detail | 24h | |
 | Part number search results | 1h | |
 | Autocomplete suggestions | 30m | |
-| Price + availability (from backoffice) | 5 min | Short — stock changes during day. Never used at checkout. |
+| Price + availability (direct DB read) | none | Read live from `public.autoparts` + `supplier_stock` per request. The value rides along inside the catalog listing/detail payload's own cache; the inventory read itself is never separately cached and is `no-store` on the live availability endpoint. |
 
 Cache lookup: **Redis hit → return. Redis miss → call TecDoc API → store in Redis → return.**
 
@@ -369,7 +389,7 @@ Cache lookup: **Redis hit → return. Redis miss → call TecDoc API → store i
 src/
 ├── catalog/        # TecDoc integration, vehicle search, parts browsing
 │   └── tecdoc/     # TecDocClient, Redis cache service, DTOs
-├── inventory/      # Calls backoffice /internal/price-and-availability
+├── inventory/      # Direct read-only reads of public.autoparts + supplier_stock; best-offer selection
 ├── orders/         # Order state machine, checkout, SQS publisher, SSE streams
 ├── payments/       # Stripe, myPOS, COD adapters
 ├── customers/      # Accounts, mechanic approval flow, Clerk webhook handler
@@ -432,14 +452,15 @@ Secrets in GitHub Actions secrets (CI) and Lightsail console environment variabl
 
 ## Key Decisions
 
-- **Backoffice owns all supplier logic** — pricing rules, stock routing, fulfillment decisions in one place. Shop is a presentation and checkout layer only.
+- **Backoffice owns all supplier logic** — it computes pricing and stock and writes them into the shared DB, and owns stock routing and fulfillment decisions. The shop is a presentation and checkout layer that reads price/availability directly (read-only) and derives the displayed offer.
 - **Two SQS queues, both directions** — `shop-events` (NestJS → backoffice) carries `OrderPlaced` which triggers all fulfillment logic in the backoffice. No synchronous fulfill endpoint — SQS durability handles backoffice downtime naturally. `fulfillment-events` (backoffice → NestJS) drives the order status lifecycle and real-time customer updates via SSE.
-- **Pre-checkout live availability check** — always a fresh non-cached call to the backoffice before payment. Redis cache is for browse performance only, never used for financial decisions.
+- **Own-stock-first best-offer** — the shop reads our own stock (`public.autoparts`) first and locks the displayed price to our sell price, then layers `public.supplier_stock` on top (fastest delivery band → lowest `buy_price`, never undercutting the sourced supplier). A single locked price is shown to all customers; per-mechanic trade discounts are applied separately later.
+- **Pre-checkout live availability check** — always a fresh non-cached direct DB read before payment, failing *closed* (`InventoryUnavailableException`) on a DB error. Redis cache is for browse performance only, never used for financial decisions.
 - **SSE for real-time order status** — NestJS pushes status changes to the customer's browser when fulfillment events are consumed. No polling.
 - **Shared-secret bearer token for all service-to-service calls** — `INTERNAL_API_TOKEN` shared between NestJS and Spring Boot. Internal endpoints are private-network only; shared secret is defence in depth.
 - **Clerk for all user auth** — hosted sign-in/sign-up UI, JWT issuance, and user webhook (`user.created`) drive Customer DB sync. No self-hosted Keycloak required.
 - **`fulfillment_tasks` in backoffice schema** — backoffice owns and manages fulfillment entirely. Shop gets SELECT only to read task status.
-- **`shop_app` has no access to `supplier_stock`** — NestJS never reads supplier data directly. All pricing and availability queries go through the backoffice internal API.
+- **`shop_app` reads stock directly, column-scoped** — NestJS reads `public.autoparts` and `public.supplier_stock` over the private network with read-only, column-scoped `SELECT` grants (no cost/internal columns on `autoparts`). Database permissions are the enforcement boundary; the legacy backoffice price/availability REST endpoint is no longer used.
 - **PgBouncer transaction mode + Prisma** — requires `?pgbouncer=true` in the pooled `DATABASE_URL` used by the runtime client. Migrations connect directly to Postgres on port 5432 via `DIRECT_URL` (consumed by `prisma.config.ts`), bypassing PgBouncer; `DIRECT_URL` falls back to `DATABASE_URL` where no pooler exists.
 - **Shared Postgres, split schemas** — Liquibase manages backoffice schema, Prisma manages shop schema. Permissions enforced at DB level.
 - **All components in eu-central-1** — Lightsail VM, Lightsail Containers, and Vercel edge all in Frankfurt. Minimal latency between services and to Bulgarian users.

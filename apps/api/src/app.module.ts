@@ -64,6 +64,37 @@ import { AppService } from './app.service';
           .default(20000),
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
+
+        // Delivery scheduling (see DeliveryScheduleService + docs/DELIVERY-LOGIC.md).
+        SHOP_TIMEZONE: Joi.string().default('Europe/Sofia'),
+        SHOP_HOURS_WEEKDAY_OPEN: Joi.number()
+          .integer()
+          .min(0)
+          .max(23)
+          .default(9),
+        SHOP_HOURS_WEEKDAY_CLOSE: Joi.number()
+          .integer()
+          .min(0)
+          .max(24)
+          .default(18),
+        SHOP_HOURS_SATURDAY_OPEN: Joi.number()
+          .integer()
+          .min(0)
+          .max(23)
+          .default(9),
+        SHOP_HOURS_SATURDAY_CLOSE: Joi.number()
+          .integer()
+          .min(0)
+          .max(24)
+          .default(14),
+        SAME_DAY_CUTOFF_HOUR: Joi.number().integer().min(0).max(23).default(11),
+        NEXT_DAY_PLUS_CUTOFF_HOUR: Joi.number()
+          .integer()
+          .min(0)
+          .max(23)
+          .default(17),
+        WITHIN_HOUR_OFFSET_MINUTES: Joi.number().integer().min(0).default(60),
+        COURIER_EXTRA_WORKING_DAYS: Joi.number().integer().min(0).default(1),
       }),
       validationOptions: {
         allowUnknown: true,

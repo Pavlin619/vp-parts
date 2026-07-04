@@ -1,8 +1,10 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
+import RedisMock from 'ioredis-mock';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
+import { REDIS_CLIENT } from '../../src/catalog/tecdoc/tecdoc-cache.service';
 
 export interface TestAppOptions {
   /**
@@ -34,6 +36,11 @@ export async function createTestApp(
   const builder = Test.createTestingModule({
     imports: [AppModule],
   });
+
+  // In-memory Redis so the suite is hermetic: no Docker/Redis required, and no
+  // real socket (or its reconnect timer) leaking to keep the process alive.
+  // Cache semantics (get/set/expire/flushall) are faithfully emulated.
+  builder.overrideProvider(REDIS_CLIENT).useValue(new RedisMock());
 
   if (moduleCustomizer) {
     moduleCustomizer(builder);

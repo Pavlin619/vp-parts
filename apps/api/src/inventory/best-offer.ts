@@ -1,5 +1,5 @@
 import { StockStatus } from '@vp-parts-shop/shared';
-import { DeliveryOutcome, ownStockOutcome } from './delivery';
+import { DeliveryOutcome, DeliveryRule, ownStockOutcome } from './delivery';
 
 /** Our own aggregated stock for a part. Prices are integer EUR cents. */
 export interface OwnOffer {
@@ -21,6 +21,8 @@ export interface SupplierOffer {
   quantity: number;
   buyPriceCents: number;
   sellPriceCents: number;
+  /** Inherent delivery capability, used for the static warehouse grouping. */
+  rule: DeliveryRule;
   delivery: DeliveryOutcome;
 }
 
@@ -50,15 +52,14 @@ export interface OfferSource {
 
 /**
  * All available quantity that shares one delivery window (e.g. "within the
- * hour", "in 2 days"). Lets the frontend show how much is available per
- * delivery date. `sources` keeps the per-supplier split — cheapest-first, with
+ * hour", "in 2 days"). Used server-side to derive the headline offer from the
+ * fastest window. `sources` keeps the per-supplier split — cheapest-first, with
  * our own stock first — and stays server-side because it carries supplier buy
  * prices.
  */
-export interface DeliveryAvailability {
+interface DeliveryAvailability {
   stockStatus: StockStatus;
   estimatedDeliveryDays: number;
-  quantity: number;
   sources: OfferSource[];
 }
 
@@ -66,15 +67,8 @@ export interface BestOffer {
   available: boolean;
   stockStatus: StockStatus;
   estimatedDeliveryDays: number | null;
-  quantity: number;
   priceExVatCents: number | null;
   priceIncVatCents: number | null;
-  /**
-   * Available quantity per delivery window, fastest first. The headline fields
-   * above mirror the fastest window; this array lets the frontend present "X
-   * now, Y in 2 days, ...". Empty when the part is out of stock everywhere.
-   */
-  availabilityByDelivery: DeliveryAvailability[];
 }
 
 /** A group of sources that share the same delivery outcome (and so rank). */
@@ -92,9 +86,9 @@ interface DeliveryBucket {
  * the displayed price up to that supplier's price to protect margin. When we do
  * not carry the part, the fastest delivery band with stock wins, and within that
  * band the supplier with the lowest buy price sets the displayed sell price.
- * Quantity is always the combined quantity for the chosen (fastest) delivery
- * band, while `sources` keeps the per-supplier split so we never lose track of
- * who holds how much.
+ * `sources` keeps the per-supplier split so we never lose track of who holds how
+ * much; the customer-facing per-warehouse quantities are derived separately in
+ * the inventory service.
  */
 export function selectBestOffer(
   input: BestOfferInput,
@@ -131,35 +125,36 @@ export function selectBestOffer(
       available: false,
       stockStatus: StockStatus.OUT_OF_STOCK,
       estimatedDeliveryDays: null,
-      quantity: 0,
       priceExVatCents: carriesOwn ? own.priceExVatCents : null,
       priceIncVatCents: carriesOwn ? own.priceIncVatCents : null,
-      availabilityByDelivery: [],
     };
   }
 
-  const availabilityByDelivery = [...buckets.values()]
-    .sort((a, b) => a.outcome.rank - b.outcome.rank)
-    .map(toDeliveryAvailability);
-  const fastest = availabilityByDelivery[0];
+  const fastest = fastestWindow(buckets);
 
   return {
     available: true,
     stockStatus: fastest.stockStatus,
     estimatedDeliveryDays: fastest.estimatedDeliveryDays,
-    quantity: fastest.quantity,
     ...resolvePrice(own, suppliers, fastest.sources, options.vatRate),
-    availabilityByDelivery,
   };
 }
 
+/** The fastest (lowest-rank) delivery window, aggregated across its sources. */
+function fastestWindow(
+  buckets: Map<number, DeliveryBucket>,
+): DeliveryAvailability {
+  const fastest = [...buckets.values()].reduce((current, candidate) =>
+    candidate.outcome.rank < current.outcome.rank ? candidate : current,
+  );
+  return toDeliveryAvailability(fastest);
+}
+
 function toDeliveryAvailability(bucket: DeliveryBucket): DeliveryAvailability {
-  const sources = sortedCheapestFirst(bucket.sources);
   return {
     stockStatus: bucket.outcome.status,
     estimatedDeliveryDays: bucket.outcome.estimatedDeliveryDays,
-    quantity: totalQuantity(sources),
-    sources,
+    sources: sortedCheapestFirst(bucket.sources),
   };
 }
 
@@ -174,10 +169,6 @@ function addSource(
     return;
   }
   buckets.set(outcome.rank, { outcome, sources: [source] });
-}
-
-function totalQuantity(sources: OfferSource[]): number {
-  return sources.reduce((sum, source) => sum + source.quantity, 0);
 }
 
 /** Our own stock (no buy price) first, then suppliers by ascending buy price. */
