@@ -160,17 +160,27 @@ Response `200`:
   "fitsVehicle": true,
   "available": true,
   "stockStatus": "IN_STOCK",
-  "estimatedDeliveryDays": 1,
+  "estimatedDeliveryDays": 0,
   "bestPriceExVat": 1250,
   "bestPriceIncVat": 1500,
-  "tradePriceExVat": 980,
-  "tradePriceIncVat": 1176
+  "availabilityByWarehouse": [
+    {
+      "warehouseId": "CENTRAL",
+      "quantity": 4,
+      "deliveryWorkDays": 0,
+      "orderCutoffTime": "18:00",
+      "cutoffAt": "2026-06-25T15:00:00.000Z",
+      "pickup": { "earliestAt": "2026-06-25T08:00:00.000Z", "granularity": "DAY" },
+      "courier": { "earliestAt": "2026-06-26T10:00:00.000Z", "granularity": "DAY" }
+    }
+  ],
+  "computedAt": "2026-06-25T07:00:00.000Z"
 }
 ```
 
-Note: `tradePriceExVat` / `tradePriceIncVat` are only populated for authenticated `MECHANIC` role requests. For all other callers these fields are omitted. All price fields are integer EUR cents.
+Note: a single locked sell price (`bestPriceExVat` / `bestPriceIncVat`) is returned for all callers — there are no role-specific trade-price fields (per-mechanic discounts are applied separately later). `stockStatus`/`availabilityByWarehouse` mirror the inventory availability contract above. All price fields are integer EUR cents.
 
-Cache: Redis, 24h.
+Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read live from the shared DB per request and embedded into this response.
 
 ---
 
@@ -243,13 +253,28 @@ Response `200`:
   "articleNumber": "WL6340",
   "available": true,
   "stockStatus": "IN_STOCK",
-  "estimatedDeliveryDays": 1,
+  "estimatedDeliveryDays": 0,
+  "quantity": 9,
   "priceExVat": 1250,
-  "priceIncVat": 1500
+  "priceIncVat": 1500,
+  "availabilityByWarehouse": [
+    {
+      "warehouseId": "CENTRAL",
+      "quantity": 4,
+      "deliveryWorkDays": 0,
+      "orderCutoffTime": "18:00",
+      "cutoffAt": "2026-06-25T15:00:00.000Z",
+      "pickup": { "earliestAt": "2026-06-25T08:00:00.000Z", "granularity": "DAY" },
+      "courier": { "earliestAt": "2026-06-26T10:00:00.000Z", "granularity": "DAY" }
+    }
+  ],
+  "computedAt": "2026-06-25T07:00:00.000Z"
 }
 ```
 
-This endpoint always calls the backoffice live — no Redis cache. Used in the pre-checkout validation loop.
+`stockStatus` is one of `IN_STOCK`, `DELIVERY_WITHIN_HOUR`, `DELIVERY_SAME_DAY`, `DELIVERY_NEXT_DAY`, `DELIVERY_IN_2_DAYS`, `DELIVERY_IN_3_DAYS`, `OUT_OF_STOCK`. The headline fields mirror the fastest delivery window; `availabilityByWarehouse` breaks the combined quantity down per customer-facing warehouse (fastest first) with concrete pickup/courier dates. A single locked sell price is returned for all callers — there are no role-specific trade-price fields here (per-mechanic discounts are applied separately later). All price fields are integer EUR cents.
+
+This endpoint reads `public.autoparts` + `public.supplier_stock` directly and live — `Cache-Control: no-store`, no Redis. It fails closed (`INVENTORY_UNAVAILABLE`, 503) on a DB error. Used in the pre-checkout validation loop.
 
 ---
 
@@ -742,5 +767,5 @@ Response `200`: `{ "success": true }`
 | `EMAIL_ALREADY_EXISTS` | 409 | Email is already registered |
 | `MECHANIC_APPLICATION_ALREADY_EXISTS` | 409 | Customer already has a pending/approved application |
 | `COD_THRESHOLD_EXCEEDED` | 422 | Order total too high for cash on delivery |
-| `BACKOFFICE_UNAVAILABLE` | 503 | Live backoffice check could not complete — checkout blocked |
+| `INVENTORY_UNAVAILABLE` | 503 | Live availability read (direct DB) could not complete — checkout blocked |
 | `PAYMENT_FAILED` | 402 | Payment gateway declined or returned error |

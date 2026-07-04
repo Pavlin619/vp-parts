@@ -98,7 +98,11 @@ const STOCK_STATUS_DELIVERY_DAYS: Record<StockStatus, number> = {
 };
 
 export const SOFIA_TIME_ZONE = 'Europe/Sofia';
-/** Orders placed before this local hour ship the same day. */
+/**
+ * Orders placed before this local hour ship the same day. This is the default
+ * for the legacy band resolution below; the authoritative, config-driven cut-off
+ * lives in {@link DeliveryScheduleService} (env `SAME_DAY_CUTOFF_HOUR`).
+ */
 export const SAME_DAY_CUTOFF_HOUR = 11;
 
 export function deliveryRank(status: StockStatus): number {

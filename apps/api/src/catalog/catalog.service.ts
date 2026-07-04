@@ -102,7 +102,8 @@ export class CatalogService {
       estimatedDeliveryDays: inv.estimatedDeliveryDays,
       bestPriceExVat: inv.priceExVat,
       bestPriceIncVat: inv.priceIncVat,
-      availabilityByDelivery: inv.availabilityByDelivery,
+      availabilityByWarehouse: inv.availabilityByWarehouse,
+      computedAt: inv.computedAt,
     };
   }
 

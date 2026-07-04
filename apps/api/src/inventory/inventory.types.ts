@@ -1,4 +1,4 @@
-import { DeliveryAvailabilityDto, StockStatus } from '@vp-parts-shop/shared';
+import { StockStatus, WarehouseAvailabilityDto } from '@vp-parts-shop/shared';
 
 /**
  * Resolved price & availability for a single article, as consumed by the public
@@ -12,7 +12,8 @@ export interface PriceAndAvailability {
   priceIncVat: number | null;
   stockStatus: StockStatus;
   estimatedDeliveryDays: number | null;
-  quantity: number;
-  /** Available quantity per delivery window, fastest first. */
-  availabilityByDelivery: DeliveryAvailabilityDto[];
+  /** Available quantity per customer-facing warehouse, fastest first. */
+  availabilityByWarehouse: WarehouseAvailabilityDto[];
+  /** When the warehouse dates were computed (ISO UTC), or null if omitted. */
+  computedAt: string | null;
 }

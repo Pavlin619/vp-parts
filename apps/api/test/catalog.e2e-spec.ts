@@ -97,7 +97,6 @@ describe('CatalogController (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
-    await redisClient.quit();
   });
 
   beforeEach(async () => {

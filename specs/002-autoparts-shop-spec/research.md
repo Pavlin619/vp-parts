@@ -147,7 +147,7 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 **Decision**: Mechanic approval is executed in two steps: (1) NestJS persists the `MechanicProfile` in `shop.customers` with status `PENDING`; (2) the backoffice operator approves in the Spring Boot dashboard, which calls `POST /internal/mechanic-approve/:customerId` on NestJS using the shared-secret bearer token; (3) NestJS upgrades the customer's role to `MECHANIC` in Postgres **and** calls the Clerk Backend API to set `publicMetadata.role = 'MECHANIC'` on the Clerk user; (4) the mechanic's next Clerk session (issued on their next sign-in or session refresh) will carry `role: MECHANIC` in JWT claims, activating trade pricing.
 
-**Trade pricing**: The backoffice `GET /internal/price-and-availability/:articleNumber` endpoint accepts a `role` query parameter. For `MECHANIC`, it returns the trade price. NestJS reads the role from the validated JWT claims and passes it on every availability call.
+**Trade pricing**: The inventory layer reads price/availability directly from the shared DB and returns a single locked sell price for all callers — it carries no role/trade-price field. Mechanic trade pricing is a separate per-mechanic configured discount applied on top of the locked price in a later phase; NestJS still reads the role from the validated JWT claims to drive that discount where it is applied.
 
 **Rationale**: Clerk is the source of truth for authentication. Storing `role` in Clerk `publicMetadata` propagates it into the JWT session token automatically. NestJS `JwtGuard` reads the role from the JWT claims — no DB lookup needed per request. The mechanic receives an approval email; trade pricing activates on their next session, which is acceptable per spec.
 
