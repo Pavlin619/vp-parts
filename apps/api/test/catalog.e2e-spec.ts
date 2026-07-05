@@ -9,6 +9,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
+  BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
 } from '@vp-parts-shop/shared';
@@ -65,6 +66,7 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
 const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: 'BD-001',
   brandName: 'Bosch',
+  brandLogoUrl: null,
   description: 'Brake Disc',
   images: ['https://example.com/bd-001.jpg'],
   technicalSpecs: [{ key: 'Diameter', value: '288 mm' }],
@@ -73,11 +75,16 @@ const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   fitsVehicle: null,
 };
 
+const BRANDS: BrandDto[] = [
+  { brandName: 'Bosch', logoUrl: 'https://logos.example/bosch.png' },
+];
+
 const mockTecDocClient = {
   getManufacturers: jest.fn(),
   getModelSeries: jest.fn(),
   getVehicleTypes: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
+  getBrands: jest.fn(),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
   searchArticles: jest.fn(),
@@ -101,6 +108,9 @@ describe('CatalogController (e2e)', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // The article-detail flow joins a brand logo via getBrands; give every test
+    // a default brand set so the join resolves.
+    mockTecDocClient.getBrands.mockResolvedValue(BRANDS);
     await redisClient.flushall();
   });
 
@@ -239,6 +249,8 @@ describe('CatalogController (e2e)', () => {
 
       expect(res.body.articleNumber).toBe('BD-001');
       expect(res.body.brandName).toBe('Bosch');
+      // Logo joined from getBrands by brand name.
+      expect(res.body.brandLogoUrl).toBe('https://logos.example/bosch.png');
       expect(res.body.images).toEqual(['https://example.com/bd-001.jpg']);
       expect(res.body.technicalSpecs).toEqual([
         { key: 'Diameter', value: '288 mm' },

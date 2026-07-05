@@ -243,6 +243,53 @@ describe('TecDocClient', () => {
     });
   });
 
+  describe('getBrands', () => {
+    it('maps brands to a logo URL, preferring the 200px image', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          data: {
+            array: [
+              {
+                mfrName: 'HERTH+BUSS ELPARTS',
+                dataSupplierLogo: {
+                  imageURL100: 'https://cdn.tecalliance.services/100.png',
+                  imageURL200: 'https://cdn.tecalliance.services/200.png',
+                  imageURL400: 'https://cdn.tecalliance.services/400.png',
+                  imageURL800: 'https://cdn.tecalliance.services/800.png',
+                },
+              },
+              { mfrName: 'NO LOGO BRAND' },
+            ],
+          },
+        }),
+      );
+
+      const result = await client.getBrands();
+
+      expect(result).toEqual([
+        {
+          brandName: 'HERTH+BUSS ELPARTS',
+          logoUrl: 'https://cdn.tecalliance.services/200.png',
+        },
+        { brandName: 'NO LOGO BRAND', logoUrl: null },
+      ]);
+    });
+
+    it('POSTs getBrands with includeAll in the request body', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse({ data: { array: [] } }));
+
+      await client.getBrands();
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getBrands).toMatchObject({
+        provider: 12345,
+        includeAll: true,
+      });
+    });
+  });
+
   describe('getArticles', () => {
     it('returns paginated article list mapping mfrName to brandName', async () => {
       mockFetch.mockResolvedValueOnce(
@@ -321,6 +368,7 @@ describe('TecDocClient', () => {
 
       expect(result.articleNumber).toBe('WL6340');
       expect(result.brandName).toBe('WIX');
+      expect(result.brandLogoUrl).toBeNull();
       expect(result.images).toEqual([
         'https://digitalassets.tecalliance.services/images/800/abc.jpg',
       ]);

@@ -6,6 +6,16 @@ export interface ManufacturerDto {
   name: string;
 }
 
+/**
+ * A parts brand (TecDoc data supplier) with its logo. The logo comes from the
+ * TecDoc `getBrands` function (`dataSupplierLogo.imageURL*`); it is `null` when
+ * TecDoc has no logo on file for that brand.
+ */
+export interface BrandDto {
+  brandName: string;
+  logoUrl: string | null;
+}
+
 export interface ModelSeriesDto {
   id: string;
   manufacturerId: string;
@@ -94,6 +104,8 @@ export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
 export interface ArticleCatalogDetailDto {
   articleNumber: string;
   brandName: string;
+  /** Brand logo URL from TecDoc `getBrands`, or `null` when none is on file. */
+  brandLogoUrl: string | null;
   description: string;
   images: string[];
   technicalSpecs: TechnicalSpecDto[];

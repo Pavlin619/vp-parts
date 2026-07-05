@@ -49,7 +49,26 @@ export class CatalogRepository {
     articleNumber: string,
     vehicleId?: string,
   ): Promise<ArticleCatalogDetailDto> {
-    return this.tecdocCache.getArticleDetails(articleNumber, vehicleId);
+    const detail = await this.tecdocCache.getArticleDetails(
+      articleNumber,
+      vehicleId,
+    );
+
+    const brandLogoUrl = await this.resolveBrandLogo(detail.brandName);
+
+    return { ...detail, brandLogoUrl };
+  }
+
+  /**
+   * TecDoc keys articles by brand name but returns logos only from getBrands,
+   * so the two are joined here by brand name. Returns null when the brand has
+   * no logo on file, keeping the detail response well-formed.
+   */
+  private async resolveBrandLogo(brandName: string): Promise<string | null> {
+    const brands = await this.tecdocCache.getBrands();
+    const match = brands.find((brand) => brand.brandName === brandName);
+
+    return match?.logoUrl ?? null;
   }
 
   async searchArticles(
