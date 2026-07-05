@@ -71,6 +71,12 @@ export class CatalogRepository {
     return match?.logoUrl ?? null;
   }
 
+  async findSubstitutes(
+    articleNumber: string,
+  ): Promise<ArticleCatalogListItemDto[]> {
+    return this.tecdocCache.getSubstitutes(articleNumber);
+  }
+
   async searchArticles(
     query: string,
     vehicleId?: string,

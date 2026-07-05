@@ -56,3 +56,18 @@ describe('CatalogController.getArticleDetail', () => {
     ]);
   });
 });
+
+describe('CatalogController.getSubstitutes', () => {
+  const getSubstitutesMock = jest.fn();
+  const controller = new CatalogController({
+    getSubstitutes: getSubstitutesMock,
+  } as unknown as CatalogService);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('forwards the article number to the service', () => {
+    void controller.getSubstitutes('OX 982D');
+
+    expect(getSubstitutesMock).toHaveBeenCalledWith('OX 982D');
+  });
+});

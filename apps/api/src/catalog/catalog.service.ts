@@ -14,7 +14,7 @@ import {
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
-import { SearchMatchType } from './tecdoc/tecdoc-client';
+import { SearchMatchType, SUBSTITUTES_LIMIT } from './tecdoc/tecdoc-client';
 import { InventoryService } from '../inventory';
 
 @Injectable()
@@ -77,6 +77,19 @@ export class CatalogService {
     query: string,
   ): Promise<AutocompleteItemDto[]> {
     return this.repository.findAutocompleteSuggestions(query);
+  }
+
+  /**
+   * Cross-reference substitutes for an article — the same part from other
+   * brands (TecDoc comparable numbers), enriched with live price/availability.
+   * Vehicle-independent by design: if the viewed part fits the selected
+   * vehicle, its comparables fit too, so no per-substitute fit check is done.
+   * Capped at {@link SUBSTITUTES_LIMIT}.
+   */
+  async getSubstitutes(articleNumber: string): Promise<ArticleListItemDto[]> {
+    const substitutes = await this.repository.findSubstitutes(articleNumber);
+
+    return this.enrichWithInventory(substitutes.slice(0, SUBSTITUTES_LIMIT));
   }
 
   /**

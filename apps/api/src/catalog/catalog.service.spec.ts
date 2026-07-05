@@ -9,6 +9,7 @@ const findVehicleVariantsMock = jest.fn();
 const findAssemblyGroupTreeMock = jest.fn();
 const findArticlesMock = jest.fn();
 const findArticleDetailsMock = jest.fn();
+const findSubstitutesMock = jest.fn();
 const searchArticlesRepoMock = jest.fn();
 const findAutocompleteSuggestionsMock = jest.fn();
 
@@ -19,6 +20,7 @@ const mockCatalogRepository = {
   findAssemblyGroupTree: findAssemblyGroupTreeMock,
   findArticles: findArticlesMock,
   findArticleDetails: findArticleDetailsMock,
+  findSubstitutes: findSubstitutesMock,
   searchArticles: searchArticlesRepoMock,
   findAutocompleteSuggestions: findAutocompleteSuggestionsMock,
 } as unknown as CatalogRepository;
@@ -381,6 +383,72 @@ describe('CatalogService', () => {
         'V10042',
         undefined,
       );
+    });
+  });
+
+  describe('getSubstitutes', () => {
+    const rawSubstitute = {
+      articleNumber: 'OC115',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter',
+      thumbnailUrl: null,
+    };
+
+    it('enriches the cross-reference parts with best price and availability', async () => {
+      findSubstitutesMock.mockResolvedValueOnce([rawSubstitute]);
+      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
+        new Map([
+          [
+            'OC115',
+            {
+              available: true,
+              priceExVat: 900,
+              priceIncVat: 1080,
+              stockStatus: 'IN_STOCK',
+              estimatedDeliveryDays: 1,
+            },
+          ],
+        ]),
+      );
+
+      const result = await service.getSubstitutes('OX 982D');
+
+      expect(findSubstitutesMock).toHaveBeenCalledWith('OX 982D');
+      expect(result).toEqual([
+        {
+          ...rawSubstitute,
+          available: true,
+          bestPriceExVat: 900,
+          bestPriceIncVat: 1080,
+        },
+      ]);
+    });
+
+    it('caps the number of substitutes at the configured limit', async () => {
+      const many = Array.from({ length: 30 }, (_, index) => ({
+        articleNumber: `SUB-${index}`,
+        brandName: 'MockBrand',
+        description: 'Oil Filter',
+        thumbnailUrl: null,
+      }));
+      findSubstitutesMock.mockResolvedValueOnce(many);
+      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(new Map());
+
+      const result = await service.getSubstitutes('OX 982D');
+
+      expect(result).toHaveLength(20);
+      const enrichedNumbers = getBulkPricesAndAvailabilityMock.mock
+        .calls[0][0] as string[];
+      expect(enrichedNumbers).toHaveLength(20);
+    });
+
+    it('returns an empty list without hitting inventory when there are no substitutes', async () => {
+      findSubstitutesMock.mockResolvedValueOnce([]);
+
+      const result = await service.getSubstitutes('OX 982D');
+
+      expect(result).toEqual([]);
+      expect(getBulkPricesAndAvailabilityMock).not.toHaveBeenCalled();
     });
   });
 

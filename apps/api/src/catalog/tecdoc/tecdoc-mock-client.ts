@@ -247,6 +247,34 @@ const ARTICLES_BY_CATEGORY: Record<string, ArticleCatalogListItemDto[]> = {
   ],
 };
 
+// Comparable (cross-reference) parts keyed by the article being viewed — the
+// mock stand-in for TecDoc getArticles searchType 3. OX 982D returns the same
+// oil filter from other data suppliers so the "Заменки" tab lights up in dev.
+const SUBSTITUTES_BY_ARTICLE: Record<string, ArticleCatalogListItemDto[]> = {
+  'OX 982D': [
+    {
+      articleNumber: 'OF-OC115',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    {
+      articleNumber: 'OF-WL7090',
+      brandName: 'WIX Filters',
+      description: 'Oil Filter',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'OF-HU816X',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+  ],
+};
+
 const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
   'BD-0986478451': {
     articleNumber: 'BD-0986478451',
@@ -416,6 +444,10 @@ export class TecDocMockClient {
     };
 
     return Promise.resolve(base);
+  }
+
+  getSubstitutes(articleNumber: string): Promise<ArticleCatalogListItemDto[]> {
+    return Promise.resolve(SUBSTITUTES_BY_ARTICLE[articleNumber] ?? []);
   }
 
   private findMatchingArticles(query: string) {

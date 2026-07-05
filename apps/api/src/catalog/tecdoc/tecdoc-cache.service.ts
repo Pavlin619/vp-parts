@@ -21,6 +21,8 @@ const ARTICLE_TTL = 24 * 60 * 60;
 const SEARCH_TTL = 60 * 60;
 const SEARCH_MISS_TTL = 10 * 60;
 const AUTOCOMPLETE_TTL = 30 * 60;
+const SUBSTITUTES_TTL = 24 * 60 * 60;
+const SUBSTITUTES_MISS_TTL = 60 * 60;
 
 @Injectable()
 export class TecDocCacheService {
@@ -90,6 +92,17 @@ export class TecDocCacheService {
       `tecdoc:article-detail:${articleNumber}:${vehicleKey}`,
       ARTICLE_TTL,
       () => this.tecdocClient.getArticleDetails(articleNumber, vehicleId),
+    );
+  }
+
+  async getSubstitutes(
+    articleNumber: string,
+  ): Promise<ArticleCatalogListItemDto[]> {
+    return this.cachedArray(
+      `tecdoc:substitutes:${articleNumber}`,
+      SUBSTITUTES_TTL,
+      SUBSTITUTES_MISS_TTL,
+      () => this.tecdocClient.getSubstitutes(articleNumber),
     );
   }
 
