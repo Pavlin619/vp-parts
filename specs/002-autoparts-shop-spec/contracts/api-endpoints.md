@@ -140,7 +140,16 @@ Response `200`:
 
 Full article detail. Includes cross-references, images, specs, compatible vehicles.
 
-Query params: `vehicleId` (optional) — if provided, adds `fitsVehicle: boolean` to response.
+Query params:
+- `vehicleId` (optional) — if provided, adds `fitsVehicle: boolean` to the response.
+- `include` (optional, default `details,availability`) — selects which halves to assemble:
+  - `details` — stable TecDoc catalog metadata (cacheable, carries `fitsVehicle`);
+  - `availability` — live price/stock (never cached; skips the TecDoc lookup);
+  - `details,availability` — both, in one round trip.
+
+  The frontend fetches `details` for the cached page shell and `availability`
+  for the streamed buy box. This is the single availability read for all
+  clients — there is no separate inventory endpoint.
 
 Response `200`:
 ```json
@@ -241,40 +250,18 @@ Cache: Redis, 30 min.
 
 ## Inventory Module
 
-### Availability Check
+There is **no standalone inventory HTTP endpoint.** Client-facing availability is
+served through the catalog article endpoint via `?include=availability` (see
+above), which reads `public.autoparts` + `public.supplier_stock` directly and
+live (no Redis) and **fails open** (neutral "unavailable") so the product page
+never errors on a transient DB blip.
 
-**`GET /inventory/articles/:articleNumber/availability`** (Protected)
-
-Fresh availability and pricing for a single article. Used by the cart refresh and pre-checkout check.
-
-Response `200`:
-```json
-{
-  "articleNumber": "WL6340",
-  "available": true,
-  "stockStatus": "IN_STOCK",
-  "estimatedDeliveryDays": 0,
-  "quantity": 9,
-  "priceExVat": 1250,
-  "priceIncVat": 1500,
-  "availabilityByWarehouse": [
-    {
-      "warehouseId": "CENTRAL",
-      "quantity": 4,
-      "deliveryWorkDays": 0,
-      "orderCutoffTime": "18:00",
-      "cutoffAt": "2026-06-25T15:00:00.000Z",
-      "pickup": { "earliestAt": "2026-06-25T08:00:00.000Z", "granularity": "DAY" },
-      "courier": { "earliestAt": "2026-06-26T10:00:00.000Z", "granularity": "DAY" }
-    }
-  ],
-  "computedAt": "2026-06-25T07:00:00.000Z"
-}
-```
-
-`stockStatus` is one of `IN_STOCK`, `DELIVERY_WITHIN_HOUR`, `DELIVERY_SAME_DAY`, `DELIVERY_NEXT_DAY`, `DELIVERY_IN_2_DAYS`, `DELIVERY_IN_3_DAYS`, `OUT_OF_STOCK`. The headline fields mirror the fastest delivery window; `availabilityByWarehouse` breaks the combined quantity down per customer-facing warehouse (fastest first) with concrete pickup/courier dates. A single locked sell price is returned for all callers — there are no role-specific trade-price fields here (per-mechanic discounts are applied separately later). All price fields are integer EUR cents.
-
-This endpoint reads `public.autoparts` + `public.supplier_stock` directly and live — `Cache-Control: no-store`, no Redis. It fails closed (`INVENTORY_UNAVAILABLE`, 503) on a DB error. Used in the pre-checkout validation loop.
+The **binding pre-checkout re-validation** — which must **fail closed**
+(`INVENTORY_UNAVAILABLE`, 503) so a DB error aborts the order rather than
+selling stale stock — is `InventoryService.getAvailability(articleNumber)`,
+called **in-process** by `CheckoutService` during the confirm step. It is not
+exposed over HTTP: NestJS services read the shared DB directly, with no internal
+REST hop.
 
 ---
 

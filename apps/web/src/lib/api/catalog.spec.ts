@@ -5,6 +5,8 @@ import {
   getCategories,
   listArticles,
   getArticleDetail,
+  getArticleCatalogDetail,
+  getArticleAvailability,
   searchByPartNumber,
   getAutocomplete,
   manufacturersQueryOptions,
@@ -79,22 +81,56 @@ describe('listArticles', () => {
 })
 
 describe('getArticleDetail', () => {
-  it('omits the vehicleId query param when not provided', () => {
+  it('requests both sections when no vehicleId is provided', () => {
     getArticleDetail('ABC-123')
-    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/articles/ABC-123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC-123?include=details%2Cavailability',
+    )
   })
 
   it('includes the vehicleId query param when provided', () => {
     getArticleDetail('ABC-123', 'v-789')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?vehicleId=v-789',
+      '/catalog/articles/ABC-123?vehicleId=v-789&include=details%2Cavailability',
     )
   })
 
   it('URL-encodes special characters in the article number', () => {
     getArticleDetail('ABC/123 XYZ')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC%2F123%20XYZ',
+      '/catalog/articles/ABC%2F123%20XYZ?include=details%2Cavailability',
+    )
+  })
+})
+
+describe('getArticleCatalogDetail', () => {
+  it('requests the details section only', () => {
+    getArticleCatalogDetail('ABC-123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC-123?include=details',
+    )
+  })
+
+  it('forwards the vehicleId so fitsVehicle is vehicle-scoped', () => {
+    getArticleCatalogDetail('ABC-123', 'v-789')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC-123?vehicleId=v-789&include=details',
+    )
+  })
+})
+
+describe('getArticleAvailability', () => {
+  it('requests the availability section only and sends no vehicleId', () => {
+    getArticleAvailability('ABC-123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC-123?include=availability',
+    )
+  })
+
+  it('URL-encodes special characters in the article number', () => {
+    getArticleAvailability('ABC/123 XYZ')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC%2F123%20XYZ?include=availability',
     )
   })
 })

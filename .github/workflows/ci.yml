@@ -93,6 +93,13 @@ jobs:
     name: Web — lint · type-check · unit tests
     runs-on: ubuntu-latest
 
+    env:
+      # The root install runs apps/api's `postinstall` (prisma generate), which
+      # loads prisma.config.ts. That config fails fast unless DIRECT_URL or
+      # DATABASE_URL is set. `prisma generate` and `tsc` never open a DB
+      # connection, so a stub URL is enough to satisfy the guard here.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vppartsshop_test
+
     steps:
       - uses: actions/checkout@v4
 

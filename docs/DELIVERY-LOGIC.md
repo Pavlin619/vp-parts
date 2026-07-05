@@ -164,11 +164,21 @@ chooses which warehouse to quote:
   during render, so a re-validation that shrinks stock silently pulls an
   over-selection back down.
 - **Near-cut-off panel.** `DeliveryCutoffNotice`
-  (`components/catalog/delivery-cutoff-notice.tsx`, logic in `lib/cutoff.ts`) warns
-  the customer when the selected warehouse's `cutoffAt` is within
-  `NEAR_CUTOFF_THRESHOLD_MINUTES` (2 h) — "Поръчайте до 11:00 ч. (още 40 мин.)…".
-  It ticks via `useNow` so the countdown stays live and hides itself once the
-  cut-off passes (the page re-validates then via `useDeliveryRefresh`).
+  (`components/catalog/delivery-cutoff-notice.tsx`, logic in `lib/cutoff.ts`)
+  shows an actionable countdown — "Поръчай до 11:00 ч. за доставка днес · остават
+  40 мин" — but **only when it is worth showing**. It gates on two conditions so
+  it never manufactures false urgency:
+  1. the cut-off is **today** in the shop timezone (`shopDateKey`), and
+  2. it is within `SHOW_CUTOFF_WINDOW_MINUTES` (3 h) of the deadline.
+
+  This suppresses the misleading case where the shop is closed (Sunday, after
+  hours, past Saturday 14:00) and the backend has rolled `cutoffAt` to the next
+  open day — which would otherwise read as "order in 23 h" urgency. Inside the
+  window it turns to a warning tone in the final `NEAR_CUTOFF_THRESHOLD_MINUTES`
+  (2 h), the progress bar spans the show window so it visibly depletes, and the
+  copy anchors the countdown to the delivery day it buys. It ticks via `useNow`
+  so the countdown stays live and hides itself once the cut-off passes (the page
+  re-validates then via `useDeliveryRefresh`).
 - **Pickup/courier chip.** `DeliveryEstimate` (`components/catalog/delivery-estimate.tsx`)
   is a two-state toggle — **Вземи от магазин** vs **С куриер** — that re-quotes
   the selected warehouse's `pickup` / `courier` projection for the chosen
@@ -229,10 +239,12 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
    client state) on a timer set to the soonest upcoming `cutoffAt`, and on tab
    focus once the snapshot has aged past a TTL.
 3. **Pre-action re-validation (deferred to checkout, `TODO(checkout)`)** — before
-   a binding commitment (add-to-cart / buy-now / checkout confirm), the live
-   `no-store` `getAvailability` is called and its returned date is bound as the
-   committed promise. Tracked as task **T113b**. This guarantees a stale tab can
-   never *commit* a wrong date; the layers above only affect display.
+   a binding commitment (checkout confirm), `CheckoutService` calls the live,
+   fail-closed `InventoryService.getAvailability` **in-process** and binds its
+   returned date as the committed promise. Tracked as task **T113b**. This
+   guarantees a stale tab can never *commit* a wrong date; the layers above only
+   affect display, and client-side reads use the catalog
+   `?include=availability` path (fail-open).
 
 > **Note on bands.** The per-warehouse cut-off is **hour-granular**
 > (`localHour(effectiveStart) < cutoffHour`); cut-offs are always whole hours

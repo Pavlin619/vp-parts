@@ -249,8 +249,8 @@ Result is part of the Redis-cached catalog listing/detail payload (browse perf o
 
 **At checkout confirmation** (before payment is taken — always fresh, fails *closed*):
 ```
-inventory.getAvailability(tecdocNumber) for each cart item — Cache-Control: no-store
-  → direct DB read, no Redis, every request
+CheckoutService → inventory.getAvailability(tecdocNumber) for each cart item
+  → in-process call, direct DB read, no Redis, every request (not an HTTP hop)
         │
         ├── Price / availability unchanged → proceed to payment
         ├── Something changed → show customer updated info, request re-confirmation

@@ -1,7 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { CatalogBreadcrumbs } from "@/components/catalog/catalog-breadcrumbs";
-import { ArticleGrid } from "@/components/catalog/article-grid";
-import { CatalogPagination } from "@/components/catalog/catalog-pagination";
+import { CatalogBreadcrumbs } from "@/components/catalog/listing/catalog-breadcrumbs";
+import { ArticleGrid } from "@/components/catalog/listing/article-grid";
+import { CatalogPagination } from "@/components/catalog/listing/catalog-pagination";
 import { listArticles } from "@/lib/api/catalog";
 import type { PaginatedArticlesDto } from "@vp-parts-shop/shared";
 
