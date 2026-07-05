@@ -119,6 +119,17 @@ export interface ArticleDetailDto
   extends ArticleCatalogDetailDto,
     ArticleInventoryDetailDto {}
 
+/**
+ * The independently-fetchable halves of the article detail response. Requested
+ * via the `include` query param on `GET /catalog/articles/:articleNumber`:
+ *  - `details` — stable TecDoc catalog metadata (`ArticleCatalogDetailDto`),
+ *    cacheable and vehicle-aware;
+ *  - `availability` — live price/stock/warehouses (`ArticleInventoryDetailDto`),
+ *    never cached.
+ * Requesting both yields the full `ArticleDetailDto`.
+ */
+export type ArticleDetailSection = 'details' | 'availability';
+
 export interface SearchResultItemDto {
   articleNumber: string;
   brandName: string;

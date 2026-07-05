@@ -67,13 +67,15 @@ describe('InventoryController (e2e)', () => {
   });
 
   describe('GET /inventory/articles/:articleNumber/availability', () => {
-    it('rejects unauthenticated requests with 401', async () => {
+    it('serves anonymous requests — availability is public, non-sensitive data', async () => {
+      ownFindByNumber.mockResolvedValueOnce([]);
+      supplierFindByNumber.mockResolvedValueOnce([]);
+
       await request(app.getHttpServer())
         .get('/inventory/articles/WL6340/availability')
-        .expect(401);
+        .expect(200);
 
-      expect(ownFindByNumber).not.toHaveBeenCalled();
-      expect(supplierFindByNumber).not.toHaveBeenCalled();
+      expect(ownFindByNumber).toHaveBeenCalled();
     });
 
     it('locks the price to our own stock and ships it immediately (IN_STOCK)', async () => {
