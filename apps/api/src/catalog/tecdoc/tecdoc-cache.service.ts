@@ -4,6 +4,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
+  BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleCatalogListItemDto,
@@ -15,6 +16,7 @@ import { TecDocClient, SearchMatchType } from './tecdoc-client';
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
 const VEHICLE_TREE_TTL = 7 * 24 * 60 * 60;
+const BRAND_TTL = 7 * 24 * 60 * 60;
 const ARTICLE_TTL = 24 * 60 * 60;
 const SEARCH_TTL = 60 * 60;
 const SEARCH_MISS_TTL = 10 * 60;
@@ -56,6 +58,12 @@ export class TecDocCacheService {
       `tecdoc:assembly-groups:${vehicleId}`,
       VEHICLE_TREE_TTL,
       () => this.tecdocClient.getAssemblyGroupTree(vehicleId),
+    );
+  }
+
+  async getBrands(): Promise<BrandDto[]> {
+    return this.cached('tecdoc:brands:all', BRAND_TTL, () =>
+      this.tecdocClient.getBrands(),
     );
   }
 

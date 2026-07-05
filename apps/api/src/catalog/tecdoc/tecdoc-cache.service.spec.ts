@@ -9,6 +9,7 @@ const getManufacturersMock = jest.fn();
 const getModelSeriesMock = jest.fn();
 const getVehicleTypesMock = jest.fn();
 const getAssemblyGroupTreeMock = jest.fn();
+const getBrandsMock = jest.fn();
 const getArticlesMock = jest.fn();
 const getArticleDetailsMock = jest.fn();
 const searchArticlesMock = jest.fn();
@@ -19,6 +20,7 @@ const mockTecDocClient = {
   getModelSeries: getModelSeriesMock,
   getVehicleTypes: getVehicleTypesMock,
   getAssemblyGroupTree: getAssemblyGroupTreeMock,
+  getBrands: getBrandsMock,
   getArticles: getArticlesMock,
   getArticleDetails: getArticleDetailsMock,
   searchArticles: searchArticlesMock,
@@ -143,6 +145,38 @@ describe('TecDocCacheService', () => {
       expect(redisSet).toHaveBeenCalledWith(
         cacheKey,
         expect.any(String),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+    });
+  });
+
+  describe('getBrands', () => {
+    const cacheKey = 'tecdoc:brands:all';
+    const data = [{ brandName: 'Bosch', logoUrl: 'https://cdn/bosch.png' }];
+
+    it('returns cached value on Redis hit', async () => {
+      redisGet.mockResolvedValueOnce(JSON.stringify(data));
+
+      const result = await service.getBrands();
+
+      expect(result).toEqual(data);
+      expect(getBrandsMock).not.toHaveBeenCalled();
+      expect(redisGet).toHaveBeenCalledWith(cacheKey);
+    });
+
+    it('calls TecDocClient and caches for 7 days on Redis miss', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      getBrandsMock.mockResolvedValueOnce(data);
+      redisSet.mockResolvedValueOnce('OK');
+
+      const result = await service.getBrands();
+
+      expect(result).toEqual(data);
+      expect(getBrandsMock).toHaveBeenCalledTimes(1);
+      expect(redisSet).toHaveBeenCalledWith(
+        cacheKey,
+        JSON.stringify(data),
         'EX',
         7 * 24 * 60 * 60,
       );

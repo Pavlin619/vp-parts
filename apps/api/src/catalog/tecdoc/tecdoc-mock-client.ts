@@ -3,6 +3,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
+  BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleCatalogListItemDto,
@@ -96,6 +97,37 @@ const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
   { id: '300002', name: 'Shock Absorbers', parentId: '300001' },
 ];
 
+// Mock brand logos so the FE can render the brand mark before the real TecDoc
+// getBrands integration is enabled. Brand names match the parts above exactly;
+// the catalog layer joins them onto an article by brand name. The URLs are
+// placeholder images (real logos arrive once getBrands is wired to TecDoc).
+const BRANDS: BrandDto[] = [
+  {
+    brandName: 'Bosch',
+    logoUrl: 'https://placehold.co/240x80/eef2ff/1e3a8a.png?text=BOSCH',
+  },
+  {
+    brandName: 'MANN-FILTER',
+    logoUrl: 'https://placehold.co/240x80/fffbeb/b45309.png?text=MANN-FILTER',
+  },
+  {
+    brandName: 'KNECHT',
+    logoUrl: 'https://placehold.co/240x80/eff6ff/1d4ed8.png?text=KNECHT',
+  },
+  {
+    brandName: 'Ferodo',
+    logoUrl: 'https://placehold.co/240x80/fef2f2/991b1b.png?text=Ferodo',
+  },
+  {
+    brandName: 'WIX Filters',
+    logoUrl: 'https://placehold.co/240x80/f0fdf4/166534.png?text=WIX+Filters',
+  },
+  {
+    brandName: 'Monroe',
+    logoUrl: 'https://placehold.co/240x80/f8fafc/0f172a.png?text=Monroe',
+  },
+];
+
 const ARTICLES_BY_CATEGORY: Record<string, ArticleCatalogListItemDto[]> = {
   '100002': [
     {
@@ -164,6 +196,7 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
   'BD-0986478451': {
     articleNumber: 'BD-0986478451',
     brandName: 'Bosch',
+    brandLogoUrl: null,
     description: 'Brake Disc',
     images: [
       'https://digitalassets.tecalliance.services/images/800/mock-brake-disc.jpg',
@@ -180,6 +213,7 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
   'OF-OC115': {
     articleNumber: 'OF-OC115',
     brandName: 'MANN-FILTER',
+    brandLogoUrl: null,
     description: 'Oil Filter',
     images: [
       'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
@@ -199,6 +233,7 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
   'OX 982D': {
     articleNumber: 'OX 982D',
     brandName: 'KNECHT',
+    brandLogoUrl: null,
     description: 'Oil Filter',
     images: [
       'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
@@ -228,6 +263,7 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
 const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: '',
   brandName: 'Unknown',
+  brandLogoUrl: null,
   description: 'Auto Part',
   images: [],
   technicalSpecs: [],
@@ -251,6 +287,10 @@ export class TecDocMockClient {
 
   getAssemblyGroupTree(_vehicleId: string): Promise<AssemblyGroupDto[]> {
     return Promise.resolve(ASSEMBLY_GROUPS);
+  }
+
+  getBrands(): Promise<BrandDto[]> {
+    return Promise.resolve(BRANDS);
   }
 
   getArticles(

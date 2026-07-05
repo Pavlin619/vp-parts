@@ -10,6 +10,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
+  BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleCatalogListItemDto,
@@ -149,6 +150,42 @@ export class TecDocClient {
     }));
   }
 
+  /**
+   * All parts brands with their logo URLs. TecDoc keys articles by brand name
+   * (`mfrName`), not by logo, so the brand→logo join happens in the catalog
+   * layer. `includeAll` makes TecDoc attach the `dataSupplierLogo` block; we
+   * pick a mid-resolution image and fall back through the other sizes.
+   */
+  async getBrands(): Promise<BrandDto[]> {
+    const data = await this.call<{
+      data: {
+        array: Array<{
+          mfrName: string;
+          dataSupplierLogo?: {
+            imageURL100?: string;
+            imageURL200?: string;
+            imageURL400?: string;
+            imageURL800?: string;
+          };
+        }>;
+      };
+    }>('getBrands', {
+      articleCountry: 'BG',
+      lang: 'bg',
+      includeAll: true,
+    });
+
+    return data.data.array.map((brand) => ({
+      brandName: brand.mfrName,
+      logoUrl:
+        brand.dataSupplierLogo?.imageURL200 ??
+        brand.dataSupplierLogo?.imageURL400 ??
+        brand.dataSupplierLogo?.imageURL100 ??
+        brand.dataSupplierLogo?.imageURL800 ??
+        null,
+    }));
+  }
+
   async getArticles(
     vehicleId: string,
     categoryId: string,
@@ -222,6 +259,8 @@ export class TecDocClient {
     return {
       articleNumber: article.articleNumber,
       brandName: article.mfrName,
+      // Joined from getBrands in the catalog layer — getArticles carries no logo.
+      brandLogoUrl: null,
       description: article.genericArticles[0]?.genericArticleDescription ?? '',
       images: article.images
         .map((img) => img.imageURL800 ?? '')
