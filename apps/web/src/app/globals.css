@@ -63,6 +63,16 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-delivery-day1: var(--delivery-day1);
+  --color-delivery-day1-fg: var(--delivery-day1-fg);
+  --color-delivery-day1-soft: var(--delivery-day1-soft);
+  --color-delivery-day2: var(--delivery-day2);
+  --color-delivery-day2-fg: var(--delivery-day2-fg);
+  --color-delivery-day2-soft: var(--delivery-day2-soft);
+  --color-delivery-day3: var(--delivery-day3);
+  --color-delivery-day3-fg: var(--delivery-day3-fg);
+  --color-delivery-day3-soft: var(--delivery-day3-soft);
 
   /* Typography */
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
@@ -118,6 +128,20 @@
   --warn-soft: #FFF0D6;
   --danger: #C3241C;
   --info: #1F4FBF;
+  --info-soft: #DDE6FA;
+
+  /* Delivery speed bands — a green→blue→yellow→orange heat scale that ties the
+     availability dot to how fast the part ships. `-fg` is the readable text
+     tone; `-soft` is the halo behind the buy-box dot. */
+  --delivery-day1: #F2C200; /* 1 work day — light yellow */
+  --delivery-day1-fg: #96690A;
+  --delivery-day1-soft: #FBF0C4;
+  --delivery-day2: #E07B00; /* 2 work days — darker yellow */
+  --delivery-day2-fg: #8A4E00;
+  --delivery-day2-soft: #FBE4C7;
+  --delivery-day3: #EA580C; /* 3 work days — orange */
+  --delivery-day3-fg: #B23A05;
+  --delivery-day3-soft: #FCDDCB;
 
   /* Shadows */
   --shadow-sm-token: 0 1px 0 rgba(11, 18, 32, 0.04), 0 1px 2px rgba(11, 18, 32, 0.04);

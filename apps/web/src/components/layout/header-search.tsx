@@ -1,6 +1,6 @@
 "use client";
 
-import { SearchBar } from "@/components/catalog/search-bar";
+import { SearchBar } from "@/components/catalog/search/search-bar";
 
 export function HeaderSearch() {
   return (

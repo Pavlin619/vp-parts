@@ -173,6 +173,61 @@ const ARTICLES_BY_CATEGORY: Record<string, ArticleCatalogListItemDto[]> = {
       thumbnailUrl:
         'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
     },
+    // Catalog-only part: full TecDoc details but intentionally NO row in
+    // public.autoparts / public.supplier_stock, so the buy box has no price or
+    // availability. Exercises the "Не е наличен" (no data) state.
+    {
+      articleNumber: 'OF-HU816X',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    // Synthetic availability test parts. These are listed here only so they are
+    // searchable/browsable; their price & stock come from the mock seed in
+    // infra/db/02-mock-stock-seed.sql (see that file for each scenario).
+    {
+      articleNumber: 'TEST-QTY-1',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · единична бройка (лимит 1)',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'TEST-QTY-SPLIT',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · тънка наличност в 3 склада',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'TEST-QTY-ZERO-FAST',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · празен бърз склад',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'TEST-OOS',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · изчерпан (доставчик с 0)',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'TEST-BAD-WAREHOUSE',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · неизвестен склад',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'TEST-OWN-ZERO',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · собствена наличност 0',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'TEST-OWN-PREMIUM',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · собствена по-висока цена',
+      thumbnailUrl: null,
+    },
   ],
   '200003': [
     {
@@ -255,6 +310,27 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       '2701800109',
       '15208HG00D',
     ],
+    compatibleVehicles: [],
+    fitsVehicle: null,
+  },
+  // Rich TecDoc details with NO stock/price data in the DB — the buy box shows
+  // no price ("—") and the "Не е наличен" notice, while the page chrome (images,
+  // specs, OEMs) still renders fully.
+  'OF-HU816X': {
+    articleNumber: 'OF-HU816X',
+    brandName: 'MANN-FILTER',
+    brandLogoUrl: null,
+    description: 'Oil Filter',
+    images: [
+      'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    ],
+    technicalSpecs: [
+      { key: 'Filter type', value: 'Filter Insert' },
+      { key: 'Outer Diameter', value: '64 mm' },
+      { key: 'Height', value: '141 mm' },
+      { key: 'Inner Diameter', value: '27.5 mm' },
+    ],
+    oemNumbers: ['11427508969', '11427541827'],
     compatibleVehicles: [],
     fitsVehicle: null,
   },

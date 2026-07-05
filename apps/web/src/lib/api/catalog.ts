@@ -5,7 +5,10 @@ import type {
   VehicleVariantDto,
   AssemblyGroupDto,
   PaginatedArticlesDto,
+  ArticleCatalogDetailDto,
   ArticleDetailDto,
+  ArticleDetailSection,
+  ArticleInventoryDetailDto,
   SearchResponseDto,
   AutocompleteItemDto,
 } from "@vp-parts-shop/shared";
@@ -45,13 +48,53 @@ export function listArticles(
   );
 }
 
+/**
+ * Builds the article detail URL for the requested sections. `include` selects
+ * which halves the backend assembles: `details` (cacheable TecDoc metadata),
+ * `availability` (live price/stock), or both.
+ */
+function articleDetailPath(
+  articleNumber: string,
+  include: ArticleDetailSection[],
+  vehicleId?: string,
+): string {
+  const params = new URLSearchParams();
+  if (vehicleId) {
+    params.set("vehicleId", vehicleId);
+  }
+  params.set("include", include.join(","));
+  return `/catalog/articles/${encodeURIComponent(articleNumber)}?${params}`;
+}
+
+/** Stable TecDoc catalog metadata only — safe to cache; carries `fitsVehicle`. */
+export function getArticleCatalogDetail(
+  articleNumber: string,
+  vehicleId?: string,
+): Promise<ArticleCatalogDetailDto> {
+  return apiFetch<ArticleCatalogDetailDto>(
+    articleDetailPath(articleNumber, ["details"], vehicleId),
+  );
+}
+
+/**
+ * Live price/stock only — never cache. Vehicle-independent, so no `vehicleId`
+ * is sent (fit is a catalog concern fetched via {@link getArticleCatalogDetail}).
+ */
+export function getArticleAvailability(
+  articleNumber: string,
+): Promise<ArticleInventoryDetailDto> {
+  return apiFetch<ArticleInventoryDetailDto>(
+    articleDetailPath(articleNumber, ["availability"]),
+  );
+}
+
+/** Full detail — catalog metadata plus live inventory in one round trip. */
 export function getArticleDetail(
   articleNumber: string,
   vehicleId?: string,
 ): Promise<ArticleDetailDto> {
-  const search = vehicleId ? `?${new URLSearchParams({ vehicleId })}` : "";
   return apiFetch<ArticleDetailDto>(
-    `/catalog/articles/${encodeURIComponent(articleNumber)}${search}`,
+    articleDetailPath(articleNumber, ["details", "availability"], vehicleId),
   );
 }
 

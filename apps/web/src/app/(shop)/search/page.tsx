@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { searchByPartNumber } from "@/lib/api/catalog";
-import { SearchResults } from "@/components/catalog/search-results";
-import { SearchEmptyState } from "@/components/catalog/search-empty-state";
+import { SearchResults } from "@/components/catalog/search/search-results";
+import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
 
 interface SearchPageProps {
   searchParams: Promise<{ q?: string; vehicleId?: string }>;
