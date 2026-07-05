@@ -4,10 +4,11 @@ import { SupplierStockRepository } from './supplier-stock.repository';
 import { DeliverySpeedResolver } from './delivery-speed.resolver';
 import { DeliveryScheduleService } from './delivery-schedule.service';
 import { InventoryService } from './inventory.service';
-import { InventoryController } from './inventory.controller';
 
+// No controller: availability is exposed to clients via the catalog endpoint
+// (`GET /catalog/articles/:n?include=availability`). InventoryService is the
+// in-process contract other modules (catalog, future checkout) consume.
 @Module({
-  controllers: [InventoryController],
   providers: [
     AutopartsRepository,
     SupplierStockRepository,

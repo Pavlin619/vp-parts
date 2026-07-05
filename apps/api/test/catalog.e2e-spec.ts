@@ -285,5 +285,35 @@ describe('CatalogController (e2e)', () => {
         .get('/catalog/articles/NOTFOUND')
         .expect(404);
     });
+
+    it('include=details returns catalog metadata only, skipping inventory', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles/BD-001?include=details')
+        .expect(200);
+
+      expect(res.body.brandName).toBe('Bosch');
+      expect(res.body.technicalSpecs).toEqual([
+        { key: 'Diameter', value: '288 mm' },
+      ]);
+      // Inventory section was not requested, so no price/stock fields.
+      expect(res.body).not.toHaveProperty('available');
+      expect(res.body).not.toHaveProperty('bestPriceIncVat');
+    });
+
+    it('include=availability returns inventory only, skipping the TecDoc lookup', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles/BD-001?include=availability')
+        .expect(200);
+
+      // Catalog section was not requested, so no TecDoc metadata.
+      expect(res.body).not.toHaveProperty('brandName');
+      expect(res.body).not.toHaveProperty('technicalSpecs');
+      // Neutral unavailable state (no stock in the test DB).
+      expect(res.body.available).toBe(false);
+      expect(res.body).toHaveProperty('computedAt');
+      expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
   });
 });

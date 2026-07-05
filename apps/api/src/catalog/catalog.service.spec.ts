@@ -278,6 +278,55 @@ describe('CatalogService', () => {
         NotFoundException,
       );
     });
+
+    it('fetches catalog only and skips inventory for the details section', async () => {
+      const detail = {
+        articleNumber: 'WL6340',
+        brandName: 'WIX',
+        brandLogoUrl: null,
+        description: 'Oil Filter',
+        images: [],
+        technicalSpecs: [],
+        oemNumbers: [],
+        compatibleVehicles: [],
+        fitsVehicle: null,
+      };
+      findArticleDetailsMock.mockResolvedValueOnce(detail);
+
+      const result = await service.getArticleDetail('WL6340', undefined, [
+        'details',
+      ]);
+
+      expect(result).toEqual(detail);
+      expect(getBestPriceAndAvailabilityMock).not.toHaveBeenCalled();
+    });
+
+    it('fetches inventory only and skips the TecDoc lookup for the availability section', async () => {
+      getBestPriceAndAvailabilityMock.mockResolvedValueOnce({
+        available: true,
+        priceExVat: 1250,
+        priceIncVat: 1500,
+        stockStatus: 'IN_STOCK',
+        estimatedDeliveryDays: 2,
+        availabilityByWarehouse: [],
+        computedAt: '2026-06-25T07:00:00.000Z',
+      });
+
+      const result = await service.getArticleDetail('WL6340', 'V10042', [
+        'availability',
+      ]);
+
+      expect(findArticleDetailsMock).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        available: true,
+        bestPriceExVat: 1250,
+        bestPriceIncVat: 1500,
+        stockStatus: 'IN_STOCK',
+        estimatedDeliveryDays: 2,
+        availabilityByWarehouse: [],
+        computedAt: '2026-06-25T07:00:00.000Z',
+      });
+    });
   });
 
   describe('searchArticles', () => {

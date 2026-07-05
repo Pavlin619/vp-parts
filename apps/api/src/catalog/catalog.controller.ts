@@ -15,7 +15,34 @@ import {
   AssemblyGroupDto,
   PaginatedArticlesDto,
   ArticleDetailDto,
+  ArticleDetailSection,
 } from '@vp-parts-shop/shared';
+
+const VALID_SECTIONS: readonly ArticleDetailSection[] = [
+  'details',
+  'availability',
+];
+
+/**
+ * Parses the `include` query (e.g. `details`, `availability`, or
+ * `details,availability`) into the sections to fetch. Unknown tokens are
+ * dropped; an absent or fully-invalid value falls back to the full response so
+ * the endpoint stays backwards-compatible.
+ */
+export function parseIncludeSections(include?: string): ArticleDetailSection[] {
+  if (!include) {
+    return [...VALID_SECTIONS];
+  }
+
+  const requested = include
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token): token is ArticleDetailSection =>
+      VALID_SECTIONS.includes(token as ArticleDetailSection),
+    );
+
+  return requested.length > 0 ? requested : [...VALID_SECTIONS];
+}
 
 @Public()
 @Controller('catalog')
@@ -68,7 +95,12 @@ export class CatalogController {
   getArticleDetail(
     @Param('articleNumber') articleNumber: string,
     @Query('vehicleId') vehicleId?: string,
-  ): Promise<ArticleDetailDto> {
-    return this.catalog.getArticleDetail(articleNumber, vehicleId);
+    @Query('include') include?: string,
+  ): Promise<Partial<ArticleDetailDto>> {
+    return this.catalog.getArticleDetail(
+      articleNumber,
+      vehicleId,
+      parseIncludeSections(include),
+    );
   }
 }
