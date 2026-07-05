@@ -61,10 +61,13 @@ export class InventoryService {
   }
 
   /**
-   * Live, uncached availability for a single article. Reads our own stock and
-   * supplier stock directly and fails closed (InventoryUnavailableException) on
-   * a database error — this powers the protected availability endpoint, cart
-   * refresh, and pre-checkout validation, all of which must never sell stale.
+   * Live, uncached availability for a single article that fails **closed**
+   * (InventoryUnavailableException) on a database error. This is the in-process
+   * contract for the binding pre-checkout re-validation — CheckoutService calls
+   * it directly during the confirm step so a DB blip aborts the order rather
+   * than silently selling stale stock. It is intentionally not exposed over
+   * HTTP: client-facing reads (product page, cart refresh) go through the
+   * catalog `?include=availability` path, which fails open for display.
    */
   async getAvailability(articleNumber: string): Promise<AvailabilityDto> {
     let offers: ResolvedOffers;
