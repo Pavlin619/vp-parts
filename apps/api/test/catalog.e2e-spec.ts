@@ -87,6 +87,7 @@ const mockTecDocClient = {
   getBrands: jest.fn(),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
+  getSubstitutes: jest.fn(),
   searchArticles: jest.fn(),
   getAutocompleteSuggestions: jest.fn(),
 };
@@ -314,6 +315,40 @@ describe('CatalogController (e2e)', () => {
       expect(res.body.available).toBe(false);
       expect(res.body).toHaveProperty('computedAt');
       expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /catalog/articles/:articleNumber/substitutes', () => {
+    it('returns the cross-reference parts enriched with inventory data', async () => {
+      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([
+        {
+          articleNumber: 'OC115',
+          brandName: 'MANN-FILTER',
+          description: 'Oil Filter',
+          thumbnailUrl: null,
+        },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles/OX%20982D/substitutes')
+        .expect(200);
+
+      expect(mockTecDocClient.getSubstitutes).toHaveBeenCalledWith('OX 982D');
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].articleNumber).toBe('OC115');
+      // InventoryService stub reports no stock for this article.
+      expect(res.body[0].available).toBe(false);
+      expect(res.body[0].bestPriceIncVat).toBeNull();
+    });
+
+    it('returns an empty array when the part has no cross-references', async () => {
+      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles/BD-001/substitutes')
+        .expect(200);
+
+      expect(res.body).toEqual([]);
     });
   });
 });

@@ -436,6 +436,106 @@ describe('TecDocClient', () => {
     });
   });
 
+  describe('getSubstitutes', () => {
+    const comparableResponse = {
+      articles: [
+        {
+          articleNumber: 'OX 982D',
+          mfrName: 'KNECHT',
+          genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+          images: [],
+        },
+        {
+          articleNumber: 'OC115',
+          mfrName: 'MANN-FILTER',
+          genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+          images: [
+            {
+              imageURL800:
+                'https://digitalassets.tecalliance.services/images/800/oc115.jpg',
+            },
+          ],
+        },
+        {
+          articleNumber: 'WL7090',
+          mfrName: 'WIX',
+          genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+        },
+      ],
+    };
+
+    it('queries getArticles with searchType 3 (Comparable Number) and the limit', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse({ articles: [] }));
+
+      await client.getSubstitutes('OX 982D');
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({
+        provider: 12345,
+        searchQuery: 'OX 982D',
+        searchType: 3,
+        perPage: 20,
+        includeAll: true,
+      });
+    });
+
+    it('excludes the searched article and maps the comparable parts', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(comparableResponse));
+
+      const result = await client.getSubstitutes('OX 982D');
+
+      expect(result).toEqual([
+        {
+          articleNumber: 'OC115',
+          brandName: 'MANN-FILTER',
+          description: 'Oil Filter',
+          thumbnailUrl:
+            'https://digitalassets.tecalliance.services/images/800/oc115.jpg',
+        },
+        {
+          articleNumber: 'WL7090',
+          brandName: 'WIX',
+          description: 'Oil Filter',
+          thumbnailUrl: null,
+        },
+      ]);
+    });
+
+    it('deduplicates comparable articles returned more than once', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          articles: [
+            {
+              articleNumber: 'OC115',
+              mfrName: 'MANN-FILTER',
+              genericArticles: [],
+              images: [],
+            },
+            {
+              articleNumber: 'OC115',
+              mfrName: 'MANN-FILTER',
+              genericArticles: [],
+              images: [],
+            },
+          ],
+        }),
+      );
+
+      const result = await client.getSubstitutes('OX 982D');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].articleNumber).toBe('OC115');
+    });
+
+    it('returns an empty list when TecDoc omits the articles array', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse({}));
+
+      await expect(client.getSubstitutes('OX 982D')).resolves.toEqual([]);
+    });
+  });
+
   describe('searchArticles', () => {
     const searchResponse = {
       totalMatchingArticles: 1,

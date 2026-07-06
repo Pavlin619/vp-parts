@@ -18,6 +18,14 @@ import {
 } from '@vp-parts-shop/shared';
 
 /**
+ * Upper bound on comparable (cross-reference) articles fetched and returned for
+ * a single part. Caps the TecDoc `getArticles` page size and the enriched list
+ * so a part with hundreds of cross-references never floods the substitutes tab
+ * or the bulk inventory lookup behind it.
+ */
+export const SUBSTITUTES_LIMIT = 20;
+
+/**
  * TecDoc Pegasus 3.0 is a JSON RPC service — NOT a REST API.
  *
  * All calls are HTTP POST to a single endpoint:
@@ -275,6 +283,53 @@ export class TecDocClient {
       compatibleVehicles: [],
       fitsVehicle: vehicleId != null ? null : null,
     };
+  }
+
+  /**
+   * Comparable (cross-reference) articles for a part — "the same part from
+   * other data suppliers". Uses `getArticles` with `searchType: 3` (Comparable
+   * Number, per the Pegasus 3.0 Onboarding Guide §8.5: "comparable articles
+   * that can replace each other from different data suppliers"). The searched
+   * article is excluded and duplicates are removed; the page size is capped at
+   * {@link SUBSTITUTES_LIMIT}.
+   */
+  async getSubstitutes(
+    articleNumber: string,
+  ): Promise<ArticleCatalogListItemDto[]> {
+    const data = await this.call<{
+      articles?: Array<{
+        articleNumber: string;
+        mfrName: string;
+        genericArticles: Array<{ genericArticleDescription: string }>;
+        images?: Array<{ imageURL800?: string }>;
+      }>;
+    }>('getArticles', {
+      articleCountry: 'BG',
+      lang: 'bg',
+      searchQuery: articleNumber,
+      searchType: 3,
+      perPage: SUBSTITUTES_LIMIT,
+      page: 1,
+      includeAll: true,
+    });
+
+    const seen = new Set<string>([articleNumber]);
+    const substitutes: ArticleCatalogListItemDto[] = [];
+
+    for (const article of data.articles ?? []) {
+      if (seen.has(article.articleNumber)) continue;
+      seen.add(article.articleNumber);
+
+      substitutes.push({
+        articleNumber: article.articleNumber,
+        brandName: article.mfrName,
+        description:
+          article.genericArticles[0]?.genericArticleDescription ?? '',
+        thumbnailUrl: article.images?.[0]?.imageURL800 ?? null,
+      });
+    }
+
+    return substitutes;
   }
 
   async searchArticles(

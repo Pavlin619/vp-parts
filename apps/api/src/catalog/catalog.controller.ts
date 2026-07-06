@@ -16,6 +16,7 @@ import {
   PaginatedArticlesDto,
   ArticleDetailDto,
   ArticleDetailSection,
+  ArticleListItemDto,
 } from '@vp-parts-shop/shared';
 
 const VALID_SECTIONS: readonly ArticleDetailSection[] = [
@@ -102,5 +103,12 @@ export class CatalogController {
       vehicleId,
       parseIncludeSections(include),
     );
+  }
+
+  @Get('articles/:articleNumber/substitutes')
+  getSubstitutes(
+    @Param('articleNumber') articleNumber: string,
+  ): Promise<ArticleListItemDto[]> {
+    return this.catalog.getSubstitutes(articleNumber);
   }
 }
