@@ -274,6 +274,29 @@ describe('CatalogController (e2e)', () => {
 
       expect(res.body).toEqual({});
     });
+
+    // Exercises the real SQL read against the seeded backoffice stock tables:
+    // OF-OC115 is our own-stock scenario (CENTRAL / IN_STOCK, qty 25, price
+    // 8.50 / 10.20) from infra/db/02-mock-stock-seed.sql.
+    it('returns seeded availability for an own-stock part', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles-availability?numbers=OF-OC115')
+        .expect(200);
+
+      expect(res.body['OF-OC115']).toEqual({
+        available: true,
+        bestPriceExVat: 850,
+        bestPriceIncVat: 1020,
+        availabilityByWarehouse: [
+          expect.objectContaining({
+            warehouseId: 'CENTRAL',
+            quantity: 25,
+            deliveryWorkDays: 0,
+          }),
+        ],
+        computedAt: expect.any(String),
+      });
+    });
   });
 
   describe('GET /catalog/articles/:articleNumber', () => {
