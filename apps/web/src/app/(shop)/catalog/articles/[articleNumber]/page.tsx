@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { cacheLife, cacheTag } from "next/cache";
 import { notFound } from "next/navigation";
 import type { ArticleCatalogDetailDto } from "@vp-parts-shop/shared";
@@ -10,10 +9,7 @@ import {
   ArticleImages,
   ArticleHeader,
   ArticleSpecs,
-  ArticleBuyBoxSection,
-  ArticleBuyBoxSkeleton,
-  ArticleTabs,
-  RelatedParts,
+  ArticleBuyBox,
 } from "@/components/catalog/article-detail";
 
 interface ArticleDetailPageProps {
@@ -45,7 +41,7 @@ export default async function ArticleDetailPage({
 }: ArticleDetailPageProps) {
   const { articleNumber: rawArticleNumber } = await params;
   const articleNumber = decodeRouteParam(rawArticleNumber);
-  const { vehicleId, categoryId } = await searchParams;
+  const { vehicleId } = await searchParams;
 
   let article: ArticleCatalogDetailDto;
   try {
@@ -76,33 +72,16 @@ export default async function ArticleDetailPage({
             brandLogoUrl={article.brandLogoUrl}
           />
 
-          <ArticleSpecs
-            technicalSpecs={article.technicalSpecs}
-            oemNumbers={article.oemNumbers}
-          />
+          <ArticleSpecs technicalSpecs={article.technicalSpecs} />
         </div>
 
         <aside className="h-fit lg:sticky lg:top-4">
-          <Suspense fallback={<ArticleBuyBoxSkeleton />}>
-            <ArticleBuyBoxSection
-              articleNumber={articleNumber}
-              fitsVehicle={article.fitsVehicle}
-              articleName={article.description}
-            />
-          </Suspense>
+          <ArticleBuyBox
+            articleNumber={articleNumber}
+            fitsVehicle={article.fitsVehicle}
+            articleName={article.description}
+          />
         </aside>
-      </div>
-
-      <div className="mt-12">
-        <ArticleTabs compatibleVehicles={article.compatibleVehicles} />
-      </div>
-
-      <div className="mt-12">
-        <RelatedParts
-          currentArticleNumber={article.articleNumber}
-          vehicleId={vehicleId}
-          categoryId={categoryId}
-        />
       </div>
     </div>
   );

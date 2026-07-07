@@ -3,6 +3,10 @@ import userEvent from "@testing-library/user-event";
 import type { WarehouseAvailabilityDto, WarehouseId } from "@vp-parts-shop/shared";
 import { ArticleAvailability } from "./article-availability";
 
+// A fixed live clock keeps the formatted per-warehouse dates deterministic; the
+// fixtures use a far-past pickup so they never format as днес/утре.
+const NOW = new Date("2026-07-01T08:00:00.000Z");
+
 function warehouse(
   warehouseId: WarehouseId,
   quantity: number,
@@ -14,7 +18,6 @@ function warehouse(
     deliveryWorkDays: 0,
     orderCutoffTime: "18:00",
     cutoffAt: "2099-06-25T15:00:00.000Z",
-    // A far-past date keeps the formatted label deterministic (never днес/утре).
     pickup: { earliestAt: "2020-01-06T08:00:00.000Z", granularity: "DAY" },
     courier: { earliestAt: "2020-01-07T08:00:00.000Z", granularity: "DAY" },
     ...overrides,
@@ -25,6 +28,7 @@ describe("ArticleAvailability", () => {
   it("names the fastest in-stock warehouse and its quantity in the headline", () => {
     render(
       <ArticleAvailability
+        now={NOW}
         availabilityByWarehouse={[
           warehouse("CENTRAL", 7),
           warehouse("ROMANIA", 5, { orderCutoffTime: "17:00" }),
@@ -41,6 +45,7 @@ describe("ArticleAvailability", () => {
   it("names the fastest warehouse even when the central one is empty", () => {
     render(
       <ArticleAvailability
+        now={NOW}
         availabilityByWarehouse={[
           warehouse("ROMANIA", 5, { orderCutoffTime: "17:00" }),
         ]}
@@ -53,7 +58,7 @@ describe("ArticleAvailability", () => {
   });
 
   it("keeps a positive headline and hides the dialog when no breakdown is provided", () => {
-    render(<ArticleAvailability availabilityByWarehouse={[]} />);
+    render(<ArticleAvailability now={NOW} availabilityByWarehouse={[]} />);
 
     expect(screen.getByText("Наличен в склад")).toBeInTheDocument();
     expect(
@@ -65,6 +70,7 @@ describe("ArticleAvailability", () => {
     const user = userEvent.setup();
     render(
       <ArticleAvailability
+        now={NOW}
         availabilityByWarehouse={[
           warehouse("CENTRAL", 2),
           warehouse("ROMANIA", 5, { orderCutoffTime: "17:00" }),
@@ -88,10 +94,8 @@ describe("ArticleAvailability", () => {
     const user = userEvent.setup();
     render(
       <ArticleAvailability
-        availabilityByWarehouse={[
-          warehouse("CENTRAL", 2),
-          warehouse("POLAND", 0),
-        ]}
+        now={NOW}
+        availabilityByWarehouse={[warehouse("CENTRAL", 2), warehouse("POLAND", 0)]}
       />,
     );
 

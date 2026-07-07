@@ -6,11 +6,17 @@ import { ArticleCard } from './article-card'
 const baseArticle: ArticleListItemDto = {
   articleNumber: 'ART-001',
   brandName: 'Bosch',
+  brandLogoUrl: null,
   description: 'Oil Filter',
   thumbnailUrl: null,
+  technicalSpecs: [],
+  oemNumbers: [],
+  fitsVehicle: null,
   available: true,
   bestPriceExVat: 2183,
   bestPriceIncVat: 2599,
+  availabilityByWarehouse: [],
+  computedAt: null,
 }
 
 describe('ArticleCard — image', () => {

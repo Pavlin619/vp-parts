@@ -1,19 +1,25 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import type { SearchResultItemDto } from '@vp-parts-shop/shared'
-import { SearchResults } from './search-results'
+import { SearchResults, type SearchResultRow } from './search-results'
 import { SearchEmptyState } from './search-empty-state'
 
 function resultItem(
-  overrides: Partial<SearchResultItemDto> = {},
-): SearchResultItemDto {
+  overrides: Partial<SearchResultRow> = {},
+): SearchResultRow {
   return {
     articleNumber: 'WL6340',
     brandName: 'WIX',
+    brandLogoUrl: null,
     description: 'Oil Filter',
-    available: true,
-    bestPriceIncVat: 1500,
+    thumbnailUrl: null,
+    technicalSpecs: [],
+    oemNumbers: [],
     fitsVehicle: null,
+    available: true,
+    bestPriceExVat: 1250,
+    bestPriceIncVat: 1500,
+    availabilityByWarehouse: [],
+    computedAt: null,
     ...overrides,
   }
 }

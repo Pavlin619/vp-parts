@@ -5,6 +5,7 @@
 export function ArticleBuyBoxSkeleton() {
   return (
     <div
+      data-testid="article-buy-box-skeleton"
       className="h-72 w-full animate-pulse rounded-[12px] bg-bg-sunken"
       aria-hidden="true"
     />
