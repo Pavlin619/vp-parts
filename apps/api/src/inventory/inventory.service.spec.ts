@@ -156,8 +156,8 @@ describe('InventoryService', () => {
 
         expect(result.get('WL6340')).toEqual({
           available: true,
-          priceExVat: 5000,
-          priceIncVat: 6000,
+          bestPriceExVat: 5000,
+          bestPriceIncVat: 6000,
           // Own stock (4) and the within-hour supplier (3) unite into Central.
           availabilityByWarehouse: [warehouseRow('CENTRAL', 7)],
           computedAt: expect.any(String),
@@ -184,8 +184,8 @@ describe('InventoryService', () => {
           'WL6340',
         );
 
-        expect(detail?.priceIncVat).toBe(4800);
-        expect(detail?.priceExVat).toBe(Math.round(4800 / 1.2));
+        expect(detail?.bestPriceIncVat).toBe(4800);
+        expect(detail?.bestPriceExVat).toBe(Math.round(4800 / 1.2));
       });
 
       it('falls back to the lowest-buy-price supplier within the fastest band when we do not carry the part', async () => {
@@ -211,8 +211,8 @@ describe('InventoryService', () => {
 
         expect(detail?.available).toBe(true);
         // Supplier sell price is VAT-inclusive; ex-VAT is derived from it.
-        expect(detail?.priceIncVat).toBe(5300);
-        expect(detail?.priceExVat).toBe(Math.round(5300 / 1.2));
+        expect(detail?.bestPriceIncVat).toBe(5300);
+        expect(detail?.bestPriceExVat).toBe(Math.round(5300 / 1.2));
       });
 
       it('returns an out-of-stock availability when nobody has stock', async () => {
@@ -224,8 +224,8 @@ describe('InventoryService', () => {
         );
 
         expect(detail?.available).toBe(false);
-        expect(detail?.priceExVat).toBeNull();
-        expect(detail?.priceIncVat).toBeNull();
+        expect(detail?.bestPriceExVat).toBeNull();
+        expect(detail?.bestPriceIncVat).toBeNull();
       });
 
       it('drops an unknown supplier/warehouse line (no delivery rule) and treats it as out of stock', async () => {
@@ -362,12 +362,12 @@ describe('InventoryService', () => {
         ]);
 
         const owned = result.get('OWNED');
-        expect(owned?.priceIncVat).toBe(6000);
+        expect(owned?.bestPriceIncVat).toBe(6000);
         // Every entry carries the request-time warehouse projection now.
         expect(owned?.availabilityByWarehouse.length).toBeGreaterThan(0);
         expect(owned?.computedAt).not.toBeNull();
         expect(result.get('SUPPLIED')?.available).toBe(true);
-        expect(result.get('SUPPLIED')?.priceIncVat).toBe(4000);
+        expect(result.get('SUPPLIED')?.bestPriceIncVat).toBe(4000);
         expect(result.get('MISSING')?.available).toBe(false);
       });
 

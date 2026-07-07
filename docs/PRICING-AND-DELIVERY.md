@@ -183,17 +183,15 @@ All money is handled as **integer EUR cents** everywhere.
 - **Unknown supplier/warehouse mapping:** that offer is dropped and an alert is logged
   (never shown to the customer).
 - **A supplier row with no usable quantity:** treated as "unknown" and excluded.
-- **Single vs bulk read on a DB error:** the two reads have a single, fixed error
-  policy each (no per-call flag). A **single**-article read
-  (`getBestPriceAndAvailability`, the product-page buy box) **fails open** — it serves
-  a neutral "unavailable" because a lone buy box has nothing else to show. A **bulk**
-  read (`getBulkPricesAndAvailability`, the listing grid, search, substitutes, and the
-  future cart/checkout re-validation) **fails closed** — it throws
-  `InventoryUnavailableException` (503 / `INVENTORY_UNAVAILABLE`) rather than marking a
-  whole list as falsely out of stock, so callers show a single "try again later" state.
-  Note this is *only* about read failures: an article that genuinely has no stock always
-  resolves to `available: false` in both. See `docs/ARCHITECTURE.md` →
-  *Pricing, Availability and Pre-Checkout Check*.
+- **Read failure policy:** there is one live read — `getAvailability(numbers)`,
+  which toggles only the DB query by input size (single-row vs batch) — and it
+  **always fails closed**: on a read error it throws `InventoryUnavailableException`
+  (503 / `INVENTORY_UNAVAILABLE`) rather than marking anything as falsely out of
+  stock. Every surface that uses it (the product-page buy box, listing grid, search,
+  substitutes, and the cart/checkout re-validation) shows a scoped "try again later"
+  state on that error. Note this is *only* about read failures: an article that
+  genuinely has no stock always resolves to `available: false`. See
+  `docs/ARCHITECTURE.md` → *Pricing, Availability and Pre-Checkout Check*.
 
 ---
 
@@ -206,8 +204,8 @@ All money is handled as **integer EUR cents** everywhere.
 | Resolving a supplier row to a delivery band (adds the clock) | `apps/api/src/inventory/delivery-speed.resolver.ts` |
 | Reading our own stock | `apps/api/src/inventory/autoparts.repository.ts` |
 | Reading supplier stock | `apps/api/src/inventory/supplier-stock.repository.ts` |
-| Wiring it together + VAT + single fail-open / bulk fail-closed | `apps/api/src/inventory/inventory.service.ts` |
-| One enrichment path + cached metadata / live availability split | `apps/api/src/catalog/catalog.service.ts` (`getArticlesAvailability`, `enrichWithAvailability`) |
+| Wiring it together + VAT + the fail-closed availability read | `apps/api/src/inventory/inventory.service.ts` (`getAvailability`) |
+| Cached metadata / live availability split | `apps/api/src/catalog/catalog.service.ts` (`getArticlesAvailability`) |
 | Merging cached grid metadata with the live availability read | `apps/web/src/lib/catalog/merge-availability.ts` |
 | The shape returned to the frontend | `packages/shared/src/dto/inventory.dto.ts` |
 

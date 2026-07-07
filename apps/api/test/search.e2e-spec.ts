@@ -4,21 +4,19 @@ import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
 import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
 import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
-import { ArticleListItemDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
+import {
+  ArticleCatalogListItemDto,
+  AutocompleteItemDto,
+} from '@vp-parts-shop/shared';
 
 const makeArticle = (
   articleNumber: string,
   description = 'Oil Filter',
-): ArticleListItemDto => ({
+): ArticleCatalogListItemDto => ({
   articleNumber,
   brandName: 'WIX',
   description,
   thumbnailUrl: null,
-  available: false,
-  bestPriceExVat: null,
-  bestPriceIncVat: null,
-  availabilityByWarehouse: [],
-  computedAt: null,
 });
 
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({

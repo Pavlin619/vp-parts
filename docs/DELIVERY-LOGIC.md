@@ -240,12 +240,13 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
    focus once the snapshot has aged past a TTL.
 3. **Pre-action re-validation (deferred to checkout, `TODO(checkout)`)** — before
    a binding commitment (checkout confirm), `CheckoutService` calls the live,
-   fail-closed `InventoryService.getBulkPricesAndAvailability` **in-process** (a
-   cart is naturally multi-item) with `withWarehouses` and binds the returned
-   date as the committed promise. Tracked as task **T113b**. This guarantees a
-   stale tab can never *commit* a wrong date; the layers above only affect
-   display, and the single-article buy box read (`getBestPriceAndAvailability`)
-   fails open for display.
+   fail-closed `InventoryService.getAvailability` **in-process** (a cart is
+   naturally multi-item, so it takes the batch path; warehouses are always
+   attached) and binds the returned date as the committed promise. Tracked as
+   task **T113b**. This guarantees a stale tab can never *commit* a wrong date;
+   the layers above only affect display. The read fails closed everywhere — the
+   single-article buy box shows a scoped retry on a read error, not a silently
+   wrong "unavailable".
 
 > **Note on bands.** The per-warehouse cut-off is **hour-granular**
 > (`localHour(effectiveStart) < cutoffHour`); cut-offs are always whole hours
@@ -255,11 +256,13 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
 
 ## The wire contract
 
-`ArticleInventoryDetailDto` (single detail) and `ArticleListItemDto` (the one
-list-row shape, shared by the grid, search and substitutes) carry
-`availabilityByWarehouse: WarehouseAvailabilityDto[]` (fastest-first) plus a
-top-level `computedAt`. Only the warehouse **id** crosses the wire — localized
-names stay in the frontend, keeping the contract supplier-agnostic.
+`ArticleInventoryDetailDto` is the single availability shape on the wire —
+returned per-article by `GET /catalog/articles-availability` and merged onto
+cached catalog metadata client-side by every list surface (grid, search,
+substitutes). It carries `availabilityByWarehouse: WarehouseAvailabilityDto[]`
+(fastest-first) plus a top-level `computedAt`. Only the warehouse **id** crosses
+the wire — localized names stay in the frontend, keeping the contract
+supplier-agnostic.
 
 ```ts
 interface WarehouseAvailabilityDto {
@@ -283,15 +286,16 @@ breakdown, and the frontend derives its delivery label per warehouse from
 `deliveryWorkDays` and the `pickup`/`courier` projections.
 
 **Caching note:** availability is always read on a **dynamic (uncached)** path,
-so it never carries a stale date. There are two callers of the live warehouse
-read: the single-article buy box (`getBestPriceAndAvailability`) and the bulk
-map (`getBulkPricesAndAvailability` with `withWarehouses: true`) used by search,
-substitutes, and — critically — the catalog grid. The grid caches only the
-**metadata** (`GET /catalog/.../articles`, `PaginatedCatalogArticlesDto`, no
-inventory) and hydrates it with a separate live availability read
-(`GET /catalog/articles-availability`, `no-store`), mirroring the article detail
-page's cached-metadata / live-availability split. This is what keeps request-time
-delivery dates out of any cached payload.
+so it never carries a stale date. Every surface goes through one live read —
+`InventoryService.getAvailability(numbers)` (single vs bulk DB query by count,
+warehouses always attached), exposed as `GET /catalog/articles-availability`
+(`no-store`). The buy box, catalog grid, search, and substitutes all fetch their
+**metadata** from a separate cacheable catalog response (e.g.
+`GET /catalog/.../articles` → `PaginatedCatalogArticlesDto`, `GET /search` →
+`SearchResultItemDto[]`, both without inventory) and hydrate it with that live
+availability read, merging on the frontend. This mirrors the article detail
+page's cached-metadata / live-availability split and keeps request-time delivery
+dates out of any cached payload.
 
 ---
 

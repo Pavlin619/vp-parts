@@ -157,8 +157,8 @@ describe('CatalogService', () => {
             'WL6340',
             {
               available: true,
-              priceExVat: 1250,
-              priceIncVat: 1500,
+              bestPriceExVat: 1250,
+              bestPriceIncVat: 1500,
               availabilityByWarehouse: [warehouse],
               computedAt: '2026-07-05T09:00:00.000Z',
             },
@@ -235,31 +235,8 @@ describe('CatalogService', () => {
       thumbnailUrl: null,
     };
 
-    it('enriches search results with the full warehouse availability detail', async () => {
-      const warehouse = {
-        warehouseId: 'CENTRAL',
-        quantity: 6,
-        deliveryWorkDays: 0,
-        orderCutoffTime: '18:00',
-        cutoffAt: '2026-07-05T15:00:00.000Z',
-        pickup: { granularity: 'HOUR', earliestAt: '2026-07-05T12:00:00.000Z' },
-        courier: { granularity: 'DAY', earliestAt: '2026-07-06T06:00:00.000Z' },
-      };
+    it('returns catalog metadata only, without reading inventory', async () => {
       searchArticlesRepoMock.mockResolvedValueOnce([rawResult]);
-      getAvailabilityMock.mockResolvedValueOnce(
-        new Map([
-          [
-            'WL6340',
-            {
-              available: true,
-              priceExVat: 1250,
-              priceIncVat: 1500,
-              availabilityByWarehouse: [warehouse],
-              computedAt: '2026-07-05T09:00:00.000Z',
-            },
-          ],
-        ]),
-      );
 
       const result = await service.searchArticles('WL6340');
 
@@ -268,18 +245,10 @@ describe('CatalogService', () => {
         undefined,
         undefined,
       );
-      // Search is dynamic, so it enriches through the same live availability read.
-      expect(getAvailabilityMock).toHaveBeenCalledWith(['WL6340']);
-      expect(result).toEqual([
-        {
-          ...rawResult,
-          available: true,
-          bestPriceExVat: 1250,
-          bestPriceIncVat: 1500,
-          availabilityByWarehouse: [warehouse],
-          computedAt: '2026-07-05T09:00:00.000Z',
-        },
-      ]);
+      // Search is a pure catalog read now — the client fetches live
+      // price/availability separately via getArticlesAvailability.
+      expect(result).toEqual([rawResult]);
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
     it('passes the vehicleId through to the repository', async () => {
@@ -292,6 +261,7 @@ describe('CatalogService', () => {
         'V10042',
         undefined,
       );
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
   });
 

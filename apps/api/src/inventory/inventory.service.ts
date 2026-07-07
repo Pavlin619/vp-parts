@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { WarehouseAvailabilityDto } from '@vp-parts-shop/shared';
+import {
+  ArticleInventoryDetailDto,
+  WarehouseAvailabilityDto,
+} from '@vp-parts-shop/shared';
 import { AutopartsRepository, OwnStockRow } from './autoparts.repository';
 import {
   SupplierStockRepository,
@@ -21,7 +24,6 @@ import {
   warehousesFastestFirst,
 } from './warehouse';
 import { InventoryUnavailableException } from './inventory-unavailable.exception';
-import { PriceAndAvailability } from './inventory.types';
 
 const DEFAULT_VAT_RATE = 0.2;
 
@@ -66,8 +68,8 @@ export class InventoryService {
    */
   async getAvailability(
     articleNumbers: string[],
-  ): Promise<Map<string, PriceAndAvailability>> {
-    const result = new Map<string, PriceAndAvailability>();
+  ): Promise<Map<string, ArticleInventoryDetailDto>> {
+    const result = new Map<string, ArticleInventoryDetailDto>();
     if (articleNumbers.length === 0) {
       return result;
     }
@@ -79,7 +81,7 @@ export class InventoryService {
       const offers = offersByNumber.get(articleNumber) ?? EMPTY_OFFERS;
       result.set(
         articleNumber,
-        this.toPriceAndAvailability(
+        this.toInventoryDetail(
           this.select(offers),
           this.buildWarehouseAvailability(offers, now),
           now.toISOString(),
@@ -272,15 +274,15 @@ export class InventoryService {
     };
   }
 
-  private toPriceAndAvailability(
+  private toInventoryDetail(
     offer: BestOffer,
     availabilityByWarehouse: WarehouseAvailabilityDto[] = [],
     computedAt: string | null = null,
-  ): PriceAndAvailability {
+  ): ArticleInventoryDetailDto {
     return {
       available: offer.available,
-      priceExVat: offer.priceExVatCents,
-      priceIncVat: offer.priceIncVatCents,
+      bestPriceExVat: offer.priceExVatCents,
+      bestPriceIncVat: offer.priceIncVatCents,
       availabilityByWarehouse,
       computedAt,
     };

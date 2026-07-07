@@ -223,6 +223,13 @@ Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read
 
 Normalises the query and searches the TecDoc catalogue. Query param `vehicleId` (optional) adds fit indicator.
 
+Returns cacheable TecDoc **metadata + fit only — no live inventory**, mirroring the
+listing grid / article detail split. `available` and price are not on the search
+response; the client fetches live price/availability for the result article
+numbers via `GET /catalog/articles-availability` and merges it in. This keeps a
+search from triggering a stock-DB read per TecDoc tier attempt — availability is
+read once, client-side, for the final result set.
+
 Response `200` — single exact match:
 ```json
 { "redirect": "/catalog/articles/WL6340" }
@@ -238,8 +245,7 @@ Response `200` — multiple matches:
       "articleNumber": "WL6340",
       "brandName": "WIX",
       "description": "Oil Filter",
-      "available": true,
-      "bestPriceIncVat": 1500,
+      "thumbnailUrl": null,
       "fitsVehicle": true
     }
   ]
@@ -273,27 +279,26 @@ Cache: Redis, 30 min.
 ## Inventory Module
 
 There is **no standalone inventory HTTP endpoint.** Client-facing availability is
-served through the catalog endpoints, which read `public.autoparts` +
-`public.supplier_stock` directly and live (no Redis). The error policy is fixed
-per read shape:
+served through the catalog endpoint `GET /catalog/articles-availability?numbers=…`
+(`no-store`), which reads `public.autoparts` + `public.supplier_stock` directly and
+live (no Redis).
 
-- **Single-article** reads (`getBestPriceAndAvailability`, the product-page buy box
-  via `?include=availability`) **fail open** — a neutral "unavailable" — so the
-  product page never errors on a transient DB blip.
-- **Bulk** reads (`getBulkPricesAndAvailability`) **fail closed** —
-  `INVENTORY_UNAVAILABLE`, 503 — so a whole list is never rendered as falsely out
-  of stock; the client shows a single "try again later" state instead. This is the
-  single availability read shared by the listing grid (`GET /catalog/articles-availability`),
-  search, and the substitutes panel. (An article that genuinely has no stock still
-  resolves to `available: false`; only a read *failure* throws.)
+There is **one** read behind every surface — `InventoryService.getAvailability(numbers)`,
+exposed via `CatalogService.getArticlesAvailability` — which toggles only the DB
+query by input size (single-row vs batch) and **always fails closed**: on a read
+error it throws `InventoryUnavailableException` (`INVENTORY_UNAVAILABLE`, 503) rather
+than reporting stock as unavailable. Every surface fetches cached metadata separately
+and hydrates it with this read client-side (the product-page buy box, listing grid,
+search, and substitutes), and each shows a scoped "try again" state on the 503 rather
+than a silently wrong "unavailable" or a grid of false "out of stock" rows. (An
+article that genuinely has no stock still resolves to `available: false`; only a read
+*failure* throws.)
 
-The **binding pre-checkout re-validation** must also **fail closed**
-(`INVENTORY_UNAVAILABLE`, 503) so a DB error aborts the order rather than selling
-stale stock. It reuses the bulk read
-(`InventoryService.getBulkPricesAndAvailability(cart numbers)`), called
-**in-process** by `CheckoutService` during the confirm step — a cart is naturally
-multi-item, so it inherits the fail-closed policy. It is not exposed over HTTP:
-NestJS services read the shared DB directly, with no internal REST hop.
+The **binding pre-checkout re-validation** uses the same fail-closed read
+(`InventoryService.getAvailability(cart numbers)`), called **in-process** by
+`CheckoutService` during the confirm step so a DB error aborts the order rather than
+selling stale stock. It is not exposed over HTTP: NestJS services read the shared DB
+directly, with no internal REST hop.
 
 ---
 

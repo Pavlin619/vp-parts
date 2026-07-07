@@ -7,23 +7,12 @@ import {
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleCatalogListItemDto,
-  ArticleInventoryDetailDto,
-  ArticleListItemDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
 import { SearchMatchType, SUBSTITUTES_LIMIT } from './tecdoc/tecdoc-client';
-import { InventoryService, PriceAndAvailability } from '../inventory';
-
-/** Neutral detail for a requested article the availability read had no row for. */
-const UNAVAILABLE_DETAIL: ArticleInventoryDetailDto = {
-  available: false,
-  bestPriceExVat: null,
-  bestPriceIncVat: null,
-  availabilityByWarehouse: [],
-  computedAt: null,
-};
+import { InventoryService } from '../inventory';
 
 @Injectable()
 export class CatalogService {
@@ -69,36 +58,40 @@ export class CatalogService {
 
   /**
    * Live price/availability for a batch of article numbers, keyed by number.
-   * This is the single, uncached availability read every list surface uses —
-   * the catalog grid hydrates its cached metadata with it, and search /
-   * substitutes enrich through it (see {@link enrichWithAvailability}). It fails
-   * closed: a DB read error throws InventoryUnavailableException so a whole list
-   * never renders as falsely out of stock.
+   * This is the single, uncached availability read behind every list surface —
+   * the catalog grid, search, and substitutes all hydrate their cached metadata
+   * with it client-side. It fails closed: a DB read error throws
+   * InventoryUnavailableException so a whole list never renders as falsely out
+   * of stock.
    */
   async getArticlesAvailability(
     articleNumbers: string[],
   ): Promise<ArticlesAvailabilityDto> {
-    const priceMap = await this.inventory.getAvailability(articleNumbers);
+    const detailByNumber = await this.inventory.getAvailability(articleNumbers);
 
     const availability: ArticlesAvailabilityDto = {};
-    for (const [articleNumber, inv] of priceMap) {
-      availability[articleNumber] = this.toInventoryDetail(inv);
+    for (const [articleNumber, detail] of detailByNumber) {
+      availability[articleNumber] = detail;
     }
 
     return availability;
   }
 
+  /**
+   * Cacheable TecDoc catalog metadata for a search hit — identity, brand,
+   * description, thumbnail, and (when a vehicle is scoped) fit — with **no**
+   * live inventory. Search is a pure catalog read now: the client fetches live
+   * price/availability separately via {@link getArticlesAvailability} and
+   * merges it in, mirroring the listing grid / article detail split. Keeping
+   * inventory out of the search path means a search never triggers a stock-DB
+   * read per TecDoc tier attempt.
+   */
   async searchArticles(
     query: string,
     vehicleId?: string,
     matchType?: SearchMatchType,
-  ): Promise<ArticleListItemDto[]> {
-    const results = await this.repository.searchArticles(
-      query,
-      vehicleId,
-      matchType,
-    );
-    return this.enrichWithAvailability(results);
+  ): Promise<ArticleCatalogListItemDto[]> {
+    return this.repository.searchArticles(query, vehicleId, matchType);
   }
 
   async getAutocompleteSuggestions(
@@ -148,40 +141,5 @@ export class CatalogService {
       this.logger.warn(`Article not found: ${articleNumber}`);
       throw new NotFoundException(`Article not found: ${articleNumber}`);
     }
-  }
-
-  /**
-   * The single enrichment path for dynamic (uncached) list surfaces — search
-   * and substitutes. Attaches the full live inventory detail (price +
-   * per-warehouse availability) to each catalog item so they feed the same row
-   * component the grid does. The cached catalog grid does not use this; it
-   * fetches {@link getArticlesAvailability} separately to keep request-time
-   * delivery dates out of its cached payload.
-   */
-  private async enrichWithAvailability(
-    items: ArticleCatalogListItemDto[],
-  ): Promise<ArticleListItemDto[]> {
-    if (items.length === 0) return [];
-
-    const availability = await this.getArticlesAvailability(
-      items.map((item) => item.articleNumber),
-    );
-
-    return items.map((item) => ({
-      ...item,
-      ...(availability[item.articleNumber] ?? UNAVAILABLE_DETAIL),
-    }));
-  }
-
-  private toInventoryDetail(
-    inv: PriceAndAvailability,
-  ): ArticleInventoryDetailDto {
-    return {
-      available: inv.available,
-      bestPriceExVat: inv.priceExVat,
-      bestPriceIncVat: inv.priceIncVat,
-      availabilityByWarehouse: inv.availabilityByWarehouse,
-      computedAt: inv.computedAt,
-    };
   }
 }

@@ -127,12 +127,19 @@ export interface ArticleCatalogDetailDto {
   fitsVehicle: boolean | null;
 }
 
+/**
+ * A search hit as cacheable TecDoc metadata plus its vehicle-fit flag — with
+ * **no** live inventory. Mirrors the listing grid / article detail split: the
+ * search endpoint only resolves catalog identity and fit (a TecDoc concern),
+ * and the client fetches live price/availability separately via
+ * {@link ArticlesAvailabilityDto} and merges it in. `fitsVehicle` is `null`
+ * when no vehicle is selected.
+ */
 export interface SearchResultItemDto {
   articleNumber: string;
   brandName: string;
   description: string;
-  available: boolean;
-  bestPriceIncVat: number | null;
+  thumbnailUrl: string | null;
   fitsVehicle: boolean | null;
 }
 

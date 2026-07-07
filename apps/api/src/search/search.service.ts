@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
-  ArticleListItemDto,
+  ArticleCatalogListItemDto,
   AutocompleteItemDto,
   SearchResponseDto,
   SearchResultItemDto,
@@ -66,7 +66,7 @@ export class SearchService {
     normalisedQuery: string,
     rawQuery: string,
   ): Promise<{
-    results: ArticleListItemDto[];
+    results: ArticleCatalogListItemDto[];
     effectiveQuery: string;
     effectiveMatchType: SearchMatchType;
   }> {
@@ -172,15 +172,14 @@ export class SearchService {
   }
 
   private toSearchResult(
-    item: ArticleListItemDto,
+    item: ArticleCatalogListItemDto,
     fittingNumbers: Set<string> | null,
   ): SearchResultItemDto {
     return {
       articleNumber: item.articleNumber,
       brandName: item.brandName,
       description: item.description,
-      available: item.available,
-      bestPriceIncVat: item.bestPriceIncVat,
+      thumbnailUrl: item.thumbnailUrl,
       fitsVehicle:
         fittingNumbers !== null ? fittingNumbers.has(item.articleNumber) : null,
     };
