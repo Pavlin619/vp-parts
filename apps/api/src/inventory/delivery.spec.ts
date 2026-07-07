@@ -1,10 +1,9 @@
-import { StockStatus } from '@vp-parts-shop/shared';
 import {
   DeliveryRule,
-  deliveryRank,
+  OWN_STOCK_RANK,
   lookupDeliveryRule,
-  outOfStockOutcome,
   ownStockOutcome,
+  rankForRule,
   resolveDeliveryRule,
 } from './delivery';
 
@@ -67,19 +66,18 @@ describe('delivery domain', () => {
   describe('resolveDeliveryRule', () => {
     it('resolves within-hour and fixed-day rules independent of the clock', () => {
       expect(
-        resolveDeliveryRule(DeliveryRule.WITHIN_HOUR, AFTER_CUTOFF).status,
-      ).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
+        resolveDeliveryRule(DeliveryRule.WITHIN_HOUR, AFTER_CUTOFF),
+      ).toEqual({ rank: rankForRule(DeliveryRule.WITHIN_HOUR) });
+      expect(resolveDeliveryRule(DeliveryRule.NEXT_DAY, AFTER_CUTOFF)).toEqual({
+        rank: rankForRule(DeliveryRule.NEXT_DAY),
+      });
       expect(
-        resolveDeliveryRule(DeliveryRule.NEXT_DAY, AFTER_CUTOFF).status,
-      ).toBe(StockStatus.DELIVERY_NEXT_DAY);
-      expect(
-        resolveDeliveryRule(DeliveryRule.TWO_BUSINESS_DAYS, BEFORE_CUTOFF)
-          .estimatedDeliveryDays,
-      ).toBe(2);
+        resolveDeliveryRule(DeliveryRule.TWO_BUSINESS_DAYS, BEFORE_CUTOFF).rank,
+      ).toBe(rankForRule(DeliveryRule.TWO_BUSINESS_DAYS));
       expect(
         resolveDeliveryRule(DeliveryRule.THREE_BUSINESS_DAYS, BEFORE_CUTOFF)
-          .estimatedDeliveryDays,
-      ).toBe(3);
+          .rank,
+      ).toBe(rankForRule(DeliveryRule.THREE_BUSINESS_DAYS));
     });
 
     it('delivers same day before the cut-off (Europe/Sofia)', () => {
@@ -87,8 +85,9 @@ describe('delivery domain', () => {
         DeliveryRule.SAME_DAY_BEFORE_CUTOFF,
         BEFORE_CUTOFF,
       );
-      expect(outcome.status).toBe(StockStatus.DELIVERY_SAME_DAY);
-      expect(outcome.estimatedDeliveryDays).toBe(0);
+      expect(outcome.rank).toBe(
+        rankForRule(DeliveryRule.SAME_DAY_BEFORE_CUTOFF),
+      );
     });
 
     it('falls back to next day at/after the cut-off (Europe/Sofia)', () => {
@@ -96,23 +95,19 @@ describe('delivery domain', () => {
         DeliveryRule.SAME_DAY_BEFORE_CUTOFF,
         AFTER_CUTOFF,
       );
-      expect(outcome.status).toBe(StockStatus.DELIVERY_NEXT_DAY);
-      expect(outcome.estimatedDeliveryDays).toBe(1);
+      // After the cut-off same-day stock slips to the next-day rank.
+      expect(outcome.rank).toBe(rankForRule(DeliveryRule.NEXT_DAY));
     });
   });
 
   describe('ranking', () => {
-    it('orders our own stock fastest and out-of-stock slowest', () => {
-      expect(ownStockOutcome().rank).toBe(0);
-      expect(ownStockOutcome().status).toBe(StockStatus.IN_STOCK);
-      expect(deliveryRank(StockStatus.DELIVERY_WITHIN_HOUR)).toBeGreaterThan(
-        deliveryRank(StockStatus.IN_STOCK),
+    it('orders our own stock fastest and slower rules progressively later', () => {
+      expect(ownStockOutcome().rank).toBe(OWN_STOCK_RANK);
+      expect(rankForRule(DeliveryRule.WITHIN_HOUR)).toBeGreaterThan(
+        OWN_STOCK_RANK,
       );
-      expect(deliveryRank(StockStatus.DELIVERY_IN_3_DAYS)).toBeGreaterThan(
-        deliveryRank(StockStatus.DELIVERY_SAME_DAY),
-      );
-      expect(outOfStockOutcome().rank).toBe(
-        deliveryRank(StockStatus.OUT_OF_STOCK),
+      expect(rankForRule(DeliveryRule.THREE_BUSINESS_DAYS)).toBeGreaterThan(
+        rankForRule(DeliveryRule.SAME_DAY_BEFORE_CUTOFF),
       );
     });
   });

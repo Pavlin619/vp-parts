@@ -13,9 +13,26 @@ import {
   BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
+
+/**
+ * The subset of a TecDoc `getArticles` (`includeAll: true`) article record the
+ * catalog surfaces consume. One shape backs the listing, search, substitutes,
+ * and detail responses — they only differ in how the articles are selected.
+ */
+interface TecDocArticleRecord {
+  articleNumber: string;
+  mfrName: string;
+  genericArticles?: Array<{ genericArticleDescription?: string }>;
+  images?: Array<{ imageURL800?: string }>;
+  articleCriteria?: Array<{
+    criteriaDescription: string;
+    formattedValue: string;
+  }>;
+  oemNumbers?: Array<{ articleNumber: string }>;
+}
 
 /**
  * Upper bound on comparable (cross-reference) articles fetched and returned for
@@ -202,12 +219,7 @@ export class TecDocClient {
   ): Promise<PaginatedCatalogArticlesDto> {
     const data = await this.call<{
       totalMatchingArticles: number;
-      articles: Array<{
-        articleNumber: string;
-        mfrName: string;
-        genericArticles: Array<{ genericArticleDescription: string }>;
-        images: Array<{ imageURL800?: string }>;
-      }>;
+      articles: TecDocArticleRecord[];
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
@@ -223,31 +235,17 @@ export class TecDocClient {
       total: data.totalMatchingArticles,
       page,
       pageSize,
-      items: data.articles.map((a) => ({
-        articleNumber: a.articleNumber,
-        brandName: a.mfrName,
-        description: a.genericArticles[0]?.genericArticleDescription ?? '',
-        thumbnailUrl: a.images[0]?.imageURL800 ?? null,
-      })),
+      items: data.articles.map((article) => this.mapArticleSummary(article)),
     };
   }
 
   async getArticleDetails(
     articleNumber: string,
-    vehicleId?: string,
+    // Reserved for the future per-vehicle fit lookup; fit is null until then.
+    _vehicleId?: string,
   ): Promise<ArticleCatalogDetailDto> {
     const data = await this.call<{
-      articles: Array<{
-        articleNumber: string;
-        mfrName: string;
-        genericArticles: Array<{ genericArticleDescription: string }>;
-        images: Array<{ imageURL800?: string }>;
-        articleCriteria: Array<{
-          criteriaDescription: string;
-          formattedValue: string;
-        }>;
-        oemNumbers: Array<{ articleNumber: string }>;
-      }>;
+      articles: TecDocArticleRecord[];
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
@@ -265,23 +263,15 @@ export class TecDocClient {
     const article = data.articles[0];
 
     return {
-      articleNumber: article.articleNumber,
-      brandName: article.mfrName,
-      // Joined from getBrands in the catalog layer — getArticles carries no logo.
-      brandLogoUrl: null,
-      description: article.genericArticles[0]?.genericArticleDescription ?? '',
-      images: article.images
+      // The row summary (identity, brand, description, thumbnail, specs, OE)
+      // is shared with every list surface; the detail adds the image gallery.
+      ...this.mapArticleSummary(article),
+      images: (article.images ?? [])
         .map((img) => img.imageURL800 ?? '')
         .filter(Boolean),
-      technicalSpecs: article.articleCriteria.map((c) => ({
-        key: c.criteriaDescription,
-        value: c.formattedValue,
-      })),
-      oemNumbers: article.oemNumbers.map((o) => o.articleNumber),
       // Compatible vehicles require a separate getArticleLinkedAllLinkingTarget4
       // call sequence — see TecDoc docs section 8.4. Populated by a future task.
       compatibleVehicles: [],
-      fitsVehicle: vehicleId != null ? null : null,
     };
   }
 
@@ -293,16 +283,9 @@ export class TecDocClient {
    * article is excluded and duplicates are removed; the page size is capped at
    * {@link SUBSTITUTES_LIMIT}.
    */
-  async getSubstitutes(
-    articleNumber: string,
-  ): Promise<ArticleCatalogListItemDto[]> {
+  async getSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
     const data = await this.call<{
-      articles?: Array<{
-        articleNumber: string;
-        mfrName: string;
-        genericArticles: Array<{ genericArticleDescription: string }>;
-        images?: Array<{ imageURL800?: string }>;
-      }>;
+      articles?: TecDocArticleRecord[];
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
@@ -314,19 +297,13 @@ export class TecDocClient {
     });
 
     const seen = new Set<string>([articleNumber]);
-    const substitutes: ArticleCatalogListItemDto[] = [];
+    const substitutes: ArticleSummaryDto[] = [];
 
     for (const article of data.articles ?? []) {
       if (seen.has(article.articleNumber)) continue;
       seen.add(article.articleNumber);
 
-      substitutes.push({
-        articleNumber: article.articleNumber,
-        brandName: article.mfrName,
-        description:
-          article.genericArticles[0]?.genericArticleDescription ?? '',
-        thumbnailUrl: article.images?.[0]?.imageURL800 ?? null,
-      });
+      substitutes.push(this.mapArticleSummary(article));
     }
 
     return substitutes;
@@ -336,15 +313,10 @@ export class TecDocClient {
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
-  ): Promise<ArticleCatalogListItemDto[]> {
+  ): Promise<ArticleSummaryDto[]> {
     const data = await this.call<{
       totalMatchingArticles: number;
-      articles: Array<{
-        articleNumber: string;
-        mfrName: string;
-        genericArticles: Array<{ genericArticleDescription: string }>;
-        images?: Array<{ imageURL800?: string }>;
-      }>;
+      articles: TecDocArticleRecord[];
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
@@ -360,12 +332,7 @@ export class TecDocClient {
       }),
     });
 
-    return data.articles.map((a) => ({
-      articleNumber: a.articleNumber,
-      brandName: a.mfrName,
-      description: a.genericArticles[0]?.genericArticleDescription ?? '',
-      thumbnailUrl: a.images?.[0]?.imageURL800 ?? null,
-    }));
+    return data.articles.map((article) => this.mapArticleSummary(article));
   }
 
   async getAutocompleteSuggestions(
@@ -393,6 +360,31 @@ export class TecDocClient {
       brandName: a.mfrName,
       description: a.genericArticles[0]?.genericArticleDescription ?? '',
     }));
+  }
+
+  /**
+   * Maps a raw TecDoc `getArticles` article into the shared summary shape every
+   * list surface renders. Technical specs (`articleCriteria`) and OE numbers
+   * ride along free on the same `includeAll` response, so they are always
+   * populated here. `brandLogoUrl` is joined later in the catalog layer
+   * (`getArticles` carries no logo) and `fitsVehicle` is resolved per request,
+   * so both default to null.
+   */
+  private mapArticleSummary(article: TecDocArticleRecord): ArticleSummaryDto {
+    return {
+      articleNumber: article.articleNumber,
+      brandName: article.mfrName,
+      brandLogoUrl: null,
+      description:
+        article.genericArticles?.[0]?.genericArticleDescription ?? '',
+      thumbnailUrl: article.images?.[0]?.imageURL800 ?? null,
+      technicalSpecs: (article.articleCriteria ?? []).map((criterion) => ({
+        key: criterion.criteriaDescription,
+        value: criterion.formattedValue,
+      })),
+      oemNumbers: (article.oemNumbers ?? []).map((oem) => oem.articleNumber),
+      fitsVehicle: null,
+    };
   }
 
   private async call<T>(

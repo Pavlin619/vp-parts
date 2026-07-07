@@ -25,12 +25,10 @@ const mockCatalogRepository = {
   findAutocompleteSuggestions: findAutocompleteSuggestionsMock,
 } as unknown as CatalogRepository;
 
-const getBestPriceAndAvailabilityMock = jest.fn();
-const getBulkPricesAndAvailabilityMock = jest.fn();
+const getAvailabilityMock = jest.fn();
 
 const mockInventoryService = {
-  getBestPriceAndAvailability: getBestPriceAndAvailabilityMock,
-  getBulkPricesAndAvailability: getBulkPricesAndAvailabilityMock,
+  getAvailability: getAvailabilityMock,
 } as unknown as InventoryService;
 
 describe('CatalogService', () => {
@@ -107,8 +105,8 @@ describe('CatalogService', () => {
     });
   });
 
-  describe('listArticles', () => {
-    it('returns articles with availability and best price derived via InventoryService', async () => {
+  describe('listArticleMetadata', () => {
+    it('returns cacheable catalog metadata without reading live inventory', async () => {
       const rawArticles = {
         total: 2,
         page: 1,
@@ -131,144 +129,91 @@ describe('CatalogService', () => {
 
       findArticlesMock.mockResolvedValueOnce(rawArticles);
 
-      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
+      const result = await service.listArticleMetadata('V10042', '1001', 1, 20);
+
+      // The cached grid must not embed request-time inventory, so this path
+      // never touches the inventory service — availability is fetched live and
+      // separately via getArticlesAvailability.
+      expect(result).toEqual(rawArticles);
+      expect(findArticlesMock).toHaveBeenCalledWith('V10042', '1001', 1, 20);
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getArticlesAvailability', () => {
+    it('returns live warehouse availability keyed by article number', async () => {
+      const warehouse = {
+        warehouseId: 'CENTRAL',
+        quantity: 6,
+        deliveryWorkDays: 0,
+        orderCutoffTime: '18:00',
+        cutoffAt: '2026-07-05T15:00:00.000Z',
+        pickup: { granularity: 'HOUR', earliestAt: '2026-07-05T12:00:00.000Z' },
+        courier: { granularity: 'DAY', earliestAt: '2026-07-06T06:00:00.000Z' },
+      };
+      getAvailabilityMock.mockResolvedValueOnce(
         new Map([
           [
             'WL6340',
             {
               available: true,
-              priceExVat: 1250,
-              priceIncVat: 1500,
-              stockStatus: 'IN_STOCK',
-              estimatedDeliveryDays: null,
-            },
-          ],
-          [
-            'OC123',
-            {
-              available: false,
-              priceExVat: null,
-              priceIncVat: null,
-              stockStatus: 'UNKNOWN',
-              estimatedDeliveryDays: null,
+              bestPriceExVat: 1250,
+              bestPriceIncVat: 1500,
+              availabilityByWarehouse: [warehouse],
+              computedAt: '2026-07-05T09:00:00.000Z',
             },
           ],
         ]),
       );
 
-      const result = await service.listArticles('V10042', '1001', 1, 20);
+      const result = await service.getArticlesAvailability(['WL6340', 'OC123']);
 
-      expect(result.total).toBe(2);
-      expect(result.items[0].available).toBe(true);
-      expect(result.items[0].bestPriceExVat).toBe(1250);
-      expect(result.items[0].bestPriceIncVat).toBe(1500);
-      expect(result.items[1].available).toBe(false);
-      expect(result.items[1].bestPriceExVat).toBeNull();
-      expect(result.items[1].bestPriceIncVat).toBeNull();
+      // The single availability read always returns the warehouse projection.
+      expect(getAvailabilityMock).toHaveBeenCalledWith(['WL6340', 'OC123']);
+      expect(result).toEqual({
+        WL6340: {
+          available: true,
+          bestPriceExVat: 1250,
+          bestPriceIncVat: 1500,
+          availabilityByWarehouse: [warehouse],
+          computedAt: '2026-07-05T09:00:00.000Z',
+        },
+      });
     });
 
-    it('marks articles as unavailable when inventory service returns no price', async () => {
-      const rawArticles = {
-        total: 1,
-        page: 1,
-        pageSize: 20,
-        items: [
-          {
-            articleNumber: 'NOSTOCK',
-            brandName: 'TEST',
-            description: 'Out of Stock Part',
-            thumbnailUrl: null,
-          },
-        ],
-      };
+    it('fails closed by propagating the read error', async () => {
+      const readError = new Error('inventory unavailable');
+      getAvailabilityMock.mockRejectedValueOnce(readError);
 
-      findArticlesMock.mockResolvedValueOnce(rawArticles);
-      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
-        new Map([
-          [
-            'NOSTOCK',
-            {
-              available: false,
-              priceExVat: null,
-              priceIncVat: null,
-              stockStatus: 'UNKNOWN',
-              estimatedDeliveryDays: null,
-            },
-          ],
-        ]),
+      await expect(service.getArticlesAvailability(['WL6340'])).rejects.toBe(
+        readError,
       );
-
-      const result = await service.listArticles('V10042', '1001', 1, 20);
-
-      expect(result.items[0].available).toBe(false);
-      expect(result.items[0].bestPriceIncVat).toBeNull();
     });
   });
 
   describe('getArticleDetail', () => {
-    it('returns full article details from cache service', async () => {
-      const detail = {
-        articleNumber: 'WL6340',
-        brandName: 'WIX',
-        description: 'Oil Filter',
-        images: [],
-        technicalSpecs: [],
-        oemNumbers: [],
-        compatibleVehicles: [],
-        fitsVehicle: null,
-      };
+    const detail = {
+      articleNumber: 'WL6340',
+      brandName: 'WIX',
+      brandLogoUrl: null,
+      description: 'Oil Filter',
+      images: [],
+      technicalSpecs: [],
+      oemNumbers: [],
+      compatibleVehicles: [],
+      fitsVehicle: null,
+    };
+
+    it('returns cacheable catalog metadata only, without reading inventory', async () => {
       findArticleDetailsMock.mockResolvedValueOnce(detail);
-      getBestPriceAndAvailabilityMock.mockResolvedValueOnce({
-        available: true,
-        priceExVat: 1250,
-        priceIncVat: 1500,
-        stockStatus: 'IN_STOCK',
-        estimatedDeliveryDays: 2,
-        quantity: 6,
-        availabilityByWarehouse: [
-          {
-            warehouseId: 'CENTRAL',
-            quantity: 6,
-            deliveryWorkDays: 0,
-            orderCutoffTime: '18:00',
-            cutoffAt: '2026-06-25T15:00:00.000Z',
-            pickup: {
-              earliestAt: '2026-06-25T08:00:00.000Z',
-              granularity: 'DAY',
-            },
-            courier: {
-              earliestAt: '2026-06-26T10:00:00.000Z',
-              granularity: 'DAY',
-            },
-          },
-        ],
-        computedAt: '2026-06-25T07:00:00.000Z',
-      });
 
-      const result = await service.getArticleDetail('WL6340');
+      const result = await service.getArticleDetail('WL6340', 'V10042');
 
-      expect(result.articleNumber).toBe('WL6340');
-      expect(result.available).toBe(true);
-      expect(result.bestPriceExVat).toBe(1250);
-      expect(result.bestPriceIncVat).toBe(1500);
-      expect(result.computedAt).toBe('2026-06-25T07:00:00.000Z');
-      expect(result.availabilityByWarehouse).toEqual([
-        {
-          warehouseId: 'CENTRAL',
-          quantity: 6,
-          deliveryWorkDays: 0,
-          orderCutoffTime: '18:00',
-          cutoffAt: '2026-06-25T15:00:00.000Z',
-          pickup: {
-            earliestAt: '2026-06-25T08:00:00.000Z',
-            granularity: 'DAY',
-          },
-          courier: {
-            earliestAt: '2026-06-26T10:00:00.000Z',
-            granularity: 'DAY',
-          },
-        },
-      ]);
+      // The detail page caches this metadata and hydrates price/availability
+      // separately via getArticlesAvailability, so it never reads inventory.
+      expect(result).toEqual(detail);
+      expect(findArticleDetailsMock).toHaveBeenCalledWith('WL6340', 'V10042');
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when article detail is not found', async () => {
@@ -280,55 +225,6 @@ describe('CatalogService', () => {
         NotFoundException,
       );
     });
-
-    it('fetches catalog only and skips inventory for the details section', async () => {
-      const detail = {
-        articleNumber: 'WL6340',
-        brandName: 'WIX',
-        brandLogoUrl: null,
-        description: 'Oil Filter',
-        images: [],
-        technicalSpecs: [],
-        oemNumbers: [],
-        compatibleVehicles: [],
-        fitsVehicle: null,
-      };
-      findArticleDetailsMock.mockResolvedValueOnce(detail);
-
-      const result = await service.getArticleDetail('WL6340', undefined, [
-        'details',
-      ]);
-
-      expect(result).toEqual(detail);
-      expect(getBestPriceAndAvailabilityMock).not.toHaveBeenCalled();
-    });
-
-    it('fetches inventory only and skips the TecDoc lookup for the availability section', async () => {
-      getBestPriceAndAvailabilityMock.mockResolvedValueOnce({
-        available: true,
-        priceExVat: 1250,
-        priceIncVat: 1500,
-        stockStatus: 'IN_STOCK',
-        estimatedDeliveryDays: 2,
-        availabilityByWarehouse: [],
-        computedAt: '2026-06-25T07:00:00.000Z',
-      });
-
-      const result = await service.getArticleDetail('WL6340', 'V10042', [
-        'availability',
-      ]);
-
-      expect(findArticleDetailsMock).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        available: true,
-        bestPriceExVat: 1250,
-        bestPriceIncVat: 1500,
-        stockStatus: 'IN_STOCK',
-        estimatedDeliveryDays: 2,
-        availabilityByWarehouse: [],
-        computedAt: '2026-06-25T07:00:00.000Z',
-      });
-    });
   });
 
   describe('searchArticles', () => {
@@ -339,22 +235,8 @@ describe('CatalogService', () => {
       thumbnailUrl: null,
     };
 
-    it('enriches search results with best price and availability', async () => {
+    it('returns catalog metadata only, without reading inventory', async () => {
       searchArticlesRepoMock.mockResolvedValueOnce([rawResult]);
-      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
-        new Map([
-          [
-            'WL6340',
-            {
-              available: true,
-              priceExVat: 1250,
-              priceIncVat: 1500,
-              stockStatus: 'IN_STOCK',
-              estimatedDeliveryDays: 1,
-            },
-          ],
-        ]),
-      );
 
       const result = await service.searchArticles('WL6340');
 
@@ -363,14 +245,10 @@ describe('CatalogService', () => {
         undefined,
         undefined,
       );
-      expect(result).toEqual([
-        {
-          ...rawResult,
-          available: true,
-          bestPriceExVat: 1250,
-          bestPriceIncVat: 1500,
-        },
-      ]);
+      // Search is a pure catalog read now — the client fetches live
+      // price/availability separately via getArticlesAvailability.
+      expect(result).toEqual([rawResult]);
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
     it('passes the vehicleId through to the repository', async () => {
@@ -383,6 +261,7 @@ describe('CatalogService', () => {
         'V10042',
         undefined,
       );
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
   });
 
@@ -394,34 +273,16 @@ describe('CatalogService', () => {
       thumbnailUrl: null,
     };
 
-    it('enriches the cross-reference parts with best price and availability', async () => {
+    it('returns the cross-reference parts as catalog metadata only, without reading inventory', async () => {
       findSubstitutesMock.mockResolvedValueOnce([rawSubstitute]);
-      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(
-        new Map([
-          [
-            'OC115',
-            {
-              available: true,
-              priceExVat: 900,
-              priceIncVat: 1080,
-              stockStatus: 'IN_STOCK',
-              estimatedDeliveryDays: 1,
-            },
-          ],
-        ]),
-      );
 
       const result = await service.getSubstitutes('OX 982D');
 
       expect(findSubstitutesMock).toHaveBeenCalledWith('OX 982D');
-      expect(result).toEqual([
-        {
-          ...rawSubstitute,
-          available: true,
-          bestPriceExVat: 900,
-          bestPriceIncVat: 1080,
-        },
-      ]);
+      // Availability is fetched live and separately via getArticlesAvailability,
+      // mirroring the listing grid's metadata / live-availability split.
+      expect(result).toEqual([rawSubstitute]);
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
     it('caps the number of substitutes at the configured limit', async () => {
@@ -432,23 +293,19 @@ describe('CatalogService', () => {
         thumbnailUrl: null,
       }));
       findSubstitutesMock.mockResolvedValueOnce(many);
-      getBulkPricesAndAvailabilityMock.mockResolvedValueOnce(new Map());
 
       const result = await service.getSubstitutes('OX 982D');
 
       expect(result).toHaveLength(20);
-      const enrichedNumbers = getBulkPricesAndAvailabilityMock.mock
-        .calls[0][0] as string[];
-      expect(enrichedNumbers).toHaveLength(20);
     });
 
-    it('returns an empty list without hitting inventory when there are no substitutes', async () => {
+    it('returns an empty list when there are no substitutes', async () => {
       findSubstitutesMock.mockResolvedValueOnce([]);
 
       const result = await service.getSubstitutes('OX 982D');
 
       expect(result).toEqual([]);
-      expect(getBulkPricesAndAvailabilityMock).not.toHaveBeenCalled();
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
   });
 
@@ -466,7 +323,7 @@ describe('CatalogService', () => {
       const result = await service.getAutocompleteSuggestions('WL6');
 
       expect(result).toEqual(suggestions);
-      expect(getBulkPricesAndAvailabilityMock).not.toHaveBeenCalled();
+      expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
   });
 });

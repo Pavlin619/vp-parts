@@ -1,4 +1,4 @@
-import { ArticleListItemDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
+import { ArticleSummaryDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { PartNumberNormaliser } from './normaliser';
@@ -21,16 +21,17 @@ const mockNormaliser = {
 
 function articleItem(
   articleNumber: string,
-  overrides: Partial<ArticleListItemDto> = {},
-): ArticleListItemDto {
+  overrides: Partial<ArticleSummaryDto> = {},
+): ArticleSummaryDto {
   return {
     articleNumber,
     brandName: 'WIX',
+    brandLogoUrl: null,
     description: 'Oil Filter',
     thumbnailUrl: null,
-    available: true,
-    bestPriceExVat: 1250,
-    bestPriceIncVat: 1500,
+    technicalSpecs: [],
+    oemNumbers: [],
+    fitsVehicle: null,
     ...overrides,
   };
 }
@@ -197,17 +198,21 @@ describe('SearchService', () => {
         {
           articleNumber: 'WL6340',
           brandName: 'WIX',
+          brandLogoUrl: null,
           description: 'Oil Filter',
-          available: true,
-          bestPriceIncVat: 1500,
+          thumbnailUrl: null,
+          technicalSpecs: [],
+          oemNumbers: [],
           fitsVehicle: null,
         },
         {
           articleNumber: 'WL6341',
           brandName: 'WIX',
+          brandLogoUrl: null,
           description: 'Oil Filter Heavy Duty',
-          available: true,
-          bestPriceIncVat: 1500,
+          thumbnailUrl: null,
+          technicalSpecs: [],
+          oemNumbers: [],
           fitsVehicle: null,
         },
       ]);

@@ -8,7 +8,7 @@ import {
   AssemblyGroupDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
@@ -42,7 +42,16 @@ export class CatalogRepository {
     page: number,
     pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
-    return this.tecdocCache.getArticles(vehicleId, categoryId, page, pageSize);
+    const articles = await this.tecdocCache.getArticles(
+      vehicleId,
+      categoryId,
+      page,
+      pageSize,
+    );
+
+    const items = await this.enrichWithBrandLogos(articles.items);
+
+    return { ...articles, items };
   }
 
   async findArticleDetails(
@@ -54,40 +63,59 @@ export class CatalogRepository {
       vehicleId,
     );
 
-    const brandLogoUrl = await this.resolveBrandLogo(detail.brandName);
+    const [enriched] = await this.enrichWithBrandLogos([detail]);
 
-    return { ...detail, brandLogoUrl };
+    return enriched;
   }
 
-  /**
-   * TecDoc keys articles by brand name but returns logos only from getBrands,
-   * so the two are joined here by brand name. Returns null when the brand has
-   * no logo on file, keeping the detail response well-formed.
-   */
-  private async resolveBrandLogo(brandName: string): Promise<string | null> {
-    const brands = await this.tecdocCache.getBrands();
-    const match = brands.find((brand) => brand.brandName === brandName);
+  async findSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
+    const substitutes = await this.tecdocCache.getSubstitutes(articleNumber);
 
-    return match?.logoUrl ?? null;
-  }
-
-  async findSubstitutes(
-    articleNumber: string,
-  ): Promise<ArticleCatalogListItemDto[]> {
-    return this.tecdocCache.getSubstitutes(articleNumber);
+    return this.enrichWithBrandLogos(substitutes);
   }
 
   async searchArticles(
     query: string,
     vehicleId?: string,
     matchType?: SearchMatchType,
-  ): Promise<ArticleCatalogListItemDto[]> {
-    return this.tecdocCache.searchArticles(query, vehicleId, matchType);
+  ): Promise<ArticleSummaryDto[]> {
+    const results = await this.tecdocCache.searchArticles(
+      query,
+      vehicleId,
+      matchType,
+    );
+
+    return this.enrichWithBrandLogos(results);
   }
 
   async findAutocompleteSuggestions(
     query: string,
   ): Promise<AutocompleteItemDto[]> {
     return this.tecdocCache.getAutocompleteSuggestions(query);
+  }
+
+  /**
+   * TecDoc keys articles by brand name but returns logos only from getBrands,
+   * so the two are joined here by brand name for every list and detail surface.
+   * A row whose brand has no logo on file keeps `brandLogoUrl: null`. Skips the
+   * (cached) getBrands read entirely for an empty batch so an empty search or
+   * substitutes result never triggers it.
+   */
+  private async enrichWithBrandLogos<
+    T extends { brandName: string; brandLogoUrl: string | null },
+  >(items: T[]): Promise<T[]> {
+    if (items.length === 0) {
+      return items;
+    }
+
+    const brands = await this.tecdocCache.getBrands();
+    const logoByBrand = new Map(
+      brands.map((brand) => [brand.brandName, brand.logoUrl]),
+    );
+
+    return items.map((item) => ({
+      ...item,
+      brandLogoUrl: logoByBrand.get(item.brandName) ?? null,
+    }));
   }
 }

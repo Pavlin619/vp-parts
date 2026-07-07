@@ -7,7 +7,7 @@ import {
   BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { Redis } from 'ioredis';
@@ -95,9 +95,7 @@ export class TecDocCacheService {
     );
   }
 
-  async getSubstitutes(
-    articleNumber: string,
-  ): Promise<ArticleCatalogListItemDto[]> {
+  async getSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
     return this.cachedArray(
       `tecdoc:substitutes:${articleNumber}`,
       SUBSTITUTES_TTL,
@@ -110,7 +108,7 @@ export class TecDocCacheService {
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
-  ): Promise<ArticleCatalogListItemDto[]> {
+  ): Promise<ArticleSummaryDto[]> {
     const vehicleKey = vehicleId ?? 'none';
     return this.cachedArray(
       `tecdoc:search:${query}:${vehicleKey}:${matchType}`,

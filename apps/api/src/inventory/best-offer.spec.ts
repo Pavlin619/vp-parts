@@ -1,27 +1,17 @@
-import { StockStatus } from '@vp-parts-shop/shared';
 import {
   selectBestOffer,
   BestOfferInput,
   BestOfferOptions,
   SupplierOffer,
 } from './best-offer';
-import { DeliveryRule, outcomeForStatus } from './delivery';
+import { DeliveryRule, rankForRule } from './delivery';
 
 // Deterministic delivery mapping for tests, keyed by supplier source:
 // INTERCARS -> within hour, AUTOPLUS -> same day, AUTO1 -> 2 days, else 3 days.
-const STATUS_BY_SUPPLIER: Record<string, StockStatus> = {
-  INTERCARS: StockStatus.DELIVERY_WITHIN_HOUR,
-  AUTOPLUS: StockStatus.DELIVERY_SAME_DAY,
-  AUTO1: StockStatus.DELIVERY_IN_2_DAYS,
-};
-
-// selectBestOffer buckets by the resolved outcome, not the inherent rule, so the
-// exact rule is irrelevant here — any value keeps the seeds compiling.
-const RULE_BY_STATUS: Record<string, DeliveryRule> = {
-  [StockStatus.DELIVERY_WITHIN_HOUR]: DeliveryRule.WITHIN_HOUR,
-  [StockStatus.DELIVERY_SAME_DAY]: DeliveryRule.SAME_DAY_BEFORE_CUTOFF,
-  [StockStatus.DELIVERY_IN_2_DAYS]: DeliveryRule.TWO_BUSINESS_DAYS,
-  [StockStatus.DELIVERY_IN_3_DAYS]: DeliveryRule.THREE_BUSINESS_DAYS,
+const RULE_BY_SUPPLIER: Record<string, DeliveryRule> = {
+  INTERCARS: DeliveryRule.WITHIN_HOUR,
+  AUTOPLUS: DeliveryRule.SAME_DAY_BEFORE_CUTOFF,
+  AUTO1: DeliveryRule.TWO_BUSINESS_DAYS,
 };
 
 const options: BestOfferOptions = { vatRate: 0.2 };
@@ -29,13 +19,9 @@ const options: BestOfferOptions = { vatRate: 0.2 };
 type SupplierSeed = Omit<SupplierOffer, 'delivery' | 'rule'>;
 
 function withDelivery(seed: SupplierSeed): SupplierOffer {
-  const status =
-    STATUS_BY_SUPPLIER[seed.supplierSource] ?? StockStatus.DELIVERY_IN_3_DAYS;
-  return {
-    ...seed,
-    rule: RULE_BY_STATUS[status],
-    delivery: outcomeForStatus(status),
-  };
+  const rule =
+    RULE_BY_SUPPLIER[seed.supplierSource] ?? DeliveryRule.THREE_BUSINESS_DAYS;
+  return { ...seed, rule, delivery: { rank: rankForRule(rule) } };
 }
 
 function run(input: { own: BestOfferInput['own']; suppliers: SupplierSeed[] }) {
@@ -54,8 +40,6 @@ describe('selectBestOffer', () => {
       });
 
       expect(offer.available).toBe(true);
-      expect(offer.stockStatus).toBe(StockStatus.IN_STOCK);
-      expect(offer.estimatedDeliveryDays).toBe(0);
       expect(offer.priceExVatCents).toBe(5000);
       expect(offer.priceIncVatCents).toBe(6000);
     });
@@ -74,10 +58,8 @@ describe('selectBestOffer', () => {
         ],
       });
 
-      // Our own stock (IN_STOCK) is faster than the supplier's within-hour band,
-      // so the headline mirrors the fastest (IN_STOCK) window.
-      expect(offer.stockStatus).toBe(StockStatus.IN_STOCK);
-      expect(offer.estimatedDeliveryDays).toBe(0);
+      // Our own stock is faster than the supplier's within-hour band, so we ship
+      // from it and keep our price.
       expect(offer.priceExVatCents).toBe(5000);
     });
 
@@ -96,8 +78,6 @@ describe('selectBestOffer', () => {
       });
 
       expect(offer.available).toBe(true);
-      expect(offer.stockStatus).toBe(StockStatus.DELIVERY_IN_2_DAYS);
-      expect(offer.estimatedDeliveryDays).toBe(2);
       expect(offer.priceExVatCents).toBe(5000);
       expect(offer.priceIncVatCents).toBe(6000);
     });
@@ -118,7 +98,6 @@ describe('selectBestOffer', () => {
 
       // We still ship from our own stock immediately, but we never undercut the
       // supplier: the headline price is bumped up to their (VAT-inclusive) one.
-      expect(offer.stockStatus).toBe(StockStatus.IN_STOCK);
       expect(offer.priceIncVatCents).toBe(4800);
       expect(offer.priceExVatCents).toBe(Math.round(4800 / 1.2));
     });
@@ -221,8 +200,6 @@ describe('selectBestOffer', () => {
       });
 
       expect(offer.available).toBe(false);
-      expect(offer.stockStatus).toBe(StockStatus.OUT_OF_STOCK);
-      expect(offer.estimatedDeliveryDays).toBeNull();
       expect(offer.priceExVatCents).toBe(5000);
     });
   });
@@ -249,7 +226,6 @@ describe('selectBestOffer', () => {
         ],
       });
 
-      expect(offer.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
       // Lower buy price (3800) wins -> its VAT-inclusive sell price is shown,
       // and the ex-VAT figure is derived from it (no VAT added on top).
       expect(offer.priceIncVatCents).toBe(5300);
@@ -288,7 +264,6 @@ describe('selectBestOffer', () => {
       // offer is in its own (slower) same-day band and must not bleed into it: if
       // it did, the displayed price would collapse to its 200 sell price instead
       // of the within-hour lowest-buy line's 5300.
-      expect(offer.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
       expect(offer.priceIncVatCents).toBe(5300);
     });
 
@@ -313,7 +288,6 @@ describe('selectBestOffer', () => {
         ],
       });
 
-      expect(offer.stockStatus).toBe(StockStatus.DELIVERY_WITHIN_HOUR);
       expect(offer.priceIncVatCents).toBe(7000);
       expect(offer.priceExVatCents).toBe(Math.round(7000 / 1.2));
     });
@@ -339,7 +313,6 @@ describe('selectBestOffer', () => {
         ],
       });
 
-      expect(offer.stockStatus).toBe(StockStatus.DELIVERY_IN_2_DAYS);
       expect(offer.priceIncVatCents).toBe(4000);
       expect(offer.priceExVatCents).toBe(Math.round(4000 / 1.2));
     });
@@ -348,8 +321,6 @@ describe('selectBestOffer', () => {
       const offer = run({ own: null, suppliers: [] });
 
       expect(offer.available).toBe(false);
-      expect(offer.stockStatus).toBe(StockStatus.OUT_OF_STOCK);
-      expect(offer.estimatedDeliveryDays).toBeNull();
       expect(offer.priceExVatCents).toBeNull();
       expect(offer.priceIncVatCents).toBeNull();
     });

@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  AvailabilityDto,
-  StockStatus,
+  ArticleInventoryDetailDto,
   WarehouseAvailabilityDto,
 } from '@vp-parts-shop/shared';
 import { AutopartsRepository, OwnStockRow } from './autoparts.repository';
@@ -25,17 +24,6 @@ import {
   warehousesFastestFirst,
 } from './warehouse';
 import { InventoryUnavailableException } from './inventory-unavailable.exception';
-import { PriceAndAvailability } from './inventory.types';
-
-const UNAVAILABLE: PriceAndAvailability = {
-  available: false,
-  priceExVat: null,
-  priceIncVat: null,
-  stockStatus: StockStatus.OUT_OF_STOCK,
-  estimatedDeliveryDays: null,
-  availabilityByWarehouse: [],
-  computedAt: null,
-};
 
 const DEFAULT_VAT_RATE = 0.2;
 
@@ -44,6 +32,8 @@ interface ResolvedOffers {
   own: OwnOffer | null;
   suppliers: SupplierOffer[];
 }
+
+const EMPTY_OFFERS: ResolvedOffers = { own: null, suppliers: [] };
 
 @Injectable()
 export class InventoryService {
@@ -61,118 +51,96 @@ export class InventoryService {
   }
 
   /**
-   * Live, uncached availability for a single article that fails **closed**
-   * (InventoryUnavailableException) on a database error. This is the in-process
-   * contract for the binding pre-checkout re-validation — CheckoutService calls
-   * it directly during the confirm step so a DB blip aborts the order rather
-   * than silently selling stale stock. It is intentionally not exposed over
-   * HTTP: client-facing reads (product page, cart refresh) go through the
-   * catalog `?include=availability` path, which fails open for display.
+   * Live price & availability for one or many article numbers, keyed by number.
+   *
+   * This is the single availability read behind every surface — the buy box,
+   * listing grid, search, substitutes, and the checkout re-check. It toggles
+   * only the DB query by input size: one number takes the single-row read, many
+   * take the batch read. Every entry then runs the same offer selection and
+   * per-warehouse projection, so the request-time delivery dates are always
+   * attached (the detail/list surfaces are dynamic, never cached).
+   *
+   * Fails **closed** in both cases: any read error throws
+   * InventoryUnavailableException (mapped to HTTP 503 / INVENTORY_UNAVAILABLE by
+   * the global filter) rather than reporting stock as unavailable. It is up to
+   * the caller/UI to decide what to render on that error. Article numbers with
+   * no stock still resolve to `available: false` — that is not an error.
    */
-  async getAvailability(articleNumber: string): Promise<AvailabilityDto> {
-    let offers: ResolvedOffers;
-
-    try {
-      offers = await this.loadOffers(articleNumber);
-    } catch (error) {
-      this.logger.error(
-        `Live availability read failed for ${articleNumber}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-      throw new InventoryUnavailableException();
-    }
-
-    const now = new Date();
-    const offer = this.select(offers);
-    const availabilityByWarehouse = this.buildWarehouseAvailability(
-      offers,
-      now,
-    );
-
-    return {
-      articleNumber,
-      available: offer.available,
-      stockStatus: offer.stockStatus,
-      estimatedDeliveryDays: offer.estimatedDeliveryDays,
-      priceExVat: offer.priceExVatCents,
-      priceIncVat: offer.priceIncVatCents,
-      availabilityByWarehouse,
-      computedAt: now.toISOString(),
-    };
-  }
-
-  /**
-   * Best price & availability for the cached public catalog (listing + detail).
-   * Browsing must never break on a database hiccup, so this path fails open:
-   * any read error yields the neutral "unavailable" state instead of throwing.
-   * The article detail page is rendered dynamically, so it is safe to embed the
-   * absolute, request-time warehouse delivery dates here.
-   */
-  async getBestPriceAndAvailability(
-    articleNumber: string,
-  ): Promise<PriceAndAvailability> {
-    try {
-      const now = new Date();
-      const offers = await this.loadOffers(articleNumber);
-      const offer = this.select(offers);
-      const availabilityByWarehouse = this.buildWarehouseAvailability(
-        offers,
-        now,
-      );
-      return this.toPriceAndAvailability(
-        offer,
-        availabilityByWarehouse,
-        now.toISOString(),
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Best price read failed for ${articleNumber}; serving unavailable`,
-        error instanceof Error ? error.stack : String(error),
-      );
-      return { ...UNAVAILABLE };
-    }
-  }
-
-  /**
-   * Bulk price & availability for cached listing grids. Delivery dates are
-   * intentionally omitted (availabilityByWarehouse stays empty): listings are
-   * cached, so embedding absolute, request-time dates would serve stale promises.
-   */
-  async getBulkPricesAndAvailability(
+  async getAvailability(
     articleNumbers: string[],
-  ): Promise<Map<string, PriceAndAvailability>> {
-    const result = new Map<string, PriceAndAvailability>();
+  ): Promise<Map<string, ArticleInventoryDetailDto>> {
+    const result = new Map<string, ArticleInventoryDetailDto>();
     if (articleNumbers.length === 0) {
       return result;
     }
 
-    try {
-      const [ownByNumber, suppliersByNumber] = await Promise.all([
-        this.ownStock.findByTecdocNumbers(articleNumbers),
-        this.supplierStock.findByTecdocNumbers(articleNumbers),
-      ]);
+    const offersByNumber = await this.loadOffersByNumber(articleNumbers);
 
-      for (const articleNumber of articleNumbers) {
-        const offers = this.toOffers(
-          ownByNumber.get(articleNumber) ?? [],
-          suppliersByNumber.get(articleNumber) ?? [],
-        );
-        result.set(
-          articleNumber,
-          this.toPriceAndAvailability(this.select(offers)),
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        'Bulk price read failed; serving unavailable for all requested articles',
-        error instanceof Error ? error.stack : String(error),
+    const now = new Date();
+    for (const articleNumber of articleNumbers) {
+      const offers = offersByNumber.get(articleNumber) ?? EMPTY_OFFERS;
+      result.set(
+        articleNumber,
+        this.toInventoryDetail(
+          this.select(offers),
+          this.buildWarehouseAvailability(offers, now),
+          now.toISOString(),
+        ),
       );
-      for (const articleNumber of articleNumbers) {
-        result.set(articleNumber, { ...UNAVAILABLE });
-      }
     }
 
     return result;
+  }
+
+  /**
+   * Resolves the offers for every requested number, toggling only the DB query
+   * by input size — a single number takes the single-row read, many take the
+   * batch read. Wraps both paths in one fail-closed guard: any read error
+   * becomes InventoryUnavailableException.
+   */
+  private async loadOffersByNumber(
+    articleNumbers: string[],
+  ): Promise<Map<string, ResolvedOffers>> {
+    try {
+      return articleNumbers.length === 1
+        ? await this.loadSingleOffers(articleNumbers[0])
+        : await this.loadBulkOffers(articleNumbers);
+    } catch (error) {
+      this.logger.error(
+        `Availability read failed for ${articleNumbers.length} article(s)`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw new InventoryUnavailableException();
+    }
+  }
+
+  private async loadSingleOffers(
+    articleNumber: string,
+  ): Promise<Map<string, ResolvedOffers>> {
+    const offers = await this.loadOffers(articleNumber);
+    return new Map([[articleNumber, offers]]);
+  }
+
+  private async loadBulkOffers(
+    articleNumbers: string[],
+  ): Promise<Map<string, ResolvedOffers>> {
+    const [ownByNumber, suppliersByNumber] = await Promise.all([
+      this.ownStock.findByTecdocNumbers(articleNumbers),
+      this.supplierStock.findByTecdocNumbers(articleNumbers),
+    ]);
+
+    const offersByNumber = new Map<string, ResolvedOffers>();
+    for (const articleNumber of articleNumbers) {
+      offersByNumber.set(
+        articleNumber,
+        this.toOffers(
+          ownByNumber.get(articleNumber) ?? [],
+          suppliersByNumber.get(articleNumber) ?? [],
+        ),
+      );
+    }
+
+    return offersByNumber;
   }
 
   private async loadOffers(articleNumber: string): Promise<ResolvedOffers> {
@@ -306,17 +274,15 @@ export class InventoryService {
     };
   }
 
-  private toPriceAndAvailability(
+  private toInventoryDetail(
     offer: BestOffer,
     availabilityByWarehouse: WarehouseAvailabilityDto[] = [],
     computedAt: string | null = null,
-  ): PriceAndAvailability {
+  ): ArticleInventoryDetailDto {
     return {
       available: offer.available,
-      priceExVat: offer.priceExVatCents,
-      priceIncVat: offer.priceIncVatCents,
-      stockStatus: offer.stockStatus,
-      estimatedDeliveryDays: offer.estimatedDeliveryDays,
+      bestPriceExVat: offer.priceExVatCents,
+      bestPriceIncVat: offer.priceIncVatCents,
       availabilityByWarehouse,
       computedAt,
     };

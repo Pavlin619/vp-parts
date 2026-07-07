@@ -240,11 +240,13 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
    focus once the snapshot has aged past a TTL.
 3. **Pre-action re-validation (deferred to checkout, `TODO(checkout)`)** — before
    a binding commitment (checkout confirm), `CheckoutService` calls the live,
-   fail-closed `InventoryService.getAvailability` **in-process** and binds its
-   returned date as the committed promise. Tracked as task **T113b**. This
-   guarantees a stale tab can never *commit* a wrong date; the layers above only
-   affect display, and client-side reads use the catalog
-   `?include=availability` path (fail-open).
+   fail-closed `InventoryService.getAvailability` **in-process** (a cart is
+   naturally multi-item, so it takes the batch path; warehouses are always
+   attached) and binds the returned date as the committed promise. Tracked as
+   task **T113b**. This guarantees a stale tab can never *commit* a wrong date;
+   the layers above only affect display. The read fails closed everywhere — the
+   single-article buy box shows a scoped retry on a read error, not a silently
+   wrong "unavailable".
 
 > **Note on bands.** The per-warehouse cut-off is **hour-granular**
 > (`localHour(effectiveStart) < cutoffHour`); cut-offs are always whole hours
@@ -254,10 +256,13 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
 
 ## The wire contract
 
-`AvailabilityDto` / `ArticleInventoryDetailDto` carry
-`availabilityByWarehouse: WarehouseAvailabilityDto[]` (fastest-first) plus a
-top-level `computedAt`. Only the warehouse **id** crosses the wire — localized
-names stay in the frontend, keeping the contract supplier-agnostic.
+`ArticleInventoryDetailDto` is the single availability shape on the wire —
+returned per-article by `GET /catalog/articles-availability` and merged onto
+cached catalog metadata client-side by every list surface (grid, search,
+substitutes). It carries `availabilityByWarehouse: WarehouseAvailabilityDto[]`
+(fastest-first) plus a top-level `computedAt`. Only the warehouse **id** crosses
+the wire — localized names stay in the frontend, keeping the contract
+supplier-agnostic.
 
 ```ts
 interface WarehouseAvailabilityDto {
@@ -270,19 +275,27 @@ interface WarehouseAvailabilityDto {
   courier: { earliestAt: string; granularity: 'HOUR' | 'DAY' };
 }
 
-// On AvailabilityDto / ArticleInventoryDetailDto:
+// On ArticleInventoryDetailDto / ArticleListItemDto:
 //   computedAt: string        // when the snapshot was built (null on cached paths)
 ```
 
-`earliestAt`, `cutoffAt` and `computedAt` are all UTC ISO instants. The headline
-`estimatedDeliveryDays` mirrors the fastest delivery band; the customer-facing
-per-warehouse breakdown lives in `availabilityByWarehouse`.
+`earliestAt`, `cutoffAt` and `computedAt` are all UTC ISO instants. There is no
+headline stock-status or estimated-days field on the wire: the customer-facing
+delivery information lives entirely in the per-warehouse `availabilityByWarehouse`
+breakdown, and the frontend derives its delivery label per warehouse from
+`deliveryWorkDays` and the `pickup`/`courier` projections.
 
-**Caching note:** absolute dates are only computed on the **live/dynamic** paths
-(`getAvailability`, and the dynamically-rendered article detail via
-`getBestPriceAndAvailability`). Cached listing grids
-(`getBulkPricesAndAvailability`) deliberately leave `availabilityByWarehouse`
-empty, so we never serve a stale date.
+**Caching note:** availability is always read on a **dynamic (uncached)** path,
+so it never carries a stale date. Every surface goes through one live read —
+`InventoryService.getAvailability(numbers)` (single vs bulk DB query by count,
+warehouses always attached), exposed as `GET /catalog/articles-availability`
+(`no-store`). The buy box, catalog grid, search, and substitutes all fetch their
+**metadata** from a separate cacheable catalog response (e.g.
+`GET /catalog/.../articles` → `PaginatedCatalogArticlesDto`, `GET /search` →
+`SearchResultItemDto[]`, both without inventory) and hydrate it with that live
+availability read, merging on the frontend. This mirrors the article detail
+page's cached-metadata / live-availability split and keeps request-time delivery
+dates out of any cached payload.
 
 ---
 

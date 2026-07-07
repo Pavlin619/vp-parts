@@ -51,14 +51,22 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
     {
       articleNumber: 'BD-001',
       brandName: 'Bosch',
+      brandLogoUrl: null,
       description: 'Brake Disc',
       thumbnailUrl: null,
+      technicalSpecs: [],
+      oemNumbers: [],
+      fitsVehicle: null,
     },
     {
       articleNumber: 'BD-002',
       brandName: 'Ferodo',
+      brandLogoUrl: null,
       description: 'Brake Disc',
       thumbnailUrl: null,
+      technicalSpecs: [],
+      oemNumbers: [],
+      fitsVehicle: null,
     },
   ],
 };
@@ -68,6 +76,7 @@ const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   brandName: 'Bosch',
   brandLogoUrl: null,
   description: 'Brake Disc',
+  thumbnailUrl: 'https://example.com/bd-001.jpg',
   images: ['https://example.com/bd-001.jpg'],
   technicalSpecs: [{ key: 'Diameter', value: '288 mm' }],
   oemNumbers: ['1K0 615 301 AA'],
@@ -186,7 +195,7 @@ describe('CatalogController (e2e)', () => {
   });
 
   describe('GET /catalog/vehicles/:vehicleId/categories/:categoryId/articles', () => {
-    it('returns articles enriched with inventory data', async () => {
+    it('returns cacheable catalog metadata without live inventory', async () => {
       mockTecDocClient.getArticles.mockResolvedValueOnce(PAGINATED_ARTICLES);
 
       const res = await request(app.getHttpServer())
@@ -196,10 +205,11 @@ describe('CatalogController (e2e)', () => {
       expect(res.body.total).toBe(2);
       expect(res.body.items).toHaveLength(2);
       expect(res.body.items[0].articleNumber).toBe('BD-001');
-      // InventoryService stub overwrites these fields on every article
-      expect(res.body.items[0].available).toBe(false);
-      expect(res.body.items[0].bestPriceExVat).toBeNull();
-      expect(res.body.items[0].bestPriceIncVat).toBeNull();
+      // Inventory is fetched live and separately (GET /catalog/articles-availability),
+      // so the cached metadata payload carries no price/stock fields.
+      expect(res.body.items[0]).not.toHaveProperty('available');
+      expect(res.body.items[0]).not.toHaveProperty('bestPriceExVat');
+      expect(res.body.items[0]).not.toHaveProperty('availabilityByWarehouse');
     });
 
     it('forwards page and pageSize query params to TecDoc', async () => {
@@ -240,8 +250,57 @@ describe('CatalogController (e2e)', () => {
     });
   });
 
+  describe('GET /catalog/articles-availability', () => {
+    it('returns live availability keyed by number and is not cached', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles-availability?numbers=BD-001,BD-002')
+        .expect(200);
+
+      expect(res.headers['cache-control']).toBe('no-store');
+      // No stock in the test DB -> neutral unavailable detail per requested number.
+      expect(res.body['BD-001']).toEqual({
+        available: false,
+        bestPriceExVat: null,
+        bestPriceIncVat: null,
+        availabilityByWarehouse: [],
+        computedAt: expect.any(String),
+      });
+    });
+
+    it('returns an empty map when no numbers are requested', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles-availability')
+        .expect(200);
+
+      expect(res.body).toEqual({});
+    });
+
+    // Exercises the real SQL read against the seeded backoffice stock tables:
+    // OF-OC115 is our own-stock scenario (CENTRAL / IN_STOCK, qty 25, price
+    // 8.50 / 10.20) from infra/db/02-mock-stock-seed.sql.
+    it('returns seeded availability for an own-stock part', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles-availability?numbers=OF-OC115')
+        .expect(200);
+
+      expect(res.body['OF-OC115']).toEqual({
+        available: true,
+        bestPriceExVat: 850,
+        bestPriceIncVat: 1020,
+        availabilityByWarehouse: [
+          expect.objectContaining({
+            warehouseId: 'CENTRAL',
+            quantity: 25,
+            deliveryWorkDays: 0,
+          }),
+        ],
+        computedAt: expect.any(String),
+      });
+    });
+  });
+
   describe('GET /catalog/articles/:articleNumber', () => {
-    it('returns article detail enriched with inventory data', async () => {
+    it('returns cacheable catalog metadata only, without live inventory', async () => {
       mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
 
       const res = await request(app.getHttpServer())
@@ -256,12 +315,11 @@ describe('CatalogController (e2e)', () => {
       expect(res.body.technicalSpecs).toEqual([
         { key: 'Diameter', value: '288 mm' },
       ]);
-      // No own/supplier stock for this article -> neutral unavailable state.
-      expect(res.body.available).toBe(false);
-      expect(res.body.stockStatus).toBe('OUT_OF_STOCK');
-      expect(res.body.estimatedDeliveryDays).toBeNull();
-      expect(res.body.bestPriceExVat).toBeNull();
-      expect(res.body.bestPriceIncVat).toBeNull();
+      // Price/stock is fetched live and separately via
+      // GET /catalog/articles-availability, so the detail payload carries none.
+      expect(res.body).not.toHaveProperty('available');
+      expect(res.body).not.toHaveProperty('bestPriceExVat');
+      expect(res.body).not.toHaveProperty('availabilityByWarehouse');
     });
 
     it('forwards the optional vehicleId query param to TecDoc', async () => {
@@ -286,40 +344,10 @@ describe('CatalogController (e2e)', () => {
         .get('/catalog/articles/NOTFOUND')
         .expect(404);
     });
-
-    it('include=details returns catalog metadata only, skipping inventory', async () => {
-      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
-
-      const res = await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001?include=details')
-        .expect(200);
-
-      expect(res.body.brandName).toBe('Bosch');
-      expect(res.body.technicalSpecs).toEqual([
-        { key: 'Diameter', value: '288 mm' },
-      ]);
-      // Inventory section was not requested, so no price/stock fields.
-      expect(res.body).not.toHaveProperty('available');
-      expect(res.body).not.toHaveProperty('bestPriceIncVat');
-    });
-
-    it('include=availability returns inventory only, skipping the TecDoc lookup', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001?include=availability')
-        .expect(200);
-
-      // Catalog section was not requested, so no TecDoc metadata.
-      expect(res.body).not.toHaveProperty('brandName');
-      expect(res.body).not.toHaveProperty('technicalSpecs');
-      // Neutral unavailable state (no stock in the test DB).
-      expect(res.body.available).toBe(false);
-      expect(res.body).toHaveProperty('computedAt');
-      expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
-    });
   });
 
   describe('GET /catalog/articles/:articleNumber/substitutes', () => {
-    it('returns the cross-reference parts enriched with inventory data', async () => {
+    it('returns the cross-reference parts as catalog metadata only', async () => {
       mockTecDocClient.getSubstitutes.mockResolvedValueOnce([
         {
           articleNumber: 'OC115',
@@ -336,9 +364,10 @@ describe('CatalogController (e2e)', () => {
       expect(mockTecDocClient.getSubstitutes).toHaveBeenCalledWith('OX 982D');
       expect(res.body).toHaveLength(1);
       expect(res.body[0].articleNumber).toBe('OC115');
-      // InventoryService stub reports no stock for this article.
-      expect(res.body[0].available).toBe(false);
-      expect(res.body[0].bestPriceIncVat).toBeNull();
+      // Availability is fetched live and separately via
+      // GET /catalog/articles-availability, so the payload carries none.
+      expect(res.body[0]).not.toHaveProperty('available');
+      expect(res.body[0]).not.toHaveProperty('bestPriceIncVat');
     });
 
     it('returns an empty array when the part has no cross-references', async () => {

@@ -1,4 +1,4 @@
-import { StockStatus, Supplier } from '@vp-parts-shop/shared';
+import { Supplier } from '@vp-parts-shop/shared';
 
 /**
  * How fast a specific supplier warehouse can deliver. These rules mirror the
@@ -68,73 +68,50 @@ export const SUPPLIER_WAREHOUSE_DELIVERY: Readonly<
 /**
  * A resolved delivery expectation for one source. `rank` orders outcomes from
  * fastest (0, our own stock) to slowest, so the best-offer selector can pick
- * the fastest available source. `estimatedDeliveryDays` is the nominal number
- * of business days until delivery (0 == today).
+ * the fastest available source.
  */
 export interface DeliveryOutcome {
-  status: StockStatus;
-  estimatedDeliveryDays: number;
   rank: number;
 }
 
-const STOCK_STATUS_RANK: Record<StockStatus, number> = {
-  [StockStatus.IN_STOCK]: 0,
-  [StockStatus.DELIVERY_WITHIN_HOUR]: 1,
-  [StockStatus.DELIVERY_SAME_DAY]: 2,
-  [StockStatus.DELIVERY_NEXT_DAY]: 3,
-  [StockStatus.DELIVERY_IN_2_DAYS]: 4,
-  [StockStatus.DELIVERY_IN_3_DAYS]: 5,
-  [StockStatus.OUT_OF_STOCK]: Number.MAX_SAFE_INTEGER,
-};
+/** Our own stock is always the fastest option (ships immediately). */
+export const OWN_STOCK_RANK = 0;
 
-const STOCK_STATUS_DELIVERY_DAYS: Record<StockStatus, number> = {
-  [StockStatus.IN_STOCK]: 0,
-  [StockStatus.DELIVERY_WITHIN_HOUR]: 0,
-  [StockStatus.DELIVERY_SAME_DAY]: 0,
-  [StockStatus.DELIVERY_NEXT_DAY]: 1,
-  [StockStatus.DELIVERY_IN_2_DAYS]: 2,
-  [StockStatus.DELIVERY_IN_3_DAYS]: 3,
-  [StockStatus.OUT_OF_STOCK]: 0,
+/**
+ * Fastest-first speed rank per delivery rule (lower = faster). For
+ * SAME_DAY_BEFORE_CUTOFF this is the before-cut-off rank; after the cut-off it
+ * resolves to the NEXT_DAY rank (see {@link resolveDeliveryRule}).
+ */
+const DELIVERY_RULE_RANK: Record<DeliveryRule, number> = {
+  [DeliveryRule.WITHIN_HOUR]: 1,
+  [DeliveryRule.SAME_DAY_BEFORE_CUTOFF]: 2,
+  [DeliveryRule.NEXT_DAY]: 3,
+  [DeliveryRule.TWO_BUSINESS_DAYS]: 4,
+  [DeliveryRule.THREE_BUSINESS_DAYS]: 5,
 };
 
 export const SOFIA_TIME_ZONE = 'Europe/Sofia';
 /**
  * Orders placed before this local hour ship the same day. This is the default
- * for the legacy band resolution below; the authoritative, config-driven cut-off
- * lives in {@link DeliveryScheduleService} (env `SAME_DAY_CUTOFF_HOUR`).
+ * for the band resolution below; the authoritative, config-driven cut-off lives
+ * in {@link DeliveryScheduleService} (env `SAME_DAY_CUTOFF_HOUR`).
  */
 export const SAME_DAY_CUTOFF_HOUR = 11;
 
-export function deliveryRank(status: StockStatus): number {
-  return STOCK_STATUS_RANK[status];
-}
-
-export function outcomeForStatus(status: StockStatus): DeliveryOutcome {
-  return {
-    status,
-    estimatedDeliveryDays: STOCK_STATUS_DELIVERY_DAYS[status],
-    rank: STOCK_STATUS_RANK[status],
-  };
+/** The delivery-speed rank for a rule (its before-cut-off rank for same-day). */
+export function rankForRule(rule: DeliveryRule): number {
+  return DELIVERY_RULE_RANK[rule];
 }
 
 /** Our own stock is always the fastest option and ships immediately. */
 export function ownStockOutcome(): DeliveryOutcome {
-  return outcomeForStatus(StockStatus.IN_STOCK);
-}
-
-/** The neutral outcome used when there is no stock at all. */
-export function outOfStockOutcome(): DeliveryOutcome {
-  return {
-    status: StockStatus.OUT_OF_STOCK,
-    estimatedDeliveryDays: 0,
-    rank: STOCK_STATUS_RANK[StockStatus.OUT_OF_STOCK],
-  };
+  return { rank: OWN_STOCK_RANK };
 }
 
 /**
  * Resolves a delivery rule to a concrete outcome. Only SAME_DAY_BEFORE_CUTOFF
  * depends on the clock: before the cut-off it delivers the same day, otherwise
- * the next day.
+ * it slips to the next-day rank.
  */
 export function resolveDeliveryRule(
   rule: DeliveryRule,
@@ -142,20 +119,16 @@ export function resolveDeliveryRule(
   cutoffHour: number = SAME_DAY_CUTOFF_HOUR,
   timeZone: string = SOFIA_TIME_ZONE,
 ): DeliveryOutcome {
-  switch (rule) {
-    case DeliveryRule.WITHIN_HOUR:
-      return outcomeForStatus(StockStatus.DELIVERY_WITHIN_HOUR);
-    case DeliveryRule.SAME_DAY_BEFORE_CUTOFF:
-      return localHour(now, timeZone) < cutoffHour
-        ? outcomeForStatus(StockStatus.DELIVERY_SAME_DAY)
-        : outcomeForStatus(StockStatus.DELIVERY_NEXT_DAY);
-    case DeliveryRule.NEXT_DAY:
-      return outcomeForStatus(StockStatus.DELIVERY_NEXT_DAY);
-    case DeliveryRule.TWO_BUSINESS_DAYS:
-      return outcomeForStatus(StockStatus.DELIVERY_IN_2_DAYS);
-    case DeliveryRule.THREE_BUSINESS_DAYS:
-      return outcomeForStatus(StockStatus.DELIVERY_IN_3_DAYS);
+  if (rule === DeliveryRule.SAME_DAY_BEFORE_CUTOFF) {
+    const madeCutoff = localHour(now, timeZone) < cutoffHour;
+    return {
+      rank: madeCutoff
+        ? DELIVERY_RULE_RANK[DeliveryRule.SAME_DAY_BEFORE_CUTOFF]
+        : DELIVERY_RULE_RANK[DeliveryRule.NEXT_DAY],
+    };
   }
+
+  return { rank: DELIVERY_RULE_RANK[rule] };
 }
 
 /** Looks up the delivery rule for a supplier/warehouse, or null when unknown. */

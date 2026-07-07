@@ -98,7 +98,12 @@ Cache: Redis, 7 days.
 
 **`GET /catalog/vehicles/:vehicleId/categories/:categoryId/articles`** `[PUBLIC]`
 
-Returns all articles compatible with the vehicle in the given assembly group. Includes articles with no stock (marked `available: false`).
+Returns the **cacheable catalog metadata** (TecDoc) for all articles compatible
+with the vehicle in the given assembly group. It carries **no** live inventory:
+the grid caches this and hydrates it with a separate live availability read
+(`GET /catalog/articles-availability` below), mirroring the article detail page's
+cached-metadata / live-availability split so a cached page never serves a stale
+delivery date. Shape: `PaginatedCatalogArticlesDto`.
 
 Query params:
 - `page` (default 1), `pageSize` (default 20, max 50)
@@ -114,21 +119,40 @@ Response `200`:
       "articleNumber": "WL6340",
       "brandName": "WIX",
       "description": "Oil Filter",
-      "thumbnailUrl": "https://cdn.example.com/img/WL6340.jpg",
-      "available": true,
-      "bestPriceExVat": 1250,
-      "bestPriceIncVat": 1500
-    },
-    {
-      "articleNumber": "OC123",
-      "brandName": "MANN",
-      "description": "Oil Filter",
-      "thumbnailUrl": null,
-      "available": false,
-      "bestPriceExVat": null,
-      "bestPriceIncVat": null
+      "thumbnailUrl": "https://cdn.example.com/img/WL6340.jpg"
     }
   ]
+}
+```
+
+---
+
+### Bulk Availability
+
+**`GET /catalog/articles-availability?numbers=WL6340,OC123`** `[PUBLIC]`
+
+Live, never-cached (`Cache-Control: no-store`) price/availability for a batch of
+article numbers, keyed by number. The cached listing grid calls this per request
+to hydrate its metadata rows with fresh price + per-warehouse delivery data, and
+it is the single availability read every list surface (grid, search, substitutes)
+shares. **Fails closed**: a stock-DB read error returns `503` /
+`INVENTORY_UNAVAILABLE` so a whole grid never renders as falsely out of stock.
+A requested number with genuinely no stock resolves to `available: false` and is
+still present in the map. Shape: `ArticlesAvailabilityDto`
+(`Record<string, ArticleInventoryDetailDto>`).
+
+Response `200`:
+```json
+{
+  "WL6340": {
+    "available": true,
+    "bestPriceExVat": 1250,
+    "bestPriceIncVat": 1500,
+    "availabilityByWarehouse": [
+      { "warehouseId": "CENTRAL", "quantity": 6, "deliveryWorkDays": 0, "orderCutoffTime": "18:00", "cutoffAt": "…", "pickup": { "earliestAt": "…", "granularity": "HOUR" }, "courier": { "earliestAt": "…", "granularity": "DAY" } }
+    ],
+    "computedAt": "2026-07-05T09:00:00.000Z"
+  }
 }
 ```
 
@@ -168,8 +192,6 @@ Response `200`:
   ],
   "fitsVehicle": true,
   "available": true,
-  "stockStatus": "IN_STOCK",
-  "estimatedDeliveryDays": 0,
   "bestPriceExVat": 1250,
   "bestPriceIncVat": 1500,
   "availabilityByWarehouse": [
@@ -187,7 +209,7 @@ Response `200`:
 }
 ```
 
-Note: a single locked sell price (`bestPriceExVat` / `bestPriceIncVat`) is returned for all callers — there are no role-specific trade-price fields (per-mechanic discounts are applied separately later). `stockStatus`/`availabilityByWarehouse` mirror the inventory availability contract above. All price fields are integer EUR cents.
+Note: a single locked sell price (`bestPriceExVat` / `bestPriceIncVat`) is returned for all callers — there are no role-specific trade-price fields (per-mechanic discounts are applied separately later). Availability is expressed entirely by `available` plus the per-warehouse `availabilityByWarehouse` breakdown (quantity + pickup/courier dates); there is no `stockStatus` or `estimatedDeliveryDays` field — the frontend derives the delivery label per warehouse from the breakdown. All price fields are integer EUR cents.
 
 Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read live from the shared DB per request and embedded into this response.
 
@@ -200,6 +222,13 @@ Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read
 **`GET /search?q={query}`** `[PUBLIC]`
 
 Normalises the query and searches the TecDoc catalogue. Query param `vehicleId` (optional) adds fit indicator.
+
+Returns cacheable TecDoc **metadata + fit only — no live inventory**, mirroring the
+listing grid / article detail split. `available` and price are not on the search
+response; the client fetches live price/availability for the result article
+numbers via `GET /catalog/articles-availability` and merges it in. This keeps a
+search from triggering a stock-DB read per TecDoc tier attempt — availability is
+read once, client-side, for the final result set.
 
 Response `200` — single exact match:
 ```json
@@ -216,8 +245,7 @@ Response `200` — multiple matches:
       "articleNumber": "WL6340",
       "brandName": "WIX",
       "description": "Oil Filter",
-      "available": true,
-      "bestPriceIncVat": 1500,
+      "thumbnailUrl": null,
       "fitsVehicle": true
     }
   ]
@@ -251,17 +279,26 @@ Cache: Redis, 30 min.
 ## Inventory Module
 
 There is **no standalone inventory HTTP endpoint.** Client-facing availability is
-served through the catalog article endpoint via `?include=availability` (see
-above), which reads `public.autoparts` + `public.supplier_stock` directly and
-live (no Redis) and **fails open** (neutral "unavailable") so the product page
-never errors on a transient DB blip.
+served through the catalog endpoint `GET /catalog/articles-availability?numbers=…`
+(`no-store`), which reads `public.autoparts` + `public.supplier_stock` directly and
+live (no Redis).
 
-The **binding pre-checkout re-validation** — which must **fail closed**
-(`INVENTORY_UNAVAILABLE`, 503) so a DB error aborts the order rather than
-selling stale stock — is `InventoryService.getAvailability(articleNumber)`,
-called **in-process** by `CheckoutService` during the confirm step. It is not
-exposed over HTTP: NestJS services read the shared DB directly, with no internal
-REST hop.
+There is **one** read behind every surface — `InventoryService.getAvailability(numbers)`,
+exposed via `CatalogService.getArticlesAvailability` — which toggles only the DB
+query by input size (single-row vs batch) and **always fails closed**: on a read
+error it throws `InventoryUnavailableException` (`INVENTORY_UNAVAILABLE`, 503) rather
+than reporting stock as unavailable. Every surface fetches cached metadata separately
+and hydrates it with this read client-side (the product-page buy box, listing grid,
+search, and substitutes), and each shows a scoped "try again" state on the 503 rather
+than a silently wrong "unavailable" or a grid of false "out of stock" rows. (An
+article that genuinely has no stock still resolves to `available: false`; only a read
+*failure* throws.)
+
+The **binding pre-checkout re-validation** uses the same fail-closed read
+(`InventoryService.getAvailability(cart numbers)`), called **in-process** by
+`CheckoutService` during the confirm step so a DB error aborts the order rather than
+selling stale stock. It is not exposed over HTTP: NestJS services read the shared DB
+directly, with no internal REST hop.
 
 ---
 
