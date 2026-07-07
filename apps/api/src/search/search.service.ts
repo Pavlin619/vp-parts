@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   AutocompleteItemDto,
   SearchResponseDto,
-  SearchResultItemDto,
 } from '@vp-parts-shop/shared';
 import { SearchMatchType } from '../catalog/tecdoc/tecdoc-client';
 import { CatalogService } from '../catalog/catalog.service';
@@ -66,7 +65,7 @@ export class SearchService {
     normalisedQuery: string,
     rawQuery: string,
   ): Promise<{
-    results: ArticleCatalogListItemDto[];
+    results: ArticleSummaryDto[];
     effectiveQuery: string;
     effectiveMatchType: SearchMatchType;
   }> {
@@ -172,14 +171,11 @@ export class SearchService {
   }
 
   private toSearchResult(
-    item: ArticleCatalogListItemDto,
+    item: ArticleSummaryDto,
     fittingNumbers: Set<string> | null,
-  ): SearchResultItemDto {
+  ): ArticleSummaryDto {
     return {
-      articleNumber: item.articleNumber,
-      brandName: item.brandName,
-      description: item.description,
-      thumbnailUrl: item.thumbnailUrl,
+      ...item,
       fitsVehicle:
         fittingNumbers !== null ? fittingNumbers.has(item.articleNumber) : null,
     };

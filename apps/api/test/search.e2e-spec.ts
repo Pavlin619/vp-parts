@@ -4,19 +4,20 @@ import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
 import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
 import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
-import {
-  ArticleCatalogListItemDto,
-  AutocompleteItemDto,
-} from '@vp-parts-shop/shared';
+import { ArticleSummaryDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
 
 const makeArticle = (
   articleNumber: string,
   description = 'Oil Filter',
-): ArticleCatalogListItemDto => ({
+): ArticleSummaryDto => ({
   articleNumber,
   brandName: 'WIX',
+  brandLogoUrl: null,
   description,
   thumbnailUrl: null,
+  technicalSpecs: [],
+  oemNumbers: [],
+  fitsVehicle: null,
 });
 
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({
@@ -30,6 +31,7 @@ const mockTecDocClient = {
   getModelSeries: jest.fn(),
   getVehicleTypes: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
+  getBrands: jest.fn(),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
   searchArticles: jest.fn(),
@@ -53,6 +55,9 @@ describe('SearchController (e2e)', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // The search flow joins brand logos via getBrands on every non-empty result
+    // set; give every test a default so the enrichment resolves.
+    mockTecDocClient.getBrands.mockResolvedValue([]);
     await redisClient.flushall();
   });
 

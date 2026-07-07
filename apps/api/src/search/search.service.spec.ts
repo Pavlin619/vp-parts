@@ -1,7 +1,4 @@
-import {
-  ArticleCatalogListItemDto,
-  AutocompleteItemDto,
-} from '@vp-parts-shop/shared';
+import { ArticleSummaryDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { PartNumberNormaliser } from './normaliser';
@@ -24,13 +21,17 @@ const mockNormaliser = {
 
 function articleItem(
   articleNumber: string,
-  overrides: Partial<ArticleCatalogListItemDto> = {},
-): ArticleCatalogListItemDto {
+  overrides: Partial<ArticleSummaryDto> = {},
+): ArticleSummaryDto {
   return {
     articleNumber,
     brandName: 'WIX',
+    brandLogoUrl: null,
     description: 'Oil Filter',
     thumbnailUrl: null,
+    technicalSpecs: [],
+    oemNumbers: [],
+    fitsVehicle: null,
     ...overrides,
   };
 }
@@ -197,15 +198,21 @@ describe('SearchService', () => {
         {
           articleNumber: 'WL6340',
           brandName: 'WIX',
+          brandLogoUrl: null,
           description: 'Oil Filter',
           thumbnailUrl: null,
+          technicalSpecs: [],
+          oemNumbers: [],
           fitsVehicle: null,
         },
         {
           articleNumber: 'WL6341',
           brandName: 'WIX',
+          brandLogoUrl: null,
           description: 'Oil Filter Heavy Duty',
           thumbnailUrl: null,
+          technicalSpecs: [],
+          oemNumbers: [],
           fitsVehicle: null,
         },
       ]);

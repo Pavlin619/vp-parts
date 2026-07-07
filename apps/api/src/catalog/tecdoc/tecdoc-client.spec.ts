@@ -326,6 +326,39 @@ describe('TecDocClient', () => {
       });
     });
 
+    it('maps articleCriteria and oemNumbers that ride along the includeAll response', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          totalMatchingArticles: 1,
+          articles: [
+            {
+              articleNumber: 'WL6340',
+              mfrName: 'WIX',
+              genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+              images: [],
+              articleCriteria: [
+                { criteriaDescription: 'Height', formattedValue: '87 mm' },
+              ],
+              oemNumbers: [{ articleNumber: '06L115562' }],
+            },
+          ],
+        }),
+      );
+
+      const result = await client.getArticles('10042', '1001', 1, 20);
+
+      expect(result.items[0]).toEqual({
+        articleNumber: 'WL6340',
+        brandName: 'WIX',
+        brandLogoUrl: null,
+        description: 'Oil Filter',
+        thumbnailUrl: null,
+        technicalSpecs: [{ key: 'Height', value: '87 mm' }],
+        oemNumbers: ['06L115562'],
+        fitsVehicle: null,
+      });
+    });
+
     it('passes page directly (1-based) without offset calculation', async () => {
       mockFetch.mockResolvedValueOnce(
         mockOkResponse({ totalMatchingArticles: 0, articles: [] }),
@@ -490,15 +523,23 @@ describe('TecDocClient', () => {
         {
           articleNumber: 'OC115',
           brandName: 'MANN-FILTER',
+          brandLogoUrl: null,
           description: 'Oil Filter',
           thumbnailUrl:
             'https://digitalassets.tecalliance.services/images/800/oc115.jpg',
+          technicalSpecs: [],
+          oemNumbers: [],
+          fitsVehicle: null,
         },
         {
           articleNumber: 'WL7090',
           brandName: 'WIX',
+          brandLogoUrl: null,
           description: 'Oil Filter',
           thumbnailUrl: null,
+          technicalSpecs: [],
+          oemNumbers: [],
+          fitsVehicle: null,
         },
       ]);
     });
@@ -558,8 +599,12 @@ describe('TecDocClient', () => {
         {
           articleNumber: 'WL6340',
           brandName: 'WIX',
+          brandLogoUrl: null,
           description: 'Oil Filter',
           thumbnailUrl: null,
+          technicalSpecs: [],
+          oemNumbers: [],
+          fitsVehicle: null,
         },
       ]);
     });

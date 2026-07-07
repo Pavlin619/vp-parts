@@ -50,25 +50,41 @@ export interface ArticleInventorySummaryDto {
   bestPriceIncVat: number | null;
 }
 
-/** Catalog metadata TecDoc owns for an article in a list/grid. */
-export interface ArticleCatalogListItemDto {
+/**
+ * The single catalog metadata shape TecDoc owns for an article row, shared by
+ * every list surface — category listing, search, and substitutes — and extended
+ * by the article detail DTO. It carries identity, brand (+ logo), description,
+ * thumbnail, and the technical specs / OE numbers that ride along free on the
+ * same `getArticles` (`includeAll`) response, plus the vehicle-fit flag. It
+ * holds **no** live inventory: every surface fetches price/availability
+ * separately and merges it in, so cached metadata never carries a stale
+ * delivery date. Compatible vehicles are intentionally excluded here — they
+ * require a separate per-article TecDoc lookup and live on the detail DTO.
+ */
+export interface ArticleSummaryDto {
   articleNumber: string;
   brandName: string;
+  /** Brand logo URL from TecDoc `getBrands`, or `null` when none is on file. */
+  brandLogoUrl: string | null;
   description: string;
   thumbnailUrl: string | null;
+  technicalSpecs: TechnicalSpecDto[];
+  oemNumbers: string[];
+  /** `true`/`false` when a vehicle is scoped for the request, else `null`. */
+  fitsVehicle: boolean | null;
 }
 
 /**
- * A catalog list item enriched with the *full* live inventory detail — price,
+ * A catalog summary enriched with the *full* live inventory detail — price,
  * availability, and the per-warehouse breakdown — so every list surface (grid,
  * search, substitutes) can feed the same row component. Because it carries
  * request-time warehouse delivery dates it must only come from **dynamic
  * (uncached)** responses; cached listings serve the metadata-only
- * `ArticleCatalogListItemDto` and fetch this availability live and separately
- * (see the article detail page's cached-metadata / live-availability split).
+ * `ArticleSummaryDto` and fetch this availability live and separately (see the
+ * article detail page's cached-metadata / live-availability split).
  */
 export interface ArticleListItemDto
-  extends ArticleCatalogListItemDto,
+  extends ArticleSummaryDto,
     ArticleInventoryDetailDto {}
 
 export interface PaginatedDto<TItem> {
@@ -78,7 +94,7 @@ export interface PaginatedDto<TItem> {
   items: TItem[];
 }
 
-export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleCatalogListItemDto>;
+export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleSummaryDto>;
 export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
 
 /**
@@ -113,41 +129,29 @@ export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
   computedAt: string | null;
 }
 
-/** Catalog metadata TecDoc owns for a single article. */
-export interface ArticleCatalogDetailDto {
-  articleNumber: string;
-  brandName: string;
-  /** Brand logo URL from TecDoc `getBrands`, or `null` when none is on file. */
-  brandLogoUrl: string | null;
-  description: string;
-  images: string[];
-  technicalSpecs: TechnicalSpecDto[];
-  oemNumbers: string[];
-  compatibleVehicles: CompatibleVehicleDto[];
-  fitsVehicle: boolean | null;
-}
-
 /**
- * A search hit as cacheable TecDoc metadata plus its vehicle-fit flag — with
- * **no** live inventory. Mirrors the listing grid / article detail split: the
- * search endpoint only resolves catalog identity and fit (a TecDoc concern),
- * and the client fetches live price/availability separately via
- * {@link ArticlesAvailabilityDto} and merges it in. `fitsVehicle` is `null`
- * when no vehicle is selected.
+ * Catalog metadata TecDoc owns for a single article — the shared
+ * {@link ArticleSummaryDto} plus the detail-only image gallery and the
+ * compatible-vehicle list (populated by a separate per-article TecDoc lookup;
+ * empty until that fitment feature lands).
  */
-export interface SearchResultItemDto {
-  articleNumber: string;
-  brandName: string;
-  description: string;
-  thumbnailUrl: string | null;
-  fitsVehicle: boolean | null;
+export interface ArticleCatalogDetailDto extends ArticleSummaryDto {
+  images: string[];
+  compatibleVehicles: CompatibleVehicleDto[];
 }
 
 export interface SearchResponseDto {
   redirect?: string;
   query?: string;
   normalisedQuery?: string;
-  results?: SearchResultItemDto[];
+  /**
+   * Search hits as cacheable {@link ArticleSummaryDto} metadata (identity,
+   * brand, specs/OE, thumbnail, and fit) with **no** live inventory. Mirrors
+   * the listing grid / article detail split: the client fetches live
+   * price/availability separately via {@link ArticlesAvailabilityDto} and
+   * merges it in.
+   */
+  results?: ArticleSummaryDto[];
   suggestions?: AutocompleteItemDto[];
 }
 

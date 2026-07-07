@@ -6,11 +6,23 @@ import {
   BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
+
+/**
+ * The bare row fields the mock stores per article. The richer summary fields
+ * (specs, OE numbers, brand logo, fit) are derived at read time in
+ * {@link TecDocMockClient.toSummary}, mirroring how the real client fills them
+ * from a single `getArticles` (`includeAll`) response plus the catalog-layer
+ * brand-logo join.
+ */
+type MockArticleBase = Pick<
+  ArticleSummaryDto,
+  'articleNumber' | 'brandName' | 'description' | 'thumbnailUrl'
+>;
 
 const MANUFACTURERS: ManufacturerDto[] = [
   { id: '16', name: 'Volkswagen' },
@@ -128,7 +140,7 @@ const BRANDS: BrandDto[] = [
   },
 ];
 
-const ARTICLES_BY_CATEGORY: Record<string, ArticleCatalogListItemDto[]> = {
+const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
   '100002': [
     {
       articleNumber: 'BD-0986478451',
@@ -250,7 +262,7 @@ const ARTICLES_BY_CATEGORY: Record<string, ArticleCatalogListItemDto[]> = {
 // Comparable (cross-reference) parts keyed by the article being viewed — the
 // mock stand-in for TecDoc getArticles searchType 3. OX 982D returns the same
 // oil filter from other data suppliers so the "Заменки" tab lights up in dev.
-const SUBSTITUTES_BY_ARTICLE: Record<string, ArticleCatalogListItemDto[]> = {
+const SUBSTITUTES_BY_ARTICLE: Record<string, MockArticleBase[]> = {
   'OX 982D': [
     {
       articleNumber: 'OF-OC115',
@@ -275,15 +287,34 @@ const SUBSTITUTES_BY_ARTICLE: Record<string, ArticleCatalogListItemDto[]> = {
   ],
 };
 
+/**
+ * Builds a small gallery of placeholder images for a mock article. Real TecDoc
+ * returns several images per article (product shot, line drawing, packaging,
+ * …), so the mock mirrors that with a few labelled, actually-loading
+ * placeholders — otherwise the detail gallery only ever shows one photo and the
+ * thumbnail strip never appears in dev. Uses placehold.co (whitelisted in
+ * apps/web/next.config.ts) so the images render.
+ */
+function mockGallery(label: string): string[] {
+  const backgrounds = ['1d4ed8', '0f766e', '9333ea', 'b45309'];
+
+  return backgrounds.map((background, index) => {
+    const text = `${label.replace(/ /g, '+')}+${index + 1}`;
+    return `https://placehold.co/800x800/${background}/ffffff.png?text=${text}`;
+  });
+}
+
+const BRAKE_DISC_IMAGES = mockGallery('Brake Disc');
+const OIL_FILTER_IMAGES = mockGallery('Oil Filter');
+
 const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
   'BD-0986478451': {
     articleNumber: 'BD-0986478451',
     brandName: 'Bosch',
     brandLogoUrl: null,
     description: 'Brake Disc',
-    images: [
-      'https://digitalassets.tecalliance.services/images/800/mock-brake-disc.jpg',
-    ],
+    thumbnailUrl: BRAKE_DISC_IMAGES[0],
+    images: BRAKE_DISC_IMAGES,
     technicalSpecs: [
       { key: 'Diameter', value: '288 mm' },
       { key: 'Brake Disc Type', value: 'Internally Vented' },
@@ -298,9 +329,8 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
     brandName: 'MANN-FILTER',
     brandLogoUrl: null,
     description: 'Oil Filter',
-    images: [
-      'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    ],
+    thumbnailUrl: OIL_FILTER_IMAGES[0],
+    images: OIL_FILTER_IMAGES,
     technicalSpecs: [
       { key: 'Height', value: '89 mm' },
       { key: 'Outer Diameter 1', value: '76 mm' },
@@ -318,9 +348,8 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
     brandName: 'KNECHT',
     brandLogoUrl: null,
     description: 'Oil Filter',
-    images: [
-      'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    ],
+    thumbnailUrl: OIL_FILTER_IMAGES[0],
+    images: OIL_FILTER_IMAGES,
     technicalSpecs: [
       { key: 'Filter type', value: 'Filter Insert' },
       { key: 'Diameter', value: '71.0 mm' },
@@ -349,9 +378,8 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
     brandName: 'MANN-FILTER',
     brandLogoUrl: null,
     description: 'Oil Filter',
-    images: [
-      'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    ],
+    thumbnailUrl: OIL_FILTER_IMAGES[0],
+    images: OIL_FILTER_IMAGES,
     technicalSpecs: [
       { key: 'Filter type', value: 'Filter Insert' },
       { key: 'Outer Diameter', value: '64 mm' },
@@ -369,6 +397,7 @@ const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   brandName: 'Unknown',
   brandLogoUrl: null,
   description: 'Auto Part',
+  thumbnailUrl: null,
   images: [],
   technicalSpecs: [],
   oemNumbers: [],
@@ -405,7 +434,9 @@ export class TecDocMockClient {
   ): Promise<PaginatedCatalogArticlesDto> {
     const all = ARTICLES_BY_CATEGORY[categoryId] ?? [];
     const start = (page - 1) * pageSize;
-    const items = all.slice(start, start + pageSize);
+    const items = all
+      .slice(start, start + pageSize)
+      .map((base) => this.toSummary(base));
 
     return Promise.resolve({ total: all.length, page, pageSize, items });
   }
@@ -413,11 +444,12 @@ export class TecDocMockClient {
   searchArticles(
     query: string,
     vehicleId?: string,
-  ): Promise<ArticleCatalogListItemDto[]> {
+  ): Promise<ArticleSummaryDto[]> {
     const matches = this.findMatchingArticles(query)
       // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
       // returns every other match so fit indicators show both states.
-      .filter((_, index) => vehicleId == null || index % 2 === 0);
+      .filter((_, index) => vehicleId == null || index % 2 === 0)
+      .map((base) => this.toSummary(base));
 
     return Promise.resolve(matches);
   }
@@ -446,8 +478,31 @@ export class TecDocMockClient {
     return Promise.resolve(base);
   }
 
-  getSubstitutes(articleNumber: string): Promise<ArticleCatalogListItemDto[]> {
-    return Promise.resolve(SUBSTITUTES_BY_ARTICLE[articleNumber] ?? []);
+  getSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
+    const substitutes = (SUBSTITUTES_BY_ARTICLE[articleNumber] ?? []).map(
+      (base) => this.toSummary(base),
+    );
+
+    return Promise.resolve(substitutes);
+  }
+
+  /**
+   * Expands a bare mock row into the shared summary shape. Specs and OE numbers
+   * are borrowed from the article's detail fixture when present (mirroring how
+   * the real client gets them free on the same `getArticles` response);
+   * `brandLogoUrl` stays null because the catalog repository joins logos from
+   * getBrands, exactly as it does for the real client.
+   */
+  private toSummary(base: MockArticleBase): ArticleSummaryDto {
+    const detail = ARTICLE_DETAILS[base.articleNumber];
+
+    return {
+      ...base,
+      brandLogoUrl: null,
+      technicalSpecs: detail?.technicalSpecs ?? [],
+      oemNumbers: detail?.oemNumbers ?? [],
+      fitsVehicle: null,
+    };
   }
 
   private findMatchingArticles(query: string) {

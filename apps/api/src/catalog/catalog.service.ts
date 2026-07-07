@@ -6,7 +6,7 @@ import {
   AssemblyGroupDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
@@ -90,7 +90,7 @@ export class CatalogService {
     query: string,
     vehicleId?: string,
     matchType?: SearchMatchType,
-  ): Promise<ArticleCatalogListItemDto[]> {
+  ): Promise<ArticleSummaryDto[]> {
     return this.repository.searchArticles(query, vehicleId, matchType);
   }
 
@@ -109,9 +109,7 @@ export class CatalogService {
    * viewed part fits the selected vehicle, its comparables fit too, so no
    * per-substitute fit check is done. Capped at {@link SUBSTITUTES_LIMIT}.
    */
-  async getSubstitutes(
-    articleNumber: string,
-  ): Promise<ArticleCatalogListItemDto[]> {
+  async getSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
     const substitutes = await this.repository.findSubstitutes(articleNumber);
 
     return substitutes.slice(0, SUBSTITUTES_LIMIT);

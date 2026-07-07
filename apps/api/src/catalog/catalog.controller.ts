@@ -16,7 +16,7 @@ import {
   AssemblyGroupDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleCatalogListItemDto,
+  ArticleSummaryDto,
   ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared';
 
@@ -113,7 +113,7 @@ export class CatalogController {
   @Get('articles/:articleNumber/substitutes')
   getSubstitutes(
     @Param('articleNumber') articleNumber: string,
-  ): Promise<ArticleCatalogListItemDto[]> {
+  ): Promise<ArticleSummaryDto[]> {
     return this.catalog.getSubstitutes(articleNumber);
   }
 }
