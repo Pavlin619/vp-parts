@@ -1,5 +1,3 @@
-import { StockStatus } from '../enums';
-
 /**
  * Customer-facing fictional warehouse identifiers. We never expose the real
  * suppliers; supplier stock is grouped into these warehouses by inherent
@@ -44,21 +42,4 @@ export interface WarehouseAvailabilityDto {
   cutoffAt: string;
   pickup: DeliveryProjectionDto;
   courier: DeliveryProjectionDto;
-}
-
-export interface AvailabilityDto {
-  articleNumber: string;
-  available: boolean;
-  stockStatus: StockStatus;
-  estimatedDeliveryDays: number | null;
-  priceExVat: number | null;
-  priceIncVat: number | null;
-  /** Available quantity per customer-facing warehouse, fastest first. */
-  availabilityByWarehouse: WarehouseAvailabilityDto[];
-  /**
-   * Absolute instant (ISO UTC) this snapshot was computed. The frontend
-   * compares it to the wall clock to decide when the delivery dates are stale
-   * and a re-validation is due.
-   */
-  computedAt: string;
 }

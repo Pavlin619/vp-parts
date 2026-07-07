@@ -31,6 +31,8 @@ function articleItem(
     available: true,
     bestPriceExVat: 1250,
     bestPriceIncVat: 1500,
+    availabilityByWarehouse: [],
+    computedAt: null,
     ...overrides,
   };
 }

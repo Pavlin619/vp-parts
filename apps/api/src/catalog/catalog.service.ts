@@ -4,18 +4,26 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
+  PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleCatalogListItemDto,
-  ArticleDetailDto,
-  ArticleDetailSection,
   ArticleInventoryDetailDto,
   ArticleListItemDto,
+  ArticlesAvailabilityDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
 import { SearchMatchType, SUBSTITUTES_LIMIT } from './tecdoc/tecdoc-client';
-import { InventoryService } from '../inventory';
+import { InventoryService, PriceAndAvailability } from '../inventory';
+
+/** Neutral detail for a requested article the availability read had no row for. */
+const UNAVAILABLE_DETAIL: ArticleInventoryDetailDto = {
+  available: false,
+  bestPriceExVat: null,
+  bestPriceIncVat: null,
+  availabilityByWarehouse: [],
+  computedAt: null,
+};
 
 @Injectable()
 export class CatalogService {
@@ -42,22 +50,42 @@ export class CatalogService {
     return this.repository.findAssemblyGroupTree(vehicleId);
   }
 
-  async listArticles(
+  /**
+   * Cacheable catalog metadata for a category page — article identity, brand,
+   * description, and thumbnail, with **no** live inventory. The grid caches this
+   * (stable TecDoc data) and hydrates it with fresh price/availability via
+   * {@link getArticlesAvailability}, mirroring the article detail page's
+   * cached-metadata / live-availability split. Keeping inventory out of the
+   * cached payload is what lets us never serve a stale delivery date.
+   */
+  async listArticleMetadata(
     vehicleId: string,
     categoryId: string,
     page: number,
     pageSize: number,
-  ): Promise<PaginatedArticlesDto> {
-    const paginated = await this.repository.findArticles(
-      vehicleId,
-      categoryId,
-      page,
-      pageSize,
-    );
+  ): Promise<PaginatedCatalogArticlesDto> {
+    return this.repository.findArticles(vehicleId, categoryId, page, pageSize);
+  }
 
-    const enriched = await this.enrichWithInventory(paginated.items);
+  /**
+   * Live price/availability for a batch of article numbers, keyed by number.
+   * This is the single, uncached availability read every list surface uses —
+   * the catalog grid hydrates its cached metadata with it, and search /
+   * substitutes enrich through it (see {@link enrichWithAvailability}). It fails
+   * closed: a DB read error throws InventoryUnavailableException so a whole list
+   * never renders as falsely out of stock.
+   */
+  async getArticlesAvailability(
+    articleNumbers: string[],
+  ): Promise<ArticlesAvailabilityDto> {
+    const priceMap = await this.inventory.getAvailability(articleNumbers);
 
-    return { ...paginated, items: enriched };
+    const availability: ArticlesAvailabilityDto = {};
+    for (const [articleNumber, inv] of priceMap) {
+      availability[articleNumber] = this.toInventoryDetail(inv);
+    }
+
+    return availability;
   }
 
   async searchArticles(
@@ -70,7 +98,7 @@ export class CatalogService {
       vehicleId,
       matchType,
     );
-    return this.enrichWithInventory(results);
+    return this.enrichWithAvailability(results);
   }
 
   async getAutocompleteSuggestions(
@@ -81,39 +109,33 @@ export class CatalogService {
 
   /**
    * Cross-reference substitutes for an article — the same part from other
-   * brands (TecDoc comparable numbers), enriched with live price/availability.
-   * Vehicle-independent by design: if the viewed part fits the selected
-   * vehicle, its comparables fit too, so no per-substitute fit check is done.
-   * Capped at {@link SUBSTITUTES_LIMIT}.
+   * brands (TecDoc comparable numbers), as cacheable catalog metadata only.
+   * Live price/availability is fetched separately via
+   * {@link getArticlesAvailability}, mirroring the listing grid's
+   * metadata / live-availability split. Vehicle-independent by design: if the
+   * viewed part fits the selected vehicle, its comparables fit too, so no
+   * per-substitute fit check is done. Capped at {@link SUBSTITUTES_LIMIT}.
    */
-  async getSubstitutes(articleNumber: string): Promise<ArticleListItemDto[]> {
+  async getSubstitutes(
+    articleNumber: string,
+  ): Promise<ArticleCatalogListItemDto[]> {
     const substitutes = await this.repository.findSubstitutes(articleNumber);
 
-    return this.enrichWithInventory(substitutes.slice(0, SUBSTITUTES_LIMIT));
+    return substitutes.slice(0, SUBSTITUTES_LIMIT);
   }
 
   /**
-   * Assembles the article detail response from two independent halves — cached
-   * TecDoc catalog metadata and live inventory — selected via `sections`. The
-   * two reads run in parallel, and a section that is not requested is not read
-   * at all: an availability-only call (the buy box) skips the TecDoc lookup
-   * entirely, and a details-only call (the cached page shell) skips the DB.
+   * Cacheable TecDoc catalog metadata for the article detail page — identity,
+   * brand, images, specs, OE numbers, and vehicle fit, with **no** live
+   * inventory. The page caches this and hydrates price/availability separately
+   * via {@link getArticlesAvailability}, so a cached detail page never serves a
+   * stale delivery date.
    */
   async getArticleDetail(
     articleNumber: string,
     vehicleId?: string,
-    sections: ArticleDetailSection[] = ['details', 'availability'],
-  ): Promise<Partial<ArticleDetailDto>> {
-    const [catalog, inventory] = await Promise.all([
-      sections.includes('details')
-        ? this.loadCatalogDetail(articleNumber, vehicleId)
-        : undefined,
-      sections.includes('availability')
-        ? this.loadInventoryDetail(articleNumber)
-        : undefined,
-    ]);
-
-    return { ...catalog, ...inventory };
+  ): Promise<ArticleCatalogDetailDto> {
+    return this.loadCatalogDetail(articleNumber, vehicleId);
   }
 
   private async loadCatalogDetail(
@@ -128,39 +150,38 @@ export class CatalogService {
     }
   }
 
-  private async loadInventoryDetail(
-    articleNumber: string,
-  ): Promise<ArticleInventoryDetailDto> {
-    const inv = await this.inventory.getBestPriceAndAvailability(articleNumber);
+  /**
+   * The single enrichment path for dynamic (uncached) list surfaces — search
+   * and substitutes. Attaches the full live inventory detail (price +
+   * per-warehouse availability) to each catalog item so they feed the same row
+   * component the grid does. The cached catalog grid does not use this; it
+   * fetches {@link getArticlesAvailability} separately to keep request-time
+   * delivery dates out of its cached payload.
+   */
+  private async enrichWithAvailability(
+    items: ArticleCatalogListItemDto[],
+  ): Promise<ArticleListItemDto[]> {
+    if (items.length === 0) return [];
 
+    const availability = await this.getArticlesAvailability(
+      items.map((item) => item.articleNumber),
+    );
+
+    return items.map((item) => ({
+      ...item,
+      ...(availability[item.articleNumber] ?? UNAVAILABLE_DETAIL),
+    }));
+  }
+
+  private toInventoryDetail(
+    inv: PriceAndAvailability,
+  ): ArticleInventoryDetailDto {
     return {
       available: inv.available,
-      stockStatus: inv.stockStatus,
-      estimatedDeliveryDays: inv.estimatedDeliveryDays,
       bestPriceExVat: inv.priceExVat,
       bestPriceIncVat: inv.priceIncVat,
       availabilityByWarehouse: inv.availabilityByWarehouse,
       computedAt: inv.computedAt,
     };
-  }
-
-  private async enrichWithInventory(
-    items: ArticleCatalogListItemDto[],
-  ): Promise<ArticleListItemDto[]> {
-    if (items.length === 0) return [];
-
-    const priceMap = await this.inventory.getBulkPricesAndAvailability(
-      items.map((item) => item.articleNumber),
-    );
-
-    return items.map((item) => {
-      const inv = priceMap.get(item.articleNumber);
-      return {
-        ...item,
-        available: inv?.available ?? false,
-        bestPriceExVat: inv?.priceExVat ?? null,
-        bestPriceIncVat: inv?.priceIncVat ?? null,
-      };
-    });
   }
 }

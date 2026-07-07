@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Header,
   Param,
   Query,
   DefaultValuePipe,
@@ -13,36 +14,31 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
-  ArticleDetailDto,
-  ArticleDetailSection,
-  ArticleListItemDto,
+  PaginatedCatalogArticlesDto,
+  ArticleCatalogDetailDto,
+  ArticleCatalogListItemDto,
+  ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared';
 
-const VALID_SECTIONS: readonly ArticleDetailSection[] = [
-  'details',
-  'availability',
-];
-
 /**
- * Parses the `include` query (e.g. `details`, `availability`, or
- * `details,availability`) into the sections to fetch. Unknown tokens are
- * dropped; an absent or fully-invalid value falls back to the full response so
- * the endpoint stays backwards-compatible.
+ * Parses the comma-separated `numbers` query for the bulk availability endpoint
+ * into a de-duplicated list of article numbers. Blank tokens are dropped; an
+ * absent or empty value yields an empty list (the service returns an empty map).
  */
-export function parseIncludeSections(include?: string): ArticleDetailSection[] {
-  if (!include) {
-    return [...VALID_SECTIONS];
+export function parseArticleNumbers(numbers?: string): string[] {
+  if (!numbers) {
+    return [];
   }
 
-  const requested = include
-    .split(',')
-    .map((token) => token.trim())
-    .filter((token): token is ArticleDetailSection =>
-      VALID_SECTIONS.includes(token as ArticleDetailSection),
-    );
+  const seen = new Set<string>();
+  for (const token of numbers.split(',')) {
+    const trimmed = token.trim();
+    if (trimmed) {
+      seen.add(trimmed);
+    }
+  }
 
-  return requested.length > 0 ? requested : [...VALID_SECTIONS];
+  return [...seen];
 }
 
 @Public()
@@ -82,9 +78,9 @@ export class CatalogController {
     @Param('categoryId') categoryId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(20), ParseIntPipe) pageSize: number,
-  ): Promise<PaginatedArticlesDto> {
+  ): Promise<PaginatedCatalogArticlesDto> {
     const clampedPageSize = Math.min(Math.max(pageSize, 1), 50);
-    return this.catalog.listArticles(
+    return this.catalog.listArticleMetadata(
       vehicleId,
       categoryId,
       page,
@@ -92,23 +88,32 @@ export class CatalogController {
     );
   }
 
+  /**
+   * Live, never-cached price/availability for a batch of article numbers. The
+   * cached catalog grid calls this to hydrate its metadata rows with fresh
+   * delivery/stock data, so the response must not be cached (a stale delivery
+   * date is worse than a slightly slower read).
+   */
+  @Get('articles-availability')
+  @Header('Cache-Control', 'no-store')
+  getArticlesAvailability(
+    @Query('numbers') numbers?: string,
+  ): Promise<ArticlesAvailabilityDto> {
+    return this.catalog.getArticlesAvailability(parseArticleNumbers(numbers));
+  }
+
   @Get('articles/:articleNumber')
   getArticleDetail(
     @Param('articleNumber') articleNumber: string,
     @Query('vehicleId') vehicleId?: string,
-    @Query('include') include?: string,
-  ): Promise<Partial<ArticleDetailDto>> {
-    return this.catalog.getArticleDetail(
-      articleNumber,
-      vehicleId,
-      parseIncludeSections(include),
-    );
+  ): Promise<ArticleCatalogDetailDto> {
+    return this.catalog.getArticleDetail(articleNumber, vehicleId);
   }
 
   @Get('articles/:articleNumber/substitutes')
   getSubstitutes(
     @Param('articleNumber') articleNumber: string,
-  ): Promise<ArticleListItemDto[]> {
+  ): Promise<ArticleCatalogListItemDto[]> {
     return this.catalog.getSubstitutes(articleNumber);
   }
 }

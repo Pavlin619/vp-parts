@@ -1,4 +1,3 @@
-import { StockStatus } from '../enums';
 import { WarehouseAvailabilityDto } from './inventory.dto';
 
 export interface ManufacturerDto {
@@ -59,10 +58,18 @@ export interface ArticleCatalogListItemDto {
   thumbnailUrl: string | null;
 }
 
-/** A catalog list item enriched with its inventory summary. */
+/**
+ * A catalog list item enriched with the *full* live inventory detail — price,
+ * availability, and the per-warehouse breakdown — so every list surface (grid,
+ * search, substitutes) can feed the same row component. Because it carries
+ * request-time warehouse delivery dates it must only come from **dynamic
+ * (uncached)** responses; cached listings serve the metadata-only
+ * `ArticleCatalogListItemDto` and fetch this availability live and separately
+ * (see the article detail page's cached-metadata / live-availability split).
+ */
 export interface ArticleListItemDto
   extends ArticleCatalogListItemDto,
-    ArticleInventorySummaryDto {}
+    ArticleInventoryDetailDto {}
 
 export interface PaginatedDto<TItem> {
   total: number;
@@ -73,6 +80,14 @@ export interface PaginatedDto<TItem> {
 
 export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleCatalogListItemDto>;
 export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
+
+/**
+ * Live price/availability for a batch of articles, keyed by article number.
+ * Returned by the uncached bulk-availability endpoint that a cached listing
+ * grid calls to hydrate its metadata rows with fresh delivery/stock data. A
+ * requested number is absent from the map only when it has no inventory row.
+ */
+export type ArticlesAvailabilityDto = Record<string, ArticleInventoryDetailDto>;
 
 export interface TechnicalSpecDto {
   key: string;
@@ -85,12 +100,10 @@ export interface CompatibleVehicleDto {
 }
 
 /**
- * Richer inventory data shown on the article detail page: stock status,
- * delivery estimate, and the per-warehouse availability breakdown.
+ * Richer inventory data shown on the article detail page: the per-warehouse
+ * availability breakdown, which carries the delivery projection the UI renders.
  */
 export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
-  stockStatus: StockStatus;
-  estimatedDeliveryDays: number | null;
   /** Available quantity per customer-facing warehouse, fastest first. */
   availabilityByWarehouse: WarehouseAvailabilityDto[];
   /**
@@ -113,22 +126,6 @@ export interface ArticleCatalogDetailDto {
   compatibleVehicles: CompatibleVehicleDto[];
   fitsVehicle: boolean | null;
 }
-
-/** Catalog metadata enriched with full inventory data for the detail page. */
-export interface ArticleDetailDto
-  extends ArticleCatalogDetailDto,
-    ArticleInventoryDetailDto {}
-
-/**
- * The independently-fetchable halves of the article detail response. Requested
- * via the `include` query param on `GET /catalog/articles/:articleNumber`:
- *  - `details` — stable TecDoc catalog metadata (`ArticleCatalogDetailDto`),
- *    cacheable and vehicle-aware;
- *  - `availability` — live price/stock/warehouses (`ArticleInventoryDetailDto`),
- *    never cached.
- * Requesting both yields the full `ArticleDetailDto`.
- */
-export type ArticleDetailSection = 'details' | 'availability';
 
 export interface SearchResultItemDto {
   articleNumber: string;

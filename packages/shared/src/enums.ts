@@ -38,25 +38,3 @@ export enum Supplier {
   AUTO1 = 'AUTO1',
   AUTOKOMERS = 'AUTOKOMERS',
 }
-
-/**
- * Availability of an article, derived from the fastest delivery option across
- * our own stock and supplier stock. Ordered from fastest to slowest so the
- * frontend can present a precise delivery expectation to the customer:
- * - IN_STOCK            — we physically hold it (ships immediately)
- * - DELIVERY_WITHIN_HOUR — a local warehouse can deliver within the hour
- * - DELIVERY_SAME_DAY   — delivered today (ordered before the daily cut-off)
- * - DELIVERY_NEXT_DAY   — delivered the next business day
- * - DELIVERY_IN_2_DAYS  — delivered within two business days
- * - DELIVERY_IN_3_DAYS  — delivered within three business days
- * - OUT_OF_STOCK        — no stock anywhere
- */
-export enum StockStatus {
-  IN_STOCK = 'IN_STOCK',
-  DELIVERY_WITHIN_HOUR = 'DELIVERY_WITHIN_HOUR',
-  DELIVERY_SAME_DAY = 'DELIVERY_SAME_DAY',
-  DELIVERY_NEXT_DAY = 'DELIVERY_NEXT_DAY',
-  DELIVERY_IN_2_DAYS = 'DELIVERY_IN_2_DAYS',
-  DELIVERY_IN_3_DAYS = 'DELIVERY_IN_3_DAYS',
-  OUT_OF_STOCK = 'OUT_OF_STOCK',
-}

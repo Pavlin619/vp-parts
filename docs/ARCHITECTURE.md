@@ -230,26 +230,50 @@ The backoffice computes and **writes** all supplier pricing/stock into the share
 
 For a given `tecdoc_number`:
 
-1. **Our own stock (`public.autoparts`) is primary.** If we carry the part, the displayed price is **always our** sell price (`sell_price_net` ex-VAT, `gross_price` inc-VAT — taken directly, no VAT recompute) and our `available_quantity` is treated as same-day (`IN_STOCK`). We never undercut the supplier we would actually source from: if our price is below that supplier's sell price we raise the displayed price up to it; otherwise we keep ours.
+1. **Our own stock (`public.autoparts`) is primary.** If we carry the part, the displayed price is **always our** sell price (`sell_price_net` ex-VAT, `gross_price` inc-VAT — taken directly, no VAT recompute) and our `available_quantity` is treated as the fastest (own-stock, rank 0) band. We never undercut the supplier we would actually source from: if our price is below that supplier's sell price we raise the displayed price up to it; otherwise we keep ours.
 2. **Suppliers (`public.supplier_stock`) layer on top.** Each supplier line is resolved to a delivery band from its `supplier_source` + `warehouse_code`. Supplier quantity is added onto the matching delivery band (today / next day / 2–3 days).
 3. **Supplier-only fallback** (no `autoparts` row): among the **fastest delivery band** that has stock, the supplier with the **lowest `buy_price`** wins and we display **their** `sell_price`; the ex-VAT figure is derived from it via `VAT_RATE`.
-4. The fastest band with stock sets the headline `stockStatus` and `estimatedDeliveryDays`. Quantity is reported only per warehouse (there is no top-level quantity field — it would just duplicate the per-warehouse totals). The per-supplier source split is kept server-side only (it carries buy prices). The customer-facing breakdown `availabilityByWarehouse` groups supplier stock into fictional warehouses (Central / Regional 1·2 / Romania / Poland) with concrete pickup and courier dates computed server-side. The warehouse model is what the detail page renders; see [DELIVERY-LOGIC.md](./DELIVERY-LOGIC.md) for the full delivery-date computation.
+4. The fastest band with stock sets the displayed price. Availability is reported only per warehouse (there is no top-level quantity field, and no stock-status or estimated-days field — they would just duplicate the per-warehouse breakdown). The per-supplier source split is kept server-side only (it carries buy prices). The customer-facing breakdown `availabilityByWarehouse` groups supplier stock into fictional warehouses (Central / Regional 1·2 / Romania / Poland) with concrete pickup and courier dates computed server-side. The warehouse model is what the detail page renders — the frontend derives its per-warehouse delivery label straight from that breakdown; see [DELIVERY-LOGIC.md](./DELIVERY-LOGIC.md) for the full delivery-date computation.
 
-`StockStatus` is a 7-value enum derived from the chosen delivery band: `IN_STOCK`, `DELIVERY_WITHIN_HOUR`, `DELIVERY_SAME_DAY`, `DELIVERY_NEXT_DAY`, `DELIVERY_IN_2_DAYS`, `DELIVERY_IN_3_DAYS`, `OUT_OF_STOCK`. Delivery bands are resolved from a warehouse→rule map per supplier (with an 11:00 `Europe/Sofia` same-day cut-off); own stock is fixed to same-day. The price shown to **all** customers is this single locked sell price — mechanic trade pricing is a separate per-mechanic discount applied later, not part of the inventory layer.
+Delivery bands are an **internal** numeric speed rank (`DeliveryOutcome.rank` in `delivery.ts`): own stock is fixed to rank 0, and each supplier `DeliveryRule` maps to a rank (within-hour → same-day → next-day → 2 days → 3 days), resolved from a warehouse→rule map per supplier with an 11:00 `Europe/Sofia` same-day cut-off. This rank orders offers to pick the fastest one for the price; it is **not** exposed over HTTP. The price shown to **all** customers is this single locked sell price — mechanic trade pricing is a separate per-mechanic discount applied later, not part of the inventory layer.
 
-**During browsing** (not a critical action — fails *open*):
+The error policy is fixed per read shape, not per caller: a **single**-article read
+fails *open*, a **bulk** read fails *closed*. (This concerns read failures only — an
+article that genuinely has no stock always resolves to `available: false`.)
+
+**Single-article buy box** (product detail — fails *open*):
 ```
 inventory.getBestPriceAndAvailability(tecdocNumber)
   → read public.autoparts + public.supplier_stock → selectBestOffer
-  → on a DB error: serve a neutral "unavailable" state (browsing never breaks)
-        │
-        ▼
-Result is part of the Redis-cached catalog listing/detail payload (browse perf only)
+  → on a DB error: serve a neutral "unavailable" state (a lone buy box has
+    nothing else to show, so the customer just cannot add it until it recovers)
 ```
 
-**At checkout confirmation** (before payment is taken — always fresh, fails *closed*):
+**Bulk lists** (catalog grid, search, substitutes — fails *closed*):
 ```
-CheckoutService → inventory.getAvailability(tecdocNumber) for each cart item
+inventory.getBulkPricesAndAvailability([tecdocNumber, ...], { withWarehouses })
+  → one pair of grouped reads → selectBestOffer per article
+  → on a DB error: throw InventoryUnavailableException (503 / INVENTORY_UNAVAILABLE)
+        │
+        ▼
+Caller shows a single "try again later" state instead of a grid of false
+"out of stock" rows (misleading). Cached listing payloads never store the error.
+```
+
+All three surfaces feed the same list-row shape (`ArticleListItemDto`, catalog
+metadata + full per-warehouse availability), enriched through one path
+(`CatalogService` → `getArticlesAvailability`, the bulk read with
+`withWarehouses`). The catalog grid is special: its **metadata** is cached
+(`GET /catalog/.../articles`, `PaginatedCatalogArticlesDto`, no inventory) and its
+**availability** is read live and separately (`GET /catalog/articles-availability`,
+`no-store`), then merged on the frontend — mirroring the article detail page's
+cached-metadata / live-availability split so a cached grid never serves a stale
+delivery date. Search and substitutes are already dynamic, so they enrich in one
+call server-side.
+
+**At checkout confirmation** (before payment — always fresh, fails *closed*):
+```
+CheckoutService → inventory.getBulkPricesAndAvailability(cart tecdocNumbers)
   → in-process call, direct DB read, no Redis, every request (not an HTTP hop)
         │
         ├── Price / availability unchanged → proceed to payment
@@ -257,7 +281,10 @@ CheckoutService → inventory.getAvailability(tecdocNumber) for each cart item
         └── DB read fails → InventoryUnavailableException (checkout fails closed)
 ```
 
-This ensures the customer is always charged based on live data. The browse cache is a performance optimisation only, never used for financial decisions.
+Checkout re-validates through the same bulk read (a cart is naturally multi-item), so
+it inherits the fail-closed policy for free — a DB blip aborts the order rather than
+selling stale stock. This ensures the customer is always charged based on live data.
+The browse cache is a performance optimisation only, never used for financial decisions.
 
 > **Matching** is by `tecdoc_number` only for now (both tables). A `supplier_code` / `catalog_number` fallback for rows without a TecDoc number is a documented future enhancement.
 
@@ -269,8 +296,8 @@ This ensures the customer is always charged based on live data. The browse cache
 Customer confirms cart
         │
         ▼
-Pre-checkout: fresh non-cached direct DB read for each cart item
-  inventory.getAvailability(tecdocNumber) — reads autoparts + supplier_stock, no cache
+Pre-checkout: fresh non-cached direct DB read for the whole cart
+  inventory.getBulkPricesAndAvailability(cart tecdocNumbers) — reads autoparts + supplier_stock, no cache
   Price or stock changed? → show customer updated info, request re-confirmation
   DB read fails? → InventoryUnavailableException (fail closed)
   All good? → proceed to payment

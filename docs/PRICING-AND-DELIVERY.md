@@ -29,15 +29,22 @@ column-scoped). We match rows by `tecdoc_number`.
 Every offer is sorted into a **delivery band**. Bands are ranked from fastest to
 slowest — this ranking is the backbone of the whole algorithm.
 
-| Rank | `StockStatus` | Meaning | Estimated days |
+| Rank | Delivery band | Meaning | Nominal working days |
 |---|---|---|---|
-| 0 | `IN_STOCK` | **Our own stock** — ships immediately | 0 |
-| 1 | `DELIVERY_WITHIN_HOUR` | A local supplier warehouse can deliver within the hour | 0 |
-| 2 | `DELIVERY_SAME_DAY` | Delivered today (if ordered before the daily cut-off) | 0 |
-| 3 | `DELIVERY_NEXT_DAY` | Delivered the next business day | 1 |
-| 4 | `DELIVERY_IN_2_DAYS` | Delivered within two business days | 2 |
-| 5 | `DELIVERY_IN_3_DAYS` | Delivered within three business days | 3 |
-| — | `OUT_OF_STOCK` | Nothing available anywhere | — |
+| 0 | Own stock | **Our own stock** — ships immediately | 0 |
+| 1 | Within the hour | A local supplier warehouse can deliver within the hour | 0 |
+| 2 | Same day | Delivered today (if ordered before the daily cut-off) | 0 |
+| 3 | Next day | Delivered the next business day | 1 |
+| 4 | Two days | Delivered within two business days | 2 |
+| 5 | Three days | Delivered within three business days | 3 |
+| — | None | Nothing available anywhere (unavailable) | — |
+
+> **This rank is internal only.** It is a numeric `DeliveryOutcome.rank`
+> (`delivery.ts`) used to pick the fastest offer for the price; own stock is
+> fixed to rank 0 and each supplier `DeliveryRule` maps to the rank above. The
+> API does **not** expose a stock-status enum. What the customer sees is the
+> single price plus the per-warehouse `availabilityByWarehouse` breakdown (see
+> below); the frontend derives the delivery label per warehouse from that.
 
 ### How a supplier row gets its band
 
@@ -66,12 +73,14 @@ invent a delivery promise we can't keep.
 ### How much is available per band
 
 Within each band we **add up the quantity** from every source that falls in it. Our own
-stock always lands in the `IN_STOCK` band. Suppliers add their quantity onto their own
-bands. The headline `stockStatus` we show is the **fastest band that has stock**. The
-quantity itself is only reported per warehouse: the customer-facing breakdown
+stock always lands in the own-stock (rank 0) band. Suppliers add their quantity onto their
+own bands. The **fastest band that has stock** is what sets the displayed price. The
+availability itself is only reported per warehouse: the customer-facing breakdown
 (`availabilityByWarehouse`) is what the product page renders to say "4 available now, 5
-more in 2 days". There is no separate top-level quantity field — it would only ever
-duplicate (and risk disagreeing with) the per-warehouse totals.
+more in 2 days", carrying each warehouse's quantity and its projected pickup/courier
+dates. There is no separate top-level quantity field, and no stock-status/estimated-days
+field — they would only ever duplicate (and risk disagreeing with) the per-warehouse
+breakdown, which the frontend reads directly for the delivery label.
 
 ---
 
@@ -113,20 +122,20 @@ depends on whether we carry the part.
 
 **1. We carry it, and our price is higher → keep ours.**
 Our stock: `gross_price = €18.00`. Cheapest supplier sells at `€15.00`.
-→ Show **€18.00**, `IN_STOCK`. (We don't drop our price to chase a supplier.)
+→ Show **€18.00**, ships from own stock. (We don't drop our price to chase a supplier.)
 
 **2. We carry it, but our price is lower → raise to the supplier's price.**
 Our stock: `gross_price = €12.00`. The supplier we'd source from sells at `€15.00`.
-→ Show **€15.00**, `IN_STOCK`. (We never undercut that supplier.)
+→ Show **€15.00**, ships from own stock. (We never undercut that supplier.)
 
 **3. We don't carry it → cheapest-to-buy supplier in the fastest band sets the price.**
 Two suppliers, both **next-day**: A `buy €9.00 / sell €14.00`, B `buy €10.00 / sell €13.00`.
-→ We'd buy from **A** (lower buy price), so show **A's €14.00**, `DELIVERY_NEXT_DAY`.
+→ We'd buy from **A** (lower buy price), so show **A's €14.00** in the next-day band.
 Quantity = A's qty **+** B's qty (both in the next-day band).
 
 **4. Faster beats cheaper.**
 Supplier A: **same-day**, sells `€16.00`. Supplier B: **in 2 days**, sells `€12.00`.
-→ Fastest band wins → show **A's €16.00**, `DELIVERY_SAME_DAY`. We prefer the faster
+→ Fastest band wins → show **A's €16.00** in the same-day band. We prefer the faster
 delivery even though B is cheaper.
 
 ---
@@ -145,12 +154,12 @@ flowchart TD
     keep --> bands
 
     own -->|"No"| anysup{"Any supplier has stock?"}
-    anysup -->|"No"| oos["OUT_OF_STOCK"]
+    anysup -->|"No"| oos["Unavailable"]
     anysup -->|"Yes"| fastest["Pick the FASTEST delivery band with stock"]
     fastest --> lowestbuy["Within that band: supplier with the<br/>lowest buy_price wins → show THEIR sell_price"]
     lowestbuy --> bands
 
-    bands["Group all stock into delivery bands<br/>(our stock = IN_STOCK; sum quantity per band)"] --> result["Show: one price + fastest band's<br/>stockStatus + estimatedDeliveryDays +<br/>per-warehouse quantity breakdown"]
+    bands["Group all stock into delivery bands<br/>(our stock = rank 0; sum quantity per band)"] --> result["Show: one price + per-warehouse availability<br/>breakdown (quantity + pickup/courier dates)"]
     oos --> result
 ```
 
@@ -174,10 +183,17 @@ All money is handled as **integer EUR cents** everywhere.
 - **Unknown supplier/warehouse mapping:** that offer is dropped and an alert is logged
   (never shown to the customer).
 - **A supplier row with no usable quantity:** treated as "unknown" and excluded.
-- **Browsing vs checkout on a DB error:** browsing **fails open** (shows a neutral
-  "unavailable" so the catalogue never breaks); the live pre-checkout availability read
-  **fails closed** (`InventoryUnavailableException`) so we never sell something we can't
-  confirm. See `docs/ARCHITECTURE.md` → *Pricing, Availability and Pre-Checkout Check*.
+- **Single vs bulk read on a DB error:** the two reads have a single, fixed error
+  policy each (no per-call flag). A **single**-article read
+  (`getBestPriceAndAvailability`, the product-page buy box) **fails open** — it serves
+  a neutral "unavailable" because a lone buy box has nothing else to show. A **bulk**
+  read (`getBulkPricesAndAvailability`, the listing grid, search, substitutes, and the
+  future cart/checkout re-validation) **fails closed** — it throws
+  `InventoryUnavailableException` (503 / `INVENTORY_UNAVAILABLE`) rather than marking a
+  whole list as falsely out of stock, so callers show a single "try again later" state.
+  Note this is *only* about read failures: an article that genuinely has no stock always
+  resolves to `available: false` in both. See `docs/ARCHITECTURE.md` →
+  *Pricing, Availability and Pre-Checkout Check*.
 
 ---
 
@@ -190,7 +206,9 @@ All money is handled as **integer EUR cents** everywhere.
 | Resolving a supplier row to a delivery band (adds the clock) | `apps/api/src/inventory/delivery-speed.resolver.ts` |
 | Reading our own stock | `apps/api/src/inventory/autoparts.repository.ts` |
 | Reading supplier stock | `apps/api/src/inventory/supplier-stock.repository.ts` |
-| Wiring it together + VAT + fail open/closed | `apps/api/src/inventory/inventory.service.ts` |
+| Wiring it together + VAT + single fail-open / bulk fail-closed | `apps/api/src/inventory/inventory.service.ts` |
+| One enrichment path + cached metadata / live availability split | `apps/api/src/catalog/catalog.service.ts` (`getArticlesAvailability`, `enrichWithAvailability`) |
+| Merging cached grid metadata with the live availability read | `apps/web/src/lib/catalog/merge-availability.ts` |
 | The shape returned to the frontend | `packages/shared/src/dto/inventory.dto.ts` |
 
 ---

@@ -1,33 +1,36 @@
-import { CatalogController, parseIncludeSections } from './catalog.controller';
+import { CatalogController, parseArticleNumbers } from './catalog.controller';
 import { CatalogService } from './catalog.service';
 
-describe('parseIncludeSections', () => {
-  it('defaults to both sections when include is absent', () => {
-    expect(parseIncludeSections(undefined)).toEqual([
-      'details',
-      'availability',
+describe('parseArticleNumbers', () => {
+  it('returns an empty list when the query is absent or blank', () => {
+    expect(parseArticleNumbers(undefined)).toEqual([]);
+    expect(parseArticleNumbers('')).toEqual([]);
+    expect(parseArticleNumbers(' , ,')).toEqual([]);
+  });
+
+  it('splits, trims, and de-duplicates the numbers', () => {
+    expect(parseArticleNumbers('WL6340, OC115 ,WL6340')).toEqual([
+      'WL6340',
+      'OC115',
     ]);
   });
+});
 
-  it('parses a single section', () => {
-    expect(parseIncludeSections('details')).toEqual(['details']);
-    expect(parseIncludeSections('availability')).toEqual(['availability']);
-  });
+describe('CatalogController.getArticlesAvailability', () => {
+  const getArticlesAvailabilityMock = jest.fn();
+  const controller = new CatalogController({
+    getArticlesAvailability: getArticlesAvailabilityMock,
+  } as unknown as CatalogService);
 
-  it('parses a comma-separated list and trims whitespace', () => {
-    expect(parseIncludeSections('details, availability')).toEqual([
-      'details',
-      'availability',
+  beforeEach(() => jest.clearAllMocks());
+
+  it('forwards the parsed numbers to the service', () => {
+    void controller.getArticlesAvailability('WL6340, OC115');
+
+    expect(getArticlesAvailabilityMock).toHaveBeenCalledWith([
+      'WL6340',
+      'OC115',
     ]);
-  });
-
-  it('drops unknown tokens', () => {
-    expect(parseIncludeSections('details,bogus')).toEqual(['details']);
-  });
-
-  it('falls back to both sections when nothing valid remains', () => {
-    expect(parseIncludeSections('bogus')).toEqual(['details', 'availability']);
-    expect(parseIncludeSections('')).toEqual(['details', 'availability']);
   });
 });
 
@@ -39,21 +42,16 @@ describe('CatalogController.getArticleDetail', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('forwards the parsed sections to the service', () => {
-    void controller.getArticleDetail('WL6340', 'V10042', 'availability');
+  it('forwards the article number and vehicleId to the service', () => {
+    void controller.getArticleDetail('WL6340', 'V10042');
 
-    expect(getArticleDetailMock).toHaveBeenCalledWith('WL6340', 'V10042', [
-      'availability',
-    ]);
+    expect(getArticleDetailMock).toHaveBeenCalledWith('WL6340', 'V10042');
   });
 
-  it('defaults to both sections when include is omitted', () => {
-    void controller.getArticleDetail('WL6340', undefined, undefined);
+  it('passes undefined vehicleId when it is omitted', () => {
+    void controller.getArticleDetail('WL6340', undefined);
 
-    expect(getArticleDetailMock).toHaveBeenCalledWith('WL6340', undefined, [
-      'details',
-      'availability',
-    ]);
+    expect(getArticleDetailMock).toHaveBeenCalledWith('WL6340', undefined);
   });
 });
 

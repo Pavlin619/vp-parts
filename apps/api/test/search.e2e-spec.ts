@@ -17,6 +17,8 @@ const makeArticle = (
   available: false,
   bestPriceExVat: null,
   bestPriceIncVat: null,
+  availabilityByWarehouse: [],
+  computedAt: null,
 });
 
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({

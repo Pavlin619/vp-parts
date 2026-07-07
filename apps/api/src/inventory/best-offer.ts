@@ -1,4 +1,3 @@
-import { StockStatus } from '@vp-parts-shop/shared';
 import { DeliveryOutcome, DeliveryRule, ownStockOutcome } from './delivery';
 
 /** Our own aggregated stock for a part. Prices are integer EUR cents. */
@@ -50,23 +49,8 @@ export interface OfferSource {
   sellPriceCents: number;
 }
 
-/**
- * All available quantity that shares one delivery window (e.g. "within the
- * hour", "in 2 days"). Used server-side to derive the headline offer from the
- * fastest window. `sources` keeps the per-supplier split — cheapest-first, with
- * our own stock first — and stays server-side because it carries supplier buy
- * prices.
- */
-interface DeliveryAvailability {
-  stockStatus: StockStatus;
-  estimatedDeliveryDays: number;
-  sources: OfferSource[];
-}
-
 export interface BestOffer {
   available: boolean;
-  stockStatus: StockStatus;
-  estimatedDeliveryDays: number | null;
   priceExVatCents: number | null;
   priceIncVatCents: number | null;
 }
@@ -123,39 +107,31 @@ export function selectBestOffer(
   if (buckets.size === 0) {
     return {
       available: false,
-      stockStatus: StockStatus.OUT_OF_STOCK,
-      estimatedDeliveryDays: null,
       priceExVatCents: carriesOwn ? own.priceExVatCents : null,
       priceIncVatCents: carriesOwn ? own.priceIncVatCents : null,
     };
   }
 
-  const fastest = fastestWindow(buckets);
+  const fastestSources = fastestWindowSources(buckets);
 
   return {
     available: true,
-    stockStatus: fastest.stockStatus,
-    estimatedDeliveryDays: fastest.estimatedDeliveryDays,
-    ...resolvePrice(own, suppliers, fastest.sources, options.vatRate),
+    ...resolvePrice(own, suppliers, fastestSources, options.vatRate),
   };
 }
 
-/** The fastest (lowest-rank) delivery window, aggregated across its sources. */
-function fastestWindow(
+/**
+ * The sources of the fastest (lowest-rank) delivery window, cheapest-first with
+ * our own stock first, so the price resolver reads from the supplier we would
+ * actually fulfil from.
+ */
+function fastestWindowSources(
   buckets: Map<number, DeliveryBucket>,
-): DeliveryAvailability {
+): OfferSource[] {
   const fastest = [...buckets.values()].reduce((current, candidate) =>
     candidate.outcome.rank < current.outcome.rank ? candidate : current,
   );
-  return toDeliveryAvailability(fastest);
-}
-
-function toDeliveryAvailability(bucket: DeliveryBucket): DeliveryAvailability {
-  return {
-    stockStatus: bucket.outcome.status,
-    estimatedDeliveryDays: bucket.outcome.estimatedDeliveryDays,
-    sources: sortedCheapestFirst(bucket.sources),
-  };
+  return sortedCheapestFirst(fastest.sources);
 }
 
 function addSource(
