@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { CheckCircle2, XCircle } from "lucide-react";
-import type { SearchResultItemDto } from "@vp-parts-shop/shared";
+import type { ArticleListItemDto } from "@vp-parts-shop/shared";
 import { formatPrice } from "@vp-parts-shop/shared";
+
+/**
+ * A search hit — shared catalog summary metadata (identity, brand, specs/OE,
+ * fit) with its live availability merged in. Identical to the listing grid's
+ * row, so both surfaces feed the same shape.
+ */
+export type SearchResultRow = ArticleListItemDto;
 
 interface SearchResultsProps {
   query: string;
-  results: SearchResultItemDto[];
+  results: SearchResultRow[];
 }
 
 function VehicleFitIndicator({ fitsVehicle }: { fitsVehicle: boolean | null }) {

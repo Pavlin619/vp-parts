@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { searchByPartNumber } from "@/lib/api/catalog";
-import { SearchResults } from "@/components/catalog/search/search-results";
+import { SearchResultsAvailability } from "@/components/catalog/search/search-results-availability";
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
 
 interface SearchPageProps {
@@ -30,7 +30,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   return (
     <div className="max-w-[1360px] mx-auto px-6 py-8">
       {results.length > 0 ? (
-        <SearchResults query={query} results={results} />
+        <SearchResultsAvailability query={query} results={results} />
       ) : (
         <SearchEmptyState query={query} suggestions={response.suggestions} />
       )}

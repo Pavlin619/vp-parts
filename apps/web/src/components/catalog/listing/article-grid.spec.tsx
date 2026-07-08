@@ -11,11 +11,17 @@ jest.mock('./article-card', () => ({
 const makeArticle = (articleNumber: string): ArticleListItemDto => ({
   articleNumber,
   brandName: 'Bosch',
+  brandLogoUrl: null,
   description: 'Oil Filter',
   thumbnailUrl: null,
+  technicalSpecs: [],
+  oemNumbers: [],
+  fitsVehicle: null,
   available: true,
   bestPriceExVat: 2183,
   bestPriceIncVat: 2599,
+  availabilityByWarehouse: [],
+  computedAt: null,
 })
 
 describe('ArticleGrid — empty state', () => {

@@ -3,17 +3,17 @@ import {
   getModelSeries,
   getVariants,
   getCategories,
-  listArticles,
-  getArticleDetail,
+  getArticlesMetadata,
+  getArticlesAvailability,
   getArticleCatalogDetail,
-  getArticleAvailability,
+  getSubstitutes,
   searchByPartNumber,
   getAutocomplete,
   manufacturersQueryOptions,
   modelSeriesQueryOptions,
   variantsQueryOptions,
   categoriesQueryOptions,
-  articleDetailQueryOptions,
+  availabilityQueryOptions,
   autocompleteQueryOptions,
 } from './catalog'
 import { apiFetch } from './index'
@@ -64,73 +64,68 @@ describe('getCategories', () => {
   })
 })
 
-describe('listArticles', () => {
+describe('getArticlesMetadata', () => {
   it('builds URL with default page and pageSize', () => {
-    listArticles('v-1', 'cat-1')
+    getArticlesMetadata('v-1', 'cat-1')
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/vehicles/v-1/categories/cat-1/articles?page=1&pageSize=20',
     )
   })
 
   it('builds URL with explicit page and pageSize', () => {
-    listArticles('v-1', 'cat-1', 3, 50)
+    getArticlesMetadata('v-1', 'cat-1', 3, 50)
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/vehicles/v-1/categories/cat-1/articles?page=3&pageSize=50',
     )
   })
 })
 
-describe('getArticleDetail', () => {
-  it('requests both sections when no vehicleId is provided', () => {
-    getArticleDetail('ABC-123')
+describe('getArticlesAvailability', () => {
+  it('requests the comma-joined numbers from the live endpoint', () => {
+    getArticlesAvailability(['WL6340', 'OC115'])
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?include=details%2Cavailability',
+      '/catalog/articles-availability?numbers=WL6340%2COC115',
     )
   })
 
-  it('includes the vehicleId query param when provided', () => {
-    getArticleDetail('ABC-123', 'v-789')
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?vehicleId=v-789&include=details%2Cavailability',
-    )
-  })
-
-  it('URL-encodes special characters in the article number', () => {
-    getArticleDetail('ABC/123 XYZ')
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC%2F123%20XYZ?include=details%2Cavailability',
-    )
+  it('short-circuits an empty request without calling the API', async () => {
+    const result = await getArticlesAvailability([])
+    expect(result).toEqual({})
+    expect(mockApiFetch).not.toHaveBeenCalled()
   })
 })
 
 describe('getArticleCatalogDetail', () => {
-  it('requests the details section only', () => {
+  it('requests the metadata endpoint without a query when no vehicleId is given', () => {
     getArticleCatalogDetail('ABC-123')
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?include=details',
-    )
+    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/articles/ABC-123')
   })
 
   it('forwards the vehicleId so fitsVehicle is vehicle-scoped', () => {
     getArticleCatalogDetail('ABC-123', 'v-789')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?vehicleId=v-789&include=details',
-    )
-  })
-})
-
-describe('getArticleAvailability', () => {
-  it('requests the availability section only and sends no vehicleId', () => {
-    getArticleAvailability('ABC-123')
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?include=availability',
+      '/catalog/articles/ABC-123?vehicleId=v-789',
     )
   })
 
   it('URL-encodes special characters in the article number', () => {
-    getArticleAvailability('ABC/123 XYZ')
+    getArticleCatalogDetail('ABC/123 XYZ')
+    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/articles/ABC%2F123%20XYZ')
+  })
+})
+
+describe('getSubstitutes', () => {
+  it('calls the substitutes endpoint for the article number', () => {
+    getSubstitutes('OX 982D')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC%2F123%20XYZ?include=availability',
+      '/catalog/articles/OX%20982D/substitutes',
+    )
+  })
+
+  it('URL-encodes special characters in the article number', () => {
+    getSubstitutes('ABC/123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC%2F123/substitutes',
     )
   })
 })
@@ -228,28 +223,27 @@ describe('autocompleteQueryOptions', () => {
   })
 })
 
-describe('articleDetailQueryOptions', () => {
-  it('has the correct query key without vehicleId', () => {
-    expect(articleDetailQueryOptions('ABC-123').queryKey).toEqual([
+describe('availabilityQueryOptions', () => {
+  it('keys by the sorted, comma-joined numbers so order never forks the cache', () => {
+    expect(availabilityQueryOptions(['WL6340', 'OC115']).queryKey).toEqual([
       'catalog',
-      'articles',
-      'ABC-123',
-      null,
+      'availability',
+      'OC115,WL6340',
     ])
+    // The same set in a different order shares one cache entry.
+    expect(availabilityQueryOptions(['OC115', 'WL6340']).queryKey).toEqual(
+      availabilityQueryOptions(['WL6340', 'OC115']).queryKey,
+    )
   })
 
-  it('has the correct query key with vehicleId', () => {
-    expect(articleDetailQueryOptions('ABC-123', 'v-789').queryKey).toEqual([
-      'catalog',
-      'articles',
-      'ABC-123',
-      'v-789',
-    ])
+  it('sets a browse-time staleTime', () => {
+    expect(availabilityQueryOptions(['WL6340']).staleTime).toBe(30_000)
   })
 
-  it('produces a different query key when vehicleId differs', () => {
-    expect(articleDetailQueryOptions('ABC-123', 'v-1').queryKey).not.toEqual(
-      articleDetailQueryOptions('ABC-123', 'v-2').queryKey,
+  it('queryFn requests the live availability for the numbers', () => {
+    availabilityQueryOptions(['WL6340', 'OC115']).queryFn?.({} as never)
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles-availability?numbers=WL6340%2COC115',
     )
   })
 })

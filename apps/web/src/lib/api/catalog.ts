@@ -4,11 +4,10 @@ import type {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
-  PaginatedArticlesDto,
+  PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleDetailDto,
-  ArticleDetailSection,
-  ArticleInventoryDetailDto,
+  ArticleSummaryDto,
+  ArticlesAvailabilityDto,
   SearchResponseDto,
   AutocompleteItemDto,
 } from "@vp-parts-shop/shared";
@@ -36,65 +35,73 @@ export function getCategories(vehicleId: string): Promise<AssemblyGroupDto[]> {
   );
 }
 
-export function listArticles(
+/**
+ * Cacheable catalog metadata for a category page — no live inventory. The grid
+ * caches this (stable TecDoc data) and hydrates it with fresh price/stock via
+ * {@link getArticlesAvailability}, so a cached page never serves a stale
+ * delivery date (mirrors the article detail page's metadata/availability split).
+ */
+export function getArticlesMetadata(
   vehicleId: string,
   categoryId: string,
   page = 1,
   pageSize = 20,
-): Promise<PaginatedArticlesDto> {
+): Promise<PaginatedCatalogArticlesDto> {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return apiFetch<PaginatedArticlesDto>(
+  return apiFetch<PaginatedCatalogArticlesDto>(
     `/catalog/vehicles/${vehicleId}/categories/${categoryId}/articles?${params}`,
   );
 }
 
 /**
- * Builds the article detail URL for the requested sections. `include` selects
- * which halves the backend assembles: `details` (cacheable TecDoc metadata),
- * `availability` (live price/stock), or both.
+ * Live price/availability for a batch of article numbers, keyed by number.
+ * Never cache — the cached metadata grid calls this per request to attach fresh
+ * delivery/stock data. Short-circuits an empty request to skip the round trip.
  */
-function articleDetailPath(
-  articleNumber: string,
-  include: ArticleDetailSection[],
-  vehicleId?: string,
-): string {
-  const params = new URLSearchParams();
-  if (vehicleId) {
-    params.set("vehicleId", vehicleId);
+export function getArticlesAvailability(
+  articleNumbers: string[],
+): Promise<ArticlesAvailabilityDto> {
+  if (articleNumbers.length === 0) {
+    return Promise.resolve({});
   }
-  params.set("include", include.join(","));
-  return `/catalog/articles/${encodeURIComponent(articleNumber)}?${params}`;
-}
 
-/** Stable TecDoc catalog metadata only — safe to cache; carries `fitsVehicle`. */
-export function getArticleCatalogDetail(
-  articleNumber: string,
-  vehicleId?: string,
-): Promise<ArticleCatalogDetailDto> {
-  return apiFetch<ArticleCatalogDetailDto>(
-    articleDetailPath(articleNumber, ["details"], vehicleId),
+  const params = new URLSearchParams({ numbers: articleNumbers.join(",") });
+  return apiFetch<ArticlesAvailabilityDto>(
+    `/catalog/articles-availability?${params}`,
   );
 }
 
 /**
- * Live price/stock only — never cache. Vehicle-independent, so no `vehicleId`
- * is sent (fit is a catalog concern fetched via {@link getArticleCatalogDetail}).
+ * Stable TecDoc catalog metadata only — safe to cache; carries `fitsVehicle`.
+ * Live price/availability is fetched separately via {@link getArticlesAvailability}.
  */
-export function getArticleAvailability(
-  articleNumber: string,
-): Promise<ArticleInventoryDetailDto> {
-  return apiFetch<ArticleInventoryDetailDto>(
-    articleDetailPath(articleNumber, ["availability"]),
-  );
-}
-
-/** Full detail — catalog metadata plus live inventory in one round trip. */
-export function getArticleDetail(
+export function getArticleCatalogDetail(
   articleNumber: string,
   vehicleId?: string,
-): Promise<ArticleDetailDto> {
-  return apiFetch<ArticleDetailDto>(
-    articleDetailPath(articleNumber, ["details", "availability"], vehicleId),
+): Promise<ArticleCatalogDetailDto> {
+  const path = `/catalog/articles/${encodeURIComponent(articleNumber)}`;
+  const params = new URLSearchParams();
+
+  if (vehicleId) {
+    params.set("vehicleId", vehicleId);
+  }
+
+  const query = params.toString();
+
+  return apiFetch<ArticleCatalogDetailDto>(query ? `${path}?${query}` : path);
+}
+
+/**
+ * Cross-reference substitutes — the same part from other brands (TecDoc
+ * comparable numbers), as cacheable catalog metadata only. Live
+ * price/availability is fetched separately via {@link getArticlesAvailability},
+ * mirroring the listing grid's metadata / live-availability split.
+ */
+export function getSubstitutes(
+  articleNumber: string,
+): Promise<ArticleSummaryDto[]> {
+  return apiFetch<ArticleSummaryDto[]>(
+    `/catalog/articles/${encodeURIComponent(articleNumber)}/substitutes`,
   );
 }
 
@@ -141,10 +148,18 @@ export const categoriesQueryOptions = (vehicleId: string) =>
     queryFn: () => getCategories(vehicleId),
   });
 
-export const articleDetailQueryOptions = (articleNumber: string, vehicleId?: string) =>
+/**
+ * Live price/availability for one or many article numbers, fetched client-side.
+ * Serves every surface — the buy box (`[articleNumber]`), listing grid, search,
+ * and substitutes — so identical number sets share one cache entry. The key
+ * sorts the numbers so order never forks the cache. `staleTime` keeps browse
+ * data fresh enough without polling; checkout is the binding re-check.
+ */
+export const availabilityQueryOptions = (articleNumbers: string[]) =>
   queryOptions({
-    queryKey: ["catalog", "articles", articleNumber, vehicleId ?? null],
-    queryFn: () => getArticleDetail(articleNumber, vehicleId),
+    queryKey: ["catalog", "availability", [...articleNumbers].sort().join(",")],
+    queryFn: () => getArticlesAvailability(articleNumbers),
+    staleTime: 30_000,
   });
 
 export const autocompleteQueryOptions = (query: string) =>

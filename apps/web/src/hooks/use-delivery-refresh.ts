@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 /**
  * Minimum snapshot age before a focus/visibility change triggers a refresh, so
@@ -9,13 +8,14 @@ import { useRouter } from "next/navigation";
  */
 const REFRESH_TTL_MS = 60_000;
 
-/** Land just after a cut-off boundary so the server recompute sees the new band. */
+/** Land just after a cut-off boundary so the recompute sees the new band. */
 const CUTOFF_GRACE_MS = 1_000;
 
 /**
- * Keeps the SSR delivery snapshot honest on a long-lived detail page. The page
- * is dynamic, so `router.refresh()` re-runs it server-side and streams fresh
- * dates back as props while preserving client state (quantity, toggles).
+ * Keeps a live delivery snapshot honest on a long-lived detail page. The buy
+ * box now fetches availability client-side, so `onRefresh` is a TanStack Query
+ * `refetch` that re-reads price/stock in place while preserving client state
+ * (quantity, toggles) — no full navigation.
  *
  * It refreshes:
  *  - proactively, via a timer set to the soonest upcoming order cut-off (the
@@ -25,9 +25,8 @@ const CUTOFF_GRACE_MS = 1_000;
 export function useDeliveryRefresh(
   computedAt: string | null | undefined,
   cutoffAts: string[],
+  onRefresh: () => void,
 ): void {
-  const router = useRouter();
-
   useEffect(() => {
     if (!computedAt) {
       return;
@@ -42,7 +41,7 @@ export function useDeliveryRefresh(
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (nextCutoff !== undefined) {
-      timer = setTimeout(() => router.refresh(), nextCutoff - now + CUTOFF_GRACE_MS);
+      timer = setTimeout(onRefresh, nextCutoff - now + CUTOFF_GRACE_MS);
     }
 
     function refreshIfAged() {
@@ -50,7 +49,7 @@ export function useDeliveryRefresh(
         document.visibilityState === "visible" &&
         Date.now() - new Date(computedAt as string).getTime() > REFRESH_TTL_MS
       ) {
-        router.refresh();
+        onRefresh();
       }
     }
 
@@ -64,5 +63,5 @@ export function useDeliveryRefresh(
       document.removeEventListener("visibilitychange", refreshIfAged);
       window.removeEventListener("focus", refreshIfAged);
     };
-  }, [computedAt, cutoffAts, router]);
+  }, [computedAt, cutoffAts, onRefresh]);
 }

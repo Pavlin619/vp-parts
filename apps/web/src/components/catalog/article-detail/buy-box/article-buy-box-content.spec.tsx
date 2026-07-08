@@ -1,18 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { WarehouseAvailabilityDto, WarehouseId } from '@vp-parts-shop/shared'
-import { ArticleBuyBox } from './article-buy-box'
-
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: jest.fn() }),
-}))
-
-const baseProps = {
-  available: true,
-  priceIncVat: 8420,
-  priceExVat: 7017,
-  fitsVehicle: null,
-}
+import type {
+  WarehouseAvailabilityDto,
+  WarehouseId,
+} from '@vp-parts-shop/shared'
+import { ArticleBuyBoxContent } from './article-buy-box-content'
 
 function warehouse(
   warehouseId: WarehouseId,
@@ -29,9 +21,16 @@ function warehouse(
   }
 }
 
-describe('ArticleBuyBox — available', () => {
+const baseProps = {
+  available: true,
+  priceIncVat: 8420,
+  priceExVat: 7017,
+  fitsVehicle: null,
+}
+
+describe('ArticleBuyBoxContent — available', () => {
   it('shows the in-stock status and add-to-cart button', () => {
-    render(<ArticleBuyBox {...baseProps} />)
+    render(<ArticleBuyBoxContent {...baseProps} />)
     expect(screen.getByText('Наличен в склад')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /Добави в кошницата/ }),
@@ -39,14 +38,14 @@ describe('ArticleBuyBox — available', () => {
   })
 
   it('shows both the VAT-inclusive and VAT-exclusive price hints', () => {
-    render(<ArticleBuyBox {...baseProps} />)
+    render(<ArticleBuyBoxContent {...baseProps} />)
     expect(screen.getByText(/с ДДС/)).toBeInTheDocument()
     expect(screen.getByText(/без ДДС/)).toBeInTheDocument()
   })
 
   it('names the fastest warehouse and its own stock in the headline', () => {
     render(
-      <ArticleBuyBox
+      <ArticleBuyBoxContent
         {...baseProps}
         availabilityByWarehouse={[
           warehouse('CENTRAL', 4),
@@ -64,7 +63,7 @@ describe('ArticleBuyBox — available', () => {
 
   it('increments and decrements the quantity within bounds', async () => {
     const user = userEvent.setup()
-    render(<ArticleBuyBox {...baseProps} />)
+    render(<ArticleBuyBoxContent {...baseProps} />)
 
     const quantity = screen.getByLabelText('Количество')
     expect(quantity).toHaveTextContent('1')
@@ -81,7 +80,7 @@ describe('ArticleBuyBox — available', () => {
   it('caps the quantity at the total stock across all warehouses', async () => {
     const user = userEvent.setup()
     render(
-      <ArticleBuyBox
+      <ArticleBuyBoxContent
         {...baseProps}
         availabilityByWarehouse={[
           warehouse('CENTRAL', 2),
@@ -106,7 +105,7 @@ describe('ArticleBuyBox — available', () => {
   it('clamps the selection down when a refresh shrinks available stock', async () => {
     const user = userEvent.setup()
     const { rerender } = render(
-      <ArticleBuyBox
+      <ArticleBuyBoxContent
         {...baseProps}
         availabilityByWarehouse={[warehouse('CENTRAL', 5)]}
       />,
@@ -121,7 +120,7 @@ describe('ArticleBuyBox — available', () => {
 
     // A re-validation shrinks stock to 2; the shown selection must clamp down.
     rerender(
-      <ArticleBuyBox
+      <ArticleBuyBoxContent
         {...baseProps}
         availabilityByWarehouse={[warehouse('CENTRAL', 2)]}
       />,
@@ -133,7 +132,7 @@ describe('ArticleBuyBox — available', () => {
   it('calls onAddToCart with the chosen quantity', async () => {
     const user = userEvent.setup()
     const onAddToCart = jest.fn()
-    render(<ArticleBuyBox {...baseProps} onAddToCart={onAddToCart} />)
+    render(<ArticleBuyBoxContent {...baseProps} onAddToCart={onAddToCart} />)
 
     await user.click(screen.getByLabelText('Увеличи количеството'))
     await user.click(screen.getByRole('button', { name: /Добави в кошницата/ }))
@@ -143,7 +142,7 @@ describe('ArticleBuyBox — available', () => {
 
   it('shows a fit panel when the part fits the selected vehicle', () => {
     render(
-      <ArticleBuyBox
+      <ArticleBuyBoxContent
         {...baseProps}
         fitsVehicle={true}
         vehicleName="AUDI A3 2.0 TDI"
@@ -154,10 +153,10 @@ describe('ArticleBuyBox — available', () => {
   })
 })
 
-describe('ArticleBuyBox — not deliverable but priced', () => {
+describe('ArticleBuyBoxContent — not deliverable but priced', () => {
   it('still shows the price, marks it sold out, and hides the delivery module', () => {
     render(
-      <ArticleBuyBox
+      <ArticleBuyBoxContent
         {...baseProps}
         available={false}
         availabilityByWarehouse={[]}
@@ -180,9 +179,11 @@ describe('ArticleBuyBox — not deliverable but priced', () => {
   })
 })
 
-describe('ArticleBuyBox — no inventory data', () => {
+describe('ArticleBuyBoxContent — no inventory data', () => {
   it('marks the part unavailable, shows no price, and hides everything else', () => {
-    render(<ArticleBuyBox {...baseProps} available={false} priceIncVat={null} />)
+    render(
+      <ArticleBuyBoxContent {...baseProps} available={false} priceIncVat={null} />,
+    )
 
     // No pricing/stock data: a neutral "not available" label, no price hint.
     expect(screen.getByLabelText('Не е наличен')).toBeInTheDocument()

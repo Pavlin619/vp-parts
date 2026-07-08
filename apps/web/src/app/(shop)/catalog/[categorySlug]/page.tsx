@@ -1,9 +1,9 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { CatalogBreadcrumbs } from "@/components/catalog/listing/catalog-breadcrumbs";
-import { ArticleGrid } from "@/components/catalog/listing/article-grid";
+import { ArticleGridAvailability } from "@/components/catalog/listing/article-grid-availability";
 import { CatalogPagination } from "@/components/catalog/listing/catalog-pagination";
-import { listArticles } from "@/lib/api/catalog";
-import type { PaginatedArticlesDto } from "@vp-parts-shop/shared";
+import { getArticlesMetadata } from "@/lib/api/catalog";
+import type { PaginatedCatalogArticlesDto } from "@vp-parts-shop/shared";
 
 interface CategoryPageProps {
   params: Promise<{ categorySlug: string }>;
@@ -14,16 +14,21 @@ interface CategoryPageProps {
   }>;
 }
 
-async function fetchArticles(
+/**
+ * Cached TecDoc catalog metadata for the grid. Availability is deliberately not
+ * fetched here: it is read live and separately (see {@link ArticleGridAvailability})
+ * so this cached payload never carries a stale delivery date.
+ */
+async function fetchArticlesMetadata(
   vehicleId: string,
   categoryId: string,
   page: number,
   pageSize: number,
-): Promise<PaginatedArticlesDto> {
+): Promise<PaginatedCatalogArticlesDto> {
   "use cache";
   cacheLife("hours");
   cacheTag(`articles-${vehicleId}-${categoryId}`);
-  return listArticles(vehicleId, categoryId, page, pageSize);
+  return getArticlesMetadata(vehicleId, categoryId, page, pageSize);
 }
 
 export default async function CategoryPage({
@@ -47,16 +52,21 @@ export default async function CategoryPage({
     );
   }
 
-  const data = await fetchArticles(vehicleId, categorySlug, page, pageSize);
+  const metadata = await fetchArticlesMetadata(
+    vehicleId,
+    categorySlug,
+    page,
+    pageSize,
+  );
 
   return (
     <div className="max-w-[1360px] mx-auto px-6 py-8">
       <CatalogBreadcrumbs />
-      <ArticleGrid articles={data.items} total={data.total} />
+      <ArticleGridAvailability metadata={metadata} />
       <CatalogPagination
         page={page}
         pageSize={pageSize}
-        total={data.total}
+        total={metadata.total}
         vehicleId={vehicleId}
       />
     </div>

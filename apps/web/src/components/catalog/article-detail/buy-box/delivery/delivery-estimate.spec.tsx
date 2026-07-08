@@ -7,6 +7,11 @@ import type {
 } from "@vp-parts-shop/shared";
 import { DeliveryEstimate } from "./delivery-estimate";
 
+// A fixed live clock so the formatted dates are deterministic: the far-future
+// within-the-hour instant never trips the staleness guard, and the far-past DAY
+// fixtures always format as a full date (never днес/утре).
+const NOW = new Date("2026-07-01T08:00:00.000Z");
+
 function projection(
   earliestAt: string,
   granularity: DeliveryProjectionDto["granularity"],
@@ -32,9 +37,6 @@ function warehouse(
   };
 }
 
-// Fresh fixtures: the within-the-hour instant is far in the future so the clock
-// time formats deterministically without tripping the staleness guard. The DAY
-// fixtures use a far-past date so they format as a full date, never днес/утре.
 const rows = [
   warehouse(
     "CENTRAL",
@@ -52,7 +54,9 @@ const rows = [
 
 describe("DeliveryEstimate", () => {
   it("shows the courier projection to an address by default", () => {
-    render(<DeliveryEstimate availabilityByWarehouse={rows} quantity={1} />);
+    render(
+      <DeliveryEstimate availabilityByWarehouse={rows} quantity={1} now={NOW} />,
+    );
 
     expect(screen.getByText(/До адрес/)).toBeInTheDocument();
     expect(
@@ -62,7 +66,9 @@ describe("DeliveryEstimate", () => {
 
   it("switches to the store pickup projection when toggled", async () => {
     const user = userEvent.setup();
-    render(<DeliveryEstimate availabilityByWarehouse={rows} quantity={1} />);
+    render(
+      <DeliveryEstimate availabilityByWarehouse={rows} quantity={1} now={NOW} />,
+    );
 
     await user.click(screen.getByRole("button", { name: /От магазин/ }));
 
@@ -73,7 +79,9 @@ describe("DeliveryEstimate", () => {
   });
 
   it("promises the slower warehouse when the quantity exceeds the fastest stock", () => {
-    render(<DeliveryEstimate availabilityByWarehouse={rows} quantity={6} />);
+    render(
+      <DeliveryEstimate availabilityByWarehouse={rows} quantity={6} now={NOW} />,
+    );
 
     const chip = screen.getByTestId("delivery-estimate-chip-courier");
     expect(chip).toHaveTextContent("9");
@@ -81,7 +89,9 @@ describe("DeliveryEstimate", () => {
   });
 
   it("shows the free-shipping threshold", () => {
-    render(<DeliveryEstimate availabilityByWarehouse={rows} quantity={1} />);
+    render(
+      <DeliveryEstimate availabilityByWarehouse={rows} quantity={1} now={NOW} />,
+    );
 
     expect(
       screen.getByText(/Безплатна доставка при поръчка над 120 лв/),
@@ -90,7 +100,7 @@ describe("DeliveryEstimate", () => {
 
   it("renders nothing when there is no stock", () => {
     const { container } = render(
-      <DeliveryEstimate availabilityByWarehouse={[]} quantity={1} />,
+      <DeliveryEstimate availabilityByWarehouse={[]} quantity={1} now={NOW} />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -108,7 +118,9 @@ describe("DeliveryEstimate", () => {
       ),
     ];
 
-    render(<DeliveryEstimate availabilityByWarehouse={stale} quantity={1} />);
+    render(
+      <DeliveryEstimate availabilityByWarehouse={stale} quantity={1} now={NOW} />,
+    );
 
     await user.click(screen.getByRole("button", { name: /От магазин/ }));
 
