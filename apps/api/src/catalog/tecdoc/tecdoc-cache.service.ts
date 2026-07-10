@@ -108,13 +108,19 @@ export class TecDocCacheService {
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
-  ): Promise<ArticleSummaryDto[]> {
+    page = 1,
+    pageSize = 50,
+  ): Promise<PaginatedCatalogArticlesDto> {
     const vehicleKey = vehicleId ?? 'none';
-    return this.cachedArray(
-      `tecdoc:search:${query}:${vehicleKey}:${matchType}`,
-      SEARCH_TTL,
-      SEARCH_MISS_TTL,
-      () => this.tecdocClient.searchArticles(query, vehicleId, matchType),
+    const key = `tecdoc:search:${query}:${vehicleKey}:${matchType}:${page}:${pageSize}`;
+    return this.cachedPaginated(key, SEARCH_TTL, SEARCH_MISS_TTL, () =>
+      this.tecdocClient.searchArticles(
+        query,
+        vehicleId,
+        matchType,
+        page,
+        pageSize,
+      ),
     );
   }
 
@@ -158,6 +164,29 @@ export class TecDocCacheService {
     this.logger.debug(`Cache miss: ${key}`);
     const value = await loader();
     const ttl = value.length > 0 ? hitTtl : missTtl;
+    await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+    return value;
+  }
+
+  /**
+   * Caches a paginated result, picking the shorter miss-TTL when the page holds
+   * no items so a hopeless query is not pinned in Redis for the full hit-TTL.
+   */
+  private async cachedPaginated(
+    key: string,
+    hitTtl: number,
+    missTtl: number,
+    loader: () => Promise<PaginatedCatalogArticlesDto>,
+  ): Promise<PaginatedCatalogArticlesDto> {
+    const cached = await this.redis.get(key);
+    if (cached !== null) {
+      this.logger.debug(`Cache hit: ${key}`);
+      return JSON.parse(cached) as PaginatedCatalogArticlesDto;
+    }
+
+    this.logger.debug(`Cache miss: ${key}`);
+    const value = await loader();
+    const ttl = value.items.length > 0 ? hitTtl : missTtl;
     await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
     return value;
   }

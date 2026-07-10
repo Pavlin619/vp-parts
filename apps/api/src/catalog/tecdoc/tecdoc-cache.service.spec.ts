@@ -238,7 +238,7 @@ describe('TecDocCacheService', () => {
   });
 
   describe('searchArticles', () => {
-    const data = [
+    const items = [
       {
         articleNumber: 'WL6340',
         brandName: 'WIX',
@@ -246,6 +246,8 @@ describe('TecDocCacheService', () => {
         thumbnailUrl: null,
       },
     ];
+    const data = { total: 1, page: 1, pageSize: 50, items };
+    const emptyData = { total: 0, page: 1, pageSize: 50, items: [] };
 
     it('returns cached value on Redis hit', async () => {
       redisGet.mockResolvedValueOnce(JSON.stringify(data));
@@ -255,7 +257,7 @@ describe('TecDocCacheService', () => {
       expect(result).toEqual(data);
       expect(searchArticlesMock).not.toHaveBeenCalled();
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50',
       );
     });
 
@@ -271,44 +273,48 @@ describe('TecDocCacheService', () => {
         'WL6340',
         undefined,
         'prefix_or_suffix',
+        1,
+        50,
       );
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50',
         JSON.stringify(data),
         'EX',
         60 * 60,
       );
     });
 
-    it('caches empty results for 10 minutes on Redis miss with no results', async () => {
+    it('caches an empty page for 10 minutes on Redis miss with no results', async () => {
       redisGet.mockResolvedValueOnce(null);
-      searchArticlesMock.mockResolvedValueOnce([]);
+      searchArticlesMock.mockResolvedValueOnce(emptyData);
       redisSet.mockResolvedValueOnce('OK');
 
       await service.searchArticles('WL6340');
 
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix',
-        JSON.stringify([]),
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50',
+        JSON.stringify(emptyData),
         'EX',
         10 * 60,
       );
     });
 
-    it('includes the vehicleId and matchType in the cache key', async () => {
+    it('includes the vehicleId, matchType and pagination in the cache key', async () => {
       redisGet.mockResolvedValueOnce(null);
       searchArticlesMock.mockResolvedValueOnce(data);
       redisSet.mockResolvedValueOnce('OK');
 
-      await service.searchArticles('WL6340', 'V10042', 'exact');
+      await service.searchArticles('WL6340', 'V10042', 'exact', 2, 20);
 
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:V10042:exact',
+        'tecdoc:search:WL6340:V10042:exact:2:20',
       );
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',
         'V10042',
         'exact',
+        2,
+        20,
       );
     });
   });

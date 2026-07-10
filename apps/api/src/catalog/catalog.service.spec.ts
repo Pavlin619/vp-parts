@@ -235,31 +235,56 @@ describe('CatalogService', () => {
       thumbnailUrl: null,
     };
 
-    it('returns catalog metadata only, without reading inventory', async () => {
-      searchArticlesRepoMock.mockResolvedValueOnce([rawResult]);
+    it('returns paginated catalog metadata only, without reading inventory', async () => {
+      searchArticlesRepoMock.mockResolvedValueOnce({
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        items: [rawResult],
+      });
 
-      const result = await service.searchArticles('WL6340');
+      const result = await service.searchArticles(
+        'WL6340',
+        undefined,
+        undefined,
+        1,
+        20,
+      );
 
       expect(searchArticlesRepoMock).toHaveBeenCalledWith(
         'WL6340',
         undefined,
         undefined,
+        1,
+        20,
       );
       // Search is a pure catalog read now — the client fetches live
       // price/availability separately via getArticlesAvailability.
-      expect(result).toEqual([rawResult]);
+      expect(result).toEqual({
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        items: [rawResult],
+      });
       expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
-    it('passes the vehicleId through to the repository', async () => {
-      searchArticlesRepoMock.mockResolvedValueOnce([]);
+    it('passes the vehicleId, matchType and pagination through to the repository', async () => {
+      searchArticlesRepoMock.mockResolvedValueOnce({
+        total: 0,
+        page: 2,
+        pageSize: 10,
+        items: [],
+      });
 
-      await service.searchArticles('WL6340', 'V10042');
+      await service.searchArticles('WL6340', 'V10042', 'exact', 2, 10);
 
       expect(searchArticlesRepoMock).toHaveBeenCalledWith(
         'WL6340',
         'V10042',
-        undefined,
+        'exact',
+        2,
+        10,
       );
       expect(getAvailabilityMock).not.toHaveBeenCalled();
     });

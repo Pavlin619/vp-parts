@@ -4,6 +4,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
+  BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
@@ -90,8 +91,25 @@ export class CatalogService {
     query: string,
     vehicleId?: string,
     matchType?: SearchMatchType,
-  ): Promise<ArticleSummaryDto[]> {
-    return this.repository.searchArticles(query, vehicleId, matchType);
+    page = 1,
+    pageSize = 50,
+  ): Promise<PaginatedCatalogArticlesDto> {
+    return this.repository.searchArticles(
+      query,
+      vehicleId,
+      matchType,
+      page,
+      pageSize,
+    );
+  }
+
+  /**
+   * Parts brands (TecDoc data suppliers) with their logos, Redis-cached. Search
+   * uses this as the source for its brand-token dictionary (see the search
+   * module); it is the same data the listing layer joins for brand logos.
+   */
+  async getBrands(): Promise<BrandDto[]> {
+    return this.repository.findBrands();
   }
 
   async getAutocompleteSuggestions(

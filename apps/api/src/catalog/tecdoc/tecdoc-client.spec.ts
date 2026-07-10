@@ -590,23 +590,39 @@ describe('TecDocClient', () => {
       ],
     };
 
-    it('returns mapped article list items', async () => {
+    it('returns a paginated result with mapped article list items', async () => {
       mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
 
       const result = await client.searchArticles('WL6340');
 
-      expect(result).toEqual([
-        {
-          articleNumber: 'WL6340',
-          brandName: 'WIX',
-          brandLogoUrl: null,
-          description: 'Oil Filter',
-          thumbnailUrl: null,
-          technicalSpecs: [],
-          oemNumbers: [],
-          fitsVehicle: null,
-        },
-      ]);
+      expect(result).toEqual({
+        total: 1,
+        page: 1,
+        pageSize: 50,
+        items: [
+          {
+            articleNumber: 'WL6340',
+            brandName: 'WIX',
+            brandLogoUrl: null,
+            description: 'Oil Filter',
+            thumbnailUrl: null,
+            technicalSpecs: [],
+            oemNumbers: [],
+            fitsVehicle: null,
+          },
+        ],
+      });
+    });
+
+    it('requests the given page and pageSize', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
+
+      await client.searchArticles('WL6340', undefined, 'exact', 2, 25);
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({ page: 2, perPage: 25 });
     });
 
     it('sends searchQuery with searchType 10 and prefix_or_suffix matching', async () => {

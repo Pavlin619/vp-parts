@@ -313,7 +313,9 @@ export class TecDocClient {
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
-  ): Promise<ArticleSummaryDto[]> {
+    page = 1,
+    pageSize = 50,
+  ): Promise<PaginatedCatalogArticlesDto> {
     const data = await this.call<{
       totalMatchingArticles: number;
       articles: TecDocArticleRecord[];
@@ -323,8 +325,8 @@ export class TecDocClient {
       searchQuery: query,
       searchType: 10,
       searchMatchType: matchType,
-      perPage: 50,
-      page: 1,
+      perPage: pageSize,
+      page,
       includeAll: true,
       ...(vehicleId != null && {
         linkageTargetType: 'P',
@@ -332,7 +334,14 @@ export class TecDocClient {
       }),
     });
 
-    return data.articles.map((article) => this.mapArticleSummary(article));
+    return {
+      total: data.totalMatchingArticles,
+      page,
+      pageSize,
+      items: (data.articles ?? []).map((article) =>
+        this.mapArticleSummary(article),
+      ),
+    };
   }
 
   async getAutocompleteSuggestions(
