@@ -11,7 +11,7 @@ export class SearchController {
 
   @Get()
   searchByPartNumber(@Query() dto: SearchQueryDto): Promise<SearchResponseDto> {
-    return this.search.search(dto.q, dto.vehicleId);
+    return this.search.search(dto.q, dto.vehicleId, dto.page, dto.pageSize);
   }
 
   @Get('autocomplete')

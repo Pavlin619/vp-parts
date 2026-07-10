@@ -143,7 +143,6 @@ export interface ArticleCatalogDetailDto extends ArticleSummaryDto {
 export interface SearchResponseDto {
   redirect?: string;
   query?: string;
-  normalisedQuery?: string;
   /**
    * Search hits as cacheable {@link ArticleSummaryDto} metadata (identity,
    * brand, specs/OE, thumbnail, and fit) with **no** live inventory. Mirrors
@@ -152,6 +151,14 @@ export interface SearchResponseDto {
    * merges it in.
    */
   results?: ArticleSummaryDto[];
+  /**
+   * Pagination metadata for {@link results}. `total` is the count reported by
+   * the winning search tier, so the client can render the page controls. All
+   * three are present together whenever `results` is (absent on a `redirect`).
+   */
+  total?: number;
+  page?: number;
+  pageSize?: number;
   suggestions?: AutocompleteItemDto[];
 }
 

@@ -35,27 +35,27 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 ---
 
-## 2. Part Number Normalisation Algorithm
+## 2. Query Preparation (conservative brand-token stripping)
 
-**Decision**: Multi-step text normalisation pipeline applied before any catalogue lookup.
+**Decision**: Do the minimum necessary to the query before sending it to TecDoc — strip only a confidently-identified brand token from the start or end. **Do not** alter the punctuation (dots, dashes, slashes, spaces) inside the number itself.
+
+> **Important — no assumptions about TecDoc internals.** We cannot test the TecDoc endpoint, so we do **not** know whether TecDoc normalises numbers server-side (e.g. stripping spaces/hyphens/dots before comparison). Earlier revisions of this document asserted that it does; that claim was unverified and has been removed. The implementation makes no such assumption: it sends the number as typed (only the brand token removed) and relies on the local `supplier_product_catalog` fuzzy fallback (our own InterCars-licensed data) to recover misses, rather than guessing punctuation transforms that could corrupt a genuine number.
 
 **Steps** (in order):
-1. Trim leading and trailing whitespace
-2. Split on whitespace into tokens
-3. Remove any token that matches a brand dictionary (case-insensitive): `WIX`, `BOSCH`, `MANN`, `MAHLE`, `VALEO`, `FEBI`, `SACHS`, `SKF`, `NGK`, `BERU`, `DENSO`, `FRAM`, `DAYCO`, `GATES`, `CONTITECH`, `HELLA`, `OSRAM`, `PHILIPS`, `LIQUI MOLY`, etc. Dictionary is configurable via environment/config.
-4. Join remaining tokens
-5. Remove all hyphens (`-`) and dots (`.`)
-6. Remove all spaces
-7. Convert to uppercase
-8. Result is the `NormalisedArticleNumber` value object
+1. Trim leading and trailing whitespace.
+2. Split on whitespace into tokens.
+3. If the first or last token matches the brand dictionary, remove it and record it as a `brandHint` — but only when at least one non-brand token remains. Never remove characters from inside a token.
+4. Produce two candidates: the brand-stripped query (primary) and the original query (fallback, tried only when it differs and the primary matched nothing).
 
-**Example**: `"WL6340 WIX"` → strip "WIX" → `"WL6340"` → remove hyphens → `"WL6340"` → uppercase → `"WL6340"`
+**Brand dictionary**: sourced at runtime from TecDoc `getBrands()` (tokenised, generic words like `FILTER`/`AUTO` excluded, small alias map for short forms), cached in Redis — not a hardcoded enum.
 
-**Rationale**: Real-world part number input is messy. Mechanics and customers copy numbers from packaging, invoices, and web pages where brand names appear alongside numbers. Stripping known brand tokens recovers the bare part number that TecDoc searches against. The brand dictionary starts with the most common Bulgarian market suppliers and is extended at runtime without code changes.
+**Example**: `"WL6340 WIX"` → strip trailing brand token `"WIX"` → `"WL6340"` (punctuation, if any, left intact); `brandHint = "WIX"`.
+
+**Rationale**: Real-world part-number input is messy — mechanics and customers copy numbers from packaging, invoices, and web pages where a brand name appears alongside the number. Removing the brand token recovers the bare number. Everything else is left untouched precisely because we cannot verify how TecDoc treats punctuation.
 
 **Alternatives considered**:
-- Regular expression heuristics to detect numeric-dominant tokens — rejected: brand names like `MANN` and `HELLA` are alphanumeric and indistinguishable from short part numbers by pattern alone
-- TecDoc fuzzy search with raw input — rejected: returns too many false positives; normalization produces cleaner results
+- Aggressive normalisation (strip all hyphens/dots/spaces before the lookup) — rejected: dots, dashes, and spaces are sometimes genuine parts of a TecDoc number, and with TecDoc's internal behaviour unverifiable, stripping them risks breaking valid numbers.
+- Regular expression heuristics to detect numeric-dominant tokens — rejected: brand names like `MANN` and `HELLA` are alphanumeric and indistinguishable from short part numbers by pattern alone.
 
 ---
 
@@ -218,27 +218,25 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 | `searchMatchType` | Meaning |
 |---|---|
-| `exact` | Normalised string must match exactly (TecDoc strips spaces/hyphens/dots server-side before comparison) |
+| `exact` | The stored number must match exactly |
 | `prefix` | Query is a leading prefix of the stored number |
 | `suffix` | Query is a trailing suffix of the stored number |
 | `prefix_or_suffix` | Either end matches |
 
-TecDoc normalises numbers server-side (strips spaces, hyphens, dots) before matching. This means "WA-6546", "WA 6546", and "WA6546" are equivalent after server-side normalisation — as long as we send only the bare number, not additional brand words.
+> We do **not** assume any TecDoc-side normalisation of punctuation. Whether "WA-6546", "WA 6546", and "WA6546" are treated as equivalent by TecDoc is unverified (the endpoint is not testable), so the implementation neither depends on it nor pre-strips those characters itself.
 
-**There is no typo-tolerant (Levenshtein/fuzzy) matching in the TecDoc web service.**
+**There is no typo-tolerant (Levenshtein/fuzzy) matching in the TecDoc web service.** Typo/fuzzy tolerance is handled by the local `supplier_product_catalog` fallback instead (see §11).
 
 **Proposed fallback chain** (executes inside `SearchService.search()`, each tier only fires on zero results from the previous):
 
-| Tier | `searchType` | `searchMatchType` | Normalized input | Purpose |
+| Tier | `searchType` | `searchMatchType` | Input | Purpose |
 |---|---|---|---|---|
-| 1 | `10` | `exact` | Standard normalisation | Precision-first: exact match across all number types |
-| 2 | `10` | `prefix_or_suffix` | Standard normalisation | Recovers partial-number queries and suffix variants |
-| 3 | `10` | `exact` | Aggressive normalisation (strip ALL non-alphanumeric) | Catches slashes, commas, extra symbols missed by standard normalisation |
-| 4 | `10` | `prefix_or_suffix` | Aggressive normalisation | Combines broader matching with the harder-cleaned input |
+| 1 | `10` | `exact` | Brand-stripped query (punctuation preserved) | Precision-first: exact match across all number types |
+| 2 | `10` | `prefix_or_suffix` | Brand-stripped query | Recovers partial-number queries and suffix variants |
+| 3 | `10` | `exact` | Original query (only if it differs from the brand-stripped one and tiers 1–2 matched nothing) | Recovers cases where the "brand" token was actually part of the number |
+| 4 | `10` | `prefix_or_suffix` | Original query | Broader fallback for the same case |
 
-Standard normalisation: trim → strip brand tokens → remove `-` and `.` → remove spaces → uppercase (§2).
-
-Aggressive normalisation: same as standard, then additionally replace every character that is not `[A-Z0-9]` with nothing. Only applied when the aggressively-normalised string differs from the standard one (i.e. there was something extra to strip); otherwise tiers 3–4 are skipped to avoid duplicate TecDoc calls.
+No punctuation is removed from the number at any tier; the only transformation is removing a confidently-identified leading/trailing brand token (§2).
 
 **Tier 1 & 2 TecDoc payload shapes** (reference against `tecdoc-client.ts:244-280`):
 

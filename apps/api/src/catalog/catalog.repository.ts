@@ -6,6 +6,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
+  BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
@@ -78,14 +79,24 @@ export class CatalogRepository {
     query: string,
     vehicleId?: string,
     matchType?: SearchMatchType,
-  ): Promise<ArticleSummaryDto[]> {
+    page = 1,
+    pageSize = 50,
+  ): Promise<PaginatedCatalogArticlesDto> {
     const results = await this.tecdocCache.searchArticles(
       query,
       vehicleId,
       matchType,
+      page,
+      pageSize,
     );
 
-    return this.enrichWithBrandLogos(results);
+    const items = await this.enrichWithBrandLogos(results.items);
+
+    return { ...results, items };
+  }
+
+  async findBrands(): Promise<BrandDto[]> {
+    return this.tecdocCache.getBrands();
   }
 
   async findAutocompleteSuggestions(

@@ -146,22 +146,42 @@ describe('CatalogRepository', () => {
   });
 
   describe('searchArticles', () => {
-    it('joins the brand logo onto every search hit', async () => {
-      searchArticlesMock.mockResolvedValueOnce([summary('Bosch', 'BD-001')]);
+    const paginated = (items: ReturnType<typeof summary>[]) => ({
+      total: items.length,
+      page: 1,
+      pageSize: 20,
+      items,
+    });
+
+    it('joins the brand logo onto every search hit and preserves pagination', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        paginated([summary('Bosch', 'BD-001')]),
+      );
       getBrandsMock.mockResolvedValueOnce(BRANDS);
 
-      const result = await repository.searchArticles('BD-001');
+      const result = await repository.searchArticles(
+        'BD-001',
+        undefined,
+        undefined,
+        1,
+        20,
+      );
 
-      expect(result[0].brandLogoUrl).toBe('https://logos/bosch.png');
+      expect(result.items[0].brandLogoUrl).toBe('https://logos/bosch.png');
+      expect(result.total).toBe(1);
+      expect(result.page).toBe(1);
+      expect(result.pageSize).toBe(20);
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'BD-001',
         undefined,
         undefined,
+        1,
+        20,
       );
     });
 
     it('skips the brands read entirely for an empty result set', async () => {
-      searchArticlesMock.mockResolvedValueOnce([]);
+      searchArticlesMock.mockResolvedValueOnce(paginated([]));
 
       await repository.searchArticles('NOPE');
 

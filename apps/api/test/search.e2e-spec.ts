@@ -4,7 +4,11 @@ import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
 import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
 import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
-import { ArticleSummaryDto, AutocompleteItemDto } from '@vp-parts-shop/shared';
+import {
+  ArticleSummaryDto,
+  AutocompleteItemDto,
+  PaginatedCatalogArticlesDto,
+} from '@vp-parts-shop/shared';
 
 const makeArticle = (
   articleNumber: string,
@@ -18,6 +22,17 @@ const makeArticle = (
   technicalSpecs: [],
   oemNumbers: [],
   fitsVehicle: null,
+});
+
+const pageOf = (
+  items: ArticleSummaryDto[],
+  overrides: Partial<PaginatedCatalogArticlesDto> = {},
+): PaginatedCatalogArticlesDto => ({
+  total: items.length,
+  page: 1,
+  pageSize: 20,
+  items,
+  ...overrides,
 });
 
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({
@@ -63,9 +78,9 @@ describe('SearchController (e2e)', () => {
 
   describe('GET /search', () => {
     it('redirects to the article page when the exact-match tier returns a single result', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce([
-        makeArticle('WL6340'),
-      ]);
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')]),
+      );
 
       const res = await request(app.getHttpServer())
         .get('/search?q=WL6340')
@@ -78,62 +93,93 @@ describe('SearchController (e2e)', () => {
         'WL6340',
         undefined,
         'exact',
+        1,
+        20,
       );
     });
 
-    it('returns a result list when the prefix-or-suffix tier matches multiple articles', async () => {
+    it('returns a paginated result list when the prefix-or-suffix tier matches multiple articles', async () => {
       // Tier 1 (exact) misses, tier 2 (prefix_or_suffix) finds two articles
       mockTecDocClient.searchArticles
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([makeArticle('WL6340'), makeArticle('WL6341')]);
+        .mockResolvedValueOnce(pageOf([]))
+        .mockResolvedValueOnce(
+          pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+        );
 
       const res = await request(app.getHttpServer())
         .get('/search?q=WL634')
         .expect(200);
 
       expect(res.body.query).toBe('WL634');
-      expect(res.body.normalisedQuery).toBe('WL634');
+      expect(res.body).not.toHaveProperty('normalisedQuery');
       expect(res.body.results).toHaveLength(2);
+      expect(res.body.total).toBe(2);
+      expect(res.body.page).toBe(1);
+      expect(res.body.pageSize).toBe(20);
       // No vehicleId supplied — fitsVehicle is always null
       expect(res.body.results[0].fitsVehicle).toBeNull();
       expect(res.body.results[1].fitsVehicle).toBeNull();
     });
 
-    it('annotates fitsVehicle when a vehicleId is supplied', async () => {
-      // Tier 1 misses; tier 2 returns two articles without vehicle scope
+    it('echoes the requested page and pageSize', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')], { total: 55, page: 2, pageSize: 10 }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=WL&page=2&pageSize=10')
+        .expect(200);
+
+      expect(res.body.total).toBe(55);
+      expect(res.body.page).toBe(2);
+      expect(res.body.pageSize).toBe(10);
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'WL',
+        undefined,
+        'exact',
+        2,
+        10,
+      );
+    });
+
+    it('scopes the search to the vehicle when a vehicleId is supplied', async () => {
+      // Tier 1 misses; tier 2 returns the parts TecDoc reports as fitting the
+      // vehicle. No separate fit lookup runs — the scope is on the search call.
       mockTecDocClient.searchArticles
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([makeArticle('WL6340'), makeArticle('WL6341')])
-        // Vehicle-scoped call to determine fitting: only WL6340 fits
-        .mockResolvedValueOnce([makeArticle('WL6340')]);
+        .mockResolvedValueOnce(pageOf([]))
+        .mockResolvedValueOnce(
+          pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+        );
 
       const res = await request(app.getHttpServer())
         .get('/search?q=WL634&vehicleId=V10001')
         .expect(200);
 
-      const results = res.body.results as Array<{
-        articleNumber: string;
-        fitsVehicle: boolean;
-      }>;
-      expect(results).toHaveLength(2);
+      const results = res.body.results as Array<{ articleNumber: string }>;
+      expect(results.map((r) => r.articleNumber)).toEqual(['WL6340', 'WL6341']);
 
-      const wl6340 = results.find((r) => r.articleNumber === 'WL6340')!;
-      const wl6341 = results.find((r) => r.articleNumber === 'WL6341')!;
-      expect(wl6340.fitsVehicle).toBe(true);
-      expect(wl6341.fitsVehicle).toBe(false);
-
-      // Third call is the vehicle-scoped fitting lookup
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      // Exactly the two tier calls, both scoped to the vehicle.
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(2);
+      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
+        1,
+        'WL634',
+        'V10001',
+        'exact',
+        1,
+        20,
+      );
+      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
+        2,
         'WL634',
         'V10001',
         'prefix_or_suffix',
+        1,
+        20,
       );
     });
 
-    it('includes autocomplete suggestions when all tiers return no results', async () => {
-      // 'XYZNOTFOUND' has no brand tokens and no special chars — aggressiveNormalise
-      // returns null (identical to standard), so only 2 tiers run.
-      mockTecDocClient.searchArticles.mockResolvedValue([]);
+    it('includes autocomplete suggestions when both tiers return no results', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
       mockTecDocClient.getAutocompleteSuggestions.mockResolvedValueOnce([
         makeSuggestion('XY001'),
         makeSuggestion('XY002'),
@@ -144,8 +190,9 @@ describe('SearchController (e2e)', () => {
         .expect(200);
 
       expect(res.body.results).toHaveLength(0);
+      expect(res.body.total).toBe(0);
       expect(res.body.suggestions).toHaveLength(2);
-      // SearchService takes the first 5 chars of the normalised query as prefix
+      // SearchService takes the first 5 chars of the query as the suggestion prefix
       expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith(
         'XYZNO',
       );

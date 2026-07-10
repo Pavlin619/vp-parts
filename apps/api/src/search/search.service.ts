@@ -1,168 +1,212 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   ArticleSummaryDto,
   AutocompleteItemDto,
+  PaginatedCatalogArticlesDto,
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
 import { SearchMatchType } from '../catalog/tecdoc/tecdoc-client';
 import { CatalogService } from '../catalog/catalog.service';
-import { PartNumberNormaliser } from './normaliser';
+import { buildBrandTokenSet } from './brand-dictionary';
+import { parseQuery, ParsedQuery } from './query-parser';
+import { SEARCH_DEFAULT_PAGE, SEARCH_DEFAULT_PAGE_SIZE } from './search.dto';
 
 const AUTOCOMPLETE_MIN_QUERY_LENGTH = 3;
 const AUTOCOMPLETE_MAX_SUGGESTIONS = 8;
 const SUGGESTION_PREFIX_LENGTH = 5;
 
+/**
+ * The precision-first tier order applied to each candidate query: an exact hit
+ * ranks the searched number first when it exists; prefix_or_suffix then recovers
+ * partial-number and suffix variants.
+ */
+const SEARCH_TIERS: SearchMatchType[] = ['exact', 'prefix_or_suffix'];
+
 @Injectable()
 export class SearchService {
-  constructor(
-    private readonly catalog: CatalogService,
-    private readonly normaliser: PartNumberNormaliser,
-  ) {}
+  private readonly logger = new Logger(SearchService.name);
 
-  async search(query: string, vehicleId?: string): Promise<SearchResponseDto> {
-    const normalisedQuery = this.normaliser.normalise(query);
-    const { results, effectiveQuery, effectiveMatchType } =
-      await this.executeSearchWithFallback(normalisedQuery, query);
+  constructor(private readonly catalog: CatalogService) {}
 
-    if (results.length === 1) {
-      const articleNumber = encodeURIComponent(results[0].articleNumber);
-      return { redirect: `/catalog/articles/${articleNumber}` };
+  async search(
+    query: string,
+    vehicleId?: string,
+    page: number = SEARCH_DEFAULT_PAGE,
+    pageSize: number = SEARCH_DEFAULT_PAGE_SIZE,
+  ): Promise<SearchResponseDto> {
+    const rawQuery = query.trim();
+    const parsed = await this.parse(rawQuery);
+
+    const result = await this.executeSearchWithFallback(
+      parsed,
+      vehicleId,
+      page,
+      pageSize,
+    );
+
+    const ranked = this.rankByBrand(result.items, parsed.brandHint);
+
+    const redirect = this.resolveRedirect(ranked, result);
+    if (redirect) {
+      return { redirect };
     }
 
-    const fittingNumbers = await this.findFittingNumbers(
-      effectiveQuery,
-      effectiveMatchType,
-      vehicleId,
-      results.length,
-    );
+    if (result.total === 0) {
+      this.logZeroResult(rawQuery, parsed.brandStripped, vehicleId);
+    }
 
-    const suggestions = await this.buildSuggestions(
-      results.length,
-      normalisedQuery,
-    );
+    const suggestions = await this.buildSuggestions(result.total, rawQuery);
 
     return {
       query,
-      normalisedQuery,
-      results: results.map((item) => this.toSearchResult(item, fittingNumbers)),
+      results: ranked,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
       ...(suggestions.length > 0 && { suggestions }),
     };
   }
 
   async autocomplete(query: string): Promise<AutocompleteItemDto[]> {
-    if (query.trim().length < AUTOCOMPLETE_MIN_QUERY_LENGTH) {
+    const searchQuery = query.trim();
+    if (searchQuery.length < AUTOCOMPLETE_MIN_QUERY_LENGTH) {
       return [];
     }
 
-    const normalisedQuery = this.normaliser.normalise(query);
     const suggestions =
-      await this.catalog.getAutocompleteSuggestions(normalisedQuery);
+      await this.catalog.getAutocompleteSuggestions(searchQuery);
 
     return suggestions.slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
   }
 
-  private async executeSearchWithFallback(
-    normalisedQuery: string,
-    rawQuery: string,
-  ): Promise<{
-    results: ArticleSummaryDto[];
-    effectiveQuery: string;
-    effectiveMatchType: SearchMatchType;
-  }> {
-    // Tier 1 — exact match on standard-normalised query (precision first)
-    let results = await this.catalog.searchArticles(
-      normalisedQuery,
-      undefined,
-      'exact',
-    );
-    if (results.length > 0) {
-      return {
-        results,
-        effectiveQuery: normalisedQuery,
-        effectiveMatchType: 'exact',
-      };
-    }
-
-    // Tier 2 — prefix-or-suffix on standard-normalised query
-    results = await this.catalog.searchArticles(
-      normalisedQuery,
-      undefined,
-      'prefix_or_suffix',
-    );
-    if (results.length > 0) {
-      return {
-        results,
-        effectiveQuery: normalisedQuery,
-        effectiveMatchType: 'prefix_or_suffix',
-      };
-    }
-
-    // Tiers 3 & 4 — repeat with aggressive normalisation (strips all
-    // non-alphanumeric chars beyond the standard `-`, `.`, space removal).
-    // Skipped when the aggressive form is identical to the standard one.
-    const aggressiveQuery = this.normaliser.aggressiveNormalise(rawQuery);
-    if (aggressiveQuery !== null && aggressiveQuery !== normalisedQuery) {
-      results = await this.catalog.searchArticles(
-        aggressiveQuery,
-        undefined,
-        'exact',
+  /**
+   * Removes a leading/trailing brand token (e.g. "WA5432 WIX" → "WA5432") using
+   * a dictionary built from TecDoc `getBrands()`. Fails soft: if the brand list
+   * is unavailable, search still runs on the query as typed rather than 500ing.
+   */
+  private async parse(rawQuery: string): Promise<ParsedQuery> {
+    try {
+      const brandTokens = buildBrandTokenSet(await this.catalog.getBrands());
+      return parseQuery(rawQuery, brandTokens);
+    } catch {
+      this.logger.warn(
+        'Brand dictionary unavailable; searching the query as typed',
       );
-      if (results.length > 0) {
-        return {
-          results,
-          effectiveQuery: aggressiveQuery,
-          effectiveMatchType: 'exact',
-        };
-      }
-
-      results = await this.catalog.searchArticles(
-        aggressiveQuery,
-        undefined,
-        'prefix_or_suffix',
-      );
-      if (results.length > 0) {
-        return {
-          results,
-          effectiveQuery: aggressiveQuery,
-          effectiveMatchType: 'prefix_or_suffix',
-        };
-      }
+      return { raw: rawQuery, brandStripped: rawQuery };
     }
-
-    return {
-      results: [],
-      effectiveQuery: normalisedQuery,
-      effectiveMatchType: 'prefix_or_suffix',
-    };
   }
 
-  private async findFittingNumbers(
-    effectiveQuery: string,
-    matchType: SearchMatchType,
+  /**
+   * Runs the brand-stripped query through the two TecDoc tiers, then the raw
+   * query only if it differs and the stripped one matched nothing (the "brand"
+   * token may actually have been part of the number). When a vehicleId is
+   * given, every candidate/tier is scoped to it so TecDoc returns only parts
+   * that fit that vehicle (no separate fit lookup, no per-item badge). The
+   * first candidate/tier with a non-empty total wins; its total is
+   * authoritative for pagination and is stable across pages.
+   */
+  private async executeSearchWithFallback(
+    parsed: ParsedQuery,
     vehicleId: string | undefined,
-    resultCount: number,
-  ): Promise<Set<string> | null> {
-    if (vehicleId == null || resultCount === 0) {
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedCatalogArticlesDto> {
+    const candidates =
+      parsed.raw === parsed.brandStripped
+        ? [parsed.brandStripped]
+        : [parsed.brandStripped, parsed.raw];
+
+    let lastResult: PaginatedCatalogArticlesDto = {
+      total: 0,
+      page,
+      pageSize,
+      items: [],
+    };
+
+    for (const candidate of candidates) {
+      for (const matchType of SEARCH_TIERS) {
+        const result = await this.catalog.searchArticles(
+          candidate,
+          vehicleId,
+          matchType,
+          page,
+          pageSize,
+        );
+
+        if (result.total > 0) {
+          return result;
+        }
+
+        lastResult = result;
+      }
+    }
+
+    return lastResult;
+  }
+
+  /** Moves results whose brand matches the stripped brand token to the front. */
+  private rankByBrand(
+    items: ArticleSummaryDto[],
+    brandHint: string | undefined,
+  ): ArticleSummaryDto[] {
+    if (!brandHint) {
+      return items;
+    }
+
+    const matches: ArticleSummaryDto[] = [];
+    const rest: ArticleSummaryDto[] = [];
+    for (const item of items) {
+      (this.matchesBrandHint(item, brandHint) ? matches : rest).push(item);
+    }
+
+    return [...matches, ...rest];
+  }
+
+  /**
+   * Redirects straight to the article page only when the query resolves to a
+   * single part — TecDoc returned exactly one result on the first page. When
+   * several parts match we always return the list; brand ranking still floats
+   * any brand-token matches to the top of it.
+   */
+  private resolveRedirect(
+    ranked: ArticleSummaryDto[],
+    result: PaginatedCatalogArticlesDto,
+  ): string | null {
+    if (result.page !== 1) {
       return null;
     }
 
-    const fitting = await this.catalog.searchArticles(
-      effectiveQuery,
-      vehicleId,
-      matchType,
-    );
-    return new Set(fitting.map((item) => item.articleNumber));
+    if (result.total === 1 && ranked.length === 1) {
+      return this.redirectPath(ranked[0]);
+    }
+
+    return null;
+  }
+
+  private matchesBrandHint(
+    item: ArticleSummaryDto,
+    brandHint: string,
+  ): boolean {
+    const brand = item.brandName.toUpperCase();
+    return brandHint
+      .toUpperCase()
+      .split(/\s+/)
+      .some((token) => token.length > 0 && brand.includes(token));
+  }
+
+  private redirectPath(item: ArticleSummaryDto): string {
+    return `/catalog/articles/${encodeURIComponent(item.articleNumber)}`;
   }
 
   private async buildSuggestions(
-    resultCount: number,
-    normalisedQuery: string,
+    total: number,
+    query: string,
   ): Promise<AutocompleteItemDto[]> {
-    if (resultCount > 0) {
+    if (total > 0) {
       return [];
     }
 
-    const prefix = normalisedQuery.slice(0, SUGGESTION_PREFIX_LENGTH);
+    const prefix = query.slice(0, SUGGESTION_PREFIX_LENGTH);
     if (prefix.length < AUTOCOMPLETE_MIN_QUERY_LENGTH) {
       return [];
     }
@@ -170,14 +214,20 @@ export class SearchService {
     return this.catalog.getAutocompleteSuggestions(prefix);
   }
 
-  private toSearchResult(
-    item: ArticleSummaryDto,
-    fittingNumbers: Set<string> | null,
-  ): ArticleSummaryDto {
-    return {
-      ...item,
-      fitsVehicle:
-        fittingNumbers !== null ? fittingNumbers.has(item.articleNumber) : null,
-    };
+  /**
+   * Records a query that produced no results so we can later analyse the real
+   * miss patterns (and decide whether a fuzzy fallback is ever worth building)
+   * without mirroring TecDoc data into our own store.
+   */
+  private logZeroResult(
+    query: string,
+    brandStripped: string,
+    vehicleId: string | undefined,
+  ): void {
+    this.logger.log(
+      `search_zero_result query=${JSON.stringify(query)} ` +
+        `brandStripped=${JSON.stringify(brandStripped)} ` +
+        `vehicleScoped=${vehicleId != null}`,
+    );
   }
 }

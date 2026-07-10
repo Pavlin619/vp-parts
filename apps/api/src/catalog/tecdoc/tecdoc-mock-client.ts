@@ -336,7 +336,28 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Outer Diameter 1', value: '76 mm' },
       { key: 'Thread Size', value: 'M 20 X 1.5' },
     ],
+    // Shares OE 06J 115 403 Q with OF-WL7090 so an OE-number search returns
+    // both brands — the "one OE, many aftermarket options" multi-result case.
     oemNumbers: ['06J 115 403 Q', '06H 115 562'],
+    compatibleVehicles: [],
+    fitsVehicle: null,
+  },
+  // Second aftermarket oil filter for VW OE 06J 115 403 Q. Paired with OF-OC115
+  // so searching that OE number lands on the multi-result search page (both are
+  // stocked in infra/db/02-mock-stock-seed.sql, so live prices render too).
+  'OF-WL7090': {
+    articleNumber: 'OF-WL7090',
+    brandName: 'WIX Filters',
+    brandLogoUrl: null,
+    description: 'Oil Filter',
+    thumbnailUrl: OIL_FILTER_IMAGES[0],
+    images: OIL_FILTER_IMAGES,
+    technicalSpecs: [
+      { key: 'Height', value: '90 mm' },
+      { key: 'Outer Diameter 1', value: '76 mm' },
+      { key: 'Thread Size', value: 'M 20 X 1.5' },
+    ],
+    oemNumbers: ['06J 115 403 Q', '06J 115 403 C'],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
@@ -444,14 +465,20 @@ export class TecDocMockClient {
   searchArticles(
     query: string,
     vehicleId?: string,
-  ): Promise<ArticleSummaryDto[]> {
+    _matchType?: string,
+    page = 1,
+    pageSize = 50,
+  ): Promise<PaginatedCatalogArticlesDto> {
     const matches = this.findMatchingArticles(query)
       // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
       // returns every other match so fit indicators show both states.
       .filter((_, index) => vehicleId == null || index % 2 === 0)
       .map((base) => this.toSummary(base));
 
-    return Promise.resolve(matches);
+    const start = (page - 1) * pageSize;
+    const items = matches.slice(start, start + pageSize);
+
+    return Promise.resolve({ total: matches.length, page, pageSize, items });
   }
 
   getAutocompleteSuggestions(query: string): Promise<AutocompleteItemDto[]> {
@@ -507,13 +534,34 @@ export class TecDocMockClient {
 
   private findMatchingArticles(query: string) {
     const normalisedQuery = query.replace(/[-.\s]/g, '').toUpperCase();
+
     return Object.values(ARTICLES_BY_CATEGORY)
       .flat()
-      .filter((a) =>
-        a.articleNumber
-          .replace(/[-.\s]/g, '')
-          .toUpperCase()
-          .includes(normalisedQuery),
-      );
+      .filter((article) => this.matchesNumber(article, normalisedQuery));
+  }
+
+  /**
+   * Mirrors the real client's `getArticles` searchType 10 ("any number"): a
+   * query hits when it is a substring of the article number OR of any of the
+   * part's OE numbers. Numbers are compared with spaces/hyphens/dots stripped,
+   * matching how TecDoc normalises them server-side. The other number types
+   * searchType 10 also covers (trade, comparable, replacement, EAN) are not
+   * modelled in the mock.
+   */
+  private matchesNumber(
+    article: MockArticleBase,
+    normalisedQuery: string,
+  ): boolean {
+    const candidateNumbers = [
+      article.articleNumber,
+      ...(ARTICLE_DETAILS[article.articleNumber]?.oemNumbers ?? []),
+    ];
+
+    return candidateNumbers.some((number) =>
+      number
+        .replace(/[-.\s]/g, '')
+        .toUpperCase()
+        .includes(normalisedQuery),
+    );
   }
 }

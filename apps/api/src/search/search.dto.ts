@@ -1,5 +1,17 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
-import { Transform } from 'class-transformer';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+
+export const SEARCH_DEFAULT_PAGE = 1;
+export const SEARCH_DEFAULT_PAGE_SIZE = 20;
+export const SEARCH_MAX_PAGE_SIZE = 50;
 
 export class SearchQueryDto {
   @Transform(({ value }: { value: unknown }) =>
@@ -14,6 +26,19 @@ export class SearchQueryDto {
   @IsString()
   @MaxLength(100)
   vehicleId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(SEARCH_MAX_PAGE_SIZE)
+  pageSize?: number;
 }
 
 export class AutocompleteQueryDto {

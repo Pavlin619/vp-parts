@@ -53,8 +53,6 @@ import { AppService } from './app.service';
         TECDOC_API_KEY: Joi.string().required(),
         TECDOC_BASE_URL: Joi.string().uri().required(),
 
-        SEARCH_BRAND_DICTIONARY: Joi.string().optional(),
-
         RESEND_API_KEY: Joi.string().required(),
         EMAIL_FROM: Joi.string().email().required(),
 

@@ -219,9 +219,20 @@ Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read
 
 ### Part Number Search
 
-**`GET /search?q={query}`** `[PUBLIC]`
+**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}`** `[PUBLIC]`
 
-Normalises the query and searches the TecDoc catalogue. Query param `vehicleId` (optional) adds fit indicator.
+Searches the TecDoc catalogue. Before the lookup, a **leading or trailing brand
+token** is stripped from the query (e.g. `"WA5432 WIX"` → `"WA5432"`), using a
+brand dictionary sourced from TecDoc `getBrands()`. Only the brand token is
+removed — punctuation inside the number (dots, dashes, slashes) is preserved,
+because no assumption is made about TecDoc-side normalisation. The brand-stripped
+query is tried first through two tiers (`exact`, then `prefix_or_suffix`); the
+original query is retried only if it differs and the stripped one matched nothing.
+When a brand token was found, results are ranked so matching-brand articles come
+first, and a single brand match collapses to a redirect.
+
+Query params: `vehicleId` (optional) adds a per-page fit indicator; `page`
+(default 1) and `pageSize` (default 20, max 50) paginate broad queries like `WA`.
 
 Returns cacheable TecDoc **metadata + fit only — no live inventory**, mirroring the
 listing grid / article detail split. `available` and price are not on the search
@@ -235,11 +246,10 @@ Response `200` — single exact match:
 { "redirect": "/catalog/articles/WL6340" }
 ```
 
-Response `200` — multiple matches:
+Response `200` — multiple matches (paginated):
 ```json
 {
   "query": "WL6340",
-  "normalisedQuery": "WL6340",
   "results": [
     {
       "articleNumber": "WL6340",
@@ -248,13 +258,16 @@ Response `200` — multiple matches:
       "thumbnailUrl": null,
       "fitsVehicle": true
     }
-  ]
+  ],
+  "total": 42,
+  "page": 1,
+  "pageSize": 20
 }
 ```
 
 Response `200` — no matches:
 ```json
-{ "query": "XXXX999", "normalisedQuery": "XXXX999", "results": [] }
+{ "query": "XXXX999", "results": [], "total": 0, "page": 1, "pageSize": 20 }
 ```
 
 ---
