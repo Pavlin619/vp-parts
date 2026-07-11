@@ -6,13 +6,18 @@ import {
   AssemblyGroupDto,
   BrandDto,
   PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
-import { SearchMatchType, SUBSTITUTES_LIMIT } from './tecdoc/tecdoc-client';
+import {
+  SearchMatchType,
+  SearchFilters,
+  SUBSTITUTES_LIMIT,
+} from './tecdoc/tecdoc-client';
 import { InventoryService } from '../inventory';
 
 @Injectable()
@@ -85,7 +90,8 @@ export class CatalogService {
    * price/availability separately via {@link getArticlesAvailability} and
    * merges it in, mirroring the listing grid / article detail split. Keeping
    * inventory out of the search path means a search never triggers a stock-DB
-   * read per TecDoc tier attempt.
+   * read per TecDoc tier attempt. Brand/category facets (with active `filters`
+   * applied) ride along on the result for the UI to narrow a broad query.
    */
   async searchArticles(
     query: string,
@@ -93,13 +99,15 @@ export class CatalogService {
     matchType?: SearchMatchType,
     page = 1,
     pageSize = 50,
-  ): Promise<PaginatedCatalogArticlesDto> {
+    filters?: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
     return this.repository.searchArticles(
       query,
       vehicleId,
       matchType,
       page,
       pageSize,
+      filters,
     );
   }
 

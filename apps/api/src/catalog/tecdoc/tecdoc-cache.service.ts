@@ -6,12 +6,13 @@ import {
   AssemblyGroupDto,
   BrandDto,
   PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { Redis } from 'ioredis';
-import { TecDocClient, SearchMatchType } from './tecdoc-client';
+import { TecDocClient, SearchMatchType, SearchFilters } from './tecdoc-client';
 
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
@@ -110,9 +111,16 @@ export class TecDocCacheService {
     matchType: SearchMatchType = 'prefix_or_suffix',
     page = 1,
     pageSize = 50,
-  ): Promise<PaginatedCatalogArticlesDto> {
+    filters?: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
     const vehicleKey = vehicleId ?? 'none';
-    const key = `tecdoc:search:${query}:${vehicleKey}:${matchType}:${page}:${pageSize}`;
+    const brandKey = filters?.brandIds?.length
+      ? filters.brandIds.join(',')
+      : 'none';
+    const categoryKey = filters?.categoryIds?.length
+      ? filters.categoryIds.join(',')
+      : 'none';
+    const key = `tecdoc:search:${query}:${vehicleKey}:${matchType}:${page}:${pageSize}:${brandKey}:${categoryKey}`;
     return this.cachedPaginated(key, SEARCH_TTL, SEARCH_MISS_TTL, () =>
       this.tecdocClient.searchArticles(
         query,
@@ -120,6 +128,7 @@ export class TecDocCacheService {
         matchType,
         page,
         pageSize,
+        filters,
       ),
     );
   }
@@ -172,16 +181,16 @@ export class TecDocCacheService {
    * Caches a paginated result, picking the shorter miss-TTL when the page holds
    * no items so a hopeless query is not pinned in Redis for the full hit-TTL.
    */
-  private async cachedPaginated(
+  private async cachedPaginated<T extends { items: unknown[] }>(
     key: string,
     hitTtl: number,
     missTtl: number,
-    loader: () => Promise<PaginatedCatalogArticlesDto>,
-  ): Promise<PaginatedCatalogArticlesDto> {
+    loader: () => Promise<T>,
+  ): Promise<T> {
     const cached = await this.redis.get(key);
     if (cached !== null) {
       this.logger.debug(`Cache hit: ${key}`);
-      return JSON.parse(cached) as PaginatedCatalogArticlesDto;
+      return JSON.parse(cached) as T;
     }
 
     this.logger.debug(`Cache miss: ${key}`);

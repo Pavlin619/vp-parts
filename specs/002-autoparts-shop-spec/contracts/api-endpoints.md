@@ -219,7 +219,7 @@ Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read
 
 ### Part Number Search
 
-**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}`** `[PUBLIC]`
+**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}&brandIds={id}&categoryIds={id}`** `[PUBLIC]`
 
 Searches the TecDoc catalogue. Before the lookup, a **leading or trailing brand
 token** is stripped from the query (e.g. `"WA5432 WIX"` → `"WA5432"`), using a
@@ -229,27 +229,43 @@ because no assumption is made about TecDoc-side normalisation. The brand-strippe
 query is tried first through two tiers (`exact`, then `prefix_or_suffix`); the
 original query is retried only if it differs and the stripped one matched nothing.
 When a brand token was found, results are ranked so matching-brand articles come
-first, and a single brand match collapses to a redirect.
+first.
 
-Query params: `vehicleId` (optional) adds a per-page fit indicator; `page`
-(default 1) and `pageSize` (default 20, max 50) paginate broad queries like `WA`.
+**No redirects:** the search endpoint always returns a result list — even for a
+single hit — so the user stays on the search screen. (A single part number
+typically fans out to several results anyway, because `searchType: 10` matches
+the supplier number plus its OE / trade / comparable numbers.) Navigation to an
+article detail page happens from the **autocomplete** dropdown, not from this
+endpoint.
 
-Returns cacheable TecDoc **metadata + fit only — no live inventory**, mirroring the
-listing grid / article detail split. `available` and price are not on the search
-response; the client fetches live price/availability for the result article
-numbers via `GET /catalog/articles-availability` and merges it in. This keeps a
-search from triggering a stock-DB read per TecDoc tier attempt — availability is
-read once, client-side, for the final result set.
+Query params:
+- `vehicleId` (optional) scopes every tier to that vehicle so TecDoc returns
+  only fitting parts.
+- `page` (default 1) and `pageSize` (default 20, max 50) paginate broad queries
+  like `WA`.
+- `brandIds` and `categoryIds` (optional, repeatable) narrow the result set to
+  the selected facet values — `brandIds` maps to TecDoc `dataSupplierIds`,
+  `categoryIds` to `genericArticleIds`. Send each id as a repeated param
+  (`?brandIds=4&brandIds=30`). Up to 50 values per param.
 
-Response `200` — single exact match:
-```json
-{ "redirect": "/catalog/articles/WL6340" }
-```
+Every response with results carries **`facets`**: brand and category groups
+computed by TecDoc over the whole match set (not just the current page), so the
+UI can narrow a broad query. Each facet value has an `id` (the value to send
+back as a filter), a `label`, a `count`, and — for brands — an `imageUrl` logo
+joined from `getBrands()`. Empty groups are omitted; `facets` is absent on a
+zero-result response.
 
-Response `200` — multiple matches (paginated):
+Returns cacheable TecDoc **metadata + fit + facets — no live inventory**,
+mirroring the listing grid / article detail split. `available` and price are not
+on the search response; the client fetches live price/availability for the
+result article numbers via `GET /catalog/articles-availability` and merges it
+in. This keeps a search from triggering a stock-DB read per TecDoc tier attempt
+— availability is read once, client-side, for the final result set.
+
+Response `200` — matches (paginated, with facets):
 ```json
 {
-  "query": "WL6340",
+  "query": "oil filter",
   "results": [
     {
       "articleNumber": "WL6340",
@@ -261,11 +277,28 @@ Response `200` — multiple matches (paginated):
   ],
   "total": 42,
   "page": 1,
-  "pageSize": 20
+  "pageSize": 20,
+  "facets": [
+    {
+      "id": "brands",
+      "label": "Производител",
+      "values": [
+        { "id": "4", "label": "WIX", "count": 18, "imageUrl": "https://.../wix.png" },
+        { "id": "30", "label": "MANN-FILTER", "count": 12, "imageUrl": "https://.../mann.png" }
+      ]
+    },
+    {
+      "id": "categories",
+      "label": "Категория",
+      "values": [
+        { "id": "7010", "label": "Oil Filter", "count": 42 }
+      ]
+    }
+  ]
 }
 ```
 
-Response `200` — no matches:
+Response `200` — no matches (no facets):
 ```json
 { "query": "XXXX999", "results": [], "total": 0, "page": 1, "pageSize": 20 }
 ```

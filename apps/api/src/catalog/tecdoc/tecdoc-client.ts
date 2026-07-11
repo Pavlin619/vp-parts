@@ -4,6 +4,18 @@ export type SearchMatchType =
   | 'prefix'
   | 'suffix'
   | 'prefix_or_suffix';
+
+/**
+ * Optional narrowing a caller applies to a search, selected from the facet
+ * values returned on a previous search. `brandIds` are TecDoc dataSupplierIds
+ * and `categoryIds` are genericArticleIds — the `id` fields of the facet values
+ * the UI presents. Both are AND-combined; each is OR-combined within itself.
+ */
+export interface SearchFilters {
+  brandIds?: string[];
+  categoryIds?: string[];
+}
+
 import { ConfigService } from '@nestjs/config';
 import {
   ManufacturerDto,
@@ -12,6 +24,9 @@ import {
   AssemblyGroupDto,
   BrandDto,
   PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
+  SearchFacetDto,
+  FacetValueDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   AutocompleteItemDto,
@@ -309,16 +324,37 @@ export class TecDocClient {
     return substitutes;
   }
 
+  /**
+   * Free-text/number search (searchType 10 — "any number"). Asks TecDoc for the
+   * brand (`dataSupplier`) and category (`genericArticle`) facet counts over the
+   * whole match set so the UI can narrow a broad query, and forwards any active
+   * facet selections as `dataSupplierIds` / `genericArticleIds` filters.
+   */
   async searchArticles(
     query: string,
     vehicleId?: string,
     matchType: SearchMatchType = 'prefix_or_suffix',
     page = 1,
     pageSize = 50,
-  ): Promise<PaginatedCatalogArticlesDto> {
+    filters?: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
     const data = await this.call<{
       totalMatchingArticles: number;
       articles: TecDocArticleRecord[];
+      dataSupplierFacets?: {
+        counts: Array<{
+          dataSupplierId: number;
+          mfrName: string;
+          count: number;
+        }>;
+      };
+      genericArticleFacets?: {
+        counts: Array<{
+          genericArticleId: number;
+          genericArticleDescription: string;
+          count: number;
+        }>;
+      };
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
@@ -328,9 +364,17 @@ export class TecDocClient {
       perPage: pageSize,
       page,
       includeAll: true,
+      includeDataSupplierFacets: true,
+      includeGenericArticleFacets: true,
       ...(vehicleId != null && {
         linkageTargetType: 'P',
         linkageTargetId: Number(vehicleId),
+      }),
+      ...(filters?.brandIds?.length && {
+        dataSupplierIds: filters.brandIds.map(Number),
+      }),
+      ...(filters?.categoryIds?.length && {
+        genericArticleIds: filters.categoryIds.map(Number),
       }),
     });
 
@@ -340,6 +384,10 @@ export class TecDocClient {
       pageSize,
       items: (data.articles ?? []).map((article) =>
         this.mapArticleSummary(article),
+      ),
+      facets: this.mapSearchFacets(
+        data.dataSupplierFacets?.counts,
+        data.genericArticleFacets?.counts,
       ),
     };
   }
@@ -394,6 +442,53 @@ export class TecDocClient {
       oemNumbers: (article.oemNumbers ?? []).map((oem) => oem.articleNumber),
       fitsVehicle: null,
     };
+  }
+
+  /**
+   * Turns the raw TecDoc facet count blocks into the shared facet groups. Brand
+   * values carry a `dataSupplierId` id (so a selection maps back to the
+   * `dataSupplierIds` filter) with the logo left null for the catalog layer to
+   * join; category values carry a `genericArticleId` id. Empty groups are
+   * dropped so the response only advertises facets the user can actually apply.
+   */
+  private mapSearchFacets(
+    brandCounts: Array<{
+      dataSupplierId: number;
+      mfrName: string;
+      count: number;
+    }> = [],
+    categoryCounts: Array<{
+      genericArticleId: number;
+      genericArticleDescription: string;
+      count: number;
+    }> = [],
+  ): SearchFacetDto[] {
+    const facets: SearchFacetDto[] = [];
+
+    const brandValues: FacetValueDto[] = brandCounts.map((c) => ({
+      id: String(c.dataSupplierId),
+      label: c.mfrName,
+      count: c.count,
+      imageUrl: null,
+    }));
+    if (brandValues.length > 0) {
+      facets.push({ id: 'brands', label: 'Производител', values: brandValues });
+    }
+
+    const categoryValues: FacetValueDto[] = categoryCounts.map((c) => ({
+      id: String(c.genericArticleId),
+      label: c.genericArticleDescription,
+      count: c.count,
+    }));
+    if (categoryValues.length > 0) {
+      facets.push({
+        id: 'categories',
+        label: 'Категория',
+        values: categoryValues,
+      });
+    }
+
+    return facets;
   }
 
   private async call<T>(

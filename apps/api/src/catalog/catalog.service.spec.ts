@@ -257,6 +257,7 @@ describe('CatalogService', () => {
         undefined,
         1,
         20,
+        undefined,
       );
       // Search is a pure catalog read now — the client fetches live
       // price/availability separately via getArticlesAvailability.
@@ -269,15 +270,17 @@ describe('CatalogService', () => {
       expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
-    it('passes the vehicleId, matchType and pagination through to the repository', async () => {
+    it('passes the vehicleId, matchType, pagination and filters through to the repository', async () => {
       searchArticlesRepoMock.mockResolvedValueOnce({
         total: 0,
         page: 2,
         pageSize: 10,
         items: [],
+        facets: [],
       });
 
-      await service.searchArticles('WL6340', 'V10042', 'exact', 2, 10);
+      const filters = { brandIds: ['4'], categoryIds: ['7010'] };
+      await service.searchArticles('WL6340', 'V10042', 'exact', 2, 10, filters);
 
       expect(searchArticlesRepoMock).toHaveBeenCalledWith(
         'WL6340',
@@ -285,6 +288,7 @@ describe('CatalogService', () => {
         'exact',
         2,
         10,
+        filters,
       );
       expect(getAvailabilityMock).not.toHaveBeenCalled();
     });

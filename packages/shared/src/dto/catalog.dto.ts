@@ -98,6 +98,42 @@ export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleSummaryDto>;
 export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
 
 /**
+ * A single selectable value inside a search facet (e.g. one brand or one
+ * category), with the count of matching articles for the current query. `id`
+ * is the value the client sends back to filter (a TecDoc dataSupplierId for
+ * brands, a genericArticleId for categories); `label` is the display name.
+ * `imageUrl` carries the brand logo for brand facets (joined from TecDoc
+ * `getBrands`), and is absent/null for category facets.
+ */
+export interface FacetValueDto {
+  id: string;
+  label: string;
+  count: number;
+  imageUrl?: string | null;
+}
+
+/**
+ * A group of facet values the user can filter a search by. Computed by TecDoc
+ * over the whole matching set (not just the current page) and returned
+ * alongside the paginated results, mirroring how a faceted catalogue narrows a
+ * broad query by brand or category.
+ */
+export interface SearchFacetDto {
+  id: 'brands' | 'categories';
+  label: string;
+  values: FacetValueDto[];
+}
+
+/**
+ * Paginated search hits plus the facet groups computed over the full match set.
+ * Search-specific: the plain catalogue listing ({@link PaginatedCatalogArticlesDto})
+ * carries no facets.
+ */
+export type PaginatedSearchArticlesDto = PaginatedCatalogArticlesDto & {
+  facets: SearchFacetDto[];
+};
+
+/**
  * Live price/availability for a batch of articles, keyed by article number.
  * Returned by the uncached bulk-availability endpoint that a cached listing
  * grid calls to hydrate its metadata rows with fresh delivery/stock data. A
@@ -141,24 +177,31 @@ export interface ArticleCatalogDetailDto extends ArticleSummaryDto {
 }
 
 export interface SearchResponseDto {
-  redirect?: string;
   query?: string;
   /**
    * Search hits as cacheable {@link ArticleSummaryDto} metadata (identity,
    * brand, specs/OE, thumbnail, and fit) with **no** live inventory. Mirrors
    * the listing grid / article detail split: the client fetches live
    * price/availability separately via {@link ArticlesAvailabilityDto} and
-   * merges it in.
+   * merges it in. The search always returns a list (even for a single hit) so
+   * the user stays on the results screen; article navigation happens from
+   * autocomplete, not from the search response.
    */
   results?: ArticleSummaryDto[];
   /**
    * Pagination metadata for {@link results}. `total` is the count reported by
    * the winning search tier, so the client can render the page controls. All
-   * three are present together whenever `results` is (absent on a `redirect`).
+   * three are present together whenever `results` is.
    */
   total?: number;
   page?: number;
   pageSize?: number;
+  /**
+   * Brand/category facet groups for {@link results}, computed by TecDoc over
+   * the whole match set. Present (and non-empty) only when there are results to
+   * filter; absent on a zero-result response.
+   */
+  facets?: SearchFacetDto[];
   suggestions?: AutocompleteItemDto[];
 }
 

@@ -7,7 +7,8 @@ import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
 import {
   ArticleSummaryDto,
   AutocompleteItemDto,
-  PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
+  SearchFacetDto,
 } from '@vp-parts-shop/shared';
 
 const makeArticle = (
@@ -26,14 +27,19 @@ const makeArticle = (
 
 const pageOf = (
   items: ArticleSummaryDto[],
-  overrides: Partial<PaginatedCatalogArticlesDto> = {},
-): PaginatedCatalogArticlesDto => ({
+  overrides: Partial<PaginatedSearchArticlesDto> = {},
+): PaginatedSearchArticlesDto => ({
   total: items.length,
   page: 1,
   pageSize: 20,
   items,
+  facets: [],
   ...overrides,
 });
+
+// The controller always forwards a filters object; with no brandIds/categoryIds
+// query params both fields are undefined, which the mock is called with.
+const NO_FILTERS = { brandIds: undefined, categoryIds: undefined };
 
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({
   articleNumber,
@@ -77,7 +83,7 @@ describe('SearchController (e2e)', () => {
   });
 
   describe('GET /search', () => {
-    it('redirects to the article page when the exact-match tier returns a single result', async () => {
+    it('returns a one-item list (no redirect) when the exact-match tier returns a single result', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('WL6340')]),
       );
@@ -86,7 +92,10 @@ describe('SearchController (e2e)', () => {
         .get('/search?q=WL6340')
         .expect(200);
 
-      expect(res.body).toEqual({ redirect: '/catalog/articles/WL6340' });
+      expect(res.body).not.toHaveProperty('redirect');
+      expect(res.body.results).toHaveLength(1);
+      expect(res.body.results[0].articleNumber).toBe('WL6340');
+      expect(res.body.total).toBe(1);
       // Only the exact tier ran — no further TecDoc calls needed
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
@@ -95,6 +104,7 @@ describe('SearchController (e2e)', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
     });
 
@@ -139,6 +149,7 @@ describe('SearchController (e2e)', () => {
         'exact',
         2,
         10,
+        NO_FILTERS,
       );
     });
 
@@ -167,6 +178,7 @@ describe('SearchController (e2e)', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
       expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
         2,
@@ -175,7 +187,102 @@ describe('SearchController (e2e)', () => {
         'prefix_or_suffix',
         1,
         20,
+        NO_FILTERS,
       );
+    });
+
+    it('returns brand and category facets with brand logos joined on', async () => {
+      const facets: SearchFacetDto[] = [
+        {
+          id: 'brands',
+          label: 'Производител',
+          values: [{ id: '4', label: 'WIX', count: 2, imageUrl: null }],
+        },
+        {
+          id: 'categories',
+          label: 'Категория',
+          values: [{ id: '7010', label: 'Oil Filter', count: 2 }],
+        },
+      ];
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340'), makeArticle('WL6341')], { facets }),
+      );
+      mockTecDocClient.getBrands.mockResolvedValue([
+        { brandName: 'WIX', logoUrl: 'https://logos/wix.png' },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=WL634')
+        .expect(200);
+
+      expect(res.body.facets).toEqual([
+        {
+          id: 'brands',
+          label: 'Производител',
+          values: [
+            {
+              id: '4',
+              label: 'WIX',
+              count: 2,
+              imageUrl: 'https://logos/wix.png',
+            },
+          ],
+        },
+        {
+          id: 'categories',
+          label: 'Категория',
+          values: [{ id: '7010', label: 'Oil Filter', count: 2 }],
+        },
+      ]);
+    });
+
+    it('forwards repeated brandIds and categoryIds query params as filters', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?q=WL634&brandIds=4&brandIds=30&categoryIds=7010')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'WL634',
+        undefined,
+        'exact',
+        1,
+        20,
+        { brandIds: ['4', '30'], categoryIds: ['7010'] },
+      );
+    });
+
+    it('returns a single filtered result as a list rather than a redirect', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('OF-WL7090')], {
+          facets: [
+            {
+              id: 'brands',
+              label: 'Производител',
+              values: [
+                {
+                  id: 'WIX Filters',
+                  label: 'WIX Filters',
+                  count: 1,
+                  imageUrl: null,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=OF&brandIds=WIX%20Filters')
+        .expect(200);
+
+      expect(res.body).not.toHaveProperty('redirect');
+      expect(res.body.results).toHaveLength(1);
+      expect(res.body.total).toBe(1);
+      expect(res.body.facets).toBeDefined();
     });
 
     it('includes autocomplete suggestions when both tiers return no results', async () => {

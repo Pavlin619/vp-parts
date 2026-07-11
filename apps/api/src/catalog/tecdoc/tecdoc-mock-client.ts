@@ -5,10 +5,14 @@ import {
   AssemblyGroupDto,
   BrandDto,
   PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
+  SearchFacetDto,
+  FacetValueDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
+import { SearchFilters } from './tecdoc-client';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
 
@@ -468,17 +472,27 @@ export class TecDocMockClient {
     _matchType?: string,
     page = 1,
     pageSize = 50,
-  ): Promise<PaginatedCatalogArticlesDto> {
+    filters?: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
     const matches = this.findMatchingArticles(query)
       // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
       // returns every other match so fit indicators show both states.
       .filter((_, index) => vehicleId == null || index % 2 === 0)
+      .filter((base) => this.matchesFilters(base, filters))
       .map((base) => this.toSummary(base));
+
+    const facets = this.buildFacets(matches);
 
     const start = (page - 1) * pageSize;
     const items = matches.slice(start, start + pageSize);
 
-    return Promise.resolve({ total: matches.length, page, pageSize, items });
+    return Promise.resolve({
+      total: matches.length,
+      page,
+      pageSize,
+      items,
+      facets,
+    });
   }
 
   getAutocompleteSuggestions(query: string): Promise<AutocompleteItemDto[]> {
@@ -563,5 +577,77 @@ export class TecDocMockClient {
         .toUpperCase()
         .includes(normalisedQuery),
     );
+  }
+
+  /**
+   * Applies the active facet selections to a mock row. The mock has no numeric
+   * dataSupplier/genericArticle ids, so brand facets key on `brandName` and
+   * category facets on `description` — the same values {@link buildFacets}
+   * emits as facet-value ids. Both filters are AND-combined; a missing or empty
+   * filter matches everything.
+   */
+  private matchesFilters(
+    article: MockArticleBase,
+    filters?: SearchFilters,
+  ): boolean {
+    const brandOk =
+      !filters?.brandIds?.length ||
+      filters.brandIds.includes(article.brandName);
+    const categoryOk =
+      !filters?.categoryIds?.length ||
+      filters.categoryIds.includes(article.description);
+
+    return brandOk && categoryOk;
+  }
+
+  /**
+   * Builds brand and category facet counts over the matched set, mirroring the
+   * real client's `dataSupplierFacets` / `genericArticleFacets`. Ids equal the
+   * labels (mock has no numeric ids) so a selection round-trips through
+   * {@link matchesFilters}; brand logos stay null for the catalog layer to join.
+   */
+  private buildFacets(items: ArticleSummaryDto[]): SearchFacetDto[] {
+    const facets: SearchFacetDto[] = [];
+
+    const brandValues = this.countBy(
+      items,
+      (item) => item.brandName,
+      (label) => ({ id: label, label, count: 0, imageUrl: null }),
+    );
+    if (brandValues.length > 0) {
+      facets.push({ id: 'brands', label: 'Производител', values: brandValues });
+    }
+
+    const categoryValues = this.countBy(
+      items,
+      (item) => item.description,
+      (label) => ({ id: label, label, count: 0 }),
+    );
+    if (categoryValues.length > 0) {
+      facets.push({
+        id: 'categories',
+        label: 'Категория',
+        values: categoryValues,
+      });
+    }
+
+    return facets;
+  }
+
+  private countBy(
+    items: ArticleSummaryDto[],
+    keyOf: (item: ArticleSummaryDto) => string,
+    seed: (label: string) => FacetValueDto,
+  ): FacetValueDto[] {
+    const byLabel = new Map<string, FacetValueDto>();
+
+    for (const item of items) {
+      const label = keyOf(item);
+      const value = byLabel.get(label) ?? seed(label);
+      value.count += 1;
+      byLabel.set(label, value);
+    }
+
+    return [...byLabel.values()];
   }
 }
