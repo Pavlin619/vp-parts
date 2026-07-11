@@ -257,7 +257,7 @@ describe('TecDocCacheService', () => {
       expect(result).toEqual(data);
       expect(searchArticlesMock).not.toHaveBeenCalled();
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none',
       );
     });
 
@@ -275,9 +275,10 @@ describe('TecDocCacheService', () => {
         'prefix_or_suffix',
         1,
         50,
+        undefined,
       );
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none',
         JSON.stringify(data),
         'EX',
         60 * 60,
@@ -292,7 +293,7 @@ describe('TecDocCacheService', () => {
       await service.searchArticles('WL6340');
 
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none',
         JSON.stringify(emptyData),
         'EX',
         10 * 60,
@@ -307,7 +308,7 @@ describe('TecDocCacheService', () => {
       await service.searchArticles('WL6340', 'V10042', 'exact', 2, 20);
 
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:V10042:exact:2:20',
+        'tecdoc:search:WL6340:V10042:exact:2:20:none:none',
       );
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',
@@ -315,6 +316,35 @@ describe('TecDocCacheService', () => {
         'exact',
         2,
         20,
+        undefined,
+      );
+    });
+
+    it('includes the active brand/category filters in the cache key and client call', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      searchArticlesMock.mockResolvedValueOnce(data);
+      redisSet.mockResolvedValueOnce('OK');
+
+      const filters = { brandIds: ['4', '30'], categoryIds: ['7010'] };
+      await service.searchArticles(
+        'WL6340',
+        undefined,
+        'exact',
+        1,
+        50,
+        filters,
+      );
+
+      expect(redisGet).toHaveBeenCalledWith(
+        'tecdoc:search:WL6340:none:exact:1:50:4,30:7010',
+      );
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'WL6340',
+        undefined,
+        'exact',
+        1,
+        50,
+        filters,
       );
     });
   });

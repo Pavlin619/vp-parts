@@ -3,7 +3,8 @@ import {
   ArticleSummaryDto,
   AutocompleteItemDto,
   BrandDto,
-  PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
+  SearchFacetDto,
 } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
 import { CatalogService } from '../catalog/catalog.service';
@@ -17,6 +18,11 @@ const mockCatalogService = {
   getAutocompleteSuggestions: getAutocompleteSuggestionsMock,
   getBrands: getBrandsMock,
 } as unknown as CatalogService;
+
+// search() defaults its filters param to an empty object, so every
+// catalog.searchArticles call carries this as its final argument unless a test
+// supplies explicit facet selections.
+const NO_FILTERS = {};
 
 function articleItem(
   articleNumber: string,
@@ -37,9 +43,16 @@ function articleItem(
 
 function pageOf(
   items: ArticleSummaryDto[],
-  overrides: Partial<PaginatedCatalogArticlesDto> = {},
-): PaginatedCatalogArticlesDto {
-  return { total: items.length, page: 1, pageSize: 20, items, ...overrides };
+  overrides: Partial<PaginatedSearchArticlesDto> = {},
+): PaginatedSearchArticlesDto {
+  return {
+    total: items.length,
+    page: 1,
+    pageSize: 20,
+    items,
+    facets: [],
+    ...overrides,
+  };
 }
 
 function suggestionItem(articleNumber: string): AutocompleteItemDto {
@@ -78,6 +91,7 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
     });
 
@@ -98,6 +112,7 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         2,
@@ -106,6 +121,7 @@ describe('SearchService', () => {
         'prefix_or_suffix',
         1,
         20,
+        NO_FILTERS,
       );
       expect(result.results).toHaveLength(2);
     });
@@ -135,8 +151,11 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
-      expect(result).toEqual({ redirect: '/catalog/articles/WA5432' });
+      expect(result.results).toEqual([
+        articleItem('WA5432', { brandName: 'WIX Filters' }),
+      ]);
     });
 
     it('strips a leading brand token', async () => {
@@ -153,6 +172,7 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
     });
 
@@ -170,6 +190,7 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
     });
 
@@ -190,10 +211,11 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
     });
 
-    it('returns the ranked list (no redirect) when several parts match a brand-qualified query', async () => {
+    it('returns the ranked list when several parts match a brand-qualified query', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([
@@ -204,14 +226,13 @@ describe('SearchService', () => {
 
       const result = await service.search('WA5432 WIX');
 
-      expect(result.redirect).toBeUndefined();
       expect(result.results?.map((r) => r.brandName)).toEqual([
         'WIX Filters',
         'Bosch',
       ]);
     });
 
-    it('ranks brand matches first without redirecting when several match', async () => {
+    it('ranks brand matches first when several match', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([
@@ -223,12 +244,111 @@ describe('SearchService', () => {
 
       const result = await service.search('WA WIX');
 
-      expect(result.redirect).toBeUndefined();
       expect(result.results?.map((r) => r.articleNumber)).toEqual([
         'W1',
         'W2',
         'B1',
       ]);
+    });
+  });
+
+  describe('search — facets and filters', () => {
+    const facets: SearchFacetDto[] = [
+      {
+        id: 'brands',
+        label: 'Производител',
+        values: [{ id: '4', label: 'WIX', count: 2, imageUrl: null }],
+      },
+      {
+        id: 'categories',
+        label: 'Категория',
+        values: [{ id: '7010', label: 'Oil Filter', count: 2 }],
+      },
+    ];
+
+    it('surfaces the winning tier facets on the response', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        pageOf([articleItem('WL6340'), articleItem('WL6341')], { facets }),
+      );
+
+      const result = await service.search('WL634');
+
+      expect(result.facets).toEqual(facets);
+    });
+
+    it('omits facets from the response when the winning tier has none', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        pageOf([articleItem('WL6340'), articleItem('WL6341')]),
+      );
+
+      const result = await service.search('WL634');
+
+      expect(result).not.toHaveProperty('facets');
+    });
+
+    it('forwards the active brand/category selections to the catalog', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        pageOf([articleItem('WL6340'), articleItem('WL6341')], { facets }),
+      );
+
+      const filters = { brandIds: ['4'], categoryIds: ['7010'] };
+      await service.search('WL634', undefined, 1, 20, filters);
+
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'WL634',
+        undefined,
+        'exact',
+        1,
+        20,
+        filters,
+      );
+    });
+
+    it('returns the single filtered result as a list', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        pageOf([articleItem('WL6340')], { facets }),
+      );
+
+      const result = await service.search('WL6340', undefined, 1, 20, {
+        brandIds: ['4'],
+      });
+
+      expect(result.results).toHaveLength(1);
+      expect(result.facets).toEqual(facets);
+    });
+  });
+
+  describe('search — single result stays on the list', () => {
+    it('returns a one-item list for a single exact match on the typed query', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
+
+      const result = await service.search('WL6340');
+
+      expect(result.results).toEqual([articleItem('WL6340')]);
+      expect(result.total).toBe(1);
+      expect(result).not.toHaveProperty('redirect');
+    });
+
+    it('returns a one-item list when the single hit is recovered by the prefix_or_suffix tier', async () => {
+      searchArticlesMock
+        .mockResolvedValueOnce(pageOf([])) // exact misses
+        .mockResolvedValueOnce(pageOf([articleItem('WL6340')])); // prefix hit
+
+      const result = await service.search('WL634');
+
+      expect(result.results).toHaveLength(1);
+    });
+
+    it('returns a one-item list when the single hit comes from the raw-query fallback', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      searchArticlesMock
+        .mockResolvedValueOnce(pageOf([])) // WA5432 exact
+        .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
+        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw exact
+
+      const result = await service.search('WIX WA5432');
+
+      expect(result.results).toHaveLength(1);
     });
   });
 
@@ -250,21 +370,12 @@ describe('SearchService', () => {
         'exact',
         2,
         10,
+        NO_FILTERS,
       );
       expect(result.total).toBe(87);
       expect(result.page).toBe(2);
       expect(result.pageSize).toBe(10);
       expect(result.results).toHaveLength(2);
-    });
-
-    it('does not redirect on a single total when the page is beyond the first', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340')], { total: 1, page: 3, pageSize: 20 }),
-      );
-
-      const result = await service.search('WL6340', undefined, 3, 20);
-
-      expect(result.redirect).toBeUndefined();
     });
   });
 
@@ -282,15 +393,8 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
-    });
-
-    it('returns a redirect to the article detail page on a single exact match', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
-
-      const result = await service.search('WL6340');
-
-      expect(result).toEqual({ redirect: '/catalog/articles/WL6340' });
     });
 
     it('returns a paginated result list when multiple articles match', async () => {
@@ -303,7 +407,6 @@ describe('SearchService', () => {
 
       const result = await service.search('WL634');
 
-      expect(result.redirect).toBeUndefined();
       expect(result.query).toBe('WL634');
       expect(result).not.toHaveProperty('normalisedQuery');
       expect(result.total).toBe(2);
@@ -350,6 +453,7 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
       expect(result.results?.map((r) => r.articleNumber)).toEqual([
         'WL6340',
@@ -374,6 +478,7 @@ describe('SearchService', () => {
         'exact',
         1,
         20,
+        NO_FILTERS,
       );
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         2,
@@ -382,27 +487,17 @@ describe('SearchService', () => {
         'prefix_or_suffix',
         1,
         20,
+        NO_FILTERS,
       );
     });
 
-    it('redirects on a single match even when a vehicleId is provided', async () => {
+    it('returns a one-item list on a single match even when a vehicleId is provided', async () => {
       searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
 
       const result = await service.search('WL6340', 'V10042');
 
-      expect(result).toEqual({ redirect: '/catalog/articles/WL6340' });
-    });
-
-    it('URL-encodes the article number in the redirect path', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('BD 0986/451')]),
-      );
-
-      const result = await service.search('BD 0986/451');
-
-      expect(result.redirect).toBe(
-        `/catalog/articles/${encodeURIComponent('BD 0986/451')}`,
-      );
+      expect(result.results).toEqual([articleItem('WL6340')]);
+      expect(result).not.toHaveProperty('redirect');
     });
   });
 

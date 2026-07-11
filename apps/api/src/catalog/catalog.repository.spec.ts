@@ -146,11 +146,26 @@ describe('CatalogRepository', () => {
   });
 
   describe('searchArticles', () => {
-    const paginated = (items: ReturnType<typeof summary>[]) => ({
+    const brandFacet = (values: { label: string }[]) => ({
+      id: 'brands' as const,
+      label: 'Производител',
+      values: values.map((v) => ({
+        id: v.label,
+        label: v.label,
+        count: 1,
+        imageUrl: null,
+      })),
+    });
+
+    const paginated = (
+      items: ReturnType<typeof summary>[],
+      facets: ReturnType<typeof brandFacet>[] = [],
+    ) => ({
       total: items.length,
       page: 1,
       pageSize: 20,
       items,
+      facets,
     });
 
     it('joins the brand logo onto every search hit and preserves pagination', async () => {
@@ -177,6 +192,47 @@ describe('CatalogRepository', () => {
         undefined,
         1,
         20,
+        undefined,
+      );
+    });
+
+    it('joins brand logos onto the brand facet values by label', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        paginated(
+          [summary('Bosch', 'BD-001')],
+          [brandFacet([{ label: 'Bosch' }, { label: 'UNKNOWN' }])],
+        ),
+      );
+      getBrandsMock.mockResolvedValueOnce(BRANDS);
+
+      const result = await repository.searchArticles('BD-001');
+
+      const brands = result.facets.find((facet) => facet.id === 'brands');
+      expect(brands!.values).toEqual([
+        {
+          id: 'Bosch',
+          label: 'Bosch',
+          count: 1,
+          imageUrl: 'https://logos/bosch.png',
+        },
+        { id: 'UNKNOWN', label: 'UNKNOWN', count: 1, imageUrl: null },
+      ]);
+    });
+
+    it('forwards the active filters to the cache layer', async () => {
+      searchArticlesMock.mockResolvedValueOnce(paginated([summary('Bosch')]));
+      getBrandsMock.mockResolvedValueOnce(BRANDS);
+
+      const filters = { brandIds: ['4'], categoryIds: ['7010'] };
+      await repository.searchArticles('BD-001', 'V1', 'exact', 1, 20, filters);
+
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'BD-001',
+        'V1',
+        'exact',
+        1,
+        20,
+        filters,
       );
     });
 

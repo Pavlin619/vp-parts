@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TecDocCacheService } from './tecdoc/tecdoc-cache.service';
-import { SearchMatchType } from './tecdoc/tecdoc-client';
+import { SearchMatchType, SearchFilters } from './tecdoc/tecdoc-client';
 import {
   ManufacturerDto,
   ModelSeriesDto,
@@ -8,6 +8,8 @@ import {
   AssemblyGroupDto,
   BrandDto,
   PaginatedCatalogArticlesDto,
+  PaginatedSearchArticlesDto,
+  SearchFacetDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   AutocompleteItemDto,
@@ -81,18 +83,29 @@ export class CatalogRepository {
     matchType?: SearchMatchType,
     page = 1,
     pageSize = 50,
-  ): Promise<PaginatedCatalogArticlesDto> {
+    filters?: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
     const results = await this.tecdocCache.searchArticles(
       query,
       vehicleId,
       matchType,
       page,
       pageSize,
+      filters,
     );
 
-    const items = await this.enrichWithBrandLogos(results.items);
+    if (results.items.length === 0 && results.facets.length === 0) {
+      return results;
+    }
 
-    return { ...results, items };
+    const logoByBrand = await this.brandLogoMap();
+    const items = results.items.map((item) => ({
+      ...item,
+      brandLogoUrl: logoByBrand.get(item.brandName) ?? null,
+    }));
+    const facets = this.attachBrandFacetLogos(results.facets, logoByBrand);
+
+    return { ...results, items, facets };
   }
 
   async findBrands(): Promise<BrandDto[]> {
@@ -119,14 +132,43 @@ export class CatalogRepository {
       return items;
     }
 
-    const brands = await this.tecdocCache.getBrands();
-    const logoByBrand = new Map(
-      brands.map((brand) => [brand.brandName, brand.logoUrl]),
-    );
+    const logoByBrand = await this.brandLogoMap();
 
     return items.map((item) => ({
       ...item,
       brandLogoUrl: logoByBrand.get(item.brandName) ?? null,
     }));
+  }
+
+  /**
+   * The brand-name → logo lookup used to enrich both article rows and the brand
+   * search facet. Backed by the (cached) getBrands read.
+   */
+  private async brandLogoMap(): Promise<Map<string, string | null>> {
+    const brands = await this.tecdocCache.getBrands();
+
+    return new Map(brands.map((brand) => [brand.brandName, brand.logoUrl]));
+  }
+
+  /**
+   * Fills each brand facet value's `imageUrl` from the same logo map used for
+   * the rows, so the brand filter list renders logos. Category facets are
+   * returned untouched (they carry no logo).
+   */
+  private attachBrandFacetLogos(
+    facets: SearchFacetDto[],
+    logoByBrand: Map<string, string | null>,
+  ): SearchFacetDto[] {
+    return facets.map((facet) =>
+      facet.id === 'brands'
+        ? {
+            ...facet,
+            values: facet.values.map((value) => ({
+              ...value,
+              imageUrl: logoByBrand.get(value.label) ?? null,
+            })),
+          }
+        : facet,
+    );
   }
 }

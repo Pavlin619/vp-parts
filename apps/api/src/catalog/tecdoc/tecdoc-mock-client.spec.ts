@@ -74,6 +74,58 @@ describe('TecDocMockClient', () => {
       expect(scoped.items.length).toBeLessThan(all.items.length);
       expect(scoped.items.length).toBeGreaterThan(0);
     });
+
+    it('builds brand and category facets over the matched set', async () => {
+      const { facets } = await client.searchArticles('OF');
+
+      const brands = facets.find((facet) => facet.id === 'brands');
+      const categories = facets.find((facet) => facet.id === 'categories');
+
+      const totalBrandCount = brands!.values.reduce(
+        (sum, v) => sum + v.count,
+        0,
+      );
+      const oilFilterCategory = categories!.values.find(
+        (value) => value.label === 'Oil Filter',
+      );
+
+      expect(brands!.values.map((v) => v.label)).toEqual(
+        expect.arrayContaining(['MANN-FILTER', 'WIX Filters']),
+      );
+      expect(oilFilterCategory).toBeDefined();
+      expect(totalBrandCount).toBeGreaterThan(0);
+    });
+
+    it('narrows the results and totals to the selected brand facet', async () => {
+      const all = await client.searchArticles('OF');
+      const filtered = await client.searchArticles(
+        'OF',
+        undefined,
+        'prefix_or_suffix',
+        1,
+        50,
+        { brandIds: ['WIX Filters'] },
+      );
+
+      expect(filtered.total).toBeLessThan(all.total);
+      expect(
+        filtered.items.every((item) => item.brandName === 'WIX Filters'),
+      ).toBe(true);
+      expect(filtered.facets.find((f) => f.id === 'brands')!.values).toEqual([
+        {
+          id: 'WIX Filters',
+          label: 'WIX Filters',
+          count: filtered.total,
+          imageUrl: null,
+        },
+      ]);
+    });
+
+    it('returns no facets when nothing matches', async () => {
+      const result = await client.searchArticles('does-not-exist');
+
+      expect(result.facets).toEqual([]);
+    });
   });
 
   describe('getAutocompleteSuggestions', () => {

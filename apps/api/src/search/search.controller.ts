@@ -11,7 +11,10 @@ export class SearchController {
 
   @Get()
   searchByPartNumber(@Query() dto: SearchQueryDto): Promise<SearchResponseDto> {
-    return this.search.search(dto.q, dto.vehicleId, dto.page, dto.pageSize);
+    return this.search.search(dto.q, dto.vehicleId, dto.page, dto.pageSize, {
+      brandIds: dto.brandIds,
+      categoryIds: dto.categoryIds,
+    });
   }
 
   @Get('autocomplete')

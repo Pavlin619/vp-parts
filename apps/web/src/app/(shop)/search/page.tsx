@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { searchByPartNumber } from "@/lib/api/catalog";
 import { SearchResultsAvailability } from "@/components/catalog/search/search-results-availability";
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
@@ -20,10 +19,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   }
 
   const response = await searchByPartNumber(query, vehicleId);
-
-  if (response.redirect) {
-    redirect(response.redirect);
-  }
 
   const results = response.results ?? [];
 
