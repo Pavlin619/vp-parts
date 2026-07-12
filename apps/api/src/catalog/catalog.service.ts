@@ -14,7 +14,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { CatalogRepository } from './catalog.repository';
 import {
-  SearchMatchType,
+  SearchExecution,
   SearchFilters,
   SUBSTITUTES_LIMIT,
 } from './tecdoc/tecdoc-client';
@@ -98,7 +98,7 @@ export class CatalogService {
   async searchArticles(
     query: string,
     vehicleId?: string,
-    matchType?: SearchMatchType,
+    execution?: SearchExecution,
     page = 1,
     pageSize = 50,
     filters?: SearchFilters,
@@ -106,7 +106,7 @@ export class CatalogService {
     return this.repository.searchArticles(
       query,
       vehicleId,
-      matchType,
+      execution,
       page,
       pageSize,
       filters,

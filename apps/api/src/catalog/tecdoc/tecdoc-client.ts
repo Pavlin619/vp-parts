@@ -27,6 +27,37 @@ export type SearchMatchType =
   | 'prefix_or_suffix';
 
 /**
+ * TecDoc `getArticles` search strategies we route to:
+ * - `AnyNumber` (10) — match against article / OE / trade numbers, EANs, etc.
+ *   Used for part-number queries; pair with a {@link SearchMatchType}.
+ * - `FreeText` (99) — full-text search over article descriptions. Used for
+ *   descriptive queries ("oil filter bosch"); `matchType` does not apply.
+ */
+export const TecDocSearchType = {
+  AnyNumber: 10,
+  FreeText: 99,
+} as const;
+
+export type TecDocSearchType =
+  (typeof TecDocSearchType)[keyof typeof TecDocSearchType];
+
+/**
+ * A resolved search strategy for one TecDoc `getArticles` call: which
+ * {@link TecDocSearchType} to use and, for number searches, how to match. The
+ * search service maps a query's intent (part-number vs free-text, exact toggle)
+ * to one or more of these; free-text (`type: 99`) leaves `matchType` unset.
+ */
+export interface SearchExecution {
+  type: TecDocSearchType;
+  matchType?: SearchMatchType;
+}
+
+const DEFAULT_SEARCH_EXECUTION: SearchExecution = {
+  type: TecDocSearchType.AnyNumber,
+  matchType: 'prefix_or_suffix',
+};
+
+/**
  * A single technical-attribute (criteria) narrowing: the TecDoc `criteriaId`
  * plus the machine `rawValue` echoed back from an {@link AttributeFacetValueDto}.
  */
@@ -429,7 +460,7 @@ export class TecDocClient {
   async searchArticles(
     query: string,
     vehicleId?: string,
-    matchType: SearchMatchType = 'prefix_or_suffix',
+    execution: SearchExecution = DEFAULT_SEARCH_EXECUTION,
     page = 1,
     pageSize = 50,
     filters?: SearchFilters,
@@ -456,8 +487,11 @@ export class TecDocClient {
       articleCountry: 'BG',
       lang: 'bg',
       searchQuery: query,
-      searchType: 10,
-      searchMatchType: matchType,
+      searchType: execution.type,
+      // Free-text (type 99) ignores match strategy; only number searches use it.
+      ...(execution.matchType != null && {
+        searchMatchType: execution.matchType,
+      }),
       perPage: pageSize,
       page,
       includeAll: true,

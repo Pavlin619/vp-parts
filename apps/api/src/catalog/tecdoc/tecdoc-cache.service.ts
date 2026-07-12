@@ -12,7 +12,7 @@ import {
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import { Redis } from 'ioredis';
-import { TecDocClient, SearchMatchType, SearchFilters } from './tecdoc-client';
+import { TecDocClient, SearchExecution, SearchFilters } from './tecdoc-client';
 
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
@@ -108,12 +108,16 @@ export class TecDocCacheService {
   async searchArticles(
     query: string,
     vehicleId?: string,
-    matchType: SearchMatchType = 'prefix_or_suffix',
+    execution: SearchExecution = {
+      type: 10,
+      matchType: 'prefix_or_suffix',
+    },
     page = 1,
     pageSize = 50,
     filters?: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
     const vehicleKey = vehicleId ?? 'none';
+    const executionKey = `${execution.type}-${execution.matchType ?? 'any'}`;
     const brandKey = filters?.brandIds?.length
       ? filters.brandIds.join(',')
       : 'none';
@@ -121,12 +125,12 @@ export class TecDocCacheService {
     const criteriaKey = filters?.criteria?.length
       ? filters.criteria.map((c) => `${c.criteriaId}=${c.rawValue}`).join(',')
       : 'none';
-    const key = `tecdoc:search:${query}:${vehicleKey}:${matchType}:${page}:${pageSize}:${brandKey}:${categoryKey}:${criteriaKey}`;
+    const key = `tecdoc:search:${query}:${vehicleKey}:${executionKey}:${page}:${pageSize}:${brandKey}:${categoryKey}:${criteriaKey}`;
     return this.cachedPaginated(key, SEARCH_TTL, SEARCH_MISS_TTL, () =>
       this.tecdocClient.searchArticles(
         query,
         vehicleId,
-        matchType,
+        execution,
         page,
         pageSize,
         filters,

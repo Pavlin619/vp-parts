@@ -51,12 +51,38 @@ describe('TecDocMockClient', () => {
       expect(result.items).toEqual([]);
     });
 
+    it('matches on description + brand words for a free-text (type 99) search', async () => {
+      const { items } = await client.searchArticles(
+        'brake pad bosch',
+        undefined,
+        {
+          type: 99,
+        },
+      );
+
+      const numbers = items.map((article) => article.articleNumber);
+      // Bosch brake pad matches all three tokens; the Ferodo brake pad lacks the
+      // brand token, so free-text search excludes it.
+      expect(numbers).toContain('BP-0986494061');
+      expect(numbers).not.toContain('BP-DF4145');
+    });
+
+    it('does not fall back to number matching for a free-text search', async () => {
+      // "OF" is an article-number prefix, not a description word, so type 99
+      // (description search) finds nothing where type 10 would match oil filters.
+      const freeText = await client.searchArticles('OF', undefined, {
+        type: 99,
+      });
+
+      expect(freeText.total).toBe(0);
+    });
+
     it('paginates the matches', async () => {
       const all = await client.searchArticles('OF');
       const firstPage = await client.searchArticles(
         'OF',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         1,
       );
@@ -109,7 +135,7 @@ describe('TecDocMockClient', () => {
       const { attributes } = await client.searchArticles(
         'OF',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         { categoryNodeId: 'Oil Filter' },
@@ -134,7 +160,7 @@ describe('TecDocMockClient', () => {
       const { attributes } = await client.searchArticles(
         'BP',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         { categoryNodeId: 'Brake Pad Set, disc brake' },
@@ -160,7 +186,7 @@ describe('TecDocMockClient', () => {
       const filtered = await client.searchArticles(
         'OF',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         { categoryNodeId: 'Oil Filter' },
@@ -179,7 +205,7 @@ describe('TecDocMockClient', () => {
       const filtered = await client.searchArticles(
         'OF',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         { criteria: [{ criteriaId: 'Height', rawValue: '89 mm' }] },
@@ -200,7 +226,7 @@ describe('TecDocMockClient', () => {
       const filtered = await client.searchArticles(
         'OF',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         { brandIds: ['WIX Filters'] },

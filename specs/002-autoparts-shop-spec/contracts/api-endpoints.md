@@ -219,15 +219,35 @@ Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read
 
 ### Part Number Search
 
-**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}&brandIds={id}&categoryNodeId={id}&attr={criteriaId}:{value}`** `[PUBLIC]`
+**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}&brandIds={id}&categoryNodeId={id}&attr={criteriaId}:{value}&exact={bool}`** `[PUBLIC]`
 
-Searches the TecDoc catalogue. Before the lookup, a **leading or trailing brand
-token** is stripped from the query (e.g. `"WA5432 WIX"` → `"WA5432"`), using a
-brand dictionary sourced from TecDoc `getBrands()`. Only the brand token is
-removed — punctuation inside the number (dots, dashes, slashes) is preserved,
-because no assumption is made about TecDoc-side normalisation. The brand-stripped
-query is tried first through two tiers (`exact`, then `prefix_or_suffix`); the
-original query is retried only if it differs and the stripped one matched nothing.
+Searches the TecDoc catalogue. There is **no up-front number-vs-text
+classification** (that heuristic is unreliable, and the number and free-text
+result sets are near-disjoint, so it is unnecessary). Instead the query always
+runs the **number lane first, then falls back to free-text**:
+
+1. **Number lane** — `getArticles` `searchType: 10` (any number: article / OE /
+   trade / comparable / EAN), `searchMatchType: prefix_or_suffix` so partial
+   numbers still resolve. A **leading or trailing brand token** is stripped first
+   (e.g. `"WA5432 WIX"` → `"WA5432"`) using a brand dictionary from TecDoc
+   `getBrands()` — only the brand token, never punctuation inside the number. The
+   brand-stripped query runs first; the raw query is retried only if it differs
+   (the "brand" token may have been part of the number).
+2. **Free-text fallback** — if the number lane returns nothing, one
+   `searchType: 99` full-text call over the **raw** query (brand kept — a brand
+   in a descriptive query like `"oil filter bosch"` is valuable free-text signal).
+
+The first call with a non-empty total wins. Worst case is 3 calls (2 number + 1
+free-text); a real part number resolves on the first. All calls are Redis-cached.
+
+**Exact toggle** — `exact=true` (FE "Търси по точна фраза") is a separate bucket:
+it runs `searchType: 10` / `searchMatchType: exact` over the same
+brand-stripped→raw candidates, with **no** free-text fallback (an exact-phrase
+request is a precise number lookup).
+
+`[VERIFY-TC]` `searchType: 99` (free-text) is implemented from the Pegasus 3.0
+docs but not yet verified against the Test Client — confirm its response shape
+matches the number-search shape (see the plan's verification checklist).
 
 **Native order, no ranking:** results are returned in TecDoc's native `getArticles`
 order — there is no client-side re-ranking. `[VERIFY-TC]` Re-evaluate against the
@@ -241,7 +261,9 @@ article detail page happens from the **autocomplete** dropdown, not from this
 endpoint.
 
 Query params:
-- `vehicleId` (optional) scopes every tier to that vehicle so TecDoc returns
+- `exact` (optional boolean, `true`/`1`) turns on exact-phrase matching
+  (`EXACT` mode). Absent/other values mean off.
+- `vehicleId` (optional) scopes every call to that vehicle so TecDoc returns
   only fitting parts.
 - `page` (default 1) and `pageSize` (default 20, max 50) paginate broad queries
   like `WA`.
@@ -304,7 +326,7 @@ Returns cacheable TecDoc **metadata + fit + facets — no live inventory**,
 mirroring the listing grid / article detail split. `available` and price are not
 on the search response; the client fetches live price/availability for the
 result article numbers via `GET /catalog/articles-availability` and merges it
-in. This keeps a search from triggering a stock-DB read per TecDoc tier attempt
+in. This keeps a search from triggering a stock-DB read per TecDoc call attempt
 — availability is read once, client-side, for the final result set.
 
 Response `200` — matches, scoped to a leaf category (e.g.

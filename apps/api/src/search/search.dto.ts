@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -92,6 +93,20 @@ export class SearchQueryDto {
   @IsString({ each: true })
   @MaxLength(200, { each: true })
   attr?: string[];
+
+  /**
+   * Exact-phrase toggle (FE "Търси по точна фраза"). When on, the query is run
+   * as an exact TecDoc number match instead of the default prefix/suffix or
+   * free-text search. Accepts `?exact=true` / `?exact=1`; absent means off.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === undefined
+      ? undefined
+      : value === true || value === 'true' || value === '1',
+  )
+  @IsBoolean()
+  exact?: boolean;
 }
 
 /**

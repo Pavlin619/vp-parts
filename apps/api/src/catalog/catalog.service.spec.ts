@@ -270,7 +270,7 @@ describe('CatalogService', () => {
       expect(getAvailabilityMock).not.toHaveBeenCalled();
     });
 
-    it('passes the vehicleId, matchType, pagination and filters through to the repository', async () => {
+    it('passes the vehicleId, execution, pagination and filters through to the repository', async () => {
       searchArticlesRepoMock.mockResolvedValueOnce({
         total: 0,
         page: 2,
@@ -284,12 +284,20 @@ describe('CatalogService', () => {
         categoryNodeId: '7010',
         criteria: [{ criteriaId: '20', rawValue: '106.4' }],
       };
-      await service.searchArticles('WL6340', 'V10042', 'exact', 2, 10, filters);
+      const execution = { type: 10, matchType: 'exact' } as const;
+      await service.searchArticles(
+        'WL6340',
+        'V10042',
+        execution,
+        2,
+        10,
+        filters,
+      );
 
       expect(searchArticlesRepoMock).toHaveBeenCalledWith(
         'WL6340',
         'V10042',
-        'exact',
+        execution,
         2,
         10,
         filters,

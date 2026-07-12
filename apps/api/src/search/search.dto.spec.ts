@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { parseCriteriaFilters } from './search.dto';
+import { plainToInstance } from 'class-transformer';
+import { parseCriteriaFilters, SearchQueryDto } from './search.dto';
 
 describe('parseCriteriaFilters', () => {
   it('returns an empty array when the param is absent or empty', () => {
@@ -30,5 +31,26 @@ describe('parseCriteriaFilters', () => {
     expect(
       parseCriteriaFilters(['nocolon', ':orphan', '20:', '30:ok']),
     ).toEqual([{ criteriaId: '30', rawValue: 'ok' }]);
+  });
+});
+
+describe('SearchQueryDto exact toggle', () => {
+  const parseExact = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query).exact;
+
+  it('is undefined when the param is absent', () => {
+    expect(parseExact({ q: 'WL6340' })).toBeUndefined();
+  });
+
+  it('coerces the truthy string forms to true', () => {
+    expect(parseExact({ q: 'WL6340', exact: 'true' })).toBe(true);
+    expect(parseExact({ q: 'WL6340', exact: '1' })).toBe(true);
+    expect(parseExact({ q: 'WL6340', exact: true })).toBe(true);
+  });
+
+  it('coerces any other value to false', () => {
+    expect(parseExact({ q: 'WL6340', exact: 'false' })).toBe(false);
+    expect(parseExact({ q: 'WL6340', exact: '0' })).toBe(false);
+    expect(parseExact({ q: 'WL6340', exact: 'yes' })).toBe(false);
   });
 });
