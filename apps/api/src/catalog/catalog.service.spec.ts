@@ -279,7 +279,11 @@ describe('CatalogService', () => {
         facets: [],
       });
 
-      const filters = { brandIds: ['4'], categoryIds: ['7010'] };
+      const filters = {
+        brandIds: ['4'],
+        categoryNodeId: '7010',
+        criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+      };
       await service.searchArticles('WL6340', 'V10042', 'exact', 2, 10, filters);
 
       expect(searchArticlesRepoMock).toHaveBeenCalledWith(

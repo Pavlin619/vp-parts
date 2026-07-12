@@ -117,10 +117,11 @@ export class TecDocCacheService {
     const brandKey = filters?.brandIds?.length
       ? filters.brandIds.join(',')
       : 'none';
-    const categoryKey = filters?.categoryIds?.length
-      ? filters.categoryIds.join(',')
+    const categoryKey = filters?.categoryNodeId ?? 'none';
+    const criteriaKey = filters?.criteria?.length
+      ? filters.criteria.map((c) => `${c.criteriaId}=${c.rawValue}`).join(',')
       : 'none';
-    const key = `tecdoc:search:${query}:${vehicleKey}:${matchType}:${page}:${pageSize}:${brandKey}:${categoryKey}`;
+    const key = `tecdoc:search:${query}:${vehicleKey}:${matchType}:${page}:${pageSize}:${brandKey}:${categoryKey}:${criteriaKey}`;
     return this.cachedPaginated(key, SEARCH_TTL, SEARCH_MISS_TTL, () =>
       this.tecdocClient.searchArticles(
         query,

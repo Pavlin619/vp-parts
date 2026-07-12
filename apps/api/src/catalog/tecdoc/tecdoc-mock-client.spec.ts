@@ -75,25 +75,124 @@ describe('TecDocMockClient', () => {
       expect(scoped.items.length).toBeGreaterThan(0);
     });
 
-    it('builds brand and category facets over the matched set', async () => {
+    it('builds the brand facet over the matched set', async () => {
       const { facets } = await client.searchArticles('OF');
 
       const brands = facets.find((facet) => facet.id === 'brands');
-      const categories = facets.find((facet) => facet.id === 'categories');
-
       const totalBrandCount = brands!.values.reduce(
         (sum, v) => sum + v.count,
         0,
       );
-      const oilFilterCategory = categories!.values.find(
-        (value) => value.label === 'Oil Filter',
-      );
 
+      expect(facets.every((facet) => facet.id === 'brands')).toBe(true);
       expect(brands!.values.map((v) => v.label)).toEqual(
         expect.arrayContaining(['MANN-FILTER', 'WIX Filters']),
       );
-      expect(oilFilterCategory).toBeDefined();
       expect(totalBrandCount).toBeGreaterThan(0);
+    });
+
+    it('exposes the matched categories as top-level options on a broad search', async () => {
+      const { categoryNavigation } = await client.searchArticles('OF');
+
+      const oilFilter = categoryNavigation.options.find(
+        (option) => option.label === 'Oil Filter',
+      );
+
+      expect(categoryNavigation.current).toBeNull();
+      expect(oilFilter).toBeDefined();
+      expect(oilFilter!.id).toBe('Oil Filter');
+      expect(oilFilter!.count).toBeGreaterThan(0);
+      expect(oilFilter!.hasChildren).toBe(false);
+    });
+
+    it('builds attribute facets only once a leaf category is selected', async () => {
+      const { attributes } = await client.searchArticles(
+        'OF',
+        undefined,
+        'prefix_or_suffix',
+        1,
+        50,
+        { categoryNodeId: 'Oil Filter' },
+      );
+
+      const height = attributes.find((attr) => attr.id === 'Height');
+
+      expect(height).toBeDefined();
+      expect(height!.values.map((v) => v.value)).toEqual(
+        expect.arrayContaining(['89 mm', '90 mm']),
+      );
+      expect(height!.values.every((v) => v.count > 0)).toBe(true);
+    });
+
+    it('suppresses attribute facets on a broad search with no category selected', async () => {
+      const { attributes } = await client.searchArticles('OF');
+
+      expect(attributes).toEqual([]);
+    });
+
+    it('tags the fitting-position attribute with its semantic role at a leaf', async () => {
+      const { attributes } = await client.searchArticles(
+        'BP',
+        undefined,
+        'prefix_or_suffix',
+        1,
+        50,
+        { categoryNodeId: 'Brake Pad Set, disc brake' },
+      );
+
+      const fittingPosition = attributes.find(
+        (attr) => attr.role === 'fitting-position',
+      );
+
+      expect(fittingPosition).toBeDefined();
+      expect(fittingPosition!.values.map((v) => v.value)).toEqual(
+        expect.arrayContaining(['Отпред', 'Отзад']),
+      );
+      expect(
+        attributes
+          .filter((attr) => attr.id !== 'Позиция на монтаж')
+          .every((attr) => attr.role == null),
+      ).toBe(true);
+    });
+
+    it('narrows the results to a selected category node and reports it as current', async () => {
+      const all = await client.searchArticles('OF');
+      const filtered = await client.searchArticles(
+        'OF',
+        undefined,
+        'prefix_or_suffix',
+        1,
+        50,
+        { categoryNodeId: 'Oil Filter' },
+      );
+
+      expect(filtered.total).toBeLessThanOrEqual(all.total);
+      expect(filtered.total).toBeGreaterThan(0);
+      expect(
+        filtered.items.every((item) => item.description === 'Oil Filter'),
+      ).toBe(true);
+      expect(filtered.categoryNavigation.current?.id).toBe('Oil Filter');
+      expect(filtered.categoryNavigation.options).toEqual([]);
+    });
+
+    it('narrows the results to a selected attribute value', async () => {
+      const filtered = await client.searchArticles(
+        'OF',
+        undefined,
+        'prefix_or_suffix',
+        1,
+        50,
+        { criteria: [{ criteriaId: 'Height', rawValue: '89 mm' }] },
+      );
+
+      expect(filtered.total).toBeGreaterThan(0);
+      expect(
+        filtered.items.every((item) =>
+          item.technicalSpecs.some(
+            (spec) => spec.key === 'Height' && spec.value === '89 mm',
+          ),
+        ),
+      ).toBe(true);
     });
 
     it('narrows the results and totals to the selected brand facet', async () => {
@@ -121,10 +220,15 @@ describe('TecDocMockClient', () => {
       ]);
     });
 
-    it('returns no facets when nothing matches', async () => {
+    it('returns no facets, attributes or category options when nothing matches', async () => {
       const result = await client.searchArticles('does-not-exist');
 
       expect(result.facets).toEqual([]);
+      expect(result.attributes).toEqual([]);
+      expect(result.categoryNavigation).toEqual({
+        current: null,
+        options: [],
+      });
     });
   });
 

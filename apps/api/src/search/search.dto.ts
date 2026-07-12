@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { CriteriaFilter } from '../catalog/tecdoc/tecdoc-client';
 
 export const SEARCH_DEFAULT_PAGE = 1;
 export const SEARCH_DEFAULT_PAGE_SIZE = 20;
@@ -69,13 +70,54 @@ export class SearchQueryDto {
   @MaxLength(100, { each: true })
   brandIds?: string[];
 
+  /**
+   * The single selected category-tree node (TecDoc assemblyGroupNodeId).
+   * Category navigation is a single-path drill-down, so this is a scalar — not
+   * an array like {@link brandIds}.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  categoryNodeId?: string;
+
+  /**
+   * Technical-attribute selections, each a repeatable `criteriaId:rawValue`
+   * pair (e.g. `?attr=20:106.4&attr=44:Отпред`). Parsed into
+   * {@link CriteriaFilter}s by {@link parseCriteriaFilters} in the controller.
+   */
   @IsOptional()
   @Transform(toStringArray)
   @IsArray()
   @ArrayMaxSize(SEARCH_MAX_FILTER_VALUES)
   @IsString({ each: true })
-  @MaxLength(100, { each: true })
-  categoryIds?: string[];
+  @MaxLength(200, { each: true })
+  attr?: string[];
+}
+
+/**
+ * Parses the repeatable `attr` query param into criteria filters. Each entry is
+ * a `criteriaId:rawValue` pair split on the FIRST colon, so a rawValue may
+ * itself contain colons. Entries missing either side are dropped.
+ */
+export function parseCriteriaFilters(attr?: string[]): CriteriaFilter[] {
+  if (!attr?.length) {
+    return [];
+  }
+
+  return attr.reduce<CriteriaFilter[]>((filters, entry) => {
+    const separatorIndex = entry.indexOf(':');
+    if (separatorIndex <= 0) {
+      return filters;
+    }
+
+    const criteriaId = entry.slice(0, separatorIndex);
+    const rawValue = entry.slice(separatorIndex + 1);
+    if (rawValue.length > 0) {
+      filters.push({ criteriaId, rawValue });
+    }
+
+    return filters;
+  }, []);
 }
 
 export class AutocompleteQueryDto {

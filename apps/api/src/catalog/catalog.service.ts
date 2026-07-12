@@ -90,8 +90,10 @@ export class CatalogService {
    * price/availability separately via {@link getArticlesAvailability} and
    * merges it in, mirroring the listing grid / article detail split. Keeping
    * inventory out of the search path means a search never triggers a stock-DB
-   * read per TecDoc tier attempt. Brand/category facets (with active `filters`
-   * applied) ride along on the result for the UI to narrow a broad query.
+   * read per TecDoc tier attempt. The brand facet, technical-attribute facets,
+   * and single-level category navigation (with active `filters` applied) ride
+   * along on the result for the UI to narrow a broad query. Results keep TecDoc's
+   * native order — no client-side ranking.
    */
   async searchArticles(
     query: string,

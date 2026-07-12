@@ -98,12 +98,10 @@ export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleSummaryDto>;
 export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
 
 /**
- * A single selectable value inside a search facet (e.g. one brand or one
- * category), with the count of matching articles for the current query. `id`
- * is the value the client sends back to filter (a TecDoc dataSupplierId for
- * brands, a genericArticleId for categories); `label` is the display name.
- * `imageUrl` carries the brand logo for brand facets (joined from TecDoc
- * `getBrands`), and is absent/null for category facets.
+ * A single selectable value inside a search facet (one brand), with the count
+ * of matching articles for the current query. `id` is the value the client
+ * sends back to filter (a TecDoc dataSupplierId); `label` is the display name.
+ * `imageUrl` carries the brand logo (joined from TecDoc `getBrands`).
  */
 export interface FacetValueDto {
   id: string;
@@ -115,22 +113,97 @@ export interface FacetValueDto {
 /**
  * A group of facet values the user can filter a search by. Computed by TecDoc
  * over the whole matching set (not just the current page) and returned
- * alongside the paginated results, mirroring how a faceted catalogue narrows a
- * broad query by brand or category.
+ * alongside the paginated results. Categories are carried separately as
+ * {@link CategoryNavigationDto} (single-level drill-down), so this group is
+ * brand-only.
  */
 export interface SearchFacetDto {
-  id: 'brands' | 'categories';
+  id: 'brands';
   label: string;
   values: FacetValueDto[];
 }
 
 /**
- * Paginated search hits plus the facet groups computed over the full match set.
- * Search-specific: the plain catalogue listing ({@link PaginatedCatalogArticlesDto})
- * carries no facets.
+ * A single selectable value inside a technical-attribute (criteria) facet. TecDoc
+ * distinguishes the machine `value` (rawValue — echoed back as the filter value)
+ * from the human `label` (formattedValue, e.g. "106.4" or "Отпред").
+ */
+export interface AttributeFacetValueDto {
+  value: string;
+  label: string;
+  count: number;
+}
+
+/**
+ * A semantic role the client can special-case with a dedicated control instead
+ * of the generic value list — e.g. rendering `fitting-position` (front/rear) as
+ * a car diagram or segmented toggle, as InterCars does. Assigned on the backend
+ * from a known map of TecDoc criteriaIds so the client never hard-codes them.
+ * `null`/absent means "render as a normal attribute facet".
+ */
+export type AttributeFacetRole = 'fitting-position' | 'axle' | 'side';
+
+/**
+ * One technical-attribute facet group over the match set (e.g. "Ширина",
+ * "Позиция на монтаж"), keyed by the TecDoc criteriaId. `unit` and `type` come
+ * from TecDoc so the UI can render numeric attributes differently from enum ones
+ * (criteriaType: 'N' numeric, 'A' alphanumeric, 'K' key/lookup, etc.). `role`
+ * flags well-known criteria (e.g. fitting position) for a bespoke control.
+ */
+export interface AttributeFacetDto {
+  id: string;
+  label: string;
+  unit?: string | null;
+  type: string;
+  isInterval: boolean;
+  role?: AttributeFacetRole | null;
+  values: AttributeFacetValueDto[];
+}
+
+/**
+ * One selectable category in the search's single-level navigation — a node the
+ * user can click to drill one level deeper (a root enters that branch). `id` is
+ * the assemblyGroupNodeId (sent back as the `categoryNodeId` filter). `count` is
+ * the match count in the current scope (null when TecDoc omits it). `hasChildren`
+ * tells the UI whether clicking drills deeper or lands on a leaf (where the
+ * dimension `attributes` appear).
+ */
+export interface CategoryOptionDto {
+  id: string;
+  label: string;
+  count: number | null;
+  hasChildren: boolean;
+}
+
+/**
+ * The category facet as **single-level navigation** rather than a full tree, so
+ * the UI drills one step at a time (like InterCars): render `options`, the user
+ * clicks one, the search is re-issued with that `categoryNodeId`, and the next
+ * level comes back re-scoped. A broad search therefore returns only the top-level
+ * roots — never the whole tree for every matched branch. There is no breadcrumb:
+ * each drill level is a distinct search URL, so the browser back button covers
+ * "go up".
+ * - `options` — the level to choose from: the roots when nothing is selected,
+ *   otherwise the current node's immediate children (empty once at a leaf).
+ * - `current` — the selected node (its `hasChildren` also drives the leaf gate
+ *   for `attributes`, and its `label`/`count` feed the results heading), or
+ *   `null` on a broad/unscoped search.
+ */
+export interface CategoryNavigationDto {
+  current: CategoryOptionDto | null;
+  options: CategoryOptionDto[];
+}
+
+/**
+ * Paginated search hits plus everything computed over the full match set: the
+ * brand facet, the technical-attribute facets, and the hierarchical category
+ * tree. Search-specific: the plain catalogue listing
+ * ({@link PaginatedCatalogArticlesDto}) carries none of these.
  */
 export type PaginatedSearchArticlesDto = PaginatedCatalogArticlesDto & {
   facets: SearchFacetDto[];
+  attributes: AttributeFacetDto[];
+  categoryNavigation: CategoryNavigationDto;
 };
 
 /**
@@ -197,11 +270,25 @@ export interface SearchResponseDto {
   page?: number;
   pageSize?: number;
   /**
-   * Brand/category facet groups for {@link results}, computed by TecDoc over
-   * the whole match set. Present (and non-empty) only when there are results to
-   * filter; absent on a zero-result response.
+   * Brand facet group for {@link results}, computed by TecDoc over the whole
+   * match set. Present (and non-empty) only when there are results to filter;
+   * absent on a zero-result response.
    */
   facets?: SearchFacetDto[];
+  /**
+   * Technical-attribute (criteria) facets for {@link results} — the "brake
+   * system", "width", "mounting position"… groups the UI renders. Present only
+   * once the search has landed on a **leaf** category (the deepest tree node);
+   * a broad, multi-category search omits them because criteria are defined per
+   * product type and would otherwise be an incoherent cross-category mix.
+   */
+  attributes?: AttributeFacetDto[];
+  /**
+   * Single-level category navigation for {@link results} — the current level's
+   * `options` and the `current` node — so the UI drills one step at a time and
+   * re-issues the search per click. Same lifecycle as {@link facets}.
+   */
+  categoryNavigation?: CategoryNavigationDto;
   suggestions?: AutocompleteItemDto[];
 }
 

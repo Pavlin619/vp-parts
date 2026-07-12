@@ -9,17 +9,15 @@ export interface ParsedQuery {
    * touched.
    */
   brandStripped: string;
-  /** The brand token(s) that were stripped, if any — used to rank results. */
-  brandHint?: string;
 }
 
 /**
  * Prepares a search query by conservatively removing a brand token that sits at
- * the very start or end of the input (e.g. `"WA5432 WIX"` → `"WA5432"`, hint
- * `"WIX"`). We make no assumptions about TecDoc-side normalisation, so this is
- * the ONLY transformation applied — characters inside a token (dots, dashes,
- * slashes) are preserved verbatim, and the original query is kept as a fallback
- * candidate in case the "brand" token was actually part of the number.
+ * the very start or end of the input (e.g. `"WA5432 WIX"` → `"WA5432"`). We make
+ * no assumptions about TecDoc-side normalisation, so this is the ONLY
+ * transformation applied — characters inside a token (dots, dashes, slashes) are
+ * preserved verbatim, and the original query is kept as a fallback candidate in
+ * case the "brand" token was actually part of the number.
  *
  * A token is only stripped when at least one non-brand token remains, so a bare
  * brand query like `"BOSCH"` is passed through untouched.
@@ -56,6 +54,5 @@ export function parseQuery(
   return {
     raw,
     brandStripped: tokens.slice(start, end).join(' '),
-    brandHint: stripped.join(' '),
   };
 }

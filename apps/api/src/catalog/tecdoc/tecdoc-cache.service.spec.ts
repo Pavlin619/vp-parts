@@ -257,7 +257,7 @@ describe('TecDocCacheService', () => {
       expect(result).toEqual(data);
       expect(searchArticlesMock).not.toHaveBeenCalled();
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none:none',
       );
     });
 
@@ -278,7 +278,7 @@ describe('TecDocCacheService', () => {
         undefined,
       );
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none:none',
         JSON.stringify(data),
         'EX',
         60 * 60,
@@ -293,7 +293,7 @@ describe('TecDocCacheService', () => {
       await service.searchArticles('WL6340');
 
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none',
+        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none:none',
         JSON.stringify(emptyData),
         'EX',
         10 * 60,
@@ -308,7 +308,7 @@ describe('TecDocCacheService', () => {
       await service.searchArticles('WL6340', 'V10042', 'exact', 2, 20);
 
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:V10042:exact:2:20:none:none',
+        'tecdoc:search:WL6340:V10042:exact:2:20:none:none:none',
       );
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',
@@ -320,12 +320,16 @@ describe('TecDocCacheService', () => {
       );
     });
 
-    it('includes the active brand/category filters in the cache key and client call', async () => {
+    it('includes the active brand/category/criteria filters in the cache key and client call', async () => {
       redisGet.mockResolvedValueOnce(null);
       searchArticlesMock.mockResolvedValueOnce(data);
       redisSet.mockResolvedValueOnce('OK');
 
-      const filters = { brandIds: ['4', '30'], categoryIds: ['7010'] };
+      const filters = {
+        brandIds: ['4', '30'],
+        categoryNodeId: '7010',
+        criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+      };
       await service.searchArticles(
         'WL6340',
         undefined,
@@ -336,7 +340,7 @@ describe('TecDocCacheService', () => {
       );
 
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:exact:1:50:4,30:7010',
+        'tecdoc:search:WL6340:none:exact:1:50:4,30:7010:20=106.4',
       );
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',

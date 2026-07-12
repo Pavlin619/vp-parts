@@ -3,13 +3,12 @@ import { parseQuery } from './query-parser';
 const BRAND_TOKENS = new Set(['WIX', 'BOSCH', 'MANN', 'LIQUI', 'MOLY']);
 
 describe('parseQuery', () => {
-  it('strips a trailing brand token and records it as the hint', () => {
+  it('strips a trailing brand token', () => {
     const result = parseQuery('WA5432 WIX', BRAND_TOKENS);
 
     expect(result).toEqual({
       raw: 'WA5432 WIX',
       brandStripped: 'WA5432',
-      brandHint: 'WIX',
     });
   });
 
@@ -17,15 +16,12 @@ describe('parseQuery', () => {
     const result = parseQuery('WIX WA5432', BRAND_TOKENS);
 
     expect(result.brandStripped).toBe('WA5432');
-    expect(result.brandHint).toBe('WIX');
   });
 
   it('strips brand tokens at both ends', () => {
     const result = parseQuery('BOSCH WA5432 WIX', BRAND_TOKENS);
 
     expect(result.brandStripped).toBe('WA5432');
-    expect(result.brandHint).toContain('BOSCH');
-    expect(result.brandHint).toContain('WIX');
   });
 
   it('strips a multi-word brand', () => {
@@ -38,14 +34,12 @@ describe('parseQuery', () => {
     const result = parseQuery('WL-6340/A WIX', BRAND_TOKENS);
 
     expect(result.brandStripped).toBe('WL-6340/A');
-    expect(result.brandHint).toBe('WIX');
   });
 
   it('matches brand tokens case-insensitively', () => {
     const result = parseQuery('wa5432 wix', BRAND_TOKENS);
 
     expect(result.brandStripped).toBe('wa5432');
-    expect(result.brandHint).toBe('wix');
   });
 
   it('leaves a single-token query untouched', () => {
@@ -65,7 +59,6 @@ describe('parseQuery', () => {
 
     // Only the leading brand is stripped; a token must remain.
     expect(result.brandStripped).toBe('BOSCH');
-    expect(result.brandHint).toBe('WIX');
   });
 
   it('returns the raw query when no brand token is present', () => {
