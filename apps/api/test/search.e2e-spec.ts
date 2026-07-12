@@ -50,6 +50,13 @@ const NO_FILTERS = {
   criteria: [],
 };
 
+// The execution objects each search mode resolves to (see query-classifier):
+// a part number → number search / prefix_or_suffix; the exact toggle → exact
+// number match; a descriptive query → free-text (type 99).
+const PART = { type: 10, matchType: 'prefix_or_suffix' };
+const EXACT = { type: 10, matchType: 'exact' };
+const TERM = { type: 99 };
+
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({
   articleNumber,
   brandName: 'WIX',
@@ -92,7 +99,7 @@ describe('SearchController (e2e)', () => {
   });
 
   describe('GET /search', () => {
-    it('returns a one-item list (no redirect) when the exact-match tier returns a single result', async () => {
+    it('returns a one-item list (no redirect) for a single part-number match', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('WL6340')]),
       );
@@ -105,25 +112,22 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results).toHaveLength(1);
       expect(res.body.results[0].articleNumber).toBe('WL6340');
       expect(res.body.total).toBe(1);
-      // Only the exact tier ran — no further TecDoc calls needed
+      // A part-number query is a single prefix_or_suffix number call.
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'WL6340',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
       );
     });
 
-    it('returns a paginated result list when the prefix-or-suffix tier matches multiple articles', async () => {
-      // Tier 1 (exact) misses, tier 2 (prefix_or_suffix) finds two articles
-      mockTecDocClient.searchArticles
-        .mockResolvedValueOnce(pageOf([]))
-        .mockResolvedValueOnce(
-          pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
-        );
+    it('returns a paginated result list when a part-number query matches multiple articles', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+      );
 
       const res = await request(app.getHttpServer())
         .get('/search?q=WL634')
@@ -140,22 +144,73 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results[1].fitsVehicle).toBeNull();
     });
 
+    it('falls back to a free-text (type 99) search over the raw query when the number lane misses', async () => {
+      // No brand dictionary in e2e, so brand-stripped == raw: one number call,
+      // then the free-text fallback on the same raw query.
+      mockTecDocClient.searchArticles
+        .mockResolvedValueOnce(pageOf([])) // number lane miss
+        .mockResolvedValueOnce(pageOf([makeArticle('OF1')])); // free-text hit
+
+      await request(app.getHttpServer())
+        .get('/search?q=oil%20filter%20bosch')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(2);
+      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
+        1,
+        'oil filter bosch',
+        undefined,
+        PART,
+        1,
+        20,
+        NO_FILTERS,
+      );
+      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
+        2,
+        'oil filter bosch',
+        undefined,
+        TERM,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('routes to an exact number match when the exact toggle is on', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?q=WL6340&exact=true')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'WL6340',
+        undefined,
+        EXACT,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
     it('echoes the requested page and pageSize', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('WL6340')], { total: 55, page: 2, pageSize: 10 }),
       );
 
       const res = await request(app.getHttpServer())
-        .get('/search?q=WL&page=2&pageSize=10')
+        .get('/search?q=WL634&page=2&pageSize=10')
         .expect(200);
 
       expect(res.body.total).toBe(55);
       expect(res.body.page).toBe(2);
       expect(res.body.pageSize).toBe(10);
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
-        'WL',
+        'WL634',
         undefined,
-        'exact',
+        PART,
         2,
         10,
         NO_FILTERS,
@@ -163,13 +218,9 @@ describe('SearchController (e2e)', () => {
     });
 
     it('scopes the search to the vehicle when a vehicleId is supplied', async () => {
-      // Tier 1 misses; tier 2 returns the parts TecDoc reports as fitting the
-      // vehicle. No separate fit lookup runs — the scope is on the search call.
-      mockTecDocClient.searchArticles
-        .mockResolvedValueOnce(pageOf([]))
-        .mockResolvedValueOnce(
-          pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
-        );
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+      );
 
       const res = await request(app.getHttpServer())
         .get('/search?q=WL634&vehicleId=V10001')
@@ -178,22 +229,12 @@ describe('SearchController (e2e)', () => {
       const results = res.body.results as Array<{ articleNumber: string }>;
       expect(results.map((r) => r.articleNumber)).toEqual(['WL6340', 'WL6341']);
 
-      // Exactly the two tier calls, both scoped to the vehicle.
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(2);
-      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
-        1,
+      // A single number call, scoped to the vehicle — no separate fit lookup.
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'WL634',
         'V10001',
-        'exact',
-        1,
-        20,
-        NO_FILTERS,
-      );
-      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
-        2,
-        'WL634',
-        'V10001',
-        'prefix_or_suffix',
+        PART,
         1,
         20,
         NO_FILTERS,
@@ -276,7 +317,7 @@ describe('SearchController (e2e)', () => {
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'WL634',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         {
@@ -332,7 +373,7 @@ describe('SearchController (e2e)', () => {
       expect(res.body.facets).toBeDefined();
     });
 
-    it('includes autocomplete suggestions when both tiers return no results', async () => {
+    it('includes autocomplete suggestions when the search returns no results', async () => {
       mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
       mockTecDocClient.getAutocompleteSuggestions.mockResolvedValueOnce([
         makeSuggestion('XY001'),

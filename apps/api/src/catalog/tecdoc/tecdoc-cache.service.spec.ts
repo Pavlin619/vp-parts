@@ -257,7 +257,7 @@ describe('TecDocCacheService', () => {
       expect(result).toEqual(data);
       expect(searchArticlesMock).not.toHaveBeenCalled();
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none:none',
+        'tecdoc:search:WL6340:none:10-prefix_or_suffix:1:50:none:none:none',
       );
     });
 
@@ -272,13 +272,13 @@ describe('TecDocCacheService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         undefined,
       );
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none:none',
+        'tecdoc:search:WL6340:none:10-prefix_or_suffix:1:50:none:none:none',
         JSON.stringify(data),
         'EX',
         60 * 60,
@@ -293,29 +293,55 @@ describe('TecDocCacheService', () => {
       await service.searchArticles('WL6340');
 
       expect(redisSet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:prefix_or_suffix:1:50:none:none:none',
+        'tecdoc:search:WL6340:none:10-prefix_or_suffix:1:50:none:none:none',
         JSON.stringify(emptyData),
         'EX',
         10 * 60,
       );
     });
 
-    it('includes the vehicleId, matchType and pagination in the cache key', async () => {
+    it('includes the vehicleId, execution and pagination in the cache key', async () => {
       redisGet.mockResolvedValueOnce(null);
       searchArticlesMock.mockResolvedValueOnce(data);
       redisSet.mockResolvedValueOnce('OK');
 
-      await service.searchArticles('WL6340', 'V10042', 'exact', 2, 20);
+      await service.searchArticles(
+        'WL6340',
+        'V10042',
+        { type: 10, matchType: 'exact' },
+        2,
+        20,
+      );
 
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:V10042:exact:2:20:none:none:none',
+        'tecdoc:search:WL6340:V10042:10-exact:2:20:none:none:none',
       );
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',
         'V10042',
-        'exact',
+        { type: 10, matchType: 'exact' },
         2,
         20,
+        undefined,
+      );
+    });
+
+    it('keys a free-text (type 99) execution distinctly from a number search', async () => {
+      redisGet.mockResolvedValueOnce(null);
+      searchArticlesMock.mockResolvedValueOnce(data);
+      redisSet.mockResolvedValueOnce('OK');
+
+      await service.searchArticles('oil filter', undefined, { type: 99 });
+
+      expect(redisGet).toHaveBeenCalledWith(
+        'tecdoc:search:oil filter:none:99-any:1:50:none:none:none',
+      );
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'oil filter',
+        undefined,
+        { type: 99 },
+        1,
+        50,
         undefined,
       );
     });
@@ -333,19 +359,19 @@ describe('TecDocCacheService', () => {
       await service.searchArticles(
         'WL6340',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         filters,
       );
 
       expect(redisGet).toHaveBeenCalledWith(
-        'tecdoc:search:WL6340:none:exact:1:50:4,30:7010:20=106.4',
+        'tecdoc:search:WL6340:none:10-exact:1:50:4,30:7010:20=106.4',
       );
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL6340',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         filters,

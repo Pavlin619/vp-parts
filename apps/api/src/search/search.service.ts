@@ -6,8 +6,9 @@ import {
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
 import {
-  SearchMatchType,
+  SearchExecution,
   SearchFilters,
+  TecDocSearchType,
 } from '../catalog/tecdoc/tecdoc-client';
 import { CatalogService } from '../catalog/catalog.service';
 import { buildBrandTokenSet } from './brand-dictionary';
@@ -19,11 +20,14 @@ const AUTOCOMPLETE_MAX_SUGGESTIONS = 8;
 const SUGGESTION_PREFIX_LENGTH = 5;
 
 /**
- * The precision-first tier order applied to each candidate query: an exact hit
- * ranks the searched number first when it exists; prefix_or_suffix then recovers
- * partial-number and suffix variants.
+ * One TecDoc call the search will attempt: the query string to send and the
+ * {@link SearchExecution} (type + match strategy) to run it with. A mode expands
+ * to an ordered list of these; the first with a non-empty total wins.
  */
-const SEARCH_TIERS: SearchMatchType[] = ['exact', 'prefix_or_suffix'];
+interface SearchPlanStep {
+  query: string;
+  execution: SearchExecution;
+}
 
 @Injectable()
 export class SearchService {
@@ -37,12 +41,14 @@ export class SearchService {
     page: number = SEARCH_DEFAULT_PAGE,
     pageSize: number = SEARCH_DEFAULT_PAGE_SIZE,
     filters: SearchFilters = {},
+    exact = false,
   ): Promise<SearchResponseDto> {
     const rawQuery = query.trim();
     const parsed = await this.parse(rawQuery);
+    const plan = this.buildSearchPlan(parsed, exact);
 
     const result = await this.executeSearchWithFallback(
-      parsed,
+      plan,
       vehicleId,
       page,
       pageSize,
@@ -113,28 +119,73 @@ export class SearchService {
   }
 
   /**
-   * Runs the brand-stripped query through the two TecDoc tiers, then the raw
-   * query only if it differs and the stripped one matched nothing (the "brand"
-   * token may actually have been part of the number). When a vehicleId is
-   * given, every candidate/tier is scoped to it so TecDoc returns only parts
-   * that fit that vehicle (no separate fit lookup, no per-item badge). Active
-   * facet `filters` are applied to every candidate/tier. The first
-   * candidate/tier with a non-empty total wins; its total, facets, attributes
-   * and category navigation are authoritative for pagination and are stable
-   * across pages.
+   * Expands a parsed query + the exact toggle into the ordered TecDoc calls to
+   * attempt. We deliberately do NOT classify number-vs-text up front: that
+   * heuristic is unreliable, and since the number and free-text result sets are
+   * near-disjoint, it is unnecessary. Instead the number lane is always tried
+   * first, with a free-text fallback:
+   *
+   * - default → `searchType 10` / `prefix_or_suffix` over the brand-stripped
+   *   query, then the raw query if it differs (the "brand" token may have been
+   *   part of the number); if all miss, one `searchType 99` free-text call over
+   *   the **raw** query. The brand is kept for free-text because it is valuable
+   *   signal in a descriptive query ("oil filter bosch"). Up to 3 calls, but a
+   *   real part number resolves on the first.
+   * - exact toggle → `searchType 10` / `exact` over the same brand-stripped→raw
+   *   candidates, with no free-text fallback: an exact-phrase request is a
+   *   precise number lookup, kept as its own cheap bucket.
+   *
+   * The first call with a non-empty total wins (see executeSearchWithFallback).
+   */
+  private buildSearchPlan(
+    parsed: ParsedQuery,
+    exact: boolean,
+  ): SearchPlanStep[] {
+    const numberCandidates =
+      parsed.raw === parsed.brandStripped
+        ? [parsed.brandStripped]
+        : [parsed.brandStripped, parsed.raw];
+
+    if (exact) {
+      const exactExecution: SearchExecution = {
+        type: TecDocSearchType.AnyNumber,
+        matchType: 'exact',
+      };
+      return numberCandidates.map((query) => ({
+        query,
+        execution: exactExecution,
+      }));
+    }
+
+    const numberExecution: SearchExecution = {
+      type: TecDocSearchType.AnyNumber,
+      matchType: 'prefix_or_suffix',
+    };
+
+    return [
+      ...numberCandidates.map((query) => ({
+        query,
+        execution: numberExecution,
+      })),
+      { query: parsed.raw, execution: { type: TecDocSearchType.FreeText } },
+    ];
+  }
+
+  /**
+   * Runs each planned TecDoc call in order until one returns a non-empty total.
+   * When a vehicleId is given, every call is scoped to it so TecDoc returns only
+   * parts that fit that vehicle (no separate fit lookup, no per-item badge).
+   * Active facet `filters` are applied to every call. The first call with a
+   * non-empty total wins; its total, facets, attributes and category navigation
+   * are authoritative for pagination and are stable across pages.
    */
   private async executeSearchWithFallback(
-    parsed: ParsedQuery,
+    plan: SearchPlanStep[],
     vehicleId: string | undefined,
     page: number,
     pageSize: number,
     filters: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
-    const candidates =
-      parsed.raw === parsed.brandStripped
-        ? [parsed.brandStripped]
-        : [parsed.brandStripped, parsed.raw];
-
     let lastResult: PaginatedSearchArticlesDto = {
       total: 0,
       page,
@@ -145,23 +196,21 @@ export class SearchService {
       categoryNavigation: { current: null, options: [] },
     };
 
-    for (const candidate of candidates) {
-      for (const matchType of SEARCH_TIERS) {
-        const result = await this.catalog.searchArticles(
-          candidate,
-          vehicleId,
-          matchType,
-          page,
-          pageSize,
-          filters,
-        );
+    for (const step of plan) {
+      const result = await this.catalog.searchArticles(
+        step.query,
+        vehicleId,
+        step.execution,
+        page,
+        pageSize,
+        filters,
+      );
 
-        if (result.total > 0) {
-          return result;
-        }
-
-        lastResult = result;
+      if (result.total > 0) {
+        return result;
       }
+
+      lastResult = result;
     }
 
     return lastResult;

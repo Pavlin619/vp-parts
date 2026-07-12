@@ -253,12 +253,20 @@ describe('CatalogRepository', () => {
         categoryNodeId: '7010',
         criteria: [{ criteriaId: '20', rawValue: '106.4' }],
       };
-      await repository.searchArticles('BD-001', 'V1', 'exact', 1, 20, filters);
+      const execution = { type: 10, matchType: 'exact' } as const;
+      await repository.searchArticles(
+        'BD-001',
+        'V1',
+        execution,
+        1,
+        20,
+        filters,
+      );
 
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'BD-001',
         'V1',
-        'exact',
+        execution,
         1,
         20,
         filters,

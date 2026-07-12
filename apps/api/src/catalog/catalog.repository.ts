@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TecDocCacheService } from './tecdoc/tecdoc-cache.service';
-import { SearchMatchType, SearchFilters } from './tecdoc/tecdoc-client';
+import { SearchExecution, SearchFilters } from './tecdoc/tecdoc-client';
 import {
   ManufacturerDto,
   ModelSeriesDto,
@@ -80,7 +80,7 @@ export class CatalogRepository {
   async searchArticles(
     query: string,
     vehicleId?: string,
-    matchType?: SearchMatchType,
+    execution?: SearchExecution,
     page = 1,
     pageSize = 50,
     filters?: SearchFilters,
@@ -88,7 +88,7 @@ export class CatalogRepository {
     const results = await this.tecdocCache.searchArticles(
       query,
       vehicleId,
-      matchType,
+      execution,
       page,
       pageSize,
       filters,

@@ -624,7 +624,13 @@ describe('TecDocClient', () => {
     it('requests the given page and pageSize', async () => {
       mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
 
-      await client.searchArticles('WL6340', undefined, 'exact', 2, 25);
+      await client.searchArticles(
+        'WL6340',
+        undefined,
+        { type: 10, matchType: 'exact' },
+        2,
+        25,
+      );
 
       const body = JSON.parse(
         ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
@@ -646,6 +652,21 @@ describe('TecDocClient', () => {
         searchMatchType: 'prefix_or_suffix',
       });
       expect(body.getArticles).not.toHaveProperty('linkageTargetId');
+    });
+
+    it('sends a free-text execution as searchType 99 without a match type', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
+
+      await client.searchArticles('oil filter bosch', undefined, { type: 99 });
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({
+        searchQuery: 'oil filter bosch',
+        searchType: 99,
+      });
+      expect(body.getArticles).not.toHaveProperty('searchMatchType');
     });
 
     it('scopes the search to a vehicle when vehicleId is provided', async () => {
@@ -688,9 +709,16 @@ describe('TecDocClient', () => {
     it('requests criteria facets once a category is selected', async () => {
       mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
 
-      await client.searchArticles('brake pad', undefined, 'exact', 1, 50, {
-        categoryNodeId: '200',
-      });
+      await client.searchArticles(
+        'brake pad',
+        undefined,
+        { type: 10, matchType: 'exact' },
+        1,
+        50,
+        {
+          categoryNodeId: '200',
+        },
+      );
 
       const body = JSON.parse(
         ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
@@ -776,7 +804,7 @@ describe('TecDocClient', () => {
       const result = await client.searchArticles(
         'brake pad',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         { categoryNodeId: '200' },
@@ -822,7 +850,7 @@ describe('TecDocClient', () => {
       const result = await client.searchArticles(
         'brake pad',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         { categoryNodeId: '200' },
@@ -841,7 +869,7 @@ describe('TecDocClient', () => {
       const result = await client.searchArticles(
         'brake',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         { categoryNodeId: '100' },
@@ -941,7 +969,7 @@ describe('TecDocClient', () => {
       const result = await client.searchArticles(
         'brake pad',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         { categoryNodeId: '200' },
@@ -1006,7 +1034,7 @@ describe('TecDocClient', () => {
       const result = await client.searchArticles(
         'brake',
         undefined,
-        'exact',
+        { type: 10, matchType: 'exact' },
         1,
         50,
         { categoryNodeId: '100' },
@@ -1023,7 +1051,7 @@ describe('TecDocClient', () => {
       await client.searchArticles(
         'oil filter',
         undefined,
-        'prefix_or_suffix',
+        { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
         {

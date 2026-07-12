@@ -16,7 +16,12 @@ import {
   ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
-import { SearchFilters, attributeRoleFor } from './tecdoc-client';
+import {
+  SearchExecution,
+  SearchFilters,
+  TecDocSearchType,
+  attributeRoleFor,
+} from './tecdoc-client';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
 
@@ -517,12 +522,19 @@ export class TecDocMockClient {
   searchArticles(
     query: string,
     vehicleId?: string,
-    _matchType?: string,
+    execution?: SearchExecution,
     page = 1,
     pageSize = 50,
     filters?: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
-    const matches = this.findMatchingArticles(query)
+    // Free-text (type 99) matches on description/brand words; number searches
+    // (type 10) match on article/OE numbers — mirroring the real client's split.
+    const baseMatches =
+      execution?.type === TecDocSearchType.FreeText
+        ? this.findByDescription(query)
+        : this.findMatchingArticles(query);
+
+    const matches = baseMatches
       // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
       // returns every other match so fit indicators show both states.
       .filter((_, index) => vehicleId == null || index % 2 === 0)
@@ -614,6 +626,31 @@ export class TecDocMockClient {
     return Object.values(ARTICLES_BY_CATEGORY)
       .flat()
       .filter((article) => this.matchesNumber(article, normalisedQuery));
+  }
+
+  /**
+   * Mirrors the real client's `getArticles` searchType 99 (free text): a hit
+   * requires every query word to appear in the article description or brand
+   * name (case-insensitive), so "oil filter bosch" matches Bosch oil filters via
+   * the brand token — the query is used as typed, with no brand stripping.
+   */
+  private findByDescription(query: string) {
+    const tokens = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((token) => token.length > 0);
+
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    return Object.values(ARTICLES_BY_CATEGORY)
+      .flat()
+      .filter((article) => {
+        const haystack =
+          `${article.description} ${article.brandName}`.toLowerCase();
+        return tokens.every((token) => haystack.includes(token));
+      });
   }
 
   /**

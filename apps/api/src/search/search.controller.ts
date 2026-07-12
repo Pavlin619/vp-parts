@@ -15,11 +15,18 @@ export class SearchController {
 
   @Get()
   searchByPartNumber(@Query() dto: SearchQueryDto): Promise<SearchResponseDto> {
-    return this.search.search(dto.q, dto.vehicleId, dto.page, dto.pageSize, {
-      brandIds: dto.brandIds,
-      categoryNodeId: dto.categoryNodeId,
-      criteria: parseCriteriaFilters(dto.attr),
-    });
+    return this.search.search(
+      dto.q,
+      dto.vehicleId,
+      dto.page,
+      dto.pageSize,
+      {
+        brandIds: dto.brandIds,
+        categoryNodeId: dto.categoryNodeId,
+        criteria: parseCriteriaFilters(dto.attr),
+      },
+      dto.exact,
+    );
   }
 
   @Get('autocomplete')

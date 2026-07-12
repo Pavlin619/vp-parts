@@ -26,6 +26,11 @@ const mockCatalogService = {
 // supplies explicit facet selections.
 const NO_FILTERS = {};
 
+// The execution objects each search mode resolves to (see query-classifier).
+const PART = { type: 10, matchType: 'prefix_or_suffix' } as const;
+const EXACT = { type: 10, matchType: 'exact' } as const;
+const TERM = { type: 99 } as const;
+
 function articleItem(
   articleNumber: string,
   overrides: Partial<ArticleSummaryDto> = {},
@@ -80,8 +85,8 @@ describe('SearchService', () => {
     getBrandsMock.mockResolvedValue([]);
   });
 
-  describe('search — fallback chain', () => {
-    it('uses exact match as the first tier and returns immediately on a hit', async () => {
+  describe('search — number-first routing with free-text fallback', () => {
+    it('resolves a query that hits the number lane in a single call', async () => {
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
@@ -92,55 +97,119 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL634',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
       );
     });
 
-    it('falls through to prefix_or_suffix when exact returns zero results', async () => {
+    it('falls back to a free-text (type 99) call over the raw query when the number lane misses', async () => {
       searchArticlesMock
-        .mockResolvedValueOnce(pageOf([]))
-        .mockResolvedValueOnce(
-          pageOf([articleItem('WL6340'), articleItem('WL6341')]),
-        );
+        .mockResolvedValueOnce(pageOf([])) // number lane: prefix_or_suffix miss
+        .mockResolvedValueOnce(pageOf([articleItem('OF1')])); // free-text hit
 
-      const result = await service.search('WL634');
+      await service.search('oil filter');
 
       expect(searchArticlesMock).toHaveBeenCalledTimes(2);
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         1,
-        'WL634',
+        'oil filter',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
       );
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         2,
-        'WL634',
+        'oil filter',
         undefined,
-        'prefix_or_suffix',
+        TERM,
         1,
         20,
         NO_FILTERS,
       );
-      expect(result.results).toHaveLength(2);
     });
 
-    it('runs only the two number tiers when no brand token is stripped', async () => {
+    it('keeps the brand in the free-text fallback (raw query) though the number lane is brand-stripped', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      searchArticlesMock
+        .mockResolvedValueOnce(pageOf([])) // number: brand-stripped "oil filter"
+        .mockResolvedValueOnce(pageOf([])) // number: raw "oil filter bosch"
+        .mockResolvedValueOnce(pageOf([articleItem('OF1')])); // free-text raw
+
+      await service.search('oil filter bosch');
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(3);
+      expect(searchArticlesMock).toHaveBeenNthCalledWith(
+        1,
+        'oil filter',
+        undefined,
+        PART,
+        1,
+        20,
+        NO_FILTERS,
+      );
+      expect(searchArticlesMock).toHaveBeenNthCalledWith(
+        2,
+        'oil filter bosch',
+        undefined,
+        PART,
+        1,
+        20,
+        NO_FILTERS,
+      );
+      expect(searchArticlesMock).toHaveBeenNthCalledWith(
+        3,
+        'oil filter bosch',
+        undefined,
+        TERM,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('does not fall back to free-text once the number lane hits', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
+
+      await service.search('WL6340');
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
+      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      expect(executions).not.toContainEqual(TERM);
+    });
+
+    it('routes to an exact number call when the exact toggle is on', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
+
+      await service.search('WL6340', undefined, 1, 20, {}, true);
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'WL6340',
+        undefined,
+        EXACT,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('never issues a free-text fallback in exact mode, even when the number lane misses', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
       getAutocompleteSuggestionsMock.mockResolvedValue([]);
 
-      await service.search('WL/6340');
+      await service.search('oil filter', undefined, 1, 20, {}, true);
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
+      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      expect(executions).not.toContainEqual(TERM);
+      expect(executions).toEqual([EXACT]);
     });
   });
 
-  describe('search — brand prefix/suffix', () => {
+  describe('search — brand stripping for number searches', () => {
     it('strips a trailing brand token and searches the bare number', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValueOnce(
@@ -152,7 +221,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WA5432',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
@@ -173,7 +242,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WA5432',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
@@ -191,7 +260,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL-6340/A',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
@@ -201,9 +270,36 @@ describe('SearchService', () => {
     it('falls back to the raw query when the brand-stripped query misses', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // WA5432 exact
         .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
-        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw exact
+        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw prefix_or_suffix
+
+      await service.search('WIX WA5432');
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
+      expect(searchArticlesMock).toHaveBeenNthCalledWith(
+        1,
+        'WA5432',
+        undefined,
+        PART,
+        1,
+        20,
+        NO_FILTERS,
+      );
+      expect(searchArticlesMock).toHaveBeenNthCalledWith(
+        2,
+        'WIX WA5432',
+        undefined,
+        PART,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('runs both number candidates then a single free-text fallback when everything misses', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      searchArticlesMock.mockResolvedValue(pageOf([]));
+      getAutocompleteSuggestionsMock.mockResolvedValue([]);
 
       await service.search('WIX WA5432');
 
@@ -212,15 +308,14 @@ describe('SearchService', () => {
         3,
         'WIX WA5432',
         undefined,
-        'exact',
+        TERM,
         1,
         20,
         NO_FILTERS,
       );
     });
 
-    it('preserves TecDoc native order for a brand-qualified query (no ranking)', async () => {
-      getBrandsMock.mockResolvedValue(BRANDS);
+    it('preserves TecDoc native order (no ranking)', async () => {
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([
           articleItem('B1', { brandName: 'Bosch' }),
@@ -229,7 +324,7 @@ describe('SearchService', () => {
         ]),
       );
 
-      const result = await service.search('WA WIX');
+      const result = await service.search('WA5432');
 
       expect(result.results?.map((r) => r.articleNumber)).toEqual([
         'B1',
@@ -314,7 +409,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL634',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         filters,
@@ -336,7 +431,7 @@ describe('SearchService', () => {
   });
 
   describe('search — single result stays on the list', () => {
-    it('returns a one-item list for a single exact match on the typed query', async () => {
+    it('returns a one-item list for a single match on the typed query', async () => {
       searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
 
       const result = await service.search('WL6340');
@@ -346,12 +441,12 @@ describe('SearchService', () => {
       expect(result).not.toHaveProperty('redirect');
     });
 
-    it('returns a one-item list when the single hit is recovered by the prefix_or_suffix tier', async () => {
+    it('returns a one-item list for a single free-text hit', async () => {
       searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // exact misses
-        .mockResolvedValueOnce(pageOf([articleItem('WL6340')])); // prefix hit
+        .mockResolvedValueOnce(pageOf([])) // number lane miss
+        .mockResolvedValueOnce(pageOf([articleItem('OF1')])); // free-text hit
 
-      const result = await service.search('WL634');
+      const result = await service.search('oil filter mann');
 
       expect(result.results).toHaveLength(1);
     });
@@ -359,9 +454,8 @@ describe('SearchService', () => {
     it('returns a one-item list when the single hit comes from the raw-query fallback', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // WA5432 exact
         .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
-        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw exact
+        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw prefix_or_suffix
 
       const result = await service.search('WIX WA5432');
 
@@ -379,12 +473,12 @@ describe('SearchService', () => {
         }),
       );
 
-      const result = await service.search('WL', undefined, 2, 10);
+      const result = await service.search('WL634', undefined, 2, 10);
 
       expect(searchArticlesMock).toHaveBeenCalledWith(
-        'WL',
+        'WL634',
         undefined,
-        'exact',
+        PART,
         2,
         10,
         NO_FILTERS,
@@ -407,7 +501,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         '06J 115 403 Q',
         undefined,
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
@@ -467,7 +561,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL634',
         'V10042',
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
@@ -478,30 +572,31 @@ describe('SearchService', () => {
       ]);
     });
 
-    it('keeps the vehicle scope across the fallback tiers', async () => {
+    it('keeps the vehicle scope across the raw-query fallback', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock
-        .mockResolvedValueOnce(pageOf([]))
+        .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
         .mockResolvedValueOnce(
           pageOf([articleItem('WL6340'), articleItem('WL6341')]),
-        );
+        ); // raw prefix_or_suffix
 
-      await service.search('WL634', 'V10042');
+      await service.search('WIX WA5432', 'V10042');
 
       expect(searchArticlesMock).toHaveBeenCalledTimes(2);
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         1,
-        'WL634',
+        'WA5432',
         'V10042',
-        'exact',
+        PART,
         1,
         20,
         NO_FILTERS,
       );
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         2,
-        'WL634',
+        'WIX WA5432',
         'V10042',
-        'prefix_or_suffix',
+        PART,
         1,
         20,
         NO_FILTERS,
