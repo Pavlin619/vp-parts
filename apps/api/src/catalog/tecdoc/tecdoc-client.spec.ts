@@ -1,5 +1,9 @@
 import { ConfigService } from '@nestjs/config';
-import { TecDocClient } from './tecdoc-client';
+import {
+  TecDocClient,
+  attributeRoleFor,
+  FITTING_POSITION_CRITERIA_ID,
+} from './tecdoc-client';
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
@@ -612,6 +616,8 @@ describe('TecDocClient', () => {
           },
         ],
         facets: [],
+        attributes: [],
+        categoryNavigation: { current: null, options: [] },
       });
     });
 
@@ -657,7 +663,7 @@ describe('TecDocClient', () => {
       });
     });
 
-    it('requests the brand and category facet counts', async () => {
+    it('requests the brand and assembly-group facets, but not criteria, on a broad search', async () => {
       mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
 
       await client.searchArticles('WL6340');
@@ -667,11 +673,35 @@ describe('TecDocClient', () => {
       ) as Record<string, unknown>;
       expect(body.getArticles).toMatchObject({
         includeDataSupplierFacets: true,
-        includeGenericArticleFacets: true,
+        assemblyGroupFacetOptions: {
+          enabled: true,
+          assemblyGroupType: 'P',
+          includeCompleteTree: false,
+        },
+      });
+      expect(body.getArticles).not.toHaveProperty('includeCriteriaFacets');
+      expect(body.getArticles).not.toHaveProperty(
+        'includeGenericArticleFacets',
+      );
+    });
+
+    it('requests criteria facets once a category is selected', async () => {
+      mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
+
+      await client.searchArticles('brake pad', undefined, 'exact', 1, 50, {
+        categoryNodeId: '200',
+      });
+
+      const body = JSON.parse(
+        ((mockFetch.mock.calls[0] as unknown[])[1] as { body: string }).body,
+      ) as Record<string, unknown>;
+      expect(body.getArticles).toMatchObject({
+        includeCriteriaFacets: true,
+        assemblyGroupNodeIds: [200],
       });
     });
 
-    it('maps the TecDoc facet counts into brand and category facets', async () => {
+    it('maps the TecDoc brand facet counts (categories no longer here)', async () => {
       mockFetch.mockResolvedValueOnce(
         mockOkResponse({
           ...searchResponse,
@@ -679,15 +709,6 @@ describe('TecDocClient', () => {
             counts: [
               { dataSupplierId: 4, mfrName: 'WIX', count: 3 },
               { dataSupplierId: 30, mfrName: 'MANN-FILTER', count: 2 },
-            ],
-          },
-          genericArticleFacets: {
-            counts: [
-              {
-                genericArticleId: 7010,
-                genericArticleDescription: 'Oil Filter',
-                count: 5,
-              },
             ],
           },
         }),
@@ -704,15 +725,299 @@ describe('TecDocClient', () => {
             { id: '30', label: 'MANN-FILTER', count: 2, imageUrl: null },
           ],
         },
+      ]);
+    });
+
+    // A leaf category (assemblyGroupNodeId 200, no children) is selected, so the
+    // criteria are coherent and get surfaced.
+    const leafCategoryResponse = {
+      assemblyGroupFacets: {
+        counts: [
+          {
+            assemblyGroupNodeId: 100,
+            assemblyGroupName: 'Спирачна система',
+            parentNodeId: null,
+            childCount: 1,
+          },
+          {
+            assemblyGroupNodeId: 200,
+            assemblyGroupName: 'Накладки',
+            parentNodeId: 100,
+          },
+        ],
+      },
+      criteriaFacets: {
+        counts: [
+          {
+            criteriaId: 20,
+            criteriaDescription: 'Ширина',
+            criteriaUnitDescription: 'мм',
+            criteriaType: 'N',
+            isInterval: false,
+            criteriaValues: [
+              { rawValue: '106.4', formattedValue: '106.4', count: 4 },
+              { rawValue: '120', formattedValue: '120', count: 1 },
+            ],
+          },
+          {
+            criteriaId: 99,
+            criteriaDescription: 'Empty',
+            criteriaValues: [],
+          },
+        ],
+      },
+    };
+
+    it('maps criteriaFacets into attribute facets at a leaf, dropping empty groups', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({ ...searchResponse, ...leafCategoryResponse }),
+      );
+
+      const result = await client.searchArticles(
+        'brake pad',
+        undefined,
+        'exact',
+        1,
+        50,
+        { categoryNodeId: '200' },
+      );
+
+      expect(result.attributes).toEqual([
         {
-          id: 'categories',
-          label: 'Категория',
-          values: [{ id: '7010', label: 'Oil Filter', count: 5 }],
+          id: '20',
+          label: 'Ширина',
+          unit: 'мм',
+          type: 'N',
+          isInterval: false,
+          role: null,
+          values: [
+            { value: '106.4', label: '106.4', count: 4 },
+            { value: '120', label: '120', count: 1 },
+          ],
         },
       ]);
     });
 
-    it('forwards active brand and category selections as TecDoc id filters', async () => {
+    it('tags the fitting-position criterion with its semantic role', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          ...searchResponse,
+          assemblyGroupFacets: leafCategoryResponse.assemblyGroupFacets,
+          criteriaFacets: {
+            counts: [
+              {
+                criteriaId: Number(FITTING_POSITION_CRITERIA_ID),
+                criteriaDescription: 'Позиция на монтаж',
+                criteriaType: 'K',
+                criteriaValues: [
+                  { rawValue: 'Отпред', formattedValue: 'Отпред', count: 3 },
+                  { rawValue: 'Отзад', formattedValue: 'Отзад', count: 2 },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await client.searchArticles(
+        'brake pad',
+        undefined,
+        'exact',
+        1,
+        50,
+        { categoryNodeId: '200' },
+      );
+
+      expect(result.attributes[0].role).toBe('fitting-position');
+    });
+
+    it('suppresses attributes when the selected category is not a leaf', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({ ...searchResponse, ...leafCategoryResponse }),
+      );
+
+      // Node 100 has children — a mid-level selection whose criteria would be an
+      // incoherent cross-category mix.
+      const result = await client.searchArticles(
+        'brake',
+        undefined,
+        'exact',
+        1,
+        50,
+        { categoryNodeId: '100' },
+      );
+
+      expect(result.attributes).toEqual([]);
+    });
+
+    it('returns no attributes on a broad search even if TecDoc echoes criteria', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({ ...searchResponse, ...leafCategoryResponse }),
+      );
+
+      const result = await client.searchArticles('brake');
+
+      expect(result.attributes).toEqual([]);
+    });
+
+    it('returns only the top-level roots as options on a broad search', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          ...searchResponse,
+          assemblyGroupFacets: {
+            counts: [
+              {
+                assemblyGroupNodeId: 100,
+                assemblyGroupName: 'Спирачна система',
+                parentNodeId: null,
+                childCount: 1,
+                count: 12,
+              },
+              {
+                assemblyGroupNodeId: 500,
+                assemblyGroupName: 'Окачване',
+                parentNodeId: null,
+                count: 4,
+              },
+              // A child of 100 is present but must NOT appear at the top level.
+              {
+                assemblyGroupNodeId: 200,
+                assemblyGroupName: 'Накладки',
+                parentNodeId: 100,
+                count: 9,
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await client.searchArticles('P5040');
+
+      expect(result.categoryNavigation).toEqual({
+        current: null,
+        options: [
+          {
+            id: '100',
+            label: 'Спирачна система',
+            count: 12,
+            hasChildren: true,
+          },
+          { id: '500', label: 'Окачване', count: 4, hasChildren: false },
+        ],
+      });
+    });
+
+    it('returns the selected node children as options with the current node resolved', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          ...searchResponse,
+          assemblyGroupFacets: {
+            counts: [
+              {
+                assemblyGroupNodeId: 100,
+                assemblyGroupName: 'Спирачна система',
+                parentNodeId: null,
+                childCount: 1,
+                count: 12,
+              },
+              {
+                assemblyGroupNodeId: 200,
+                assemblyGroupName: 'Дискови спирачки',
+                parentNodeId: 100,
+                childCount: 1,
+                count: 9,
+              },
+              {
+                assemblyGroupNodeId: 300,
+                assemblyGroupName: 'Накладки',
+                parentNodeId: 200,
+                count: 9,
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await client.searchArticles(
+        'brake pad',
+        undefined,
+        'exact',
+        1,
+        50,
+        { categoryNodeId: '200' },
+      );
+
+      expect(result.categoryNavigation).toEqual({
+        current: {
+          id: '200',
+          label: 'Дискови спирачки',
+          count: 9,
+          hasChildren: true,
+        },
+        options: [
+          { id: '300', label: 'Накладки', count: 9, hasChildren: false },
+        ],
+      });
+    });
+
+    it('defaults option count to null when TecDoc omits it', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          ...searchResponse,
+          assemblyGroupFacets: {
+            counts: [
+              {
+                assemblyGroupNodeId: 100,
+                assemblyGroupName: 'Спирачна система',
+                parentNodeId: null,
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await client.searchArticles('brake pad');
+
+      expect(result.categoryNavigation.options[0].count).toBeNull();
+      expect(result.categoryNavigation.options[0].hasChildren).toBe(false);
+    });
+
+    // With includeCompleteTree=false TecDoc may return a node without its
+    // descendants; childCount still marks it a non-leaf, so attributes stay
+    // suppressed even though a category is selected.
+    it('treats a node with childCount but no returned children as a non-leaf', async () => {
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          ...searchResponse,
+          ...leafCategoryResponse,
+          assemblyGroupFacets: {
+            counts: [
+              {
+                assemblyGroupNodeId: 100,
+                assemblyGroupName: 'Спирачна система',
+                parentNodeId: null,
+                childCount: 3,
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await client.searchArticles(
+        'brake',
+        undefined,
+        'exact',
+        1,
+        50,
+        { categoryNodeId: '100' },
+      );
+
+      expect(result.categoryNavigation.current?.hasChildren).toBe(true);
+      expect(result.categoryNavigation.options).toEqual([]);
+      expect(result.attributes).toEqual([]);
+    });
+
+    it('forwards brand, category-node and criteria selections as TecDoc filters', async () => {
       mockFetch.mockResolvedValueOnce(mockOkResponse(searchResponse));
 
       await client.searchArticles(
@@ -723,7 +1028,8 @@ describe('TecDocClient', () => {
         50,
         {
           brandIds: ['4', '30'],
-          categoryIds: ['7010'],
+          categoryNodeId: '200',
+          criteria: [{ criteriaId: '20', rawValue: '106.4' }],
         },
       );
 
@@ -732,8 +1038,10 @@ describe('TecDocClient', () => {
       ) as Record<string, unknown>;
       expect(body.getArticles).toMatchObject({
         dataSupplierIds: [4, 30],
-        genericArticleIds: [7010],
+        assemblyGroupNodeIds: [200],
+        criteriaFilters: [{ criteriaId: 20, rawValue: '106.4' }],
       });
+      expect(body.getArticles).not.toHaveProperty('genericArticleIds');
     });
   });
 
@@ -777,5 +1085,17 @@ describe('TecDocClient', () => {
         perPage: 8,
       });
     });
+  });
+});
+
+describe('attributeRoleFor', () => {
+  it('maps the fitting-position criteriaId to its role', () => {
+    expect(attributeRoleFor(FITTING_POSITION_CRITERIA_ID)).toBe(
+      'fitting-position',
+    );
+  });
+
+  it('returns null for an unmapped criteriaId', () => {
+    expect(attributeRoleFor('20')).toBeNull();
   });
 });

@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
 import {
   ArticleSummaryDto,
+  AttributeFacetDto,
   AutocompleteItemDto,
   BrandDto,
+  CategoryNavigationDto,
   PaginatedSearchArticlesDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
@@ -51,6 +53,8 @@ function pageOf(
     pageSize: 20,
     items,
     facets: [],
+    attributes: [],
+    categoryNavigation: { current: null, options: [] },
     ...overrides,
   };
 }
@@ -215,24 +219,7 @@ describe('SearchService', () => {
       );
     });
 
-    it('returns the ranked list when several parts match a brand-qualified query', async () => {
-      getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([
-          articleItem('WA5432', { brandName: 'Bosch' }),
-          articleItem('WA5432', { brandName: 'WIX Filters' }),
-        ]),
-      );
-
-      const result = await service.search('WA5432 WIX');
-
-      expect(result.results?.map((r) => r.brandName)).toEqual([
-        'WIX Filters',
-        'Bosch',
-      ]);
-    });
-
-    it('ranks brand matches first when several match', async () => {
+    it('preserves TecDoc native order for a brand-qualified query (no ranking)', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([
@@ -245,38 +232,62 @@ describe('SearchService', () => {
       const result = await service.search('WA WIX');
 
       expect(result.results?.map((r) => r.articleNumber)).toEqual([
+        'B1',
         'W1',
         'W2',
-        'B1',
       ]);
     });
   });
 
-  describe('search — facets and filters', () => {
+  describe('search — facets, attributes, category navigation and filters', () => {
     const facets: SearchFacetDto[] = [
       {
         id: 'brands',
         label: 'Производител',
         values: [{ id: '4', label: 'WIX', count: 2, imageUrl: null }],
       },
+    ];
+
+    const attributes: AttributeFacetDto[] = [
       {
-        id: 'categories',
-        label: 'Категория',
-        values: [{ id: '7010', label: 'Oil Filter', count: 2 }],
+        id: '20',
+        label: 'Ширина',
+        unit: 'мм',
+        type: 'N',
+        isInterval: false,
+        values: [{ value: '106.4', label: '106.4', count: 2 }],
       },
     ];
 
-    it('surfaces the winning tier facets on the response', async () => {
+    const categoryNavigation: CategoryNavigationDto = {
+      current: null,
+      options: [
+        {
+          id: '100',
+          label: 'Спирачна система',
+          count: 2,
+          hasChildren: true,
+        },
+      ],
+    };
+
+    it('surfaces the winning tier facets, attributes and category navigation', async () => {
       searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')], { facets }),
+        pageOf([articleItem('WL6340'), articleItem('WL6341')], {
+          facets,
+          attributes,
+          categoryNavigation,
+        }),
       );
 
       const result = await service.search('WL634');
 
       expect(result.facets).toEqual(facets);
+      expect(result.attributes).toEqual(attributes);
+      expect(result.categoryNavigation).toEqual(categoryNavigation);
     });
 
-    it('omits facets from the response when the winning tier has none', async () => {
+    it('omits facets, attributes and category navigation when the winning tier has none', async () => {
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
@@ -284,14 +295,20 @@ describe('SearchService', () => {
       const result = await service.search('WL634');
 
       expect(result).not.toHaveProperty('facets');
+      expect(result).not.toHaveProperty('attributes');
+      expect(result).not.toHaveProperty('categoryNavigation');
     });
 
-    it('forwards the active brand/category selections to the catalog', async () => {
+    it('forwards the active brand/category/criteria selections to the catalog', async () => {
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([articleItem('WL6340'), articleItem('WL6341')], { facets }),
       );
 
-      const filters = { brandIds: ['4'], categoryIds: ['7010'] };
+      const filters = {
+        brandIds: ['4'],
+        categoryNodeId: '100',
+        criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+      };
       await service.search('WL634', undefined, 1, 20, filters);
 
       expect(searchArticlesMock).toHaveBeenCalledWith(

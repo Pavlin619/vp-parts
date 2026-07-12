@@ -219,7 +219,7 @@ Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read
 
 ### Part Number Search
 
-**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}&brandIds={id}&categoryIds={id}`** `[PUBLIC]`
+**`GET /search?q={query}&vehicleId={id}&page={n}&pageSize={n}&brandIds={id}&categoryNodeId={id}&attr={criteriaId}:{value}`** `[PUBLIC]`
 
 Searches the TecDoc catalogue. Before the lookup, a **leading or trailing brand
 token** is stripped from the query (e.g. `"WA5432 WIX"` → `"WA5432"`), using a
@@ -228,8 +228,10 @@ removed — punctuation inside the number (dots, dashes, slashes) is preserved,
 because no assumption is made about TecDoc-side normalisation. The brand-stripped
 query is tried first through two tiers (`exact`, then `prefix_or_suffix`); the
 original query is retried only if it differs and the stripped one matched nothing.
-When a brand token was found, results are ranked so matching-brand articles come
-first.
+
+**Native order, no ranking:** results are returned in TecDoc's native `getArticles`
+order — there is no client-side re-ranking. `[VERIFY-TC]` Re-evaluate against the
+Test Client before adding any internal sort (see the Phase 3.5 plan checklist).
 
 **No redirects:** the search endpoint always returns a result list — even for a
 single hit — so the user stays on the search screen. (A single part number
@@ -243,17 +245,60 @@ Query params:
   only fitting parts.
 - `page` (default 1) and `pageSize` (default 20, max 50) paginate broad queries
   like `WA`.
-- `brandIds` and `categoryIds` (optional, repeatable) narrow the result set to
-  the selected facet values — `brandIds` maps to TecDoc `dataSupplierIds`,
-  `categoryIds` to `genericArticleIds`. Send each id as a repeated param
-  (`?brandIds=4&brandIds=30`). Up to 50 values per param.
+- `brandIds` (optional, repeatable) narrows to the selected brand facet values —
+  maps to TecDoc `dataSupplierIds`. Send each id as a repeated param
+  (`?brandIds=4&brandIds=30`).
+- `categoryNodeId` (optional, **single**) narrows to the selected category
+  navigation node — maps to TecDoc `assemblyGroupNodeIds: [id]`. Category
+  navigation is a single-path drill-down (one node at a time, deeper until a
+  leaf), so this is a scalar, not a repeatable param like `brandIds`.
+- `attr` (optional, repeatable) narrows to a technical attribute value as a
+  `criteriaId:rawValue` pair (`?attr=20:106.4&attr=44:Отпред`), split on the
+  first colon; maps to TecDoc `criteriaFilters`.
+- Up to 50 values per param.
 
-Every response with results carries **`facets`**: brand and category groups
-computed by TecDoc over the whole match set (not just the current page), so the
-UI can narrow a broad query. Each facet value has an `id` (the value to send
-back as a filter), a `label`, a `count`, and — for brands — an `imageUrl` logo
-joined from `getBrands()`. Empty groups are omitted; `facets` is absent on a
-zero-result response.
+Every response with results carries three narrowing blocks, all computed by
+TecDoc over the whole match set (not just the current page) and absent on a
+zero-result response:
+- **`facets`** — the brand group only. Each value has an `id` (sent back as
+  `brandIds`), a `label`, a `count`, and an `imageUrl` logo joined from
+  `getBrands()`.
+- **`attributes`** — technical-attribute (criteria) groups (width, mounting
+  position, brake system…). Each group has a `criteriaId` `id`, `label`, `unit`,
+  `type` (`N` numeric, `A` alphanumeric, `K` key/lookup), `isInterval`,
+  `values` (each a `{ value, label, count }`; send `value` back via `attr`), and
+  an optional **`role`** — a semantic hint (`fitting-position`, `axle`, `side`)
+  assigned on the backend from a known criteriaId map (`[VERIFY-TC]` for the
+  exact ids) so the client can render a bespoke control (e.g. a front/rear car
+  diagram) instead of a plain value list; `null`/absent means "render normally".
+  **Only present once the search has landed on a leaf category** (the single
+  `categoryNodeId` node has no children): criteria are defined per product type,
+  so a broad, multi-category result omits them; the client drills the category
+  navigation to a leaf first, then the dimension filters appear. Filtering is fully
+  server-side: a facet click re-issues the search with the selected `brandIds` +
+  `categoryNodeId` + `attr`, and TecDoc returns the narrowed set and recomputed
+  facets.
+- **`categoryNavigation`** — the category (assembly-group) facet as
+  **single-level navigation**, not a full tree. The client drills one step at a
+  time (like InterCars): a broad search returns only the top-level roots, the
+  user clicks one, the search is re-issued with that `categoryNodeId`, and the
+  next level comes back re-scoped — so the whole subtree is never shipped and
+  deep counts are always computed against the current scope. There is **no
+  breadcrumb**: each drill level is a distinct search URL, so the browser back
+  button handles "go up". Two fields:
+  - **`options`** — the level to choose from: the top-level roots when no
+    `categoryNodeId` is selected, otherwise the selected node's immediate
+    children (empty once at a leaf). Each is `{ id` (sent back as
+    `categoryNodeId`)`, label, count` (**null** when TecDoc omits it —
+    `[VERIFY-TC]`)`, hasChildren }`.
+  - **`current`** — the selected node (same shape as an option), or `null` on a
+    broad/unscoped search. Its `hasChildren` drives the leaf gate for
+    `attributes`; its `label`/`count` feed the results heading. `[VERIFY-TC]`
+    whether the match-scoped facet returns the selected node so `current` can be
+    resolved for a deep selection.
+
+  The whole-catalogue tree is `GET /catalog/assembly-groups`'s job; this block is
+  strictly match-scoped.
 
 Returns cacheable TecDoc **metadata + fit + facets — no live inventory**,
 mirroring the listing grid / article detail split. `available` and price are not
@@ -262,15 +307,16 @@ result article numbers via `GET /catalog/articles-availability` and merges it
 in. This keeps a search from triggering a stock-DB read per TecDoc tier attempt
 — availability is read once, client-side, for the final result set.
 
-Response `200` — matches (paginated, with facets):
+Response `200` — matches, scoped to a leaf category (e.g.
+`?q=brake%20pad&categoryNodeId=200`), so `attributes` are present:
 ```json
 {
-  "query": "oil filter",
+  "query": "brake pad",
   "results": [
     {
-      "articleNumber": "WL6340",
-      "brandName": "WIX",
-      "description": "Oil Filter",
+      "articleNumber": "0 986 494 104",
+      "brandName": "BOSCH",
+      "description": "Brake Pad Set",
       "thumbnailUrl": null,
       "fitsVehicle": true
     }
@@ -283,22 +329,37 @@ Response `200` — matches (paginated, with facets):
       "id": "brands",
       "label": "Производител",
       "values": [
-        { "id": "4", "label": "WIX", "count": 18, "imageUrl": "https://.../wix.png" },
-        { "id": "30", "label": "MANN-FILTER", "count": 12, "imageUrl": "https://.../mann.png" }
-      ]
-    },
-    {
-      "id": "categories",
-      "label": "Категория",
-      "values": [
-        { "id": "7010", "label": "Oil Filter", "count": 42 }
+        { "id": "4", "label": "BOSCH", "count": 18, "imageUrl": "https://.../bosch.png" },
+        { "id": "30", "label": "ABE", "count": 12, "imageUrl": "https://.../abe.png" }
       ]
     }
-  ]
+  ],
+  "attributes": [
+    {
+      "id": "20",
+      "label": "Ширина",
+      "unit": "мм",
+      "type": "N",
+      "isInterval": false,
+      "values": [
+        { "value": "106.4", "label": "106.4", "count": 24 },
+        { "value": "120", "label": "120", "count": 8 }
+      ]
+    }
+  ],
+  "categoryNavigation": {
+    "current": {
+      "id": "200",
+      "label": "Накладки",
+      "count": null,
+      "hasChildren": false
+    },
+    "options": []
+  }
 }
 ```
 
-Response `200` — no matches (no facets):
+Response `200` — no matches (no facets / attributes / category navigation):
 ```json
 { "query": "XXXX999", "results": [], "total": 0, "page": 1, "pageSize": 20 }
 ```

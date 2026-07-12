@@ -6,7 +6,9 @@ import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
 import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
 import {
   ArticleSummaryDto,
+  AttributeFacetDto,
   AutocompleteItemDto,
+  CategoryNavigationDto,
   PaginatedSearchArticlesDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
@@ -34,12 +36,19 @@ const pageOf = (
   pageSize: 20,
   items,
   facets: [],
+  attributes: [],
+  categoryNavigation: { current: null, options: [] },
   ...overrides,
 });
 
-// The controller always forwards a filters object; with no brandIds/categoryIds
-// query params both fields are undefined, which the mock is called with.
-const NO_FILTERS = { brandIds: undefined, categoryIds: undefined };
+// The controller always forwards a filters object; with no brandIds/
+// categoryNodeId/attr query params brandIds and categoryNodeId are undefined
+// and criteria is an empty array, which the mock is called with.
+const NO_FILTERS = {
+  brandIds: undefined,
+  categoryNodeId: undefined,
+  criteria: [],
+};
 
 const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({
   articleNumber,
@@ -191,21 +200,41 @@ describe('SearchController (e2e)', () => {
       );
     });
 
-    it('returns brand and category facets with brand logos joined on', async () => {
+    it('returns the brand facet (logos joined), attribute facets and category navigation', async () => {
       const facets: SearchFacetDto[] = [
         {
           id: 'brands',
           label: 'Производител',
           values: [{ id: '4', label: 'WIX', count: 2, imageUrl: null }],
         },
+      ];
+      const attributes: AttributeFacetDto[] = [
         {
-          id: 'categories',
-          label: 'Категория',
-          values: [{ id: '7010', label: 'Oil Filter', count: 2 }],
+          id: '20',
+          label: 'Ширина',
+          unit: 'мм',
+          type: 'N',
+          isInterval: false,
+          values: [{ value: '106.4', label: '106.4', count: 2 }],
         },
       ];
+      const categoryNavigation: CategoryNavigationDto = {
+        current: {
+          id: '200',
+          label: 'Дискови спирачки',
+          count: 2,
+          hasChildren: true,
+        },
+        options: [
+          { id: '300', label: 'Накладки', count: 2, hasChildren: false },
+        ],
+      };
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340'), makeArticle('WL6341')], { facets }),
+        pageOf([makeArticle('WL6340'), makeArticle('WL6341')], {
+          facets,
+          attributes,
+          categoryNavigation,
+        }),
       );
       mockTecDocClient.getBrands.mockResolvedValue([
         { brandName: 'WIX', logoUrl: 'https://logos/wix.png' },
@@ -228,21 +257,20 @@ describe('SearchController (e2e)', () => {
             },
           ],
         },
-        {
-          id: 'categories',
-          label: 'Категория',
-          values: [{ id: '7010', label: 'Oil Filter', count: 2 }],
-        },
       ]);
+      expect(res.body.attributes).toEqual(attributes);
+      expect(res.body.categoryNavigation).toEqual(categoryNavigation);
     });
 
-    it('forwards repeated brandIds and categoryIds query params as filters', async () => {
+    it('forwards brandIds, categoryNodeId and attr query params as filters', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
       );
 
       await request(app.getHttpServer())
-        .get('/search?q=WL634&brandIds=4&brandIds=30&categoryIds=7010')
+        .get(
+          '/search?q=WL634&brandIds=4&brandIds=30&categoryNodeId=200&attr=20:106.4',
+        )
         .expect(200);
 
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
@@ -251,8 +279,27 @@ describe('SearchController (e2e)', () => {
         'exact',
         1,
         20,
-        { brandIds: ['4', '30'], categoryIds: ['7010'] },
+        {
+          brandIds: ['4', '30'],
+          categoryNodeId: '200',
+          criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+        },
       );
+    });
+
+    it('preserves TecDoc native result order (no client-side ranking)', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('B1'), makeArticle('A2'), makeArticle('C3')]),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=WL634')
+        .expect(200);
+
+      const numbers = (
+        res.body.results as Array<{ articleNumber: string }>
+      ).map((r) => r.articleNumber);
+      expect(numbers).toEqual(['B1', 'A2', 'C3']);
     });
 
     it('returns a single filtered result as a list rather than a redirect', async () => {

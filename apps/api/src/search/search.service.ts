@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  ArticleSummaryDto,
   AutocompleteItemDto,
+  CategoryNavigationDto,
   PaginatedSearchArticlesDto,
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
@@ -49,23 +49,38 @@ export class SearchService {
       filters,
     );
 
-    const ranked = this.rankByBrand(result.items, parsed.brandHint);
-
     if (result.total === 0) {
       this.logZeroResult(rawQuery, parsed.brandStripped, vehicleId);
     }
 
     const suggestions = await this.buildSuggestions(result.total, rawQuery);
 
+    // Results keep TecDoc's native article order — no client-side ranking.
+    // [VERIFY-TC] Re-evaluate ordering against the Test Client (see the Phase
+    // 3.5 plan checklist) before adding any internal sort.
     return {
       query,
-      results: ranked,
+      results: result.items,
       total: result.total,
       page: result.page,
       pageSize: result.pageSize,
       ...(result.facets.length > 0 && { facets: result.facets }),
+      ...(result.attributes.length > 0 && { attributes: result.attributes }),
+      ...(this.hasCategoryNavigation(result.categoryNavigation) && {
+        categoryNavigation: result.categoryNavigation,
+      }),
       ...(suggestions.length > 0 && { suggestions }),
     };
+  }
+
+  /**
+   * The category navigation is worth returning only when it carries something to
+   * render — a level to choose from or a resolved current node. A broad search
+   * with no matched groups collapses to empty and is omitted, matching how the
+   * brand/attribute facets are conditionally included.
+   */
+  private hasCategoryNavigation(navigation: CategoryNavigationDto): boolean {
+    return navigation.options.length > 0 || navigation.current !== null;
   }
 
   async autocomplete(query: string): Promise<AutocompleteItemDto[]> {
@@ -104,8 +119,9 @@ export class SearchService {
    * given, every candidate/tier is scoped to it so TecDoc returns only parts
    * that fit that vehicle (no separate fit lookup, no per-item badge). Active
    * facet `filters` are applied to every candidate/tier. The first
-   * candidate/tier with a non-empty total wins; its total and facets are
-   * authoritative for pagination and are stable across pages.
+   * candidate/tier with a non-empty total wins; its total, facets, attributes
+   * and category navigation are authoritative for pagination and are stable
+   * across pages.
    */
   private async executeSearchWithFallback(
     parsed: ParsedQuery,
@@ -125,6 +141,8 @@ export class SearchService {
       pageSize,
       items: [],
       facets: [],
+      attributes: [],
+      categoryNavigation: { current: null, options: [] },
     };
 
     for (const candidate of candidates) {
@@ -147,35 +165,6 @@ export class SearchService {
     }
 
     return lastResult;
-  }
-
-  /** Moves results whose brand matches the stripped brand token to the front. */
-  private rankByBrand(
-    items: ArticleSummaryDto[],
-    brandHint: string | undefined,
-  ): ArticleSummaryDto[] {
-    if (!brandHint) {
-      return items;
-    }
-
-    const matches: ArticleSummaryDto[] = [];
-    const rest: ArticleSummaryDto[] = [];
-    for (const item of items) {
-      (this.matchesBrandHint(item, brandHint) ? matches : rest).push(item);
-    }
-
-    return [...matches, ...rest];
-  }
-
-  private matchesBrandHint(
-    item: ArticleSummaryDto,
-    brandHint: string,
-  ): boolean {
-    const brand = item.brandName.toUpperCase();
-    return brandHint
-      .toUpperCase()
-      .split(/\s+/)
-      .some((token) => token.length > 0 && brand.includes(token));
   }
 
   private async buildSuggestions(

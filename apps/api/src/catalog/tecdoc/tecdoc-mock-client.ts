@@ -8,11 +8,15 @@ import {
   PaginatedSearchArticlesDto,
   SearchFacetDto,
   FacetValueDto,
+  AttributeFacetDto,
+  AttributeFacetValueDto,
+  CategoryNavigationDto,
+  CategoryOptionDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
-import { SearchFilters } from './tecdoc-client';
+import { SearchFilters, attributeRoleFor } from './tecdoc-client';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
 
@@ -167,6 +171,15 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       description: 'Brake Pad Set, disc brake',
       thumbnailUrl: null,
     },
+    // Rear-axle counterpart so the "Позиция на монтаж" (fitting position) facet
+    // has both front/rear values in dev — exercises the role: 'fitting-position'
+    // special control on the FE.
+    {
+      articleNumber: 'BP-DF4145',
+      brandName: 'Ferodo',
+      description: 'Brake Pad Set, disc brake',
+      thumbnailUrl: null,
+    },
   ],
   '200002': [
     {
@@ -312,6 +325,41 @@ const BRAKE_DISC_IMAGES = mockGallery('Brake Disc');
 const OIL_FILTER_IMAGES = mockGallery('Oil Filter');
 
 const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
+  // Front/rear brake-pad pair. The "Позиция на монтаж" spec maps to the
+  // fitting-position role (see ATTRIBUTE_ROLE_BY_ID) so the mock surfaces a
+  // role-tagged attribute facet once the brake-pad leaf category is selected.
+  'BP-0986494061': {
+    articleNumber: 'BP-0986494061',
+    brandName: 'Bosch',
+    brandLogoUrl: null,
+    description: 'Brake Pad Set, disc brake',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Позиция на монтаж', value: 'Отпред' },
+      { key: 'Width', value: '155.1 mm' },
+      { key: 'Height', value: '66 mm' },
+    ],
+    oemNumbers: ['1K0 698 151 B'],
+    compatibleVehicles: [],
+    fitsVehicle: null,
+  },
+  'BP-DF4145': {
+    articleNumber: 'BP-DF4145',
+    brandName: 'Ferodo',
+    brandLogoUrl: null,
+    description: 'Brake Pad Set, disc brake',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Позиция на монтаж', value: 'Отзад' },
+      { key: 'Width', value: '105.3 mm' },
+      { key: 'Height', value: '55.9 mm' },
+    ],
+    oemNumbers: ['5Q0 698 451'],
+    compatibleVehicles: [],
+    fitsVehicle: null,
+  },
   'BD-0986478451': {
     articleNumber: 'BD-0986478451',
     brandName: 'Bosch',
@@ -478,10 +526,22 @@ export class TecDocMockClient {
       // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
       // returns every other match so fit indicators show both states.
       .filter((_, index) => vehicleId == null || index % 2 === 0)
-      .filter((base) => this.matchesFilters(base, filters))
-      .map((base) => this.toSummary(base));
+      .map((base) => this.toSummary(base))
+      .filter((item) => this.matchesFilters(item, filters));
 
     const facets = this.buildFacets(matches);
+    const categoryNavigation = this.buildCategoryNavigation(matches, filters);
+
+    // Attribute facets only make sense once the search has landed on a leaf
+    // category — mirror the real client's gate (mock nodes are all leaves, so a
+    // selected node has hasChildren=false).
+    const categorySelected = Boolean(filters?.categoryNodeId);
+    const atLeaf =
+      categorySelected &&
+      (categoryNavigation.current
+        ? categoryNavigation.current.hasChildren === false
+        : categoryNavigation.options.length === 0);
+    const attributes = atLeaf ? this.buildAttributeFacets(matches) : [];
 
     const start = (page - 1) * pageSize;
     const items = matches.slice(start, start + pageSize);
@@ -492,6 +552,8 @@ export class TecDocMockClient {
       pageSize,
       items,
       facets,
+      attributes,
+      categoryNavigation,
     });
   }
 
@@ -581,57 +643,123 @@ export class TecDocMockClient {
 
   /**
    * Applies the active facet selections to a mock row. The mock has no numeric
-   * dataSupplier/genericArticle ids, so brand facets key on `brandName` and
-   * category facets on `description` — the same values {@link buildFacets}
-   * emits as facet-value ids. Both filters are AND-combined; a missing or empty
-   * filter matches everything.
+   * TecDoc ids, so brand facets key on `brandName`, category-tree nodes on
+   * `description`, and attribute facets on a `key:value` technical-spec pair —
+   * the same values the builders below emit as facet ids. Groups are
+   * AND-combined; a missing or empty group matches everything.
    */
   private matchesFilters(
-    article: MockArticleBase,
+    article: ArticleSummaryDto,
     filters?: SearchFilters,
   ): boolean {
     const brandOk =
       !filters?.brandIds?.length ||
       filters.brandIds.includes(article.brandName);
-    const categoryOk =
-      !filters?.categoryIds?.length ||
-      filters.categoryIds.includes(article.description);
 
-    return brandOk && categoryOk;
+    const categoryOk =
+      !filters?.categoryNodeId ||
+      filters.categoryNodeId === article.description;
+
+    const criteriaOk =
+      !filters?.criteria?.length ||
+      filters.criteria.every((selected) =>
+        article.technicalSpecs.some(
+          (spec) =>
+            spec.key === selected.criteriaId &&
+            spec.value === selected.rawValue,
+        ),
+      );
+
+    return brandOk && categoryOk && criteriaOk;
   }
 
   /**
-   * Builds brand and category facet counts over the matched set, mirroring the
-   * real client's `dataSupplierFacets` / `genericArticleFacets`. Ids equal the
-   * labels (mock has no numeric ids) so a selection round-trips through
-   * {@link matchesFilters}; brand logos stay null for the catalog layer to join.
+   * Builds the brand facet counts over the matched set, mirroring the real
+   * client's `dataSupplierFacets`. Ids equal the labels (mock has no numeric
+   * ids) so a selection round-trips through {@link matchesFilters}; brand logos
+   * stay null for the catalog layer to join.
    */
   private buildFacets(items: ArticleSummaryDto[]): SearchFacetDto[] {
-    const facets: SearchFacetDto[] = [];
-
     const brandValues = this.countBy(
       items,
       (item) => item.brandName,
       (label) => ({ id: label, label, count: 0, imageUrl: null }),
     );
-    if (brandValues.length > 0) {
-      facets.push({ id: 'brands', label: 'Производител', values: brandValues });
+
+    return brandValues.length > 0
+      ? [{ id: 'brands', label: 'Производител', values: brandValues }]
+      : [];
+  }
+
+  /**
+   * Builds attribute (criteria) facets from the matched set's technical specs,
+   * mirroring the real client's `criteriaFacets`. Each distinct spec key becomes
+   * one facet group and each distinct value a selectable value; the id/value
+   * equal the spec's key/value so a selection round-trips through
+   * {@link matchesFilters}.
+   */
+  private buildAttributeFacets(
+    items: ArticleSummaryDto[],
+  ): AttributeFacetDto[] {
+    const byKey = new Map<string, Map<string, AttributeFacetValueDto>>();
+
+    for (const item of items) {
+      for (const spec of item.technicalSpecs) {
+        const valuesByRaw =
+          byKey.get(spec.key) ?? new Map<string, AttributeFacetValueDto>();
+        const value = valuesByRaw.get(spec.value) ?? {
+          value: spec.value,
+          label: spec.value,
+          count: 0,
+        };
+        value.count += 1;
+        valuesByRaw.set(spec.value, value);
+        byKey.set(spec.key, valuesByRaw);
+      }
     }
 
-    const categoryValues = this.countBy(
-      items,
-      (item) => item.description,
-      (label) => ({ id: label, label, count: 0 }),
+    return [...byKey.entries()].map(([key, valuesByRaw]) => ({
+      id: key,
+      label: key,
+      unit: null,
+      type: 'A',
+      isInterval: false,
+      role: attributeRoleFor(key),
+      values: [...valuesByRaw.values()],
+    }));
+  }
+
+  /**
+   * Builds single-level category navigation from the matched set's descriptions,
+   * mirroring the real client. Mock categories are a flat single level (each
+   * distinct description is a root leaf whose id is the description): a broad
+   * search exposes them all as `options`; selecting one narrows the match set to
+   * that description, so it becomes `current` with no further `options` (a leaf).
+   */
+  private buildCategoryNavigation(
+    items: ArticleSummaryDto[],
+    filters?: SearchFilters,
+  ): CategoryNavigationDto {
+    const selectedNodeId = filters?.categoryNodeId;
+    const countByLabel = new Map<string, number>();
+
+    for (const item of items) {
+      countByLabel.set(
+        item.description,
+        (countByLabel.get(item.description) ?? 0) + 1,
+      );
+    }
+
+    const nodes: CategoryOptionDto[] = [...countByLabel.entries()].map(
+      ([label, count]) => ({ id: label, label, count, hasChildren: false }),
     );
-    if (categoryValues.length > 0) {
-      facets.push({
-        id: 'categories',
-        label: 'Категория',
-        values: categoryValues,
-      });
+
+    if (selectedNodeId) {
+      const current = nodes.find((node) => node.id === selectedNodeId) ?? null;
+      return { current, options: [] };
     }
 
-    return facets;
+    return { current: null, options: nodes };
   }
 
   private countBy(

@@ -94,7 +94,13 @@ export class CatalogRepository {
       filters,
     );
 
-    if (results.items.length === 0 && results.facets.length === 0) {
+    const isEmpty =
+      results.items.length === 0 &&
+      results.facets.length === 0 &&
+      results.attributes.length === 0 &&
+      results.categoryNavigation.options.length === 0 &&
+      results.categoryNavigation.current === null;
+    if (isEmpty) {
       return results;
     }
 
@@ -152,23 +158,20 @@ export class CatalogRepository {
 
   /**
    * Fills each brand facet value's `imageUrl` from the same logo map used for
-   * the rows, so the brand filter list renders logos. Category facets are
-   * returned untouched (they carry no logo).
+   * the rows, so the brand filter list renders logos. The search facet group is
+   * brand-only (categories are carried separately as the category navigation,
+   * and technical attributes as their own facets — neither carries a logo).
    */
   private attachBrandFacetLogos(
     facets: SearchFacetDto[],
     logoByBrand: Map<string, string | null>,
   ): SearchFacetDto[] {
-    return facets.map((facet) =>
-      facet.id === 'brands'
-        ? {
-            ...facet,
-            values: facet.values.map((value) => ({
-              ...value,
-              imageUrl: logoByBrand.get(value.label) ?? null,
-            })),
-          }
-        : facet,
-    );
+    return facets.map((facet) => ({
+      ...facet,
+      values: facet.values.map((value) => ({
+        ...value,
+        imageUrl: logoByBrand.get(value.label) ?? null,
+      })),
+    }));
   }
 }

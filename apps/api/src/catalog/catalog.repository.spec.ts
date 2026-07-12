@@ -157,15 +157,40 @@ describe('CatalogRepository', () => {
       })),
     });
 
+    const categoryOption = (label: string, count: number | null = 1) => ({
+      id: label,
+      label,
+      count,
+      hasChildren: false,
+    });
+
+    const navigationOf = (options: ReturnType<typeof categoryOption>[]) => ({
+      current: null,
+      options,
+    });
+
+    const attributeFacet = (label: string) => ({
+      id: label,
+      label,
+      unit: null,
+      type: 'A',
+      isInterval: false,
+      values: [{ value: 'x', label: 'x', count: 1 }],
+    });
+
     const paginated = (
       items: ReturnType<typeof summary>[],
       facets: ReturnType<typeof brandFacet>[] = [],
+      attributes: ReturnType<typeof attributeFacet>[] = [],
+      categoryNavigation: ReturnType<typeof navigationOf> = navigationOf([]),
     ) => ({
       total: items.length,
       page: 1,
       pageSize: 20,
       items,
       facets,
+      attributes,
+      categoryNavigation,
     });
 
     it('joins the brand logo onto every search hit and preserves pagination', async () => {
@@ -223,7 +248,11 @@ describe('CatalogRepository', () => {
       searchArticlesMock.mockResolvedValueOnce(paginated([summary('Bosch')]));
       getBrandsMock.mockResolvedValueOnce(BRANDS);
 
-      const filters = { brandIds: ['4'], categoryIds: ['7010'] };
+      const filters = {
+        brandIds: ['4'],
+        categoryNodeId: '7010',
+        criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+      };
       await repository.searchArticles('BD-001', 'V1', 'exact', 1, 20, filters);
 
       expect(searchArticlesMock).toHaveBeenCalledWith(
@@ -236,7 +265,42 @@ describe('CatalogRepository', () => {
       );
     });
 
-    it('skips the brands read entirely for an empty result set', async () => {
+    it('passes the attribute facets and category navigation through untouched', async () => {
+      const navigation = navigationOf([categoryOption('Дискови спирачки')]);
+      searchArticlesMock.mockResolvedValueOnce(
+        paginated(
+          [summary('Bosch', 'BD-001')],
+          [],
+          [attributeFacet('Ширина')],
+          navigation,
+        ),
+      );
+      getBrandsMock.mockResolvedValueOnce(BRANDS);
+
+      const result = await repository.searchArticles('BD-001');
+
+      expect(result.attributes).toEqual([attributeFacet('Ширина')]);
+      expect(result.categoryNavigation).toEqual(navigation);
+    });
+
+    it('enriches when only category navigation is present (no items or brand facet)', async () => {
+      searchArticlesMock.mockResolvedValueOnce(
+        paginated(
+          [],
+          [],
+          [],
+          navigationOf([categoryOption('Дискови спирачки')]),
+        ),
+      );
+      getBrandsMock.mockResolvedValueOnce(BRANDS);
+
+      const result = await repository.searchArticles('BD');
+
+      expect(getBrandsMock).toHaveBeenCalled();
+      expect(result.categoryNavigation.options).toHaveLength(1);
+    });
+
+    it('skips the brands read entirely for a fully empty result set', async () => {
       searchArticlesMock.mockResolvedValueOnce(paginated([]));
 
       await repository.searchArticles('NOPE');
