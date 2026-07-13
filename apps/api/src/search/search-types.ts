@@ -38,6 +38,29 @@ export const DEFAULT_SEARCH_EXECUTION: SearchExecution = {
 };
 
 /**
+ * The search intent the client selects up front, mapped 1:1 from the FE
+ * controls so illegal combinations (e.g. "generic + exact") cannot be
+ * expressed. Each mode resolves to a distinct TecDoc call plan in
+ * `buildSearchPlan`:
+ * - `part_number` (default) — `searchType 10` / `prefix_or_suffix` over the
+ *   brand-stripped query, then the raw query if it differs. No free-text
+ *   fallback: a descriptive query belongs in `generic`.
+ * - `part_number_exact` — `searchType 10` / `exact` over the raw query only.
+ *   No brand stripping, no fallback: an exact request is a precise lookup.
+ * - `generic` — a single `searchType 99` free-text call over the raw query.
+ *   No brand stripping, no number lane.
+ */
+export const SearchMode = {
+  PartNumber: 'part_number',
+  PartNumberExact: 'part_number_exact',
+  Generic: 'generic',
+} as const;
+
+export type SearchMode = (typeof SearchMode)[keyof typeof SearchMode];
+
+export const DEFAULT_SEARCH_MODE: SearchMode = SearchMode.PartNumber;
+
+/**
  * A single technical-attribute (criteria) narrowing: the TecDoc `criteriaId`
  * plus the machine `rawValue` echoed back from an `AttributeFacetValueDto`.
  */

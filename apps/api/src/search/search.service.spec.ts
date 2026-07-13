@@ -10,6 +10,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
 import { SearchTecDoc } from './search.tecdoc';
+import { SearchMode } from './search-types';
 import { BrandsService } from '../catalog/brands';
 import { RedisCache } from '../redis';
 
@@ -42,7 +43,9 @@ const mockCache = {
 // explicit facet selections.
 const NO_FILTERS = {};
 
-// The execution objects each search mode resolves to (see query-classifier).
+// The execution objects each SearchMode resolves to (see buildSearchPlan):
+// part_number → prefix_or_suffix number search; part_number_exact → exact
+// number match; generic → free-text (type 99).
 const PART = { type: 10, matchType: 'prefix_or_suffix' } as const;
 const EXACT = { type: 10, matchType: 'exact' } as const;
 const TERM = { type: 99 } as const;
@@ -114,7 +117,7 @@ describe('SearchService', () => {
     service = new SearchService(mockSearchTecDoc, mockBrands, mockCache);
   });
 
-  describe('search — number-first routing with free-text fallback', () => {
+  describe('search — part-number mode (default)', () => {
     it('resolves a query that hits the number lane in a single call', async () => {
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([articleItem('WL6340'), articleItem('WL6341')]),
@@ -133,71 +136,15 @@ describe('SearchService', () => {
       );
     });
 
-    it('falls back to a free-text (type 99) call over the raw query when the number lane misses', async () => {
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // number lane: prefix_or_suffix miss
-        .mockResolvedValueOnce(pageOf([articleItem('OF1')])); // free-text hit
+    it('does not fall back to free-text when the number lane misses', async () => {
+      searchArticlesMock.mockResolvedValue(pageOf([]));
+      getAutocompleteSuggestionsMock.mockResolvedValue([]);
 
       await service.search('oil filter');
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        1,
-        'oil filter',
-        undefined,
-        PART,
-        1,
-        20,
-        NO_FILTERS,
-      );
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        2,
-        'oil filter',
-        undefined,
-        TERM,
-        1,
-        20,
-        NO_FILTERS,
-      );
-    });
-
-    it('keeps the brand in the free-text fallback (raw query) though the number lane is brand-stripped', async () => {
-      getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // number: brand-stripped "oil filter"
-        .mockResolvedValueOnce(pageOf([])) // number: raw "oil filter bosch"
-        .mockResolvedValueOnce(pageOf([articleItem('OF1')])); // free-text raw
-
-      await service.search('oil filter bosch');
-
-      expect(searchArticlesMock).toHaveBeenCalledTimes(3);
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        1,
-        'oil filter',
-        undefined,
-        PART,
-        1,
-        20,
-        NO_FILTERS,
-      );
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        2,
-        'oil filter bosch',
-        undefined,
-        PART,
-        1,
-        20,
-        NO_FILTERS,
-      );
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        3,
-        'oil filter bosch',
-        undefined,
-        TERM,
-        1,
-        20,
-        NO_FILTERS,
-      );
+      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      expect(executions).toEqual([PART]);
+      expect(executions).not.toContainEqual(TERM);
     });
 
     it('does not fall back to free-text once the number lane hits', async () => {
@@ -209,11 +156,20 @@ describe('SearchService', () => {
       const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
       expect(executions).not.toContainEqual(TERM);
     });
+  });
 
-    it('routes to an exact number call when the exact toggle is on', async () => {
+  describe('search — exact mode (part_number_exact)', () => {
+    it('issues a single exact number call over the raw query', async () => {
       searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
 
-      await service.search('WL6340', undefined, 1, 20, {}, true);
+      await service.search(
+        'WL6340',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.PartNumberExact,
+      );
 
       expect(searchArticlesMock).toHaveBeenCalledTimes(1);
       expect(searchArticlesMock).toHaveBeenCalledWith(
@@ -226,15 +182,126 @@ describe('SearchService', () => {
       );
     });
 
-    it('never issues a free-text fallback in exact mode, even when the number lane misses', async () => {
+    it('does not strip the brand token in exact mode', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WA5432')]));
+
+      await service.search(
+        'WA5432 WIX',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.PartNumberExact,
+      );
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'WA5432 WIX',
+        undefined,
+        EXACT,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('never issues a free-text fallback in exact mode, even when it misses', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
       getAutocompleteSuggestionsMock.mockResolvedValue([]);
 
-      await service.search('oil filter', undefined, 1, 20, {}, true);
+      await service.search(
+        'oil filter',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.PartNumberExact,
+      );
 
       const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
-      expect(executions).not.toContainEqual(TERM);
       expect(executions).toEqual([EXACT]);
+    });
+  });
+
+  describe('search — generic mode (free-text)', () => {
+    it('issues a single free-text (type 99) call over the raw query', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+
+      await service.search(
+        'oil filter',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.Generic,
+      );
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'oil filter',
+        undefined,
+        TERM,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('does not run the number lane in generic mode', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+
+      await service.search(
+        'oil filter',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.Generic,
+      );
+
+      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      expect(executions).toEqual([TERM]);
+    });
+
+    it('does not strip the brand token in generic mode', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+
+      await service.search(
+        'oil filter bosch',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.Generic,
+      );
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
+      expect(searchArticlesMock).toHaveBeenCalledWith(
+        'oil filter bosch',
+        undefined,
+        TERM,
+        1,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    it('issues no fallback when the free-text call misses', async () => {
+      searchArticlesMock.mockResolvedValue(pageOf([]));
+      getAutocompleteSuggestionsMock.mockResolvedValue([]);
+
+      await service.search(
+        'zzz nothing here',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.Generic,
+      );
+
+      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -325,23 +392,17 @@ describe('SearchService', () => {
       );
     });
 
-    it('runs both number candidates then a single free-text fallback when everything misses', async () => {
+    it('runs both number candidates and does not fall back to free-text when everything misses', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValue(pageOf([]));
       getAutocompleteSuggestionsMock.mockResolvedValue([]);
 
       await service.search('WIX WA5432');
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(3);
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        3,
-        'WIX WA5432',
-        undefined,
-        TERM,
-        1,
-        20,
-        NO_FILTERS,
-      );
+      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
+      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      expect(executions).toEqual([PART, PART]);
+      expect(executions).not.toContainEqual(TERM);
     });
 
     it('preserves TecDoc native order (no ranking)', async () => {
@@ -470,12 +531,17 @@ describe('SearchService', () => {
       expect(result).not.toHaveProperty('redirect');
     });
 
-    it('returns a one-item list for a single free-text hit', async () => {
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // number lane miss
-        .mockResolvedValueOnce(pageOf([articleItem('OF1')])); // free-text hit
+    it('returns a one-item list for a single free-text hit in generic mode', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
 
-      const result = await service.search('oil filter mann');
+      const result = await service.search(
+        'oil filter mann',
+        undefined,
+        1,
+        20,
+        {},
+        SearchMode.Generic,
+      );
 
       expect(result.results).toHaveLength(1);
     });

@@ -1,7 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
-  IsBoolean,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -11,7 +11,7 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { CriteriaFilter } from './search-types';
+import { CriteriaFilter, SearchMode } from './search-types';
 
 export const SEARCH_DEFAULT_PAGE = 1;
 export const SEARCH_DEFAULT_PAGE_SIZE = 20;
@@ -95,18 +95,14 @@ export class SearchQueryDto {
   attr?: string[];
 
   /**
-   * Exact-phrase toggle (FE "Търси по точна фраза"). When on, the query is run
-   * as an exact TecDoc number match instead of the default prefix/suffix or
-   * free-text search. Accepts `?exact=true` / `?exact=1`; absent means off.
+   * The search intent selected on the FE, mapped 1:1 from its controls:
+   * `part_number` (default) runs a prefix/suffix number search, `part_number_exact`
+   * an exact number match, and `generic` a free-text (type 99) search. Absent
+   * means the service applies the default (`part_number`).
    */
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    value === undefined
-      ? undefined
-      : value === true || value === 'true' || value === '1',
-  )
-  @IsBoolean()
-  exact?: boolean;
+  @IsEnum(SearchMode)
+  searchMode?: SearchMode;
 }
 
 /**
