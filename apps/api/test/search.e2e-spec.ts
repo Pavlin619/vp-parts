@@ -2,8 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
-import { TecDocClient } from '../src/catalog/tecdoc/tecdoc-client';
-import { REDIS_CLIENT } from '../src/catalog/tecdoc/tecdoc-cache.service';
+import { SearchTecDoc } from '../src/search';
+import { BrandsTecDoc } from '../src/catalog';
+import { REDIS_CLIENT } from '../src/redis';
 import {
   ArticleSummaryDto,
   AttributeFacetDto,
@@ -81,7 +82,8 @@ describe('SearchController (e2e)', () => {
 
   beforeAll(async () => {
     app = await createTestApp((builder) => {
-      builder.overrideProvider(TecDocClient).useValue(mockTecDocClient);
+      builder.overrideProvider(SearchTecDoc).useValue(mockTecDocClient);
+      builder.overrideProvider(BrandsTecDoc).useValue(mockTecDocClient);
     });
     redisClient = app.get<Redis>(REDIS_CLIENT);
   });

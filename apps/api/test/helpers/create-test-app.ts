@@ -4,7 +4,7 @@ import RedisMock from 'ioredis-mock';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
-import { REDIS_CLIENT } from '../../src/catalog/tecdoc/tecdoc-cache.service';
+import { REDIS_CLIENT } from '../../src/redis';
 
 export interface TestAppOptions {
   /**

@@ -11,7 +11,7 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { CriteriaFilter } from '../catalog/tecdoc/tecdoc-client';
+import { CriteriaFilter } from './search-types';
 
 export const SEARCH_DEFAULT_PAGE = 1;
 export const SEARCH_DEFAULT_PAGE_SIZE = 20;

@@ -21,7 +21,7 @@ import {
   SearchFilters,
   TecDocSearchType,
   attributeRoleFor,
-} from './tecdoc-client';
+} from '../search/search-types';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
 
@@ -29,8 +29,7 @@ import {
  * The bare row fields the mock stores per article. The richer summary fields
  * (specs, OE numbers, brand logo, fit) are derived at read time in
  * {@link TecDocMockClient.toSummary}, mirroring how the real client fills them
- * from a single `getArticles` (`includeAll`) response plus the catalog-layer
- * brand-logo join.
+ * from a single `getArticles` (`includeAll`) response plus the brand-logo join.
  */
 type MockArticleBase = Pick<
   ArticleSummaryDto,
@@ -605,7 +604,7 @@ export class TecDocMockClient {
    * Expands a bare mock row into the shared summary shape. Specs and OE numbers
    * are borrowed from the article's detail fixture when present (mirroring how
    * the real client gets them free on the same `getArticles` response);
-   * `brandLogoUrl` stays null because the catalog repository joins logos from
+   * `brandLogoUrl` stays null because the brands layer joins logos from
    * getBrands, exactly as it does for the real client.
    */
   private toSummary(base: MockArticleBase): ArticleSummaryDto {

@@ -1,9 +1,11 @@
 export { CatalogModule } from './catalog.module';
-export { CatalogService } from './catalog.service';
-export { CatalogController } from './catalog.controller';
-export { CatalogRepository } from './catalog.repository';
-export { TecDocClient } from './tecdoc/tecdoc-client';
+export { BrandsModule, BrandsService, BrandsTecDoc } from './brands';
+export { VehiclesService } from './vehicles/vehicles.service';
+export { VehiclesTecDoc } from './vehicles/vehicles.tecdoc';
+export { VehiclesController } from './vehicles/vehicles.controller';
+export { ArticlesService } from './articles/articles.service';
+export { ArticlesTecDoc, SUBSTITUTES_LIMIT } from './articles/articles.tecdoc';
 export {
-  TecDocCacheService,
-  REDIS_CLIENT,
-} from './tecdoc/tecdoc-cache.service';
+  ArticlesController,
+  parseArticleNumbers,
+} from './articles/articles.controller';

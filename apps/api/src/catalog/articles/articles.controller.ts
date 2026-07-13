@@ -7,18 +7,14 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Public } from '../auth/public.decorator';
-import { CatalogService } from './catalog.service';
 import {
-  ManufacturerDto,
-  ModelSeriesDto,
-  VehicleVariantDto,
-  AssemblyGroupDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared';
+import { Public } from '../../auth/public.decorator';
+import { ArticlesService } from './articles.service';
 
 /**
  * Parses the comma-separated `numbers` query for the bulk availability endpoint
@@ -43,34 +39,8 @@ export function parseArticleNumbers(numbers?: string): string[] {
 
 @Public()
 @Controller('catalog')
-export class CatalogController {
-  constructor(private readonly catalog: CatalogService) {}
-
-  @Get('manufacturers')
-  getManufacturers(): Promise<ManufacturerDto[]> {
-    return this.catalog.getManufacturers();
-  }
-
-  @Get('manufacturers/:manufacturerId/model-series')
-  getModelSeries(
-    @Param('manufacturerId') manufacturerId: string,
-  ): Promise<ModelSeriesDto[]> {
-    return this.catalog.getModelSeries(manufacturerId);
-  }
-
-  @Get('model-series/:seriesId/variants')
-  getVehicleVariants(
-    @Param('seriesId') seriesId: string,
-  ): Promise<VehicleVariantDto[]> {
-    return this.catalog.getVehicleVariants(seriesId);
-  }
-
-  @Get('vehicles/:vehicleId/categories')
-  getCategoryTree(
-    @Param('vehicleId') vehicleId: string,
-  ): Promise<AssemblyGroupDto[]> {
-    return this.catalog.getCategoryTree(vehicleId);
-  }
+export class ArticlesController {
+  constructor(private readonly articles: ArticlesService) {}
 
   @Get('vehicles/:vehicleId/categories/:categoryId/articles')
   listArticles(
@@ -80,7 +50,7 @@ export class CatalogController {
     @Query('pageSize', new DefaultValuePipe(20), ParseIntPipe) pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
     const clampedPageSize = Math.min(Math.max(pageSize, 1), 50);
-    return this.catalog.listArticleMetadata(
+    return this.articles.listArticleMetadata(
       vehicleId,
       categoryId,
       page,
@@ -99,7 +69,7 @@ export class CatalogController {
   getArticlesAvailability(
     @Query('numbers') numbers?: string,
   ): Promise<ArticlesAvailabilityDto> {
-    return this.catalog.getArticlesAvailability(parseArticleNumbers(numbers));
+    return this.articles.getArticlesAvailability(parseArticleNumbers(numbers));
   }
 
   @Get('articles/:articleNumber')
@@ -107,13 +77,13 @@ export class CatalogController {
     @Param('articleNumber') articleNumber: string,
     @Query('vehicleId') vehicleId?: string,
   ): Promise<ArticleCatalogDetailDto> {
-    return this.catalog.getArticleDetail(articleNumber, vehicleId);
+    return this.articles.getArticleDetail(articleNumber, vehicleId);
   }
 
   @Get('articles/:articleNumber/substitutes')
   getSubstitutes(
     @Param('articleNumber') articleNumber: string,
   ): Promise<ArticleSummaryDto[]> {
-    return this.catalog.getSubstitutes(articleNumber);
+    return this.articles.getSubstitutes(articleNumber);
   }
 }

@@ -1,49 +1,29 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
-  ManufacturerDto,
-  ModelSeriesDto,
-  VehicleVariantDto,
-  AssemblyGroupDto,
-  BrandDto,
   PaginatedCatalogArticlesDto,
-  PaginatedSearchArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
-  AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
-import { CatalogRepository } from './catalog.repository';
-import {
-  SearchExecution,
-  SearchFilters,
-  SUBSTITUTES_LIMIT,
-} from './tecdoc/tecdoc-client';
-import { InventoryService } from '../inventory';
+import { RedisCache } from '../../redis';
+import { InventoryService } from '../../inventory';
+import { BrandsService } from '../brands';
+import { ArticlesTecDoc, SUBSTITUTES_LIMIT } from './articles.tecdoc';
+
+const ARTICLE_TTL = 24 * 60 * 60;
+const SUBSTITUTES_TTL = 24 * 60 * 60;
+const SUBSTITUTES_MISS_TTL = 60 * 60;
 
 @Injectable()
-export class CatalogService {
-  private readonly logger = new Logger(CatalogService.name);
+export class ArticlesService {
+  private readonly logger = new Logger(ArticlesService.name);
 
   constructor(
-    private readonly repository: CatalogRepository,
+    private readonly tecdoc: ArticlesTecDoc,
+    private readonly cache: RedisCache,
+    private readonly brands: BrandsService,
     private readonly inventory: InventoryService,
   ) {}
-
-  async getManufacturers(): Promise<ManufacturerDto[]> {
-    return this.repository.findManufacturers();
-  }
-
-  async getModelSeries(manufacturerId: string): Promise<ModelSeriesDto[]> {
-    return this.repository.findModelSeries(manufacturerId);
-  }
-
-  async getVehicleVariants(seriesId: string): Promise<VehicleVariantDto[]> {
-    return this.repository.findVehicleVariants(seriesId);
-  }
-
-  async getCategoryTree(vehicleId: string): Promise<AssemblyGroupDto[]> {
-    return this.repository.findAssemblyGroupTree(vehicleId);
-  }
 
   /**
    * Cacheable catalog metadata for a category page — article identity, brand,
@@ -59,7 +39,15 @@ export class CatalogService {
     page: number,
     pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
-    return this.repository.findArticles(vehicleId, categoryId, page, pageSize);
+    const articles = await this.cache.cached(
+      `tecdoc:articles:${vehicleId}:${categoryId}:${page}:${pageSize}`,
+      ARTICLE_TTL,
+      () => this.tecdoc.getArticles(vehicleId, categoryId, page, pageSize),
+    );
+
+    const items = await this.brands.attachLogos(articles.items);
+
+    return { ...articles, items };
   }
 
   /**
@@ -84,51 +72,6 @@ export class CatalogService {
   }
 
   /**
-   * Cacheable TecDoc catalog metadata for a search hit — identity, brand,
-   * description, thumbnail, and (when a vehicle is scoped) fit — with **no**
-   * live inventory. Search is a pure catalog read now: the client fetches live
-   * price/availability separately via {@link getArticlesAvailability} and
-   * merges it in, mirroring the listing grid / article detail split. Keeping
-   * inventory out of the search path means a search never triggers a stock-DB
-   * read per TecDoc tier attempt. The brand facet, technical-attribute facets,
-   * and single-level category navigation (with active `filters` applied) ride
-   * along on the result for the UI to narrow a broad query. Results keep TecDoc's
-   * native order — no client-side ranking.
-   */
-  async searchArticles(
-    query: string,
-    vehicleId?: string,
-    execution?: SearchExecution,
-    page = 1,
-    pageSize = 50,
-    filters?: SearchFilters,
-  ): Promise<PaginatedSearchArticlesDto> {
-    return this.repository.searchArticles(
-      query,
-      vehicleId,
-      execution,
-      page,
-      pageSize,
-      filters,
-    );
-  }
-
-  /**
-   * Parts brands (TecDoc data suppliers) with their logos, Redis-cached. Search
-   * uses this as the source for its brand-token dictionary (see the search
-   * module); it is the same data the listing layer joins for brand logos.
-   */
-  async getBrands(): Promise<BrandDto[]> {
-    return this.repository.findBrands();
-  }
-
-  async getAutocompleteSuggestions(
-    query: string,
-  ): Promise<AutocompleteItemDto[]> {
-    return this.repository.findAutocompleteSuggestions(query);
-  }
-
-  /**
    * Cross-reference substitutes for an article — the same part from other
    * brands (TecDoc comparable numbers), as cacheable catalog metadata only.
    * Live price/availability is fetched separately via
@@ -138,9 +81,16 @@ export class CatalogService {
    * per-substitute fit check is done. Capped at {@link SUBSTITUTES_LIMIT}.
    */
   async getSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
-    const substitutes = await this.repository.findSubstitutes(articleNumber);
+    const substitutes = await this.cache.cachedArray(
+      `tecdoc:substitutes:${articleNumber}`,
+      SUBSTITUTES_TTL,
+      SUBSTITUTES_MISS_TTL,
+      () => this.tecdoc.getSubstitutes(articleNumber),
+    );
 
-    return substitutes.slice(0, SUBSTITUTES_LIMIT);
+    const enriched = await this.brands.attachLogos(substitutes);
+
+    return enriched.slice(0, SUBSTITUTES_LIMIT);
   }
 
   /**
@@ -162,7 +112,15 @@ export class CatalogService {
     vehicleId?: string,
   ): Promise<ArticleCatalogDetailDto> {
     try {
-      return await this.repository.findArticleDetails(articleNumber, vehicleId);
+      const detail = await this.cache.cached(
+        `tecdoc:article-detail:${articleNumber}:${vehicleId ?? 'none'}`,
+        ARTICLE_TTL,
+        () => this.tecdoc.getArticleDetails(articleNumber, vehicleId),
+      );
+
+      const [enriched] = await this.brands.attachLogos([detail]);
+
+      return enriched;
     } catch {
       this.logger.warn(`Article not found: ${articleNumber}`);
       throw new NotFoundException(`Article not found: ${articleNumber}`);

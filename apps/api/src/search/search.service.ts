@@ -5,12 +5,14 @@ import {
   PaginatedSearchArticlesDto,
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
+import { RedisCache } from '../redis';
+import { BrandsService } from '../catalog/brands';
 import {
   SearchExecution,
   SearchFilters,
   TecDocSearchType,
-} from '../catalog/tecdoc/tecdoc-client';
-import { CatalogService } from '../catalog/catalog.service';
+} from './search-types';
+import { SearchTecDoc } from './search.tecdoc';
 import { buildBrandTokenSet } from './brand-dictionary';
 import { parseQuery, ParsedQuery } from './query-parser';
 import { SEARCH_DEFAULT_PAGE, SEARCH_DEFAULT_PAGE_SIZE } from './search.dto';
@@ -18,6 +20,15 @@ import { SEARCH_DEFAULT_PAGE, SEARCH_DEFAULT_PAGE_SIZE } from './search.dto';
 const AUTOCOMPLETE_MIN_QUERY_LENGTH = 3;
 const AUTOCOMPLETE_MAX_SUGGESTIONS = 8;
 const SUGGESTION_PREFIX_LENGTH = 5;
+
+const SEARCH_TTL = 60 * 60;
+const SEARCH_MISS_TTL = 10 * 60;
+const AUTOCOMPLETE_TTL = 30 * 60;
+
+const DEFAULT_EXECUTION: SearchExecution = {
+  type: TecDocSearchType.AnyNumber,
+  matchType: 'prefix_or_suffix',
+};
 
 /**
  * One TecDoc call the search will attempt: the query string to send and the
@@ -33,7 +44,11 @@ interface SearchPlanStep {
 export class SearchService {
   private readonly logger = new Logger(SearchService.name);
 
-  constructor(private readonly catalog: CatalogService) {}
+  constructor(
+    private readonly searchTecDoc: SearchTecDoc,
+    private readonly brands: BrandsService,
+    private readonly cache: RedisCache,
+  ) {}
 
   async search(
     query: string,
@@ -95,8 +110,7 @@ export class SearchService {
       return [];
     }
 
-    const suggestions =
-      await this.catalog.getAutocompleteSuggestions(searchQuery);
+    const suggestions = await this.autocompleteCached(searchQuery);
 
     return suggestions.slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
   }
@@ -108,7 +122,7 @@ export class SearchService {
    */
   private async parse(rawQuery: string): Promise<ParsedQuery> {
     try {
-      const brandTokens = buildBrandTokenSet(await this.catalog.getBrands());
+      const brandTokens = buildBrandTokenSet(await this.brands.getBrands());
       return parseQuery(rawQuery, brandTokens);
     } catch {
       this.logger.warn(
@@ -197,7 +211,7 @@ export class SearchService {
     };
 
     for (const step of plan) {
-      const result = await this.catalog.searchArticles(
+      const result = await this.searchArticlesCached(
         step.query,
         vehicleId,
         step.execution,
@@ -216,6 +230,60 @@ export class SearchService {
     return lastResult;
   }
 
+  /**
+   * Redis-cached (1h hit / 10m empty-miss) TecDoc search, with brand logos
+   * joined onto the article rows and brand facet from the same cached brand
+   * read. The cached payload is the raw TecDoc result (no logos); the logo join
+   * is applied per request so a brand-logo change never needs a search-cache
+   * bust.
+   */
+  private async searchArticlesCached(
+    query: string,
+    vehicleId: string | undefined,
+    execution: SearchExecution,
+    page: number,
+    pageSize: number,
+    filters: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
+    const raw = await this.cache.cachedPaginated(
+      this.searchCacheKey(query, vehicleId, execution, page, pageSize, filters),
+      SEARCH_TTL,
+      SEARCH_MISS_TTL,
+      () =>
+        this.searchTecDoc.searchArticles(
+          query,
+          vehicleId,
+          execution,
+          page,
+          pageSize,
+          filters,
+        ),
+    );
+
+    return this.brands.applyLogosToSearchResults(raw);
+  }
+
+  private searchCacheKey(
+    query: string,
+    vehicleId: string | undefined,
+    execution: SearchExecution = DEFAULT_EXECUTION,
+    page: number,
+    pageSize: number,
+    filters?: SearchFilters,
+  ): string {
+    const vehicleKey = vehicleId ?? 'none';
+    const executionKey = `${execution.type}-${execution.matchType ?? 'any'}`;
+    const brandKey = filters?.brandIds?.length
+      ? filters.brandIds.join(',')
+      : 'none';
+    const categoryKey = filters?.categoryNodeId ?? 'none';
+    const criteriaKey = filters?.criteria?.length
+      ? filters.criteria.map((c) => `${c.criteriaId}=${c.rawValue}`).join(',')
+      : 'none';
+
+    return `tecdoc:search:${query}:${vehicleKey}:${executionKey}:${page}:${pageSize}:${brandKey}:${categoryKey}:${criteriaKey}`;
+  }
+
   private async buildSuggestions(
     total: number,
     query: string,
@@ -229,7 +297,15 @@ export class SearchService {
       return [];
     }
 
-    return this.catalog.getAutocompleteSuggestions(prefix);
+    return this.autocompleteCached(prefix);
+  }
+
+  private autocompleteCached(query: string): Promise<AutocompleteItemDto[]> {
+    return this.cache.cached(
+      `tecdoc:autocomplete:${query}`,
+      AUTOCOMPLETE_TTL,
+      () => this.searchTecDoc.getAutocompleteSuggestions(query),
+    );
   }
 
   /**
