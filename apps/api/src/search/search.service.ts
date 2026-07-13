@@ -8,8 +8,10 @@ import {
 import { RedisCache } from '../redis';
 import { BrandsService } from '../catalog/brands';
 import {
+  DEFAULT_SEARCH_MODE,
   SearchExecution,
   SearchFilters,
+  SearchMode,
   TecDocSearchType,
 } from './search-types';
 import { SearchTecDoc } from './search.tecdoc';
@@ -56,11 +58,11 @@ export class SearchService {
     page: number = SEARCH_DEFAULT_PAGE,
     pageSize: number = SEARCH_DEFAULT_PAGE_SIZE,
     filters: SearchFilters = {},
-    exact = false,
+    searchMode: SearchMode = DEFAULT_SEARCH_MODE,
   ): Promise<SearchResponseDto> {
     const rawQuery = query.trim();
     const parsed = await this.parse(rawQuery);
-    const plan = this.buildSearchPlan(parsed, exact);
+    const plan = this.buildSearchPlan(parsed, searchMode);
 
     const result = await this.executeSearchWithFallback(
       plan,
@@ -94,16 +96,6 @@ export class SearchService {
     };
   }
 
-  /**
-   * The category navigation is worth returning only when it carries something to
-   * render — a level to choose from or a resolved current node. A broad search
-   * with no matched groups collapses to empty and is omitted, matching how the
-   * brand/attribute facets are conditionally included.
-   */
-  private hasCategoryNavigation(navigation: CategoryNavigationDto): boolean {
-    return navigation.options.length > 0 || navigation.current !== null;
-  }
-
   async autocomplete(query: string): Promise<AutocompleteItemDto[]> {
     const searchQuery = query.trim();
     if (searchQuery.length < AUTOCOMPLETE_MIN_QUERY_LENGTH) {
@@ -113,6 +105,16 @@ export class SearchService {
     const suggestions = await this.autocompleteCached(searchQuery);
 
     return suggestions.slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
+  }
+
+  /**
+   * The category navigation is worth returning only when it carries something to
+   * render — a level to choose from or a resolved current node. A broad search
+   * with no matched groups collapses to empty and is omitted, matching how the
+   * brand/attribute facets are conditionally included.
+   */
+  private hasCategoryNavigation(navigation: CategoryNavigationDto): boolean {
+    return navigation.options.length > 0 || navigation.current !== null;
   }
 
   /**
@@ -133,56 +135,58 @@ export class SearchService {
   }
 
   /**
-   * Expands a parsed query + the exact toggle into the ordered TecDoc calls to
-   * attempt. We deliberately do NOT classify number-vs-text up front: that
-   * heuristic is unreliable, and since the number and free-text result sets are
-   * near-disjoint, it is unnecessary. Instead the number lane is always tried
-   * first, with a free-text fallback:
+   * Expands a parsed query + the client-selected {@link SearchMode} into the
+   * ordered TecDoc calls to attempt. The mode is chosen up front on the FE, so
+   * we no longer guess number-vs-text: each mode maps to a distinct, minimal
+   * plan and the first call with a non-empty total wins (see
+   * executeSearchWithFallback).
    *
-   * - default → `searchType 10` / `prefix_or_suffix` over the brand-stripped
-   *   query, then the raw query if it differs (the "brand" token may have been
-   *   part of the number); if all miss, one `searchType 99` free-text call over
-   *   the **raw** query. The brand is kept for free-text because it is valuable
-   *   signal in a descriptive query ("oil filter bosch"). Up to 3 calls, but a
-   *   real part number resolves on the first.
-   * - exact toggle → `searchType 10` / `exact` over the same brand-stripped→raw
-   *   candidates, with no free-text fallback: an exact-phrase request is a
-   *   precise number lookup, kept as its own cheap bucket.
-   *
-   * The first call with a non-empty total wins (see executeSearchWithFallback).
+   * - `generic` → a single `searchType 99` free-text call over the **raw**
+   *   query. No brand stripping, no number lane.
+   * - `part_number_exact` → a single `searchType 10` / `exact` call over the
+   *   **raw** query. No brand stripping, no fallback: an exact request is a
+   *   precise lookup.
+   * - `part_number` (default) → `searchType 10` / `prefix_or_suffix` over the
+   *   brand-stripped query, then the raw query if it differs (the "brand" token
+   *   may have been part of the number). No free-text fallback — a descriptive
+   *   query belongs in `generic`.
    */
   private buildSearchPlan(
     parsed: ParsedQuery,
-    exact: boolean,
+    searchMode: SearchMode,
   ): SearchPlanStep[] {
+    if (searchMode === SearchMode.Generic) {
+      return [
+        { query: parsed.raw, execution: { type: TecDocSearchType.FreeText } },
+      ];
+    }
+
+    if (searchMode === SearchMode.PartNumberExact) {
+      return [
+        {
+          query: parsed.raw,
+          execution: {
+            type: TecDocSearchType.AnyNumber,
+            matchType: 'exact',
+          },
+        },
+      ];
+    }
+
     const numberCandidates =
       parsed.raw === parsed.brandStripped
         ? [parsed.brandStripped]
         : [parsed.brandStripped, parsed.raw];
-
-    if (exact) {
-      const exactExecution: SearchExecution = {
-        type: TecDocSearchType.AnyNumber,
-        matchType: 'exact',
-      };
-      return numberCandidates.map((query) => ({
-        query,
-        execution: exactExecution,
-      }));
-    }
 
     const numberExecution: SearchExecution = {
       type: TecDocSearchType.AnyNumber,
       matchType: 'prefix_or_suffix',
     };
 
-    return [
-      ...numberCandidates.map((query) => ({
-        query,
-        execution: numberExecution,
-      })),
-      { query: parsed.raw, execution: { type: TecDocSearchType.FreeText } },
-    ];
+    return numberCandidates.map((query) => ({
+      query,
+      execution: numberExecution,
+    }));
   }
 
   /**

@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 import { parseCriteriaFilters, SearchQueryDto } from './search.dto';
+import { SearchMode } from './search-types';
 
 describe('parseCriteriaFilters', () => {
   it('returns an empty array when the param is absent or empty', () => {
@@ -34,23 +36,29 @@ describe('parseCriteriaFilters', () => {
   });
 });
 
-describe('SearchQueryDto exact toggle', () => {
-  const parseExact = (query: Record<string, unknown>) =>
-    plainToInstance(SearchQueryDto, query).exact;
+describe('SearchQueryDto searchMode', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query);
 
-  it('is undefined when the param is absent', () => {
-    expect(parseExact({ q: 'WL6340' })).toBeUndefined();
+  it('is undefined when the param is absent (service applies the default)', () => {
+    expect(toDto({ q: 'WL6340' }).searchMode).toBeUndefined();
   });
 
-  it('coerces the truthy string forms to true', () => {
-    expect(parseExact({ q: 'WL6340', exact: 'true' })).toBe(true);
-    expect(parseExact({ q: 'WL6340', exact: '1' })).toBe(true);
-    expect(parseExact({ q: 'WL6340', exact: true })).toBe(true);
+  it('accepts every supported mode and validates', () => {
+    for (const mode of [
+      SearchMode.PartNumber,
+      SearchMode.PartNumberExact,
+      SearchMode.Generic,
+    ]) {
+      const dto = toDto({ q: 'WL6340', searchMode: mode });
+      expect(dto.searchMode).toBe(mode);
+      expect(validateSync(dto)).toHaveLength(0);
+    }
   });
 
-  it('coerces any other value to false', () => {
-    expect(parseExact({ q: 'WL6340', exact: 'false' })).toBe(false);
-    expect(parseExact({ q: 'WL6340', exact: '0' })).toBe(false);
-    expect(parseExact({ q: 'WL6340', exact: 'yes' })).toBe(false);
+  it('rejects an unsupported mode', () => {
+    const dto = toDto({ q: 'WL6340', searchMode: 'fuzzy' });
+    const errors = validateSync(dto);
+    expect(errors.some((error) => error.property === 'searchMode')).toBe(true);
   });
 });

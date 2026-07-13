@@ -25,7 +25,7 @@ export class SearchController {
         categoryNodeId: dto.categoryNodeId,
         criteria: parseCriteriaFilters(dto.attr),
       },
-      dto.exact,
+      dto.searchMode,
     );
   }
 

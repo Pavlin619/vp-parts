@@ -51,9 +51,9 @@ const NO_FILTERS = {
   criteria: [],
 };
 
-// The execution objects each search mode resolves to (see query-classifier):
-// a part number → number search / prefix_or_suffix; the exact toggle → exact
-// number match; a descriptive query → free-text (type 99).
+// The execution objects each searchMode resolves to (see buildSearchPlan):
+// part_number → number search / prefix_or_suffix; part_number_exact → exact
+// number match; generic → free-text (type 99).
 const PART = { type: 10, matchType: 'prefix_or_suffix' };
 const EXACT = { type: 10, matchType: 'exact' };
 const TERM = { type: 99 };
@@ -146,20 +146,18 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results[1].fitsVehicle).toBeNull();
     });
 
-    it('falls back to a free-text (type 99) search over the raw query when the number lane misses', async () => {
-      // No brand dictionary in e2e, so brand-stripped == raw: one number call,
-      // then the free-text fallback on the same raw query.
-      mockTecDocClient.searchArticles
-        .mockResolvedValueOnce(pageOf([])) // number lane miss
-        .mockResolvedValueOnce(pageOf([makeArticle('OF1')])); // free-text hit
+    it('does not fall back to free-text in part-number mode when the number lane misses', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
+      mockTecDocClient.getAutocompleteSuggestions.mockResolvedValue([]);
 
       await request(app.getHttpServer())
         .get('/search?q=oil%20filter%20bosch')
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(2);
-      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
-        1,
+      // No brand dictionary in e2e, so brand-stripped == raw: a single number
+      // call, and no free-text fallback in the default mode.
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'oil filter bosch',
         undefined,
         PART,
@@ -167,8 +165,19 @@ describe('SearchController (e2e)', () => {
         20,
         NO_FILTERS,
       );
-      expect(mockTecDocClient.searchArticles).toHaveBeenNthCalledWith(
-        2,
+    });
+
+    it('issues a single free-text (type 99) call in generic mode', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('OF1')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?q=oil%20filter%20bosch&searchMode=generic')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'oil filter bosch',
         undefined,
         TERM,
@@ -178,15 +187,16 @@ describe('SearchController (e2e)', () => {
       );
     });
 
-    it('routes to an exact number match when the exact toggle is on', async () => {
+    it('routes to an exact number match when searchMode is part_number_exact', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('WL6340')]),
       );
 
       await request(app.getHttpServer())
-        .get('/search?q=WL6340&exact=true')
+        .get('/search?q=WL6340&searchMode=part_number_exact')
         .expect(200);
 
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'WL6340',
         undefined,
@@ -195,6 +205,14 @@ describe('SearchController (e2e)', () => {
         20,
         NO_FILTERS,
       );
+    });
+
+    it('returns 400 for an unsupported searchMode', async () => {
+      await request(app.getHttpServer())
+        .get('/search?q=WL6340&searchMode=fuzzy')
+        .expect(400);
+
+      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
     });
 
     it('echoes the requested page and pageSize', async () => {
