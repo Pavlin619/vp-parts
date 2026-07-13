@@ -9,21 +9,37 @@ import {
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
-import { CatalogService } from '../catalog/catalog.service';
+import { SearchTecDoc } from './search.tecdoc';
+import { BrandsService } from '../catalog/brands';
+import { RedisCache } from '../redis';
 
 const searchArticlesMock = jest.fn();
 const getAutocompleteSuggestionsMock = jest.fn();
 const getBrandsMock = jest.fn();
+const applyLogosMock = jest.fn();
+const cachedPaginatedMock = jest.fn();
+const cachedMock = jest.fn();
 
-const mockCatalogService = {
+const mockSearchTecDoc = {
   searchArticles: searchArticlesMock,
   getAutocompleteSuggestions: getAutocompleteSuggestionsMock,
+} as unknown as SearchTecDoc;
+
+const mockBrands = {
   getBrands: getBrandsMock,
-} as unknown as CatalogService;
+  applyLogosToSearchResults: applyLogosMock,
+} as unknown as BrandsService;
+
+// The cache is transparent in unit tests: each helper simply runs its loader so
+// the assertions below observe the real SearchTecDoc calls and their arguments.
+const mockCache = {
+  cachedPaginated: cachedPaginatedMock,
+  cached: cachedMock,
+} as unknown as RedisCache;
 
 // search() defaults its filters param to an empty object, so every
-// catalog.searchArticles call carries this as its final argument unless a test
-// supplies explicit facet selections.
+// searchArticles call carries this as its final argument unless a test supplies
+// explicit facet selections.
 const NO_FILTERS = {};
 
 // The execution objects each search mode resolves to (see query-classifier).
@@ -78,11 +94,24 @@ describe('SearchService', () => {
   let service: SearchService;
 
   beforeEach(() => {
-    service = new SearchService(mockCatalogService);
     jest.resetAllMocks();
+    // The cache helpers are transparent (run the loader) and the brand-logo join
+    // is an identity passthrough, so tests observe the raw SearchTecDoc results
+    // and calls.
+    cachedPaginatedMock.mockImplementation(
+      (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
+        loader(),
+    );
+    cachedMock.mockImplementation(
+      (_key: string, _ttl: number, loader: () => unknown) => loader(),
+    );
+    applyLogosMock.mockImplementation((results: unknown) =>
+      Promise.resolve(results),
+    );
     // Default: no brand dictionary, so the query is searched as typed unless a
     // test opts into brand stripping by returning brands.
     getBrandsMock.mockResolvedValue([]);
+    service = new SearchService(mockSearchTecDoc, mockBrands, mockCache);
   });
 
   describe('search — number-first routing with free-text fallback', () => {

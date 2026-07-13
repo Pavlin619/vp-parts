@@ -1,0 +1,86 @@
+import { AttributeFacetRole } from '@vp-parts-shop/shared';
+
+export type SearchMatchType =
+  | 'exact'
+  | 'prefix'
+  | 'suffix'
+  | 'prefix_or_suffix';
+
+/**
+ * TecDoc `getArticles` search strategies we route to:
+ * - `AnyNumber` (10) — match against article / OE / trade numbers, EANs, etc.
+ *   Used for part-number queries; pair with a {@link SearchMatchType}.
+ * - `FreeText` (99) — full-text search over article descriptions. Used for
+ *   descriptive queries ("oil filter bosch"); `matchType` does not apply.
+ */
+export const TecDocSearchType = {
+  AnyNumber: 10,
+  FreeText: 99,
+} as const;
+
+export type TecDocSearchType =
+  (typeof TecDocSearchType)[keyof typeof TecDocSearchType];
+
+/**
+ * A resolved search strategy for one TecDoc `getArticles` call: which
+ * {@link TecDocSearchType} to use and, for number searches, how to match. The
+ * search service maps a query's intent (part-number vs free-text, exact toggle)
+ * to one or more of these; free-text (`type: 99`) leaves `matchType` unset.
+ */
+export interface SearchExecution {
+  type: TecDocSearchType;
+  matchType?: SearchMatchType;
+}
+
+export const DEFAULT_SEARCH_EXECUTION: SearchExecution = {
+  type: TecDocSearchType.AnyNumber,
+  matchType: 'prefix_or_suffix',
+};
+
+/**
+ * A single technical-attribute (criteria) narrowing: the TecDoc `criteriaId`
+ * plus the machine `rawValue` echoed back from an `AttributeFacetValueDto`.
+ */
+export interface CriteriaFilter {
+  criteriaId: string;
+  rawValue: string;
+}
+
+/**
+ * Optional narrowing a caller applies to a search, selected from the facet
+ * values returned on a previous search:
+ * - `brandIds` — TecDoc dataSupplierIds (brand facet value ids); multi-select.
+ * - `categoryNodeId` — a single TecDoc assemblyGroupNodeId. Category navigation
+ *   is a single-path drill-down (one node at a time, deeper until a leaf), so it
+ *   is a scalar, not an array — unlike the multi-select brand/criteria filters.
+ * - `criteria` — technical-attribute selections (criteriaId + rawValue).
+ * Groups are AND-combined; ids within a multi-select group are OR-combined.
+ */
+export interface SearchFilters {
+  brandIds?: string[];
+  categoryNodeId?: string;
+  criteria?: CriteriaFilter[];
+}
+
+/**
+ * Maps a TecDoc criteriaId (or, in dev, the mock's attribute label) to a
+ * semantic {@link AttributeFacetRole} the client can render with a bespoke
+ * control (e.g. a front/rear car diagram) instead of a plain value list.
+ *
+ * [VERIFY-TC] The numeric TecDoc criteriaId(s) below are best-effort candidates
+ * and MUST be confirmed against the Pegasus 3.0 Test Client — a wrong id would
+ * mislabel an unrelated criterion. The Bulgarian label entry only exists so the
+ * mock client surfaces the role in dev; live data is matched by criteriaId.
+ */
+export const FITTING_POSITION_CRITERIA_ID = '2';
+
+export const ATTRIBUTE_ROLE_BY_ID: Readonly<
+  Record<string, AttributeFacetRole>
+> = {
+  [FITTING_POSITION_CRITERIA_ID]: 'fitting-position',
+  'Позиция на монтаж': 'fitting-position',
+};
+
+export function attributeRoleFor(id: string): AttributeFacetRole | null {
+  return ATTRIBUTE_ROLE_BY_ID[id] ?? null;
+}

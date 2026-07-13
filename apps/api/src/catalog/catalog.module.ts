@@ -1,54 +1,46 @@
-import { Inject, Injectable, Module, OnModuleDestroy } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
-import { REDIS_CLIENT } from './tecdoc/tecdoc-cache.service';
-import { TecDocClient } from './tecdoc/tecdoc-client';
-import { TecDocMockClient } from './tecdoc/tecdoc-mock-client';
-import { TecDocCacheService } from './tecdoc/tecdoc-cache.service';
-import { CatalogRepository } from './catalog.repository';
-import { CatalogService } from './catalog.service';
-import { CatalogController } from './catalog.controller';
+import { TecDocModule, TecDocTransport, TecDocMockClient } from '../tecdoc';
+import { RedisModule } from '../redis';
 import { InventoryModule } from '../inventory';
-
-/**
- * Closes the shared Redis connection when the Nest app shuts down. Without this
- * the socket (and its reconnection timer) keeps the event loop alive, which
- * hangs `app.close()` — the reason the e2e suite previously needed `--forceExit`.
- * `disconnect()` is used over `quit()` so teardown never blocks on an in-flight
- * command or an unreachable server.
- */
-@Injectable()
-export class RedisConnectionLifecycle implements OnModuleDestroy {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
-
-  onModuleDestroy(): void {
-    this.redis.disconnect();
-  }
-}
+import { BrandsModule } from './brands';
+import { VehiclesTecDoc } from './vehicles/vehicles.tecdoc';
+import { VehiclesService } from './vehicles/vehicles.service';
+import { VehiclesController } from './vehicles/vehicles.controller';
+import { ArticlesTecDoc } from './articles/articles.tecdoc';
+import { ArticlesService } from './articles/articles.service';
+import { ArticlesController } from './articles/articles.controller';
 
 @Module({
-  imports: [InventoryModule],
-  controllers: [CatalogController],
+  imports: [TecDocModule, RedisModule, BrandsModule, InventoryModule],
+  controllers: [VehiclesController, ArticlesController],
   providers: [
     {
-      provide: REDIS_CLIENT,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        new Redis(config.get<string>('REDIS_URL')!),
-    },
-    RedisConnectionLifecycle,
-    {
-      provide: TecDocClient,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService): TecDocClient | TecDocMockClient =>
+      provide: VehiclesTecDoc,
+      inject: [ConfigService, TecDocTransport, TecDocMockClient],
+      useFactory: (
+        config: ConfigService,
+        transport: TecDocTransport,
+        mock: TecDocMockClient,
+      ): VehiclesTecDoc | TecDocMockClient =>
         config.get<string>('TECDOC_MOCK') === 'true'
-          ? new TecDocMockClient()
-          : new TecDocClient(config),
+          ? mock
+          : new VehiclesTecDoc(transport),
     },
-    TecDocCacheService,
-    CatalogRepository,
-    CatalogService,
+    VehiclesService,
+    {
+      provide: ArticlesTecDoc,
+      inject: [ConfigService, TecDocTransport, TecDocMockClient],
+      useFactory: (
+        config: ConfigService,
+        transport: TecDocTransport,
+        mock: TecDocMockClient,
+      ): ArticlesTecDoc | TecDocMockClient =>
+        config.get<string>('TECDOC_MOCK') === 'true'
+          ? mock
+          : new ArticlesTecDoc(transport),
+    },
+    ArticlesService,
   ],
-  exports: [CatalogService],
 })
 export class CatalogModule {}
