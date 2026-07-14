@@ -7,7 +7,8 @@ import {
   AttributeFacetValueDto,
   CategoryNavigationDto,
   CategoryOptionDto,
-  AutocompleteItemDto,
+  ArticleAutocompleteItemDto,
+  TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
   TecDocTransport,
@@ -18,6 +19,8 @@ import {
   SearchExecution,
   SearchFilters,
   DEFAULT_SEARCH_EXECUTION,
+  DEFAULT_AUTOCOMPLETE_EXECUTION,
+  AUTOCOMPLETE_SUGGESTIONS_LIMIT,
   attributeRoleFor,
 } from './search-types';
 
@@ -182,9 +185,17 @@ export class SearchTecDoc {
     };
   }
 
-  async getAutocompleteSuggestions(
+  /**
+   * Article autocomplete for a part-number / exact search: a short `getArticles`
+   * number lookup (`searchType 10`) capped at {@link AUTOCOMPLETE_SUGGESTIONS_LIMIT}.
+   * The {@link SearchExecution}'s `matchType` selects the strategy — `prefix`
+   * for a live part-number dropdown, `exact` for the exact-number toggle — so
+   * the suggestion set matches how the search itself will run.
+   */
+  async getAutocompleteArticles(
     query: string,
-  ): Promise<AutocompleteItemDto[]> {
+    execution: SearchExecution = DEFAULT_AUTOCOMPLETE_EXECUTION,
+  ): Promise<ArticleAutocompleteItemDto[]> {
     const data = await this.transport.call<{
       totalMatchingArticles: number;
       articles: Array<{
@@ -196,17 +207,52 @@ export class SearchTecDoc {
       articleCountry: 'BG',
       lang: 'bg',
       searchQuery: query,
-      searchType: 10,
-      searchMatchType: 'prefix',
-      perPage: 8,
+      searchType: execution.type,
+      ...(execution.matchType != null && {
+        searchMatchType: execution.matchType,
+      }),
+      perPage: AUTOCOMPLETE_SUGGESTIONS_LIMIT,
       page: 1,
     });
 
-    return data.articles.map((a) => ({
-      articleNumber: a.articleNumber,
-      brandName: a.mfrName,
-      description: a.genericArticles[0]?.genericArticleDescription ?? '',
+    return (data.articles ?? []).map((article) => ({
+      kind: 'article',
+      articleNumber: article.articleNumber,
+      brandName: article.mfrName,
+      description: article.genericArticles[0]?.genericArticleDescription ?? '',
     }));
+  }
+
+  /**
+   * Free-text term autocomplete for a generic search: TecDoc
+   * `getAutoCompleteSuggestions` returns the description strings (article /
+   * manufacturer / assembly-group) that match the typed input, meant to be fed
+   * back as a `searchType 99` query — so a selected term re-runs a generic
+   * search rather than deep-linking to one article.
+   *
+   * [VERIFY-TC] The request param (`searchQuery`) and response shape
+   * (`suggestions[].description`) are best-effort: the onboarding guide (§5.3)
+   * documents the function's purpose but defers the field names to the Pegasus
+   * 3.0 Test Client. Confirm both against the Service Index before relying on
+   * live data; the mapping tolerates a missing array but not a renamed field.
+   */
+  async getAutocompleteTerms(
+    query: string,
+  ): Promise<TermAutocompleteItemDto[]> {
+    const data = await this.transport.call<{
+      suggestions?: Array<{ description: string }>;
+    }>('getAutoCompleteSuggestions', {
+      articleCountry: 'BG',
+      lang: 'bg',
+      searchQuery: query,
+      perPage: AUTOCOMPLETE_SUGGESTIONS_LIMIT,
+      page: 1,
+    });
+
+    return (data.suggestions ?? [])
+      .map((suggestion) => suggestion.description)
+      .filter((term): term is string => Boolean(term))
+      .map((term) => ({ kind: 'term', term }));
   }
 
   /**

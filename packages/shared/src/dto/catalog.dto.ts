@@ -292,8 +292,36 @@ export interface SearchResponseDto {
   suggestions?: AutocompleteItemDto[];
 }
 
-export interface AutocompleteItemDto {
+/**
+ * A single autocomplete suggestion. The shape depends on the search type the
+ * user picked on the FE (mirrors the search's mode), discriminated by `kind`:
+ * - `article` — a concrete part (part-number / exact search). Selecting it
+ *   navigates straight to that article's detail page.
+ * - `term` — a free-text search term (generic search). Selecting it re-runs a
+ *   generic search for that term rather than deep-linking to one article.
+ */
+export type AutocompleteItemDto =
+  | ArticleAutocompleteItemDto
+  | TermAutocompleteItemDto;
+
+/**
+ * A part-number/exact autocomplete hit: a concrete article the FE deep-links to
+ * (`/catalog/articles/{articleNumber}`). Sourced from TecDoc `getArticles`.
+ */
+export interface ArticleAutocompleteItemDto {
+  kind: 'article';
   articleNumber: string;
   brandName: string;
   description: string;
+}
+
+/**
+ * A generic (free-text) autocomplete hit: a search term the FE re-runs as a
+ * generic search. Sourced from TecDoc `getAutoCompleteSuggestions`, which
+ * returns article/manufacturer/assembly-group descriptions for the typed
+ * string.
+ */
+export interface TermAutocompleteItemDto {
+  kind: 'term';
+  term: string;
 }

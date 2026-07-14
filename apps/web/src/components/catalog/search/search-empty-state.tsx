@@ -8,6 +8,13 @@ interface SearchEmptyStateProps {
 }
 
 export function SearchEmptyState({ query, suggestions }: SearchEmptyStateProps) {
+  // "Did you mean" recovery links each suggestion to an article detail page, so
+  // only article suggestions are rendered here (the API's zero-result recovery
+  // always returns the article kind).
+  const articleSuggestions = (suggestions ?? []).filter(
+    (suggestion) => suggestion.kind === "article",
+  );
+
   return (
     <section
       aria-label="Няма резултати"
@@ -26,13 +33,13 @@ export function SearchEmptyState({ query, suggestions }: SearchEmptyStateProps) 
         следните начини да намерите частта:
       </p>
 
-      {suggestions && suggestions.length > 0 && (
+      {articleSuggestions.length > 0 && (
         <div className="mb-8 w-full max-w-md text-left">
           <p className="text-sm font-medium text-ink mb-3">
             Може би търсите:
           </p>
           <ul className="flex flex-col gap-2">
-            {suggestions.map((suggestion) => (
+            {articleSuggestions.map((suggestion) => (
               <li key={`${suggestion.brandName}-${suggestion.articleNumber}`}>
                 <Link
                   href={`/catalog/articles/${encodeURIComponent(suggestion.articleNumber)}`}

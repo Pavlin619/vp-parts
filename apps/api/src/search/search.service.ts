@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  ArticleAutocompleteItemDto,
   AutocompleteItemDto,
   CategoryNavigationDto,
   PaginatedSearchArticlesDto,
@@ -8,7 +9,9 @@ import {
 import { RedisCache } from '../redis';
 import { BrandsService } from '../catalog/brands';
 import {
+  DEFAULT_AUTOCOMPLETE_EXECUTION,
   DEFAULT_SEARCH_MODE,
+  EXACT_AUTOCOMPLETE_EXECUTION,
   SearchExecution,
   SearchFilters,
   SearchMode,
@@ -96,13 +99,25 @@ export class SearchService {
     };
   }
 
-  async autocomplete(query: string): Promise<AutocompleteItemDto[]> {
+  /**
+   * Live autocomplete for the search bar. The client-selected {@link SearchMode}
+   * (the same toggle that drives {@link search}) picks the TecDoc source so the
+   * dropdown matches how the search will run:
+   * - `generic` → free-text term suggestions (`getAutoCompleteSuggestions`); a
+   *   selected term re-runs a generic search.
+   * - `part_number_exact` → exact-number article suggestions.
+   * - `part_number` (default) → prefix-number article suggestions.
+   */
+  async autocomplete(
+    query: string,
+    searchMode: SearchMode = DEFAULT_SEARCH_MODE,
+  ): Promise<AutocompleteItemDto[]> {
     const searchQuery = query.trim();
     if (searchQuery.length < AUTOCOMPLETE_MIN_QUERY_LENGTH) {
       return [];
     }
 
-    const suggestions = await this.autocompleteCached(searchQuery);
+    const suggestions = await this.autocompleteCached(searchQuery, searchMode);
 
     return suggestions.slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
   }
@@ -288,10 +303,18 @@ export class SearchService {
     return `tecdoc:search:${query}:${vehicleKey}:${executionKey}:${page}:${pageSize}:${brandKey}:${categoryKey}:${criteriaKey}`;
   }
 
+  /**
+   * Zero-result "did you mean" recovery: on an empty result set, suggest real
+   * articles whose number starts with the first few characters of the query
+   * (the most common failure is a wrong/typoed ending). This is always an
+   * article-prefix lookup regardless of the search mode — the no-results page
+   * links each suggestion to an article detail page — so it uses its own cache
+   * key, independent of the mode-scoped live autocomplete above.
+   */
   private async buildSuggestions(
     total: number,
     query: string,
-  ): Promise<AutocompleteItemDto[]> {
+  ): Promise<ArticleAutocompleteItemDto[]> {
     if (total > 0) {
       return [];
     }
@@ -301,14 +324,52 @@ export class SearchService {
       return [];
     }
 
-    return this.autocompleteCached(prefix);
+    return this.autocompleteArticlesCached(
+      prefix,
+      DEFAULT_AUTOCOMPLETE_EXECUTION,
+    );
   }
 
-  private autocompleteCached(query: string): Promise<AutocompleteItemDto[]> {
+  /**
+   * Routes a live autocomplete request to the mode's TecDoc source (see
+   * {@link autocomplete}). Each source is cached under a key that carries the
+   * mode so a part-number, exact, and generic dropdown for the same input never
+   * collide.
+   */
+  private autocompleteCached(
+    query: string,
+    searchMode: SearchMode,
+  ): Promise<AutocompleteItemDto[]> {
+    if (searchMode === SearchMode.Generic) {
+      return this.autocompleteTermsCached(query);
+    }
+
+    const execution =
+      searchMode === SearchMode.PartNumberExact
+        ? EXACT_AUTOCOMPLETE_EXECUTION
+        : DEFAULT_AUTOCOMPLETE_EXECUTION;
+
+    return this.autocompleteArticlesCached(query, execution);
+  }
+
+  private autocompleteArticlesCached(
+    query: string,
+    execution: SearchExecution,
+  ): Promise<ArticleAutocompleteItemDto[]> {
     return this.cache.cached(
-      `tecdoc:autocomplete:${query}`,
+      `tecdoc:autocomplete:article:${execution.matchType ?? 'any'}:${query}`,
       AUTOCOMPLETE_TTL,
-      () => this.searchTecDoc.getAutocompleteSuggestions(query),
+      () => this.searchTecDoc.getAutocompleteArticles(query, execution),
+    );
+  }
+
+  private autocompleteTermsCached(
+    query: string,
+  ): Promise<AutocompleteItemDto[]> {
+    return this.cache.cached(
+      `tecdoc:autocomplete:term:${query}`,
+      AUTOCOMPLETE_TTL,
+      () => this.searchTecDoc.getAutocompleteTerms(query),
     );
   }
 

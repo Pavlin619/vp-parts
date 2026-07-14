@@ -139,4 +139,15 @@ export class AutocompleteQueryDto {
   @IsString()
   @MaxLength(200)
   q?: string;
+
+  /**
+   * The search intent selected on the FE — the same toggle as
+   * {@link SearchQueryDto.searchMode}. It picks the autocomplete source:
+   * `generic` yields free-text term suggestions, `part_number`/
+   * `part_number_exact` yield article suggestions. Absent means the service
+   * applies the default (`part_number`).
+   */
+  @IsOptional()
+  @IsEnum(SearchMode)
+  searchMode?: SearchMode;
 }

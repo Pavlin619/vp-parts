@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 import {
   ArticleSummaryDto,
+  ArticleAutocompleteItemDto,
   AttributeFacetDto,
-  AutocompleteItemDto,
   BrandDto,
   CategoryNavigationDto,
   PaginatedSearchArticlesDto,
@@ -15,7 +15,8 @@ import { BrandsService } from '../catalog/brands';
 import { RedisCache } from '../redis';
 
 const searchArticlesMock = jest.fn();
-const getAutocompleteSuggestionsMock = jest.fn();
+const getAutocompleteArticlesMock = jest.fn();
+const getAutocompleteTermsMock = jest.fn();
 const getBrandsMock = jest.fn();
 const applyLogosMock = jest.fn();
 const cachedPaginatedMock = jest.fn();
@@ -23,7 +24,8 @@ const cachedMock = jest.fn();
 
 const mockSearchTecDoc = {
   searchArticles: searchArticlesMock,
-  getAutocompleteSuggestions: getAutocompleteSuggestionsMock,
+  getAutocompleteArticles: getAutocompleteArticlesMock,
+  getAutocompleteTerms: getAutocompleteTermsMock,
 } as unknown as SearchTecDoc;
 
 const mockBrands = {
@@ -49,6 +51,11 @@ const NO_FILTERS = {};
 const PART = { type: 10, matchType: 'prefix_or_suffix' } as const;
 const EXACT = { type: 10, matchType: 'exact' } as const;
 const TERM = { type: 99 } as const;
+
+// The article-autocomplete executions each mode resolves to (see
+// SearchService.autocomplete): part_number → prefix, part_number_exact → exact.
+const AC_PREFIX = { type: 10, matchType: 'prefix' } as const;
+const AC_EXACT = { type: 10, matchType: 'exact' } as const;
 
 function articleItem(
   articleNumber: string,
@@ -83,8 +90,13 @@ function pageOf(
   };
 }
 
-function suggestionItem(articleNumber: string): AutocompleteItemDto {
-  return { articleNumber, brandName: 'WIX', description: 'Oil Filter' };
+function suggestionItem(articleNumber: string): ArticleAutocompleteItemDto {
+  return {
+    kind: 'article',
+    articleNumber,
+    brandName: 'WIX',
+    description: 'Oil Filter',
+  };
 }
 
 const BRANDS: BrandDto[] = [
@@ -138,7 +150,7 @@ describe('SearchService', () => {
 
     it('does not fall back to free-text when the number lane misses', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValue([]);
+      getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search('oil filter');
 
@@ -208,7 +220,7 @@ describe('SearchService', () => {
 
     it('never issues a free-text fallback in exact mode, even when it misses', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValue([]);
+      getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search(
         'oil filter',
@@ -290,7 +302,7 @@ describe('SearchService', () => {
 
     it('issues no fallback when the free-text call misses', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValue([]);
+      getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search(
         'zzz nothing here',
@@ -395,7 +407,7 @@ describe('SearchService', () => {
     it('runs both number candidates and does not fall back to free-text when everything misses', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValue([]);
+      getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search('WIX WA5432');
 
@@ -624,7 +636,7 @@ describe('SearchService', () => {
 
     it('returns an empty result list and suggestions when nothing matches', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValueOnce([
+      getAutocompleteArticlesMock.mockResolvedValueOnce([
         suggestionItem('XXXX900'),
       ]);
 
@@ -711,11 +723,14 @@ describe('SearchService', () => {
   describe('search — zero-result suggestions', () => {
     it('fetches suggestions using the first 5 chars of the query', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValueOnce([]);
+      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
 
       await service.search('WL6340');
 
-      expect(getAutocompleteSuggestionsMock).toHaveBeenCalledWith('WL634');
+      expect(getAutocompleteArticlesMock).toHaveBeenCalledWith(
+        'WL634',
+        AC_PREFIX,
+      );
     });
 
     it('does not fetch suggestions when the query is shorter than 3 chars', async () => {
@@ -723,12 +738,12 @@ describe('SearchService', () => {
 
       await service.search('WL');
 
-      expect(getAutocompleteSuggestionsMock).not.toHaveBeenCalled();
+      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
     });
 
     it('logs a structured zero-result entry recording the vehicle scope', async () => {
       searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteSuggestionsMock.mockResolvedValue([]);
+      getAutocompleteArticlesMock.mockResolvedValue([]);
       const logSpy = jest
         .spyOn(Logger.prototype, 'log')
         .mockImplementation(() => undefined);
@@ -751,36 +766,59 @@ describe('SearchService', () => {
       const result = await service.autocomplete('WL');
 
       expect(result).toEqual([]);
-      expect(getAutocompleteSuggestionsMock).not.toHaveBeenCalled();
+      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
+      expect(getAutocompleteTermsMock).not.toHaveBeenCalled();
     });
 
     it('treats whitespace-padded short input as under 3 characters', async () => {
       const result = await service.autocomplete('  W6  ');
 
       expect(result).toEqual([]);
-      expect(getAutocompleteSuggestionsMock).not.toHaveBeenCalled();
+      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
     });
 
-    it('queries the catalogue with the trimmed input as typed', async () => {
-      getAutocompleteSuggestionsMock.mockResolvedValueOnce([]);
+    it('runs a prefix article lookup with the trimmed input in the default part-number mode', async () => {
+      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
 
       await service.autocomplete('  wl-6340  ');
 
-      expect(getAutocompleteSuggestionsMock).toHaveBeenCalledWith('wl-6340');
+      expect(getAutocompleteArticlesMock).toHaveBeenCalledWith(
+        'wl-6340',
+        AC_PREFIX,
+      );
+      expect(getAutocompleteTermsMock).not.toHaveBeenCalled();
+    });
+
+    it('runs an exact article lookup in part_number_exact mode', async () => {
+      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
+
+      await service.autocomplete('WL6340', SearchMode.PartNumberExact);
+
+      expect(getAutocompleteArticlesMock).toHaveBeenCalledWith(
+        'WL6340',
+        AC_EXACT,
+      );
+    });
+
+    it('runs a term lookup (getAutoCompleteSuggestions) in generic mode', async () => {
+      getAutocompleteTermsMock.mockResolvedValueOnce([]);
+
+      await service.autocomplete('oil filter', SearchMode.Generic);
+
+      expect(getAutocompleteTermsMock).toHaveBeenCalledWith('oil filter');
+      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
     });
 
     it('returns at most 8 suggestions', async () => {
-      const suggestions = Array.from({ length: 10 }, (_, i) => ({
-        articleNumber: `WL63${i}`,
-        brandName: 'WIX',
-        description: 'Oil Filter',
-      }));
-      getAutocompleteSuggestionsMock.mockResolvedValueOnce(suggestions);
+      const suggestions = Array.from({ length: 10 }, (_, i) =>
+        suggestionItem(`WL63${i}`),
+      );
+      getAutocompleteArticlesMock.mockResolvedValueOnce(suggestions);
 
       const result = await service.autocomplete('WL63');
 
       expect(result).toHaveLength(8);
-      expect(result[0].articleNumber).toBe('WL630');
+      expect(result[0]).toEqual(suggestionItem('WL630'));
     });
   });
 });

@@ -1,7 +1,11 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { parseCriteriaFilters, SearchQueryDto } from './search.dto';
+import {
+  AutocompleteQueryDto,
+  parseCriteriaFilters,
+  SearchQueryDto,
+} from './search.dto';
 import { SearchMode } from './search-types';
 
 describe('parseCriteriaFilters', () => {
@@ -58,6 +62,33 @@ describe('SearchQueryDto searchMode', () => {
 
   it('rejects an unsupported mode', () => {
     const dto = toDto({ q: 'WL6340', searchMode: 'fuzzy' });
+    const errors = validateSync(dto);
+    expect(errors.some((error) => error.property === 'searchMode')).toBe(true);
+  });
+});
+
+describe('AutocompleteQueryDto searchMode', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(AutocompleteQueryDto, query);
+
+  it('is undefined when the param is absent (service applies the default)', () => {
+    expect(toDto({ q: 'WL6' }).searchMode).toBeUndefined();
+  });
+
+  it('accepts every supported mode and validates', () => {
+    for (const mode of [
+      SearchMode.PartNumber,
+      SearchMode.PartNumberExact,
+      SearchMode.Generic,
+    ]) {
+      const dto = toDto({ q: 'WL6', searchMode: mode });
+      expect(dto.searchMode).toBe(mode);
+      expect(validateSync(dto)).toHaveLength(0);
+    }
+  });
+
+  it('rejects an unsupported mode', () => {
+    const dto = toDto({ q: 'WL6', searchMode: 'fuzzy' });
     const errors = validateSync(dto);
     expect(errors.some((error) => error.property === 'searchMode')).toBe(true);
   });

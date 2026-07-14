@@ -7,11 +7,12 @@ import { BrandsTecDoc } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
 import {
   ArticleSummaryDto,
+  ArticleAutocompleteItemDto,
   AttributeFacetDto,
-  AutocompleteItemDto,
   CategoryNavigationDto,
   PaginatedSearchArticlesDto,
   SearchFacetDto,
+  TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
 const makeArticle = (
@@ -58,10 +59,21 @@ const PART = { type: 10, matchType: 'prefix_or_suffix' };
 const EXACT = { type: 10, matchType: 'exact' };
 const TERM = { type: 99 };
 
-const makeSuggestion = (articleNumber: string): AutocompleteItemDto => ({
+// The article-autocomplete executions each mode resolves to (see
+// SearchService.autocomplete): part_number → prefix, part_number_exact → exact.
+const AC_PREFIX = { type: 10, matchType: 'prefix' };
+const AC_EXACT = { type: 10, matchType: 'exact' };
+
+const makeSuggestion = (articleNumber: string): ArticleAutocompleteItemDto => ({
+  kind: 'article',
   articleNumber,
   brandName: 'WIX',
   description: 'Oil Filter',
+});
+
+const makeTerm = (term: string): TermAutocompleteItemDto => ({
+  kind: 'term',
+  term,
 });
 
 const mockTecDocClient = {
@@ -73,7 +85,8 @@ const mockTecDocClient = {
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
   searchArticles: jest.fn(),
-  getAutocompleteSuggestions: jest.fn(),
+  getAutocompleteArticles: jest.fn(),
+  getAutocompleteTerms: jest.fn(),
 };
 
 describe('SearchController (e2e)', () => {
@@ -148,7 +161,7 @@ describe('SearchController (e2e)', () => {
 
     it('does not fall back to free-text in part-number mode when the number lane misses', async () => {
       mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
-      mockTecDocClient.getAutocompleteSuggestions.mockResolvedValue([]);
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
 
       await request(app.getHttpServer())
         .get('/search?q=oil%20filter%20bosch')
@@ -395,7 +408,7 @@ describe('SearchController (e2e)', () => {
 
     it('includes autocomplete suggestions when the search returns no results', async () => {
       mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
-      mockTecDocClient.getAutocompleteSuggestions.mockResolvedValueOnce([
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValueOnce([
         makeSuggestion('XY001'),
         makeSuggestion('XY002'),
       ]);
@@ -407,9 +420,10 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results).toHaveLength(0);
       expect(res.body.total).toBe(0);
       expect(res.body.suggestions).toHaveLength(2);
-      // SearchService takes the first 5 chars of the query as the suggestion prefix
-      expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith(
+      // Recovery is always an article-prefix lookup over the first 5 chars.
+      expect(mockTecDocClient.getAutocompleteArticles).toHaveBeenCalledWith(
         'XYZNO',
+        AC_PREFIX,
       );
     });
 
@@ -436,9 +450,9 @@ describe('SearchController (e2e)', () => {
   });
 
   describe('GET /search/autocomplete', () => {
-    it('returns suggestions for a query of 3 or more characters', async () => {
+    it('returns article suggestions for a part-number query (default mode)', async () => {
       const suggestions = [makeSuggestion('WL6340'), makeSuggestion('WL6341')];
-      mockTecDocClient.getAutocompleteSuggestions.mockResolvedValueOnce(
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValueOnce(
         suggestions,
       );
 
@@ -447,9 +461,48 @@ describe('SearchController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual(suggestions);
-      expect(mockTecDocClient.getAutocompleteSuggestions).toHaveBeenCalledWith(
+      expect(mockTecDocClient.getAutocompleteArticles).toHaveBeenCalledWith(
         'WL6',
+        AC_PREFIX,
       );
+      expect(mockTecDocClient.getAutocompleteTerms).not.toHaveBeenCalled();
+    });
+
+    it('runs an exact article lookup when searchMode is part_number_exact', async () => {
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValueOnce([
+        makeSuggestion('WL6340'),
+      ]);
+
+      await request(app.getHttpServer())
+        .get('/search/autocomplete?q=WL6340&searchMode=part_number_exact')
+        .expect(200);
+
+      expect(mockTecDocClient.getAutocompleteArticles).toHaveBeenCalledWith(
+        'WL6340',
+        AC_EXACT,
+      );
+    });
+
+    it('returns term suggestions from getAutoCompleteSuggestions in generic mode', async () => {
+      const terms = [makeTerm('Oil Filter'), makeTerm('Oil Filter Housing')];
+      mockTecDocClient.getAutocompleteTerms.mockResolvedValueOnce(terms);
+
+      const res = await request(app.getHttpServer())
+        .get('/search/autocomplete?q=oil&searchMode=generic')
+        .expect(200);
+
+      expect(res.body).toEqual(terms);
+      expect(mockTecDocClient.getAutocompleteTerms).toHaveBeenCalledWith('oil');
+      expect(mockTecDocClient.getAutocompleteArticles).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an unsupported searchMode', async () => {
+      await request(app.getHttpServer())
+        .get('/search/autocomplete?q=WL6&searchMode=fuzzy')
+        .expect(400);
+
+      expect(mockTecDocClient.getAutocompleteArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.getAutocompleteTerms).not.toHaveBeenCalled();
     });
 
     it('returns an empty list for a query shorter than 3 characters without calling TecDoc', async () => {
@@ -458,9 +511,7 @@ describe('SearchController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
-      expect(
-        mockTecDocClient.getAutocompleteSuggestions,
-      ).not.toHaveBeenCalled();
+      expect(mockTecDocClient.getAutocompleteArticles).not.toHaveBeenCalled();
     });
 
     it('returns an empty list when q is absent without calling TecDoc', async () => {
@@ -469,9 +520,7 @@ describe('SearchController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
-      expect(
-        mockTecDocClient.getAutocompleteSuggestions,
-      ).not.toHaveBeenCalled();
+      expect(mockTecDocClient.getAutocompleteArticles).not.toHaveBeenCalled();
     });
   });
 });

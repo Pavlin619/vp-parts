@@ -38,6 +38,32 @@ export const DEFAULT_SEARCH_EXECUTION: SearchExecution = {
 };
 
 /**
+ * How many autocomplete suggestions to request from TecDoc and surface. Applies
+ * to both article (`getArticles`) and term (`getAutoCompleteSuggestions`)
+ * autocomplete so the dropdown is capped consistently regardless of mode.
+ */
+export const AUTOCOMPLETE_SUGGESTIONS_LIMIT = 8;
+
+/**
+ * Article-autocomplete strategy for a live part-number dropdown: a `prefix`
+ * number search, so suggestions appear as the user types the start of a number.
+ */
+export const DEFAULT_AUTOCOMPLETE_EXECUTION: SearchExecution = {
+  type: TecDocSearchType.AnyNumber,
+  matchType: 'prefix',
+};
+
+/**
+ * Article-autocomplete strategy for the exact-number toggle: an `exact` number
+ * match, mirroring how `part_number_exact` search runs (a suggestion only
+ * surfaces once the typed number matches a real article exactly).
+ */
+export const EXACT_AUTOCOMPLETE_EXECUTION: SearchExecution = {
+  type: TecDocSearchType.AnyNumber,
+  matchType: 'exact',
+};
+
+/**
  * The search intent the client selects up front, mapped 1:1 from the FE
  * controls so illegal combinations (e.g. "generic + exact") cannot be
  * expressed. Each mode resolves to a distinct TecDoc call plan in

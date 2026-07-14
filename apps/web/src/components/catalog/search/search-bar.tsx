@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+import type { ArticleAutocompleteItemDto } from "@vp-parts-shop/shared";
 import { autocompleteQueryOptions } from "@/lib/api/catalog";
 import { useVehicleContext } from "@/hooks/use-vehicle-context";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -32,9 +33,16 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
     enabled: canAutocomplete,
   });
 
+  // Autocomplete is still requested without a search mode, so the API returns
+  // article suggestions (the default part-number mode). Narrow to that kind
+  // until the FE gains the search-type toggle that can also request `term`
+  // suggestions for a generic search.
+  const articleSuggestions = (data ?? []).filter(
+    (item): item is ArticleAutocompleteItemDto => item.kind === "article",
+  );
   const suggestions =
     isDropdownOpen && canAutocomplete
-      ? (data ?? []).slice(0, MAX_SUGGESTIONS)
+      ? articleSuggestions.slice(0, MAX_SUGGESTIONS)
       : [];
   const isListVisible = suggestions.length > 0;
 

@@ -162,8 +162,8 @@ describe('SearchTecDoc', () => {
     });
   });
 
-  describe('getAutocompleteSuggestions', () => {
-    it('runs a prefix number search capped at 8 and maps to suggestions', async () => {
+  describe('getAutocompleteArticles', () => {
+    it('runs a prefix number search capped at 8 and maps to article suggestions', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 1,
         articles: [
@@ -175,7 +175,7 @@ describe('SearchTecDoc', () => {
         ],
       });
 
-      const result = await tecdoc.getAutocompleteSuggestions('WL63');
+      const result = await tecdoc.getAutocompleteArticles('WL63');
 
       expect(call).toHaveBeenCalledWith(
         'getArticles',
@@ -187,11 +187,56 @@ describe('SearchTecDoc', () => {
       );
       expect(result).toEqual([
         {
+          kind: 'article',
           articleNumber: 'WL6340',
           brandName: 'WIX',
           description: 'Oil Filter',
         },
       ]);
+    });
+
+    it('forwards an exact match type when the exact execution is used', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+      await tecdoc.getAutocompleteArticles('WL6340', {
+        type: 10,
+        matchType: 'exact',
+      });
+
+      expect(call).toHaveBeenCalledWith(
+        'getArticles',
+        expect.objectContaining({ searchType: 10, searchMatchType: 'exact' }),
+      );
+    });
+  });
+
+  describe('getAutocompleteTerms', () => {
+    it('calls getAutoCompleteSuggestions and maps descriptions to term suggestions', async () => {
+      call.mockResolvedValueOnce({
+        suggestions: [
+          { description: 'Oil Filter' },
+          { description: 'Oil Filter Housing' },
+        ],
+      });
+
+      const result = await tecdoc.getAutocompleteTerms('oil');
+
+      expect(call).toHaveBeenCalledWith(
+        'getAutoCompleteSuggestions',
+        expect.objectContaining({ searchQuery: 'oil', perPage: 8 }),
+      );
+      expect(result).toEqual([
+        { kind: 'term', term: 'Oil Filter' },
+        { kind: 'term', term: 'Oil Filter Housing' },
+      ]);
+    });
+
+    it('tolerates a missing suggestions array', async () => {
+      call.mockResolvedValueOnce({});
+
+      const result = await tecdoc.getAutocompleteTerms('oil');
+
+      expect(result).toEqual([]);
     });
   });
 });

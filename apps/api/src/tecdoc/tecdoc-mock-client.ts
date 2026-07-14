@@ -14,12 +14,14 @@ import {
   CategoryOptionDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
-  AutocompleteItemDto,
+  ArticleAutocompleteItemDto,
+  TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
   SearchExecution,
   SearchFilters,
   TecDocSearchType,
+  AUTOCOMPLETE_SUGGESTIONS_LIMIT,
   attributeRoleFor,
 } from '../search/search-types';
 
@@ -568,16 +570,55 @@ export class TecDocMockClient {
     });
   }
 
-  getAutocompleteSuggestions(query: string): Promise<AutocompleteItemDto[]> {
-    const suggestions = this.findMatchingArticles(query)
-      .slice(0, 8)
+  /**
+   * Mirrors the real client's article autocomplete (`getArticles`): number
+   * matches capped at the shared limit. An `exact` execution keeps only exact
+   * number matches (mirroring the exact-number toggle); any other match type
+   * behaves like a prefix/substring search.
+   */
+  getAutocompleteArticles(
+    query: string,
+    execution?: SearchExecution,
+  ): Promise<ArticleAutocompleteItemDto[]> {
+    const normalisedQuery = query.replace(/[-.\s]/g, '').toUpperCase();
+
+    const matches =
+      execution?.matchType === 'exact'
+        ? this.findMatchingArticles(query).filter(
+            (article) =>
+              article.articleNumber.replace(/[-.\s]/g, '').toUpperCase() ===
+              normalisedQuery,
+          )
+        : this.findMatchingArticles(query);
+
+    const suggestions = matches
+      .slice(0, AUTOCOMPLETE_SUGGESTIONS_LIMIT)
       .map(({ articleNumber, brandName, description }) => ({
+        kind: 'article' as const,
         articleNumber,
         brandName,
         description,
       }));
 
     return Promise.resolve(suggestions);
+  }
+
+  /**
+   * Mirrors the real client's term autocomplete (`getAutoCompleteSuggestions`):
+   * the distinct free-text descriptions matching the typed input, meant to be
+   * re-run as a generic search. Matches on description/brand words like the
+   * mock's free-text search so "oil" suggests the "Oil Filter" term.
+   */
+  getAutocompleteTerms(query: string): Promise<TermAutocompleteItemDto[]> {
+    const terms = [
+      ...new Set(
+        this.findByDescription(query).map((article) => article.description),
+      ),
+    ]
+      .slice(0, AUTOCOMPLETE_SUGGESTIONS_LIMIT)
+      .map((term) => ({ kind: 'term' as const, term }));
+
+    return Promise.resolve(terms);
   }
 
   getArticleDetails(

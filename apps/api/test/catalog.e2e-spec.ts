@@ -98,7 +98,8 @@ const mockTecDocClient = {
   getArticleDetails: jest.fn(),
   getSubstitutes: jest.fn(),
   searchArticles: jest.fn(),
-  getAutocompleteSuggestions: jest.fn(),
+  getAutocompleteArticles: jest.fn(),
+  getAutocompleteTerms: jest.fn(),
 };
 
 describe('CatalogController (e2e)', () => {

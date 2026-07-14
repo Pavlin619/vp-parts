@@ -63,13 +63,43 @@ describe('TecDocMockClient', () => {
     });
   });
 
-  describe('getAutocompleteSuggestions', () => {
-    it('returns at most 8 matching suggestions', async () => {
-      const result = await mock.getAutocompleteSuggestions('O');
+  describe('getAutocompleteArticles', () => {
+    it('returns at most 8 matching article suggestions', async () => {
+      const result = await mock.getAutocompleteArticles('O');
 
       expect(result.length).toBeLessThanOrEqual(8);
+      expect(result[0]).toMatchObject({ kind: 'article' });
       expect(result[0]).toHaveProperty('articleNumber');
       expect(result[0]).toHaveProperty('brandName');
+    });
+
+    it('keeps only exact number matches for an exact execution', async () => {
+      const exact = await mock.getAutocompleteArticles('OX 982D', {
+        type: TecDocSearchType.AnyNumber,
+        matchType: 'exact',
+      });
+      expect(exact.map((item) => item.articleNumber)).toEqual(['OX 982D']);
+
+      // A partial number matches nothing under the exact strategy.
+      const partial = await mock.getAutocompleteArticles('OX 98', {
+        type: TecDocSearchType.AnyNumber,
+        matchType: 'exact',
+      });
+      expect(partial).toEqual([]);
+    });
+  });
+
+  describe('getAutocompleteTerms', () => {
+    it('returns distinct description terms matching the input', async () => {
+      const result = await mock.getAutocompleteTerms('oil');
+
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.length).toBeLessThanOrEqual(8);
+      expect(result[0]).toMatchObject({ kind: 'term' });
+      expect(result.every((item) => item.term.length > 0)).toBe(true);
+      // Distinct terms only — no duplicate description strings.
+      const terms = result.map((item) => item.term);
+      expect(new Set(terms).size).toBe(terms.length);
     });
   });
 });

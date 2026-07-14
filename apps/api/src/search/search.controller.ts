@@ -33,6 +33,6 @@ export class SearchController {
   autocomplete(
     @Query() dto: AutocompleteQueryDto,
   ): Promise<AutocompleteItemDto[]> {
-    return this.search.autocomplete(dto.q ?? '');
+    return this.search.autocomplete(dto.q ?? '', dto.searchMode);
   }
 }

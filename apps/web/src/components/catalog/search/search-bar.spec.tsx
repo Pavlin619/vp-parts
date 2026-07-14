@@ -33,8 +33,14 @@ const mockUseVehicleContext = jest.mocked(useVehicleContext)
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const SUGGESTIONS: AutocompleteItemDto[] = [
-  { articleNumber: 'WL6340', brandName: 'WIX', description: 'Oil Filter' },
   {
+    kind: 'article',
+    articleNumber: 'WL6340',
+    brandName: 'WIX',
+    description: 'Oil Filter',
+  },
+  {
+    kind: 'article',
     articleNumber: 'WL6341',
     brandName: 'WIX',
     description: 'Oil Filter Heavy Duty',
@@ -101,6 +107,7 @@ describe('SearchBar', () => {
   it('renders at most 8 suggestions', async () => {
     getAutocompleteMock.mockResolvedValue(
       Array.from({ length: 10 }, (_, i) => ({
+        kind: 'article',
         articleNumber: `WL63${i}`,
         brandName: 'WIX',
         description: 'Oil Filter',

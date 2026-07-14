@@ -151,8 +151,18 @@ describe('SearchEmptyState', () => {
 
   it('renders "did you mean" suggestions when provided', () => {
     const suggestions = [
-      { articleNumber: 'XXXX900', brandName: 'WIX', description: 'Oil Filter' },
-      { articleNumber: 'XXXX901', brandName: 'BOSCH', description: 'Air Filter' },
+      {
+        kind: 'article' as const,
+        articleNumber: 'XXXX900',
+        brandName: 'WIX',
+        description: 'Oil Filter',
+      },
+      {
+        kind: 'article' as const,
+        articleNumber: 'XXXX901',
+        brandName: 'BOSCH',
+        description: 'Air Filter',
+      },
     ]
     render(<SearchEmptyState query="XXXX999" suggestions={suggestions} />)
 
@@ -163,7 +173,12 @@ describe('SearchEmptyState', () => {
 
   it('links each suggestion to its article detail page', () => {
     const suggestions = [
-      { articleNumber: 'WA6546', brandName: 'WIX', description: 'Air Filter' },
+      {
+        kind: 'article' as const,
+        articleNumber: 'WA6546',
+        brandName: 'WIX',
+        description: 'Air Filter',
+      },
     ]
     render(<SearchEmptyState query="WA6456" suggestions={suggestions} />)
 
