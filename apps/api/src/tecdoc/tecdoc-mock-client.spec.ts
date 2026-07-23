@@ -1,3 +1,4 @@
+import { ArticleAutocompleteItemDto } from '@vp-parts-shop/shared';
 import { TecDocMockClient } from './tecdoc-mock-client';
 import { TecDocSearchType } from '../search/search-types';
 
@@ -64,13 +65,22 @@ describe('TecDocMockClient', () => {
   });
 
   describe('getAutocompleteArticles', () => {
+    function articlesOf(
+      items: Awaited<ReturnType<TecDocMockClient['getAutocompleteArticles']>>,
+    ) {
+      return items.filter(
+        (item): item is ArticleAutocompleteItemDto => item.kind === 'article',
+      );
+    }
+
     it('returns at most 8 matching article suggestions', async () => {
       const result = await mock.getAutocompleteArticles('O');
+      const articles = articlesOf(result);
 
-      expect(result.length).toBeLessThanOrEqual(8);
-      expect(result[0]).toMatchObject({ kind: 'article' });
-      expect(result[0]).toHaveProperty('articleNumber');
-      expect(result[0]).toHaveProperty('brandName');
+      expect(articles.length).toBeLessThanOrEqual(8);
+      expect(articles[0]).toMatchObject({ kind: 'article' });
+      expect(articles[0]).toHaveProperty('articleNumber');
+      expect(articles[0]).toHaveProperty('brandName');
     });
 
     it('keeps only exact number matches for an exact execution', async () => {
@@ -78,7 +88,9 @@ describe('TecDocMockClient', () => {
         type: TecDocSearchType.AnyNumber,
         matchType: 'exact',
       });
-      expect(exact.map((item) => item.articleNumber)).toEqual(['OX 982D']);
+      expect(articlesOf(exact).map((item) => item.articleNumber)).toEqual([
+        'OX 982D',
+      ]);
 
       // A partial number matches nothing under the exact strategy.
       const partial = await mock.getAutocompleteArticles('OX 98', {
@@ -86,6 +98,25 @@ describe('TecDocMockClient', () => {
         matchType: 'exact',
       });
       expect(partial).toEqual([]);
+    });
+
+    it('appends category suggestions when the matches span multiple categories', async () => {
+      const result = await mock.getAutocompleteArticles('O');
+
+      const categories = result.filter((item) => item.kind === 'category');
+      expect(categories.length).toBeGreaterThan(0);
+      expect(categories.length).toBeLessThanOrEqual(5);
+      expect(categories[0]).toMatchObject({ kind: 'category', term: 'O' });
+      expect(categories[0]).toHaveProperty('categoryNodeId');
+    });
+
+    it('omits category suggestions for an exact single-category match', async () => {
+      const exact = await mock.getAutocompleteArticles('OX 982D', {
+        type: TecDocSearchType.AnyNumber,
+        matchType: 'exact',
+      });
+
+      expect(exact.every((item) => item.kind === 'article')).toBe(true);
     });
   });
 

@@ -9,6 +9,7 @@ import {
 import { RedisCache } from '../redis';
 import { BrandsService } from '../catalog/brands';
 import {
+  CATEGORY_AUTOCOMPLETE_LIMIT,
   DEFAULT_AUTOCOMPLETE_EXECUTION,
   DEFAULT_SEARCH_MODE,
   EXACT_AUTOCOMPLETE_EXECUTION,
@@ -119,7 +120,27 @@ export class SearchService {
 
     const suggestions = await this.autocompleteCached(searchQuery, searchMode);
 
-    return suggestions.slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
+    return this.capSuggestions(suggestions);
+  }
+
+  /**
+   * Caps each suggestion kind independently so the article and term dropdowns
+   * keep their limit while the appended category rows (part-number mode) are not
+   * counted against — nor allowed to blow past — the article cap. Order is
+   * preserved: the primary hits (articles or terms) come first, the category
+   * rows after.
+   */
+  private capSuggestions(
+    suggestions: AutocompleteItemDto[],
+  ): AutocompleteItemDto[] {
+    const primary = suggestions
+      .filter((item) => item.kind !== 'category')
+      .slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
+    const categories = suggestions
+      .filter((item) => item.kind === 'category')
+      .slice(0, CATEGORY_AUTOCOMPLETE_LIMIT);
+
+    return [...primary, ...categories];
   }
 
   /**
@@ -324,9 +345,16 @@ export class SearchService {
       return [];
     }
 
-    return this.autocompleteArticlesCached(
+    const suggestions = await this.autocompleteArticlesCached(
       prefix,
       DEFAULT_AUTOCOMPLETE_EXECUTION,
+    );
+
+    // The no-results page links each suggestion to an article detail page, so
+    // keep only the article rows (the article autocomplete may also carry
+    // category suggestions, which have nowhere to land here).
+    return suggestions.filter(
+      (item): item is ArticleAutocompleteItemDto => item.kind === 'article',
     );
   }
 
@@ -355,7 +383,7 @@ export class SearchService {
   private autocompleteArticlesCached(
     query: string,
     execution: SearchExecution,
-  ): Promise<ArticleAutocompleteItemDto[]> {
+  ): Promise<AutocompleteItemDto[]> {
     return this.cache.cached(
       `tecdoc:autocomplete:article:${execution.matchType ?? 'any'}:${query}`,
       AUTOCOMPLETE_TTL,
