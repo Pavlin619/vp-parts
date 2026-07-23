@@ -8,7 +8,12 @@ export * from './schemas/cart.schema';
 export * from './schemas/checkout.schema';
 export * from './schemas/customers.schema';
 
-export * from './dto/catalog.dto';
+export * from './dto/common.dto';
+export * from './dto/catalog/articles.dto';
+export * from './dto/catalog/brands.dto';
+export * from './dto/catalog/vehicles.dto';
+export * from './dto/search/autocomplete.dto';
+export * from './dto/search/search.dto';
 export * from './dto/inventory.dto';
 export * from './dto/cart.dto';
 export * from './dto/checkout.dto';

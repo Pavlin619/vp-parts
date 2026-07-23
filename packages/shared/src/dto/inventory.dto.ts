@@ -43,3 +43,31 @@ export interface WarehouseAvailabilityDto {
   pickup: DeliveryProjectionDto;
   courier: DeliveryProjectionDto;
 }
+
+/**
+ * Inventory summary shown next to a catalog article in lists/grids.
+ */
+export interface ArticleInventorySummaryDto {
+  available: boolean;
+  bestPriceExVat: number | null;
+  bestPriceIncVat: number | null;
+}
+
+/**
+ * Richer inventory data with the per-warehouse availability breakdown.
+ */
+export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
+  /** Available quantity per customer-facing warehouse, fastest first. */
+  availabilityByWarehouse: WarehouseAvailabilityDto[];
+  /**
+   * Absolute instant (ISO UTC) the warehouse dates were computed, or null on
+   * cached paths that omit them. Drives client-side staleness detection.
+   */
+  computedAt: string | null;
+}
+
+/**
+ * Live price/availability for a batch of articles, keyed by article number.
+ * A requested number is absent only when it has no inventory row.
+ */
+export type ArticlesAvailabilityDto = Record<string, ArticleInventoryDetailDto>;
