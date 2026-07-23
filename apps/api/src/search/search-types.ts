@@ -45,6 +45,14 @@ export const DEFAULT_SEARCH_EXECUTION: SearchExecution = {
 export const AUTOCOMPLETE_SUGGESTIONS_LIMIT = 8;
 
 /**
+ * How many category suggestions to surface in the part-number autocomplete
+ * dropdown (the InterCars-style "search {term} in {category}" rows built from
+ * the `assemblyGroupFacets` of the same `getArticles` call). Kept well below the
+ * article limit so the categories stay a compact secondary section, not a wall.
+ */
+export const CATEGORY_AUTOCOMPLETE_LIMIT = 5;
+
+/**
  * Article-autocomplete strategy for a live part-number dropdown: a `prefix`
  * number search, so suggestions appear as the user types the start of a number.
  */

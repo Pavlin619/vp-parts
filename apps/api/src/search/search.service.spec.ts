@@ -4,6 +4,7 @@ import {
   ArticleAutocompleteItemDto,
   AttributeFacetDto,
   BrandDto,
+  CategoryAutocompleteItemDto,
   CategoryNavigationDto,
   PaginatedSearchArticlesDto,
   SearchFacetDto,
@@ -96,6 +97,19 @@ function suggestionItem(articleNumber: string): ArticleAutocompleteItemDto {
     articleNumber,
     brandName: 'WIX',
     description: 'Oil Filter',
+  };
+}
+
+function categorySuggestionItem(
+  categoryNodeId: string,
+  label = `Category ${categoryNodeId}`,
+): CategoryAutocompleteItemDto {
+  return {
+    kind: 'category',
+    term: 'WL63',
+    categoryNodeId,
+    label,
+    count: null,
   };
 }
 
@@ -819,6 +833,38 @@ describe('SearchService', () => {
 
       expect(result).toHaveLength(8);
       expect(result[0]).toEqual(suggestionItem('WL630'));
+    });
+
+    it('caps articles and category suggestions independently, articles first', async () => {
+      const articles = Array.from({ length: 10 }, (_, i) =>
+        suggestionItem(`WL63${i}`),
+      );
+      const categories = Array.from({ length: 7 }, (_, i) =>
+        categorySuggestionItem(`${i}`),
+      );
+      getAutocompleteArticlesMock.mockResolvedValueOnce([
+        ...articles,
+        ...categories,
+      ]);
+
+      const result = await service.autocomplete('WL63');
+
+      expect(result.filter((item) => item.kind === 'article')).toHaveLength(8);
+      expect(result.filter((item) => item.kind === 'category')).toHaveLength(5);
+      expect(result[0].kind).toBe('article');
+      expect(result[8].kind).toBe('category');
+    });
+
+    it('keeps only article suggestions on the zero-result recovery path', async () => {
+      searchArticlesMock.mockResolvedValue(pageOf([]));
+      getAutocompleteArticlesMock.mockResolvedValueOnce([
+        suggestionItem('WL630'),
+        categorySuggestionItem('1'),
+      ]);
+
+      const result = await service.search('WL6340');
+
+      expect(result.suggestions).toEqual([suggestionItem('WL630')]);
     });
   });
 });

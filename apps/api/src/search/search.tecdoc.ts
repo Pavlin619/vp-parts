@@ -8,6 +8,8 @@ import {
   CategoryNavigationDto,
   CategoryOptionDto,
   ArticleAutocompleteItemDto,
+  CategoryAutocompleteItemDto,
+  AutocompleteItemDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
@@ -21,6 +23,7 @@ import {
   DEFAULT_SEARCH_EXECUTION,
   DEFAULT_AUTOCOMPLETE_EXECUTION,
   AUTOCOMPLETE_SUGGESTIONS_LIMIT,
+  CATEGORY_AUTOCOMPLETE_LIMIT,
   attributeRoleFor,
 } from './search-types';
 
@@ -169,7 +172,7 @@ export class SearchTecDoc {
     const atLeaf =
       categorySelected &&
       (categoryNavigation.current
-        ? categoryNavigation.current.hasChildren === false
+        ? !categoryNavigation.current.hasChildren
         : categoryNavigation.options.length === 0);
 
     return {
@@ -191,11 +194,18 @@ export class SearchTecDoc {
    * The {@link SearchExecution}'s `matchType` selects the strategy — `prefix`
    * for a live part-number dropdown, `exact` for the exact-number toggle — so
    * the suggestion set matches how the search itself will run.
+   *
+   * The same call enables `assemblyGroupFacetOptions`, so its response also
+   * carries the categories the whole match set falls into (not just the shown
+   * articles). Those become InterCars-style `category` suggestions — but only
+   * when the matches span more than one category (see
+   * {@link buildCategorySuggestions}); a homogeneous result (e.g. an exact
+   * number) yields none, keeping the dropdown clean.
    */
   async getAutocompleteArticles(
     query: string,
     execution: SearchExecution = DEFAULT_AUTOCOMPLETE_EXECUTION,
-  ): Promise<ArticleAutocompleteItemDto[]> {
+  ): Promise<AutocompleteItemDto[]> {
     const data = await this.transport.call<{
       totalMatchingArticles: number;
       articles: Array<{
@@ -203,6 +213,9 @@ export class SearchTecDoc {
         mfrName: string;
         genericArticles: Array<{ genericArticleDescription: string }>;
       }>;
+      assemblyGroupFacets?: {
+        counts: Array<TecDocAssemblyGroupFacetCount>;
+      };
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
@@ -213,14 +226,82 @@ export class SearchTecDoc {
       }),
       perPage: AUTOCOMPLETE_SUGGESTIONS_LIMIT,
       page: 1,
+      // Match-scoped category facet: the assembly groups present across the
+      // whole result set (not only the shown page), with article counts — the
+      // source for the `category` suggestions below.
+      assemblyGroupFacetOptions: {
+        enabled: true,
+        assemblyGroupType: 'P',
+        includeCompleteTree: false,
+      },
     });
 
-    return (data.articles ?? []).map((article) => ({
-      kind: 'article',
-      articleNumber: article.articleNumber,
-      brandName: article.mfrName,
-      description: article.genericArticles[0]?.genericArticleDescription ?? '',
-    }));
+    const articles: ArticleAutocompleteItemDto[] = (data.articles ?? []).map(
+      (article) => ({
+        kind: 'article',
+        articleNumber: article.articleNumber,
+        brandName: article.mfrName,
+        description:
+          article.genericArticles[0]?.genericArticleDescription ?? '',
+      }),
+    );
+
+    const categories = this.buildCategorySuggestions(
+      query,
+      data.assemblyGroupFacets?.counts,
+    );
+
+    return [...articles, ...categories];
+  }
+
+  /**
+   * Turns the autocomplete call's `assemblyGroupFacets` into the InterCars-style
+   * category suggestions: the leaf categories the matches fall into, each a
+   * "search {term} in {label}" row carrying the `assemblyGroupNodeId` the FE
+   * re-runs as the `categoryNodeId` filter.
+   *
+   * Two rules keep them useful:
+   * - Only **leaf** nodes (no children) — a leaf carries the disambiguation
+   *   (brake pipe vs cabin filter), whereas a parent (e.g. "Braking system")
+   *   would collapse distinct product types back together.
+   * - Emitted only when the matches span **more than one** category; a single
+   *   category (e.g. an exact number that is all oil filters) adds no
+   *   disambiguation, so the section is dropped entirely.
+   *
+   * The kept leaves are ordered by match count (most relevant first) and capped
+   * at {@link CATEGORY_AUTOCOMPLETE_LIMIT}.
+   */
+  private buildCategorySuggestions(
+    term: string,
+    counts: TecDocAssemblyGroupFacetCount[] = [],
+  ): CategoryAutocompleteItemDto[] {
+    const parentIds = new Set(
+      counts
+        .map((raw) => raw.parentNodeId)
+        .filter((id): id is number => id != null)
+        .map(String),
+    );
+
+    const leaves = counts.filter(
+      (raw) =>
+        (raw.childCount ?? 0) === 0 &&
+        !parentIds.has(String(raw.assemblyGroupNodeId)),
+    );
+
+    if (leaves.length <= 1) {
+      return [];
+    }
+
+    return leaves
+      .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+      .slice(0, CATEGORY_AUTOCOMPLETE_LIMIT)
+      .map((raw) => ({
+        kind: 'category',
+        term,
+        categoryNodeId: String(raw.assemblyGroupNodeId),
+        label: raw.assemblyGroupName,
+        count: raw.count ?? null,
+      }));
   }
 
   /**

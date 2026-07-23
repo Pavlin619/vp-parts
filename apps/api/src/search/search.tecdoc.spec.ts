@@ -163,16 +163,30 @@ describe('SearchTecDoc', () => {
   });
 
   describe('getAutocompleteArticles', () => {
-    it('runs a prefix number search capped at 8 and maps to article suggestions', async () => {
+    function articleRecord(articleNumber: string, description = 'Oil Filter') {
+      return {
+        articleNumber,
+        mfrName: 'WIX',
+        genericArticles: [{ genericArticleDescription: description }],
+      };
+    }
+
+    function facet(
+      assemblyGroupNodeId: number,
+      assemblyGroupName: string,
+      extra: {
+        parentNodeId?: number | null;
+        childCount?: number;
+        count?: number;
+      } = {},
+    ) {
+      return { assemblyGroupNodeId, assemblyGroupName, ...extra };
+    }
+
+    it('runs a prefix number search capped at 8, requesting the category facet, and maps to article suggestions', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 1,
-        articles: [
-          {
-            articleNumber: 'WL6340',
-            mfrName: 'WIX',
-            genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
-          },
-        ],
+        articles: [articleRecord('WL6340')],
       });
 
       const result = await tecdoc.getAutocompleteArticles('WL63');
@@ -183,6 +197,11 @@ describe('SearchTecDoc', () => {
           searchType: 10,
           searchMatchType: 'prefix',
           perPage: 8,
+          assemblyGroupFacetOptions: {
+            enabled: true,
+            assemblyGroupType: 'P',
+            includeCompleteTree: false,
+          },
         }),
       );
       expect(result).toEqual([
@@ -207,6 +226,85 @@ describe('SearchTecDoc', () => {
         'getArticles',
         expect.objectContaining({ searchType: 10, searchMatchType: 'exact' }),
       );
+    });
+
+    it('appends leaf category suggestions (sorted by count) when the matches span multiple categories', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 92,
+        articles: [articleRecord('WP2-8.00-10', 'Спирачна тръбичка')],
+        assemblyGroupFacets: {
+          counts: [
+            // Parent node: has children → dropped from the suggestions.
+            facet(100006, 'Спирачна система', { childCount: 2, count: 59 }),
+            facet(100256, 'Спирачна тръбичка', {
+              parentNodeId: 100006,
+              count: 41,
+            }),
+            facet(100412, 'Филтър на купе', { count: 33 }),
+          ],
+        },
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WP2');
+
+      expect(result[0].kind).toBe('article');
+      expect(result.filter((item) => item.kind === 'category')).toEqual([
+        {
+          kind: 'category',
+          term: 'WP2',
+          categoryNodeId: '100256',
+          label: 'Спирачна тръбичка',
+          count: 41,
+        },
+        {
+          kind: 'category',
+          term: 'WP2',
+          categoryNodeId: '100412',
+          label: 'Филтър на купе',
+          count: 33,
+        },
+      ]);
+    });
+
+    it('omits category suggestions when the matches fall in a single category', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 8,
+        articles: [articleRecord('OX982D', 'Маслен филтър')],
+        assemblyGroupFacets: {
+          counts: [facet(200002, 'Маслен филтър', { count: 8 })],
+        },
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('OX 9');
+
+      expect(result.every((item) => item.kind === 'article')).toBe(true);
+    });
+
+    it('caps category suggestions at the limit', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 60,
+        articles: [articleRecord('A1')],
+        assemblyGroupFacets: {
+          counts: Array.from({ length: 7 }, (_, i) =>
+            facet(i + 1, `Category ${i}`, { count: 7 - i }),
+          ),
+        },
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('A');
+
+      expect(result.filter((item) => item.kind === 'category')).toHaveLength(5);
+    });
+
+    it('tolerates a missing assemblyGroupFacets block', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [articleRecord('WL6340')],
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(result.every((item) => item.kind === 'article')).toBe(true);
     });
   });
 

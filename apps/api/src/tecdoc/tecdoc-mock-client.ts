@@ -15,6 +15,8 @@ import {
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticleAutocompleteItemDto,
+  CategoryAutocompleteItemDto,
+  AutocompleteItemDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
@@ -22,6 +24,7 @@ import {
   SearchFilters,
   TecDocSearchType,
   AUTOCOMPLETE_SUGGESTIONS_LIMIT,
+  CATEGORY_AUTOCOMPLETE_LIMIT,
   attributeRoleFor,
 } from '../search/search-types';
 
@@ -574,12 +577,14 @@ export class TecDocMockClient {
    * Mirrors the real client's article autocomplete (`getArticles`): number
    * matches capped at the shared limit. An `exact` execution keeps only exact
    * number matches (mirroring the exact-number toggle); any other match type
-   * behaves like a prefix/substring search.
+   * behaves like a prefix/substring search. Like the real client, it also
+   * appends the categories the matches fall into (built from the match set, the
+   * mock's stand-in for `assemblyGroupFacets`) when they span more than one.
    */
   getAutocompleteArticles(
     query: string,
     execution?: SearchExecution,
-  ): Promise<ArticleAutocompleteItemDto[]> {
+  ): Promise<AutocompleteItemDto[]> {
     const normalisedQuery = query.replace(/[-.\s]/g, '').toUpperCase();
 
     const matches =
@@ -591,7 +596,7 @@ export class TecDocMockClient {
           )
         : this.findMatchingArticles(query);
 
-    const suggestions = matches
+    const articles: ArticleAutocompleteItemDto[] = matches
       .slice(0, AUTOCOMPLETE_SUGGESTIONS_LIMIT)
       .map(({ articleNumber, brandName, description }) => ({
         kind: 'article' as const,
@@ -600,7 +605,48 @@ export class TecDocMockClient {
         description,
       }));
 
-    return Promise.resolve(suggestions);
+    const categories = this.buildAutocompleteCategorySuggestions(
+      query,
+      matches,
+    );
+
+    return Promise.resolve([...articles, ...categories]);
+  }
+
+  /**
+   * Mirrors the real client's category suggestions (from `assemblyGroupFacets`):
+   * the distinct categories the matches fall into — the mock keys categories on
+   * the description (id = label), like {@link buildCategoryNavigation} — emitted
+   * only when the matches span more than one category, ordered by count and
+   * capped at {@link CATEGORY_AUTOCOMPLETE_LIMIT}.
+   */
+  private buildAutocompleteCategorySuggestions(
+    query: string,
+    matches: MockArticleBase[],
+  ): CategoryAutocompleteItemDto[] {
+    const countByLabel = new Map<string, number>();
+
+    for (const article of matches) {
+      countByLabel.set(
+        article.description,
+        (countByLabel.get(article.description) ?? 0) + 1,
+      );
+    }
+
+    if (countByLabel.size <= 1) {
+      return [];
+    }
+
+    return [...countByLabel.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, CATEGORY_AUTOCOMPLETE_LIMIT)
+      .map(([label, count]) => ({
+        kind: 'category' as const,
+        term: query,
+        categoryNodeId: label,
+        label,
+        count,
+      }));
   }
 
   /**

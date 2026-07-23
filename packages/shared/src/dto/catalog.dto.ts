@@ -297,11 +297,16 @@ export interface SearchResponseDto {
  * user picked on the FE (mirrors the search's mode), discriminated by `kind`:
  * - `article` — a concrete part (part-number / exact search). Selecting it
  *   navigates straight to that article's detail page.
+ * - `category` — a category the matched parts fall into (part-number search),
+ *   emitted only when the matches span more than one category so the row adds
+ *   disambiguation value. Selecting it re-runs the search scoped to that
+ *   category (`/search?q={term}&categoryNodeId=...`).
  * - `term` — a free-text search term (generic search). Selecting it re-runs a
  *   generic search for that term rather than deep-linking to one article.
  */
 export type AutocompleteItemDto =
   | ArticleAutocompleteItemDto
+  | CategoryAutocompleteItemDto
   | TermAutocompleteItemDto;
 
 /**
@@ -313,6 +318,23 @@ export interface ArticleAutocompleteItemDto {
   articleNumber: string;
   brandName: string;
   description: string;
+}
+
+/**
+ * A category autocomplete hit: a leaf assembly group the matched parts fall
+ * into, so the FE can offer "search {term} within {label}". Sourced from the
+ * `assemblyGroupFacets` the same TecDoc `getArticles` autocomplete call returns
+ * alongside the articles. `term` is the typed query the FE re-runs scoped to
+ * `categoryNodeId` (a TecDoc assemblyGroupNodeId → the search `categoryNodeId`
+ * filter); `count` is the number of matches in that category (null when TecDoc
+ * omits it).
+ */
+export interface CategoryAutocompleteItemDto {
+  kind: 'category';
+  term: string;
+  categoryNodeId: string;
+  label: string;
+  count: number | null;
 }
 
 /**
