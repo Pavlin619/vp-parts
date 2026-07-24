@@ -127,7 +127,7 @@
 ### Implementation for User Story 2
 
 - [X] T050 [P] [US2] Implement part number normaliser (8-step pipeline, brand dictionary loaded from ConfigService, output is ArticleNumber value object) in `apps/api/src/search/normaliser.ts`
-- [X] T051 [US2] Implement SearchService (normalise input → TecDoc search via CatalogService → resolve to single redirect / multi-match list / empty; autocomplete cached 30 min; annotate vehicle fit if vehicleId provided) in `apps/api/src/search/search.service.ts`
+- [X] T051 [US2] Implement SearchService (normalise input → TecDoc search via CatalogService → resolve to single redirect / multi-match list / empty; autocomplete cached 15 min/5 min empty; annotate vehicle fit if vehicleId provided) in `apps/api/src/search/search.service.ts`
 - [X] T052 [US2] Implement SearchController (@Public; GET /search?q with optional vehicleId; GET /search/autocomplete?q) in `apps/api/src/search/search.controller.ts`
 - [X] T053 [US2] Create SearchModule and barrel in `apps/api/src/search/index.ts`
 - [X] T054 [US2] Implement search API functions (searchByPartNumber, getAutocomplete) in `apps/web/src/lib/api/catalog.ts` (extend existing file)

@@ -36,6 +36,15 @@ describe('RedisCache', () => {
         60,
       );
     });
+
+    it('returns the loaded value when Redis cannot read or write', async () => {
+      redis.get.mockRejectedValueOnce(new Error('Redis unavailable'));
+      redis.set.mockRejectedValueOnce(new Error('Redis unavailable'));
+      const loader = jest.fn().mockResolvedValue({ id: '2' });
+
+      await expect(cache.cached('k', 60, loader)).resolves.toEqual({ id: '2' });
+      expect(loader).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('cachedArray', () => {

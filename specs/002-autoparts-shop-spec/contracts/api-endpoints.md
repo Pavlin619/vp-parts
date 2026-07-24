@@ -401,7 +401,7 @@ Response `200`:
   { "articleNumber": "WL6341", "brandName": "WIX", "description": "Oil Filter Heavy Duty" }
 ]
 ```
-Cache: Redis, 30 min.
+Cache: Redis, 15 min for suggestions and 5 min for empty results.
 
 ---
 

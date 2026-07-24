@@ -20,15 +20,14 @@ export class RedisCache {
     ttl: number,
     loader: () => Promise<T>,
   ): Promise<T> {
-    const cached = await this.redis.get(key);
-    if (cached !== null) {
-      this.logger.debug(`Cache hit: ${key}`);
-      return JSON.parse(cached) as T;
+    const cached = await this.read<T>(key);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    this.logger.debug(`Cache miss: ${key}`);
     const value = await loader();
-    await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+    await this.write(key, value, ttl);
+
     return value;
   }
 
@@ -38,16 +37,15 @@ export class RedisCache {
     missTtl: number,
     loader: () => Promise<T[]>,
   ): Promise<T[]> {
-    const cached = await this.redis.get(key);
-    if (cached !== null) {
-      this.logger.debug(`Cache hit: ${key}`);
-      return JSON.parse(cached) as T[];
+    const cached = await this.read<T[]>(key);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    this.logger.debug(`Cache miss: ${key}`);
     const value = await loader();
     const ttl = value.length > 0 ? hitTtl : missTtl;
-    await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+    await this.write(key, value, ttl);
+
     return value;
   }
 
@@ -61,16 +59,43 @@ export class RedisCache {
     missTtl: number,
     loader: () => Promise<T>,
   ): Promise<T> {
-    const cached = await this.redis.get(key);
-    if (cached !== null) {
-      this.logger.debug(`Cache hit: ${key}`);
-      return JSON.parse(cached) as T;
+    const cached = await this.read<T>(key);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    this.logger.debug(`Cache miss: ${key}`);
     const value = await loader();
     const ttl = value.items.length > 0 ? hitTtl : missTtl;
-    await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+    await this.write(key, value, ttl);
+
     return value;
+  }
+
+  private async read<T>(key: string): Promise<T | undefined> {
+    try {
+      const cached = await this.redis.get(key);
+      if (cached === null) {
+        this.logger.debug(`Cache miss: ${key}`);
+        return undefined;
+      }
+
+      this.logger.debug(`Cache hit: ${key}`);
+      return JSON.parse(cached) as T;
+    } catch (error) {
+      this.logger.warn(`Cache read failed: ${this.errorMessage(error)}`);
+      return undefined;
+    }
+  }
+
+  private async write<T>(key: string, value: T, ttl: number): Promise<void> {
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
+    } catch (error) {
+      this.logger.warn(`Cache write failed: ${this.errorMessage(error)}`);
+    }
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

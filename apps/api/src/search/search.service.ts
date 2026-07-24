@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import {
   ArticleAutocompleteItemDto,
   AutocompleteItemDto,
@@ -28,8 +29,9 @@ const AUTOCOMPLETE_MAX_SUGGESTIONS = 8;
 const SUGGESTION_PREFIX_LENGTH = 5;
 
 const SEARCH_TTL = 60 * 60;
-const SEARCH_MISS_TTL = 10 * 60;
-const AUTOCOMPLETE_TTL = 30 * 60;
+const SEARCH_MISS_TTL = 5 * 60;
+const AUTOCOMPLETE_TTL = 15 * 60;
+const AUTOCOMPLETE_MISS_TTL = 5 * 60;
 
 const DEFAULT_EXECUTION: SearchExecution = {
   type: TecDocSearchType.AnyNumber,
@@ -271,7 +273,7 @@ export class SearchService {
   }
 
   /**
-   * Redis-cached (1h hit / 10m empty-miss) TecDoc search, with brand logos
+   * Redis-cached (1h hit / 5m empty-miss) TecDoc search, with brand logos
    * joined onto the article rows and brand facet from the same cached brand
    * read. The cached payload is the raw TecDoc result (no logos); the logo join
    * is applied per request so a brand-logo change never needs a search-cache
@@ -311,17 +313,26 @@ export class SearchService {
     pageSize: number,
     filters?: SearchFilters,
   ): string {
-    const vehicleKey = vehicleId ?? 'none';
-    const executionKey = `${execution.type}-${execution.matchType ?? 'any'}`;
-    const brandKey = filters?.brandIds?.length
-      ? filters.brandIds.join(',')
-      : 'none';
-    const categoryKey = filters?.categoryNodeId ?? 'none';
-    const criteriaKey = filters?.criteria?.length
-      ? filters.criteria.map((c) => `${c.criteriaId}=${c.rawValue}`).join(',')
-      : 'none';
+    const identity = {
+      query: this.normaliseCacheQuery(query, execution.type),
+      vehicleId: vehicleId ?? null,
+      execution,
+      page,
+      pageSize,
+      brandIds: [...(filters?.brandIds ?? [])].sort(),
+      categoryNodeId: filters?.categoryNodeId ?? null,
+      criteria: [...(filters?.criteria ?? [])].sort((left, right) => {
+        const leftKey = `${left.criteriaId}:${left.rawValue}`;
+        const rightKey = `${right.criteriaId}:${right.rawValue}`;
 
-    return `tecdoc:search:${query}:${vehicleKey}:${executionKey}:${page}:${pageSize}:${brandKey}:${categoryKey}:${criteriaKey}`;
+        return leftKey.localeCompare(rightKey);
+      }),
+    };
+    const digest = createHash('sha256')
+      .update(JSON.stringify(identity))
+      .digest('hex');
+
+    return `tecdoc:search:${digest}`;
   }
 
   /**
@@ -384,9 +395,12 @@ export class SearchService {
     query: string,
     execution: SearchExecution,
   ): Promise<AutocompleteItemDto[]> {
-    return this.cache.cached(
-      `tecdoc:autocomplete:article:${execution.matchType ?? 'any'}:${query}`,
+    const cacheQuery = this.normaliseCacheQuery(query, execution.type);
+
+    return this.cache.cachedArray(
+      `tecdoc:autocomplete:article:${execution.matchType ?? 'any'}:${cacheQuery}`,
       AUTOCOMPLETE_TTL,
+      AUTOCOMPLETE_MISS_TTL,
       () => this.searchTecDoc.getAutocompleteArticles(query, execution),
     );
   }
@@ -394,11 +408,25 @@ export class SearchService {
   private autocompleteTermsCached(
     query: string,
   ): Promise<AutocompleteItemDto[]> {
-    return this.cache.cached(
-      `tecdoc:autocomplete:term:${query}`,
+    const cacheQuery = this.normaliseCacheQuery(
+      query,
+      TecDocSearchType.FreeText,
+    );
+
+    return this.cache.cachedArray(
+      `tecdoc:autocomplete:term:${cacheQuery}`,
       AUTOCOMPLETE_TTL,
+      AUTOCOMPLETE_MISS_TTL,
       () => this.searchTecDoc.getAutocompleteTerms(query),
     );
+  }
+
+  private normaliseCacheQuery(query: string, searchType: number): string {
+    const trimmed = query.trim();
+
+    return searchType === TecDocSearchType.FreeText
+      ? trimmed.toLocaleLowerCase('bg-BG')
+      : trimmed.toLocaleUpperCase('bg-BG');
   }
 
   /**
