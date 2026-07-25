@@ -667,6 +667,43 @@ describe('SearchService', () => {
       );
     });
 
+    // The hint changes which facets TecDoc is asked for, so the two payloads are
+    // not interchangeable and must not share a cache entry.
+    it('keys a leaf and a non-leaf category search separately', async () => {
+      searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
+
+      await service.search('WL634', undefined, 1, 20, {
+        categoryNodeId: '100',
+        categoryHasChildren: false,
+      });
+      await service.search('WL634', undefined, 1, 20, {
+        categoryNodeId: '100',
+        categoryHasChildren: true,
+      });
+
+      expect(cachedPaginatedMock.mock.calls[0][0]).not.toBe(
+        cachedPaginatedMock.mock.calls[1][0],
+      );
+    });
+
+    // Both resolve to "do not request the criteria facets", so they produce
+    // identical payloads and should share one entry rather than double-caching.
+    it('shares one cache key between an absent hint and a non-leaf hint', async () => {
+      searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
+
+      await service.search('WL634', undefined, 1, 20, {
+        categoryNodeId: '100',
+      });
+      await service.search('WL634', undefined, 1, 20, {
+        categoryNodeId: '100',
+        categoryHasChildren: true,
+      });
+
+      expect(cachedPaginatedMock.mock.calls[0][0]).toBe(
+        cachedPaginatedMock.mock.calls[1][0],
+      );
+    });
+
     it('returns a paginated result list when multiple articles match', async () => {
       searchArticlesMock.mockResolvedValueOnce(
         pageOf([

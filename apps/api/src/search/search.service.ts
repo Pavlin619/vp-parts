@@ -17,6 +17,7 @@ import {
   SearchExecution,
   SearchFilters,
   SearchMode,
+  shouldRequestCriteriaFacets,
   TecDocSearchType,
 } from './search-types';
 import { SearchTecDoc } from './search.tecdoc';
@@ -321,6 +322,11 @@ export class SearchService {
       pageSize,
       brandIds: [...(filters?.brandIds ?? [])].sort(),
       categoryNodeId: filters?.categoryNodeId ?? null,
+      // The decision, not the raw `categoryHasChildren` hint: it is what
+      // actually changes the TecDoc payload, so hints that resolve the same way
+      // (absent and "has children") share one entry while an opted-in leaf gets
+      // its own.
+      criteriaFacets: shouldRequestCriteriaFacets(filters, page),
       criteria: [...(filters?.criteria ?? [])].sort((left, right) => {
         const leftKey = `${left.criteriaId}:${left.rawValue}`;
         const rightKey = `${right.criteriaId}:${right.rawValue}`;

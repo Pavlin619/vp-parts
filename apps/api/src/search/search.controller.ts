@@ -23,6 +23,7 @@ export class SearchController {
       {
         brandIds: dto.brandIds,
         categoryNodeId: dto.categoryNodeId,
+        categoryHasChildren: dto.categoryHasChildren,
         criteria: parseCriteriaFilters(dto.attr),
       },
       dto.searchMode,

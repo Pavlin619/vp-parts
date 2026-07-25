@@ -112,11 +112,63 @@ export interface CriteriaFilter {
  *   is a scalar, not an array — unlike the multi-select brand/criteria filters.
  * - `criteria` — technical-attribute selections (criteriaId + rawValue).
  * Groups are AND-combined; ids within a multi-select group are OR-combined.
+ *
+ * `categoryHasChildren` is not a filter but a performance hint about
+ * `categoryNodeId` — see {@link shouldRequestCriteriaFacets}.
  */
 export interface SearchFilters {
   brandIds?: string[];
   categoryNodeId?: string;
+  categoryHasChildren?: boolean;
   criteria?: CriteriaFilter[];
+}
+
+/**
+ * The only page whose response carries the attribute (dimension) facets. They
+ * describe the whole match set, so every later page would repeat page 1's block
+ * verbatim; the client keeps the page-1 set while paginating. The cheap brand
+ * and category blocks are still sent on every page.
+ */
+export const SEARCH_FACET_PAGE = 1;
+
+/**
+ * Whether a search should ask TecDoc for the technical-attribute (`criteria`)
+ * facets that become the response's `attributes` — the single place that
+ * decides, so the TecDoc request and the Redis cache key never disagree.
+ *
+ * Attribute facets are only meaningful on a leaf category: a mid-level node
+ * spans unrelated product types, so TecDoc would compute and ship a large,
+ * incoherent criteria block that the leaf gate in `SearchTecDoc.searchArticles`
+ * then discards. We therefore skip requesting them unless all of the following
+ * hold:
+ *
+ * - **A category is selected.** A broad search has no coherent criteria at all.
+ * - **The client explicitly reported that category as a leaf.** Dimensions are
+ *   strictly opt-in: only `categoryHasChildren === false` asks for them. Leafness
+ *   is not derivable before the call — it comes from the `assemblyGroupFacets` of
+ *   this very response — so the client supplies it from the `hasChildren` it
+ *   already holds for every category it renders (the previous response's
+ *   `categoryNavigation`, or the leaf-only category rows in autocomplete). An
+ *   **absent** hint therefore means "do not fetch": a caller that never asked is
+ *   never charged for the criteria block. The hint is never trusted for
+ *   correctness either — the leaf gate on the response still decides whether the
+ *   mapped attributes are actually returned.
+ * - **It is the first page.** Facets are computed over the whole match set, so
+ *   every later page would recompute and re-ship a block identical to page 1's.
+ */
+export function shouldRequestCriteriaFacets(
+  filters: SearchFilters | undefined,
+  page: number,
+): boolean {
+  if (!filters?.categoryNodeId) {
+    return false;
+  }
+
+  if (filters.categoryHasChildren !== false) {
+    return false;
+  }
+
+  return page === SEARCH_FACET_PAGE;
 }
 
 /**
