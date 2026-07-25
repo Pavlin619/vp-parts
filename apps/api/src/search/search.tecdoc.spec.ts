@@ -76,6 +76,7 @@ describe('SearchTecDoc', () => {
         {
           brandIds: ['4', '7'],
           categoryNodeId: '100',
+          categoryHasChildren: false,
           criteria: [{ criteriaId: '20', rawValue: '106.4' }],
         },
       );
@@ -88,6 +89,21 @@ describe('SearchTecDoc', () => {
         includeCriteriaFacets: true,
         criteriaFilters: [{ criteriaId: 20, rawValue: '106.4' }],
       });
+    });
+
+    it('does not request criteria facets for a category with no leaf hint', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 0,
+        articles: [],
+      });
+
+      await tecdoc.searchArticles('WL634', undefined, { type: 10 }, 1, 50, {
+        categoryNodeId: '100',
+      });
+
+      const params = call.mock.calls[0][1];
+      expect(params).toMatchObject({ assemblyGroupNodeIds: [100] });
+      expect(params).not.toHaveProperty('includeCriteriaFacets');
     });
 
     it('surfaces attribute facets only when the selected category is a leaf', async () => {
@@ -123,12 +139,95 @@ describe('SearchTecDoc', () => {
         { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
-        { categoryNodeId: '100' },
+        { categoryNodeId: '100', categoryHasChildren: false },
       );
 
       expect(result.attributes).toHaveLength(1);
       expect(result.attributes[0]).toMatchObject({ id: '20', label: 'Width' });
       expect(result.categoryNavigation.current).toMatchObject({ id: '100' });
+    });
+
+    it('does not request criteria facets when the client reports a non-leaf category', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 0,
+        articles: [],
+      });
+
+      await tecdoc.searchArticles('brake', undefined, { type: 99 }, 1, 50, {
+        categoryNodeId: '100',
+        categoryHasChildren: true,
+      });
+
+      const params = call.mock.calls[0][1];
+      expect(params).toMatchObject({ assemblyGroupNodeIds: [100] });
+      expect(params).not.toHaveProperty('includeCriteriaFacets');
+    });
+
+    it('drops criteria facets when the client wrongly claimed a leaf, as a backstop', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [record('WL6340')],
+        criteriaFacets: {
+          counts: [
+            {
+              criteriaId: 20,
+              criteriaDescription: 'Width',
+              criteriaValues: [
+                { rawValue: '106.4', formattedValue: '106.4 mm', count: 1 },
+              ],
+            },
+          ],
+        },
+        assemblyGroupFacets: {
+          counts: [
+            {
+              assemblyGroupNodeId: 100,
+              assemblyGroupName: 'Brakes',
+              parentNodeId: null,
+              childCount: 3,
+            },
+          ],
+        },
+      });
+
+      // The client asked for dimensions, but TecDoc reports the node has
+      // children — the response gate must win over the hint.
+      const result = await tecdoc.searchArticles(
+        'brake',
+        undefined,
+        { type: 99 },
+        1,
+        50,
+        { categoryNodeId: '100', categoryHasChildren: false },
+      );
+
+      expect(call.mock.calls[0][1]).toMatchObject({
+        includeCriteriaFacets: true,
+      });
+      expect(result.categoryNavigation.current).toMatchObject({
+        hasChildren: true,
+      });
+      expect(result.attributes).toEqual([]);
+    });
+
+    it('does not re-request criteria facets beyond the first page', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 0,
+        articles: [],
+      });
+
+      await tecdoc.searchArticles(
+        'WL634',
+        undefined,
+        { type: 10, matchType: 'prefix_or_suffix' },
+        2,
+        50,
+        { categoryNodeId: '100', categoryHasChildren: false },
+      );
+
+      const params = call.mock.calls[0][1];
+      expect(params.page).toBe(2);
+      expect(params).not.toHaveProperty('includeCriteriaFacets');
     });
 
     it('builds root-level category options when nothing is selected', async () => {

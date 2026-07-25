@@ -25,6 +25,7 @@ import {
   AUTOCOMPLETE_SUGGESTIONS_LIMIT,
   CATEGORY_AUTOCOMPLETE_LIMIT,
   attributeRoleFor,
+  shouldRequestCriteriaFacets,
 } from './search-types';
 
 /**
@@ -79,9 +80,12 @@ export class SearchTecDoc {
    * selections as `dataSupplierIds` / `assemblyGroupNodeIds` / `criteriaFilters`.
    *
    * Technical-attribute (`criteria`) facets are **gated on landing at a leaf
-   * category**: `includeCriteriaFacets` is requested only when a category is
-   * selected (never on a broad search), and the returned criteria are surfaced
-   * only when the selected node is a leaf (`current.hasChildren === false`).
+   * category**, on both sides of the call: the request asks for them only when
+   * `shouldRequestCriteriaFacets` says they are worth computing, and the
+   * response surfaces them only when the selected node turns out to be a leaf
+   * (`current.hasChildren === false`). The request gate is the optimisation —
+   * it keeps TecDoc from building a large criteria block for a mid-level
+   * subtree — while the response gate is the correctness backstop.
    *
    * Results keep TecDoc's native article order — no client-side ranking.
    */
@@ -94,6 +98,7 @@ export class SearchTecDoc {
     filters?: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
     const categorySelected = Boolean(filters?.categoryNodeId);
+    const requestCriteriaFacets = shouldRequestCriteriaFacets(filters, page);
 
     const data = await this.transport.call<{
       totalMatchingArticles: number;
@@ -124,14 +129,12 @@ export class SearchTecDoc {
       page,
       includeAll: true,
       includeDataSupplierFacets: true,
-      // Only worth the payload once the search is scoped to a category; a broad
-      // search's criteria would span unrelated product types.
       // TODO(search-ux): auto-surface dimensions when a precise query (e.g. a
       // full part number) collapses to a single leaf category, so the user need
       // not click to reveal them. Preferred approach: keep this broad call cheap
       // and, when categoryNavigation resolves to exactly one leaf option, fire
       // one follow-up scoped getArticles for its criteria (Redis-cached).
-      ...(categorySelected && { includeCriteriaFacets: true }),
+      ...(requestCriteriaFacets && { includeCriteriaFacets: true }),
       // Match-scoped category facet: only the assembly groups present in the
       // result set, with article counts — NOT the whole catalogue tree
       // (that is getAssemblyGroupTree's job). `assemblyGroupType: 'P'` scopes to

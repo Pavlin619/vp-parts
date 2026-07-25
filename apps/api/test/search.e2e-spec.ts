@@ -361,6 +361,47 @@ describe('SearchController (e2e)', () => {
       );
     });
 
+    it('forwards the categoryHasChildren leaf hint as a filter', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?q=WL634&categoryNodeId=200&categoryHasChildren=true')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'WL634',
+        undefined,
+        PART,
+        1,
+        20,
+        expect.objectContaining({
+          categoryNodeId: '200',
+          categoryHasChildren: true,
+        }),
+      );
+    });
+
+    it('ignores an unparseable leaf hint rather than rejecting the search', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?q=WL634&categoryNodeId=200&categoryHasChildren=maybe')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'WL634',
+        undefined,
+        PART,
+        1,
+        20,
+        expect.objectContaining({ categoryHasChildren: undefined }),
+      );
+    });
+
     it('preserves TecDoc native result order (no client-side ranking)', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('B1'), makeArticle('A2'), makeArticle('C3')]),

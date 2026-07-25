@@ -67,6 +67,37 @@ describe('SearchQueryDto searchMode', () => {
   });
 });
 
+describe('SearchQueryDto categoryHasChildren', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query);
+
+  it('is undefined when the param is absent', () => {
+    expect(toDto({ q: 'WL6340' }).categoryHasChildren).toBeUndefined();
+  });
+
+  it('parses the string forms a query string can carry', () => {
+    expect(
+      toDto({ q: 'WL6340', categoryHasChildren: 'true' }).categoryHasChildren,
+    ).toBe(true);
+    expect(
+      toDto({ q: 'WL6340', categoryHasChildren: 'false' }).categoryHasChildren,
+    ).toBe(false);
+  });
+
+  it('validates once parsed', () => {
+    const dto = toDto({ q: 'WL6340', categoryHasChildren: 'false' });
+    expect(validateSync(dto)).toHaveLength(0);
+  });
+
+  // The param is a performance hint, never a correctness input, so a malformed
+  // value degrades to "absent" rather than 400ing an otherwise valid search.
+  it('falls back to undefined for an unparseable value', () => {
+    const dto = toDto({ q: 'WL6340', categoryHasChildren: 'maybe' });
+    expect(dto.categoryHasChildren).toBeUndefined();
+    expect(validateSync(dto)).toHaveLength(0);
+  });
+});
+
 describe('AutocompleteQueryDto searchMode', () => {
   const toDto = (query: Record<string, unknown>) =>
     plainToInstance(AutocompleteQueryDto, query);

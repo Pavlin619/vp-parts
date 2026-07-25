@@ -274,6 +274,21 @@ Query params:
   navigation node — maps to TecDoc `assemblyGroupNodeIds: [id]`. Category
   navigation is a single-path drill-down (one node at a time, deeper until a
   leaf), so this is a scalar, not a repeatable param like `brandIds`.
+- `categoryHasChildren` (optional boolean, `true`/`false`) is not a filter but
+  the way a client **opts in to the `attributes` (dimension) block**. It echoes
+  back the `hasChildren` the client already holds for that node, and only an
+  explicit **`false`** — "this node is a leaf" — asks for dimensions. `true`, an
+  absent value, or an unparseable one all mean "do not fetch them": the API then
+  never asks TecDoc for the criteria block, so a mid-level node never pays for
+  one computed across its whole subtree. It is never trusted for correctness
+  either — the leaf gate on the response (below) still decides whether
+  `attributes` are actually returned, so a client that wrongly claims a leaf gets
+  no `attributes`, just a wasted upstream computation.
+
+  **Consequence:** a category-scoped URL that omits this param gets no
+  `attributes`, even at a leaf. Clients that render dimension filters must send
+  it — including on a deep link or a restored/bookmarked search URL, so keep it
+  in the URL rather than in component state.
 - `attr` (optional, repeatable) narrows to a technical attribute value as a
   `criteriaId:rawValue` pair (`?attr=20:106.4&attr=44:Отпред`), split on the
   first colon; maps to TecDoc `criteriaFilters`.
@@ -294,12 +309,19 @@ zero-result response:
   exact ids) so the client can render a bespoke control (e.g. a front/rear car
   diagram) instead of a plain value list; `null`/absent means "render normally".
   **Only present once the search has landed on a leaf category** (the single
-  `categoryNodeId` node has no children): criteria are defined per product type,
-  so a broad, multi-category result omits them; the client drills the category
-  navigation to a leaf first, then the dimension filters appear. Filtering is fully
-  server-side: a facet click re-issues the search with the selected `brandIds` +
-  `categoryNodeId` + `attr`, and TecDoc returns the narrowed set and recomputed
-  facets.
+  `categoryNodeId` node has no children) **and the client asked for them** via
+  `categoryHasChildren=false`: criteria are defined per product type, so a broad,
+  multi-category result omits them; the client drills the category navigation to a
+  leaf first, then the dimension filters appear. Both conditions must hold — the
+  request is never made without the opt-in, and the block is never returned when
+  TecDoc reports the node has children.
+  **Only sent on page 1.** Unlike `facets` and `categoryNavigation`, this block
+  is not re-requested from TecDoc while paginating — it describes the whole match
+  set, so every later page would carry an identical copy. The client keeps the
+  page-1 `attributes` for the lifetime of the result set.
+  Filtering is fully server-side: a facet click re-issues the search with the
+  selected `brandIds` + `categoryNodeId` + `attr`, and TecDoc returns the
+  narrowed set and recomputed facets.
 - **`categoryNavigation`** — the category (assembly-group) facet as
   **single-level navigation**, not a full tree. The client drills one step at a
   time (like InterCars): a broad search returns only the top-level roots, the

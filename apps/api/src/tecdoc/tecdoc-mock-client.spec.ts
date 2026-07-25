@@ -50,8 +50,9 @@ describe('TecDocMockClient', () => {
         type: TecDocSearchType.FreeText,
         matchType: undefined,
       });
-      // A category selection narrows to a leaf and reveals the attributes.
-      const leaf = await mock.searchArticles(
+      // Selecting a category is not enough on its own: dimensions are opt-in, so
+      // the client must also declare the node a leaf.
+      const unhinted = await mock.searchArticles(
         'Brake Pad',
         undefined,
         { type: TecDocSearchType.FreeText },
@@ -59,7 +60,21 @@ describe('TecDocMockClient', () => {
         50,
         { categoryNodeId: 'Brake Pad Set, disc brake' },
       );
+
+      const leaf = await mock.searchArticles(
+        'Brake Pad',
+        undefined,
+        { type: TecDocSearchType.FreeText },
+        1,
+        50,
+        {
+          categoryNodeId: 'Brake Pad Set, disc brake',
+          categoryHasChildren: false,
+        },
+      );
+
       expect(scoped.attributes).toEqual([]);
+      expect(unhinted.attributes).toEqual([]);
       expect(leaf.attributes.length).toBeGreaterThan(0);
     });
   });

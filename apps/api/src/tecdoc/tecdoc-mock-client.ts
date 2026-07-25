@@ -26,6 +26,7 @@ import {
   AUTOCOMPLETE_SUGGESTIONS_LIMIT,
   CATEGORY_AUTOCOMPLETE_LIMIT,
   attributeRoleFor,
+  shouldRequestCriteriaFacets,
 } from '../search/search-types';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
@@ -549,15 +550,20 @@ export class TecDocMockClient {
     const categoryNavigation = this.buildCategoryNavigation(matches, filters);
 
     // Attribute facets only make sense once the search has landed on a leaf
-    // category — mirror the real client's gate (mock nodes are all leaves, so a
-    // selected node has hasChildren=false).
+    // category — mirror the real client's gates. The request-side gate stands in
+    // for "did we ask TecDoc for criteria at all"; the leaf gate then decides
+    // whether to surface them (mock nodes are all leaves, so a selected node has
+    // hasChildren=false).
     const categorySelected = Boolean(filters?.categoryNodeId);
     const atLeaf =
       categorySelected &&
       (categoryNavigation.current
         ? categoryNavigation.current.hasChildren === false
         : categoryNavigation.options.length === 0);
-    const attributes = atLeaf ? this.buildAttributeFacets(matches) : [];
+    const attributes =
+      atLeaf && shouldRequestCriteriaFacets(filters, page)
+        ? this.buildAttributeFacets(matches)
+        : [];
 
     const start = (page - 1) * pageSize;
     const items = matches.slice(start, start + pageSize);

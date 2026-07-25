@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -34,6 +35,23 @@ function toStringArray({ value }: { value: unknown }): string[] | undefined {
   return values.filter(
     (entry): entry is string => typeof entry === 'string' && entry.length > 0,
   );
+}
+
+/**
+ * Parses a `true`/`false` query param. Anything else — including a malformed
+ * value — becomes `undefined`, so a caller can never turn a hint into a 400 on
+ * an otherwise valid search.
+ */
+function toOptionalBoolean({ value }: { value: unknown }): boolean | undefined {
+  if (value === true || value === 'true') {
+    return true;
+  }
+
+  if (value === false || value === 'false') {
+    return false;
+  }
+
+  return undefined;
 }
 
 export class SearchQueryDto {
@@ -80,6 +98,20 @@ export class SearchQueryDto {
   @IsString()
   @MaxLength(100)
   categoryNodeId?: string;
+
+  /**
+   * Whether {@link categoryNodeId} has child categories, echoed back from the
+   * `hasChildren` the client was given for that node. This is how a client opts
+   * in to the attribute (dimension) facets: only an explicit `false` — "this is
+   * a leaf" — asks for them. `true` or an absent/unparseable value means they are
+   * not requested at all, so TecDoc never computes a criteria block spanning a
+   * whole mid-level subtree. See `shouldRequestCriteriaFacets` in
+   * `search-types.ts`.
+   */
+  @IsOptional()
+  @Transform(toOptionalBoolean)
+  @IsBoolean()
+  categoryHasChildren?: boolean;
 
   /**
    * Technical-attribute selections, each a repeatable `criteriaId:rawValue`
