@@ -396,11 +396,16 @@ No Postgres TecDoc tables at launch. Redis handles all TecDoc caching.
 | Vehicle types / engine variants | 7 days | Same |
 | Assembly group tree | 7 days | Same |
 | Article detail | 24h | |
-| Part number search results | 1h | |
-| Autocomplete suggestions | 30m | |
-| Price + availability (direct DB read) | none | Read live from `public.autoparts` + `supplier_stock` per request. The value rides along inside the catalog listing/detail payload's own cache; the inventory read itself is never separately cached and is `no-store` on the live availability endpoint. |
+| Part number search results | 1h / 5m empty | Paginated entries are evicted by LFU when cold. |
+| Autocomplete suggestions | 15m / 5m empty | Short negative caching avoids pinning typo prefixes. |
+| Price + availability (direct DB read) | none | Read live from `public.autoparts` + `supplier_stock` through the separate `no-store` availability endpoint. |
 
 Cache lookup: **Redis hit → return. Redis miss → call TecDoc API → store in Redis → return.**
+
+Redis is a disposable cache with persistence disabled. Its dataset is capped at
+192 MB by default (configurable through `REDIS_MAXMEMORY`) and uses
+`allkeys-lfu`, preserving frequently reused campaign and first-page searches
+while evicting cold query/filter/page combinations.
 
 **Future:** Add circuit breaker for TecDoc incidents — return stale Redis value rather than failing the request. Add Postgres `tecdoc_cache` schema when Redis memory pressure becomes measurable.
 

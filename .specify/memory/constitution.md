@@ -259,9 +259,12 @@ API messages MUST be logged server-side only. The global exception filter return
 |---|---|
 | Vehicle reference data (manufacturers, model series, types, assembly groups) | 7 days |
 | Article detail | 24 h |
-| Part number search results | 1 h |
-| Autocomplete suggestions | 30 min |
-| Price + availability (browse cache) | 5 min — **MUST NOT be used at checkout** |
+| Part number search results | 1 h / 5 min when empty |
+| Autocomplete suggestions | 15 min / 5 min when empty |
+| Price + availability | Never cached by the API; **MUST be revalidated at checkout** |
+
+Redis cache memory MUST be bounded and use LFU eviction. Cache read or write failures MUST NOT
+make an otherwise successful upstream request fail.
 
 **No N+1 queries.** Use Prisma `include`/`select` to load related data in one query.
 

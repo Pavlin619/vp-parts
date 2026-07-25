@@ -21,7 +21,7 @@ const getAutocompleteTermsMock = jest.fn();
 const getBrandsMock = jest.fn();
 const applyLogosMock = jest.fn();
 const cachedPaginatedMock = jest.fn();
-const cachedMock = jest.fn();
+const cachedArrayMock = jest.fn();
 
 const mockSearchTecDoc = {
   searchArticles: searchArticlesMock,
@@ -38,7 +38,7 @@ const mockBrands = {
 // the assertions below observe the real SearchTecDoc calls and their arguments.
 const mockCache = {
   cachedPaginated: cachedPaginatedMock,
-  cached: cachedMock,
+  cachedArray: cachedArrayMock,
 } as unknown as RedisCache;
 
 // search() defaults its filters param to an empty object, so every
@@ -131,8 +131,9 @@ describe('SearchService', () => {
       (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
         loader(),
     );
-    cachedMock.mockImplementation(
-      (_key: string, _ttl: number, loader: () => unknown) => loader(),
+    cachedArrayMock.mockImplementation(
+      (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
+        loader(),
     );
     applyLogosMock.mockImplementation((results: unknown) =>
       Promise.resolve(results),
@@ -609,6 +610,20 @@ describe('SearchService', () => {
       expect(result.pageSize).toBe(10);
       expect(result.results).toHaveLength(2);
     });
+
+    it('uses the shorter empty-page TTL', async () => {
+      searchArticlesMock.mockResolvedValueOnce(pageOf([]));
+      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
+
+      await service.search('NO-MATCH');
+
+      expect(cachedPaginatedMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^tecdoc:search:[a-f0-9]{64}$/),
+        3600,
+        300,
+        expect.any(Function),
+      );
+    });
   });
 
   describe('search — query handling', () => {
@@ -626,6 +641,29 @@ describe('SearchService', () => {
         1,
         20,
         NO_FILTERS,
+      );
+    });
+
+    it('uses one cache key for equivalent query and filter ordering', async () => {
+      searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
+
+      await service.search('wl634', undefined, 1, 20, {
+        brandIds: ['8', '4'],
+        criteria: [
+          { criteriaId: '44', rawValue: 'front' },
+          { criteriaId: '20', rawValue: '106.4' },
+        ],
+      });
+      await service.search('WL634', undefined, 1, 20, {
+        brandIds: ['4', '8'],
+        criteria: [
+          { criteriaId: '20', rawValue: '106.4' },
+          { criteriaId: '44', rawValue: 'front' },
+        ],
+      });
+
+      expect(cachedPaginatedMock.mock.calls[0][0]).toBe(
+        cachedPaginatedMock.mock.calls[1][0],
       );
     });
 
@@ -801,6 +839,30 @@ describe('SearchService', () => {
         AC_PREFIX,
       );
       expect(getAutocompleteTermsMock).not.toHaveBeenCalled();
+    });
+
+    it('uses a short hit TTL and a shorter empty-result TTL', async () => {
+      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
+
+      await service.autocomplete('WL634');
+
+      expect(cachedArrayMock).toHaveBeenCalledWith(
+        'tecdoc:autocomplete:article:prefix:WL634',
+        900,
+        300,
+        expect.any(Function),
+      );
+    });
+
+    it('normalises equivalent part-number autocomplete cache keys', async () => {
+      getAutocompleteArticlesMock.mockResolvedValue([]);
+
+      await service.autocomplete('wl634');
+      await service.autocomplete('WL634');
+
+      expect(cachedArrayMock.mock.calls[0][0]).toBe(
+        cachedArrayMock.mock.calls[1][0],
+      );
     });
 
     it('runs an exact article lookup in part_number_exact mode', async () => {
