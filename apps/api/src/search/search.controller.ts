@@ -7,11 +7,15 @@ import {
   parseCriteriaFilters,
 } from './search.dto';
 import { SearchService } from './search.service';
+import { AutocompleteService } from './autocomplete.service';
 
 @Public()
 @Controller('search')
 export class SearchController {
-  constructor(private readonly search: SearchService) {}
+  constructor(
+    private readonly search: SearchService,
+    private readonly autocompleteService: AutocompleteService,
+  ) {}
 
   @Get()
   searchByPartNumber(@Query() dto: SearchQueryDto): Promise<SearchResponseDto> {
@@ -34,6 +38,6 @@ export class SearchController {
   autocomplete(
     @Query() dto: AutocompleteQueryDto,
   ): Promise<AutocompleteItemDto[]> {
-    return this.search.autocomplete(dto.q ?? '', dto.searchMode);
+    return this.autocompleteService.autocomplete(dto.q ?? '', dto.searchMode);
   }
 }

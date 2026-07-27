@@ -11,6 +11,9 @@ import {
 } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
 import { SearchTecDoc } from './search.tecdoc';
+import { SearchCache } from './search-cache';
+import { SearchLaneResolver } from './search-lane-resolver';
+import { AutocompleteService } from './autocomplete.service';
 import { hasActiveFilters, SearchFilters, SearchMode } from './search-types';
 import { BrandsService } from '../catalog/brands';
 import { RedisCache } from '../redis';
@@ -60,10 +63,9 @@ const PART = { type: 10, matchType: 'prefix_or_suffix' } as const;
 const EXACT = { type: 10, matchType: 'exact' } as const;
 const TERM = { type: 99 } as const;
 
-// The article-autocomplete executions each mode resolves to (see
-// SearchService.autocomplete): part_number → prefix, part_number_exact → exact.
+// The article-autocomplete execution the zero-result recovery always uses,
+// regardless of the search mode.
 const AC_PREFIX = { type: 10, matchType: 'prefix' } as const;
-const AC_EXACT = { type: 10, matchType: 'exact' } as const;
 
 function articleItem(
   articleNumber: string,
@@ -126,6 +128,13 @@ const BRANDS: BrandDto[] = [
   { brandName: 'MANN-FILTER', logoUrl: null },
 ];
 
+// SearchService is exercised over its real collaborators (cache → lane resolver
+// → autocomplete) rather than mocks of them: the seams between those four are
+// pure plumbing, so mocking them would assert the plumbing instead of the
+// behaviour. Only the edges — TecDoc, brands and Redis — are stubbed, which is
+// what lets these tests assert the actual TecDoc calls a search produces. The
+// units with logic of their own are covered directly in search-plan.spec.ts,
+// search-cache-keys.spec.ts and autocomplete.service.spec.ts.
 describe('SearchService', () => {
   let service: SearchService;
 
@@ -152,7 +161,17 @@ describe('SearchService', () => {
     // Default: no brand dictionary, so the query is searched as typed unless a
     // test opts into brand stripping by returning brands.
     getBrandsMock.mockResolvedValue([]);
-    service = new SearchService(mockSearchTecDoc, mockBrands, mockCache);
+
+    const searchCache = new SearchCache(
+      mockSearchTecDoc,
+      mockBrands,
+      mockCache,
+    );
+    service = new SearchService(
+      new SearchLaneResolver(searchCache),
+      new AutocompleteService(searchCache),
+      mockBrands,
+    );
   });
 
   describe('search — part-number mode (default)', () => {
@@ -1165,111 +1184,6 @@ describe('SearchService', () => {
       );
 
       logSpy.mockRestore();
-    });
-  });
-
-  describe('autocomplete', () => {
-    it('returns an empty list without calling the catalogue for input under 3 characters', async () => {
-      const result = await service.autocomplete('WL');
-
-      expect(result).toEqual([]);
-      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
-      expect(getAutocompleteTermsMock).not.toHaveBeenCalled();
-    });
-
-    it('treats whitespace-padded short input as under 3 characters', async () => {
-      const result = await service.autocomplete('  W6  ');
-
-      expect(result).toEqual([]);
-      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
-    });
-
-    it('runs a prefix article lookup with the trimmed input in the default part-number mode', async () => {
-      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
-
-      await service.autocomplete('  wl-6340  ');
-
-      expect(getAutocompleteArticlesMock).toHaveBeenCalledWith(
-        'wl-6340',
-        AC_PREFIX,
-      );
-      expect(getAutocompleteTermsMock).not.toHaveBeenCalled();
-    });
-
-    it('uses a short hit TTL and a shorter empty-result TTL', async () => {
-      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
-
-      await service.autocomplete('WL634');
-
-      expect(cachedArrayMock).toHaveBeenCalledWith(
-        'tecdoc:autocomplete:article:prefix:WL634',
-        900,
-        300,
-        expect.any(Function),
-      );
-    });
-
-    it('normalises equivalent part-number autocomplete cache keys', async () => {
-      getAutocompleteArticlesMock.mockResolvedValue([]);
-
-      await service.autocomplete('wl634');
-      await service.autocomplete('WL634');
-
-      expect(cachedArrayMock.mock.calls[0][0]).toBe(
-        cachedArrayMock.mock.calls[1][0],
-      );
-    });
-
-    it('runs an exact article lookup in part_number_exact mode', async () => {
-      getAutocompleteArticlesMock.mockResolvedValueOnce([]);
-
-      await service.autocomplete('WL6340', SearchMode.PartNumberExact);
-
-      expect(getAutocompleteArticlesMock).toHaveBeenCalledWith(
-        'WL6340',
-        AC_EXACT,
-      );
-    });
-
-    it('runs a term lookup (getAutoCompleteSuggestions) in generic mode', async () => {
-      getAutocompleteTermsMock.mockResolvedValueOnce([]);
-
-      await service.autocomplete('oil filter', SearchMode.Generic);
-
-      expect(getAutocompleteTermsMock).toHaveBeenCalledWith('oil filter');
-      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
-    });
-
-    it('returns at most 8 suggestions', async () => {
-      const suggestions = Array.from({ length: 10 }, (_, i) =>
-        suggestionItem(`WL63${i}`),
-      );
-      getAutocompleteArticlesMock.mockResolvedValueOnce(suggestions);
-
-      const result = await service.autocomplete('WL63');
-
-      expect(result).toHaveLength(8);
-      expect(result[0]).toEqual(suggestionItem('WL630'));
-    });
-
-    it('caps articles and category suggestions independently, articles first', async () => {
-      const articles = Array.from({ length: 10 }, (_, i) =>
-        suggestionItem(`WL63${i}`),
-      );
-      const categories = Array.from({ length: 7 }, (_, i) =>
-        categorySuggestionItem(`${i}`),
-      );
-      getAutocompleteArticlesMock.mockResolvedValueOnce([
-        ...articles,
-        ...categories,
-      ]);
-
-      const result = await service.autocomplete('WL63');
-
-      expect(result.filter((item) => item.kind === 'article')).toHaveLength(8);
-      expect(result.filter((item) => item.kind === 'category')).toHaveLength(5);
-      expect(result[0].kind).toBe('article');
-      expect(result[8].kind).toBe('category');
     });
 
     it('keeps only article suggestions on the zero-result recovery path', async () => {

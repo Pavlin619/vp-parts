@@ -5,6 +5,9 @@ import { RedisModule } from '../redis';
 import { BrandsModule } from '../catalog/brands';
 import { SearchService } from './search.service';
 import { SearchTecDoc } from './search.tecdoc';
+import { SearchCache } from './search-cache';
+import { SearchLaneResolver } from './search-lane-resolver';
+import { AutocompleteService } from './autocomplete.service';
 import { SearchController } from './search.controller';
 
 @Module({
@@ -23,8 +26,11 @@ import { SearchController } from './search.controller';
           ? mock
           : new SearchTecDoc(transport),
     },
+    SearchCache,
+    SearchLaneResolver,
+    AutocompleteService,
     SearchService,
   ],
-  exports: [SearchService],
+  exports: [SearchService, AutocompleteService],
 })
 export class SearchModule {}
