@@ -1,4 +1,5 @@
 import { TecDocTransport } from '../../tecdoc';
+import { ArticleNotFoundException } from './article-not-found.exception';
 import { ArticlesTecDoc, SUBSTITUTES_LIMIT } from './articles.tecdoc';
 
 function record(articleNumber: string, mfrName = 'Bosch') {
@@ -26,7 +27,7 @@ describe('ArticlesTecDoc', () => {
         articles: [record('A1'), record('A2')],
       });
 
-      const result = await tecdoc.getArticles('10001', '100002', 1, 20);
+      const result = await tecdoc.getArticles(10001, 100002, 1, 20);
 
       expect(call).toHaveBeenCalledWith(
         'getArticles',
@@ -40,6 +41,16 @@ describe('ArticlesTecDoc', () => {
       );
       expect(result.total).toBe(2);
       expect(result.items.map((i) => i.articleNumber)).toEqual(['A1', 'A2']);
+    });
+
+    // A category with no parts for this vehicle is an ordinary status-200
+    // response with the `articles` key omitted, not an error and not `[]`.
+    it('returns an empty page when TecDoc omits the articles collection', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, status: 200 });
+
+      const result = await tecdoc.getArticles(10001, 100002, 1, 20);
+
+      expect(result).toEqual({ total: 0, page: 1, pageSize: 20, items: [] });
     });
   });
 
@@ -57,11 +68,11 @@ describe('ArticlesTecDoc', () => {
       expect(result.compatibleVehicles).toEqual([]);
     });
 
-    it('throws when TecDoc returns no article', async () => {
+    it('reports an empty result as a typed article miss', async () => {
       call.mockResolvedValueOnce({ articles: [] });
 
-      await expect(tecdoc.getArticleDetails('missing')).rejects.toThrow(
-        'Article not found: missing',
+      await expect(tecdoc.getArticleDetails('missing')).rejects.toBeInstanceOf(
+        ArticleNotFoundException,
       );
     });
   });

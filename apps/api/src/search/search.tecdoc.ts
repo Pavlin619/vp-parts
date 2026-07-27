@@ -91,13 +91,13 @@ export class SearchTecDoc {
    */
   async searchArticles(
     query: string,
-    vehicleId?: string,
+    vehicleId?: number,
     execution: SearchExecution = DEFAULT_SEARCH_EXECUTION,
     page = 1,
     pageSize = 50,
     filters?: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
-    const categorySelected = Boolean(filters?.categoryNodeId);
+    const categorySelected = filters?.categoryNodeId !== undefined;
     const requestCriteriaFacets = shouldRequestCriteriaFacets(filters, page);
 
     const data = await this.transport.call<{
@@ -146,19 +146,16 @@ export class SearchTecDoc {
       },
       ...(vehicleId != null && {
         linkageTargetType: 'P',
-        linkageTargetId: Number(vehicleId),
+        linkageTargetId: vehicleId,
       }),
       ...(filters?.brandIds?.length && {
-        dataSupplierIds: filters.brandIds.map(Number),
+        dataSupplierIds: filters.brandIds,
       }),
-      ...(filters?.categoryNodeId && {
-        assemblyGroupNodeIds: [Number(filters.categoryNodeId)],
+      ...(filters?.categoryNodeId !== undefined && {
+        assemblyGroupNodeIds: [filters.categoryNodeId],
       }),
       ...(filters?.criteria?.length && {
-        criteriaFilters: filters.criteria.map((c) => ({
-          criteriaId: Number(c.criteriaId),
-          rawValue: c.rawValue,
-        })),
+        criteriaFilters: filters.criteria,
       }),
     });
 
@@ -410,9 +407,13 @@ export class SearchTecDoc {
    */
   private buildCategoryNavigation(
     counts: TecDocAssemblyGroupFacetCount[] = [],
-    selectedNodeId?: string,
+    selectedNodeId?: number,
   ): CategoryNavigationDto {
+    // Keyed by string so the `__root__` sentinel can share the map with the
+    // node ids; the selected id is stringified once, on the way in.
     const ROOT_KEY = '__root__';
+    const selectedKey =
+      selectedNodeId !== undefined ? String(selectedNodeId) : undefined;
     const nodeById = new Map<string, TecDocAssemblyGroupFacetCount>();
     const childrenByParent = new Map<string, TecDocAssemblyGroupFacetCount[]>();
 
@@ -443,14 +444,12 @@ export class SearchTecDoc {
       };
     };
 
-    const optionSource = selectedNodeId
-      ? (childrenByParent.get(selectedNodeId) ?? [])
+    const optionSource = selectedKey
+      ? (childrenByParent.get(selectedKey) ?? [])
       : (childrenByParent.get(ROOT_KEY) ?? []);
     const options = optionSource.map(toOption);
 
-    const currentRaw = selectedNodeId
-      ? nodeById.get(selectedNodeId)
-      : undefined;
+    const currentRaw = selectedKey ? nodeById.get(selectedKey) : undefined;
     const current = currentRaw ? toOption(currentRaw) : null;
 
     return { current, options };

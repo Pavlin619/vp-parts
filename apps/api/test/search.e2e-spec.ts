@@ -256,7 +256,7 @@ describe('SearchController (e2e)', () => {
       );
 
       const res = await request(app.getHttpServer())
-        .get('/search?q=WL634&vehicleId=V10001')
+        .get('/search?q=WL634&vehicleId=10001')
         .expect(200);
 
       const results = res.body.results as Array<{ articleNumber: string }>;
@@ -266,7 +266,7 @@ describe('SearchController (e2e)', () => {
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
       expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
         'WL634',
-        'V10001',
+        10001,
         PART,
         1,
         20,
@@ -354,9 +354,9 @@ describe('SearchController (e2e)', () => {
         1,
         20,
         {
-          brandIds: ['4', '30'],
-          categoryNodeId: '200',
-          criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+          brandIds: [4, 30],
+          categoryNodeId: 200,
+          criteria: [{ criteriaId: 20, rawValue: '106.4' }],
         },
       );
     });
@@ -377,7 +377,7 @@ describe('SearchController (e2e)', () => {
         1,
         20,
         expect.objectContaining({
-          categoryNodeId: '200',
+          categoryNodeId: 200,
           categoryHasChildren: true,
         }),
       );
@@ -426,7 +426,7 @@ describe('SearchController (e2e)', () => {
               label: 'Производител',
               values: [
                 {
-                  id: 'WIX Filters',
+                  id: '4',
                   label: 'WIX Filters',
                   count: 1,
                   imageUrl: null,
@@ -438,7 +438,7 @@ describe('SearchController (e2e)', () => {
       );
 
       const res = await request(app.getHttpServer())
-        .get('/search?q=OF&brandIds=WIX%20Filters')
+        .get('/search?q=OF&brandIds=4')
         .expect(200);
 
       expect(res.body).not.toHaveProperty('redirect');
@@ -488,6 +488,21 @@ describe('SearchController (e2e)', () => {
 
       expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
     });
+
+    // The ids reach TecDoc as numbers, so an unparseable one would serialise to
+    // `null` and drop the filter — widening the search instead of failing it.
+    // Rejecting at the boundary is what lets everything downstream take a
+    // number on trust.
+    it.each([
+      ['vehicleId', '/search?q=WL634&vehicleId=abc'],
+      ['vehicleId', '/search?q=WL634&vehicleId=0'],
+      ['categoryNodeId', '/search?q=WL634&categoryNodeId=1.5'],
+      ['brandIds', '/search?q=WL634&brandIds=4&brandIds=bosch'],
+    ])('returns 400 for an unparseable %s', async (_property, url) => {
+      await request(app.getHttpServer()).get(url).expect(400);
+
+      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+    });
   });
 
   // A two-lane plan only exists for a part-number query whose brand token was
@@ -534,7 +549,7 @@ describe('SearchController (e2e)', () => {
           _execution: unknown,
           _page: number,
           _pageSize: number,
-          filters: { brandIds?: string[]; categoryNodeId?: string },
+          filters: { brandIds?: number[]; categoryNodeId?: number },
         ) => {
           const isNarrowed = Boolean(
             filters.brandIds?.length ?? filters.categoryNodeId,
@@ -580,7 +595,7 @@ describe('SearchController (e2e)', () => {
         PART,
         1,
         20,
-        { ...NO_FILTERS, brandIds: ['4'] },
+        { ...NO_FILTERS, brandIds: [4] },
       );
     });
 
@@ -648,7 +663,7 @@ describe('SearchController (e2e)', () => {
         PART,
         1,
         20,
-        { ...NO_FILTERS, brandIds: ['4'] },
+        { ...NO_FILTERS, brandIds: [4] },
       );
     });
 

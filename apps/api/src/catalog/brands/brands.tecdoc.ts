@@ -18,8 +18,10 @@ export class BrandsTecDoc {
    */
   async getBrands(): Promise<BrandDto[]> {
     const data = await this.transport.call<{
-      data: {
-        array: Array<{
+      // Optional throughout: TecDoc omits a collection rather than sending an
+      // empty one, so every level here can be absent on a nothing-found result.
+      data?: {
+        array?: Array<{
           mfrName: string;
           dataSupplierLogo?: {
             imageURL100?: string;
@@ -35,7 +37,7 @@ export class BrandsTecDoc {
       includeAll: true,
     });
 
-    return data.data.array.map((brand) => ({
+    return (data.data?.array ?? []).map((brand) => ({
       brandName: brand.mfrName,
       logoUrl:
         brand.dataSupplierLogo?.imageURL200 ??

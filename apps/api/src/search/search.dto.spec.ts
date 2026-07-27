@@ -14,29 +14,89 @@ describe('parseCriteriaFilters', () => {
     expect(parseCriteriaFilters([])).toEqual([]);
   });
 
-  it('parses a criteriaId:rawValue pair', () => {
+  // The criteriaId is parsed here, not downstream: it goes into the TecDoc
+  // payload as a number, so this is the boundary that has to produce one.
+  it('parses a criteriaId:rawValue pair into a numeric id', () => {
     expect(parseCriteriaFilters(['20:106.4'])).toEqual([
-      { criteriaId: '20', rawValue: '106.4' },
+      { criteriaId: 20, rawValue: '106.4' },
     ]);
   });
 
   it('parses multiple pairs', () => {
     expect(parseCriteriaFilters(['20:106.4', '44:Отпред'])).toEqual([
-      { criteriaId: '20', rawValue: '106.4' },
-      { criteriaId: '44', rawValue: 'Отпред' },
+      { criteriaId: 20, rawValue: '106.4' },
+      { criteriaId: 44, rawValue: 'Отпред' },
     ]);
   });
 
   it('splits on the first colon so the rawValue may contain colons', () => {
     expect(parseCriteriaFilters(['12:a:b:c'])).toEqual([
-      { criteriaId: '12', rawValue: 'a:b:c' },
+      { criteriaId: 12, rawValue: 'a:b:c' },
     ]);
   });
 
   it('drops entries with no colon, a leading colon, or an empty value', () => {
     expect(
       parseCriteriaFilters(['nocolon', ':orphan', '20:', '30:ok']),
-    ).toEqual([{ criteriaId: '30', rawValue: 'ok' }]);
+    ).toEqual([{ criteriaId: 30, rawValue: 'ok' }]);
+  });
+
+  // An unparseable criteriaId would be sent as `criteriaId: null`, which TecDoc
+  // reads as a different filter rather than as no filter at all.
+  it('drops entries whose criteriaId is not a positive integer', () => {
+    expect(
+      parseCriteriaFilters([
+        'width:106.4',
+        '0:zero',
+        '-2:neg',
+        '1.5:fraction',
+        '30:ok',
+      ]),
+    ).toEqual([{ criteriaId: 30, rawValue: 'ok' }]);
+  });
+});
+
+describe('SearchQueryDto TecDoc ids', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query);
+
+  const failedProperties = (dto: SearchQueryDto) =>
+    validateSync(dto).map((error) => error.property);
+
+  // A query string only carries text, so the DTO is where ids become numbers —
+  // everything downstream, including the TecDoc payload, takes them as given.
+  it('parses numeric ids into numbers', () => {
+    const dto = toDto({
+      q: 'WL6340',
+      vehicleId: '10001',
+      brandIds: ['72', '635'],
+      categoryNodeId: '100002',
+    });
+
+    expect(failedProperties(dto)).toEqual([]);
+    expect(dto.vehicleId).toBe(10001);
+    expect(dto.brandIds).toEqual([72, 635]);
+    expect(dto.categoryNodeId).toBe(100002);
+  });
+
+  it('accepts a search with no ids at all', () => {
+    expect(failedProperties(toDto({ q: 'WL6340' }))).toEqual([]);
+  });
+
+  // An unparseable id becomes NaN, which `JSON.stringify` writes as `null` — so
+  // without this it would reach TecDoc as an absent filter and silently widen
+  // the query instead of failing it.
+  it.each([
+    ['vehicleId', { vehicleId: 'abc' }],
+    ['vehicleId', { vehicleId: '0' }],
+    ['vehicleId', { vehicleId: '-1' }],
+    ['categoryNodeId', { categoryNodeId: '1.5' }],
+    ['brandIds', { brandIds: ['72', 'bosch'] }],
+    ['brandIds', { brandIds: ['0'] }],
+  ])('rejects a non-id %s', (property, query) => {
+    expect(failedProperties(toDto({ q: 'WL6340', ...query }))).toContain(
+      property,
+    );
   });
 });
 

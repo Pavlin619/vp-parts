@@ -488,7 +488,7 @@ describe('SearchService', () => {
       searchArticlesMock.mockImplementation(
         (
           query: string,
-          _vehicleId: string | undefined,
+          _vehicleId: number | undefined,
           _execution: unknown,
           _page: number,
           _pageSize: number,
@@ -555,7 +555,7 @@ describe('SearchService', () => {
         { [RAW_LANE]: [articleItem(RAW_LANE)] },
       );
 
-      const filters = { brandIds: ['4'] };
+      const filters = { brandIds: [4] };
       await service.search(RAW_LANE, undefined, 1, 20, filters);
 
       expect(callsFor(STRIPPED_LANE)).toHaveLength(0);
@@ -581,7 +581,7 @@ describe('SearchService', () => {
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
       const result = await service.search(RAW_LANE, undefined, 1, 20, {
-        brandIds: ['4'],
+        brandIds: [4],
       });
 
       expect(result.total).toBe(0);
@@ -598,8 +598,8 @@ describe('SearchService', () => {
       );
 
       await service.search(RAW_LANE, undefined, 2, 50, {
-        brandIds: ['4'],
-        categoryNodeId: '100',
+        brandIds: [4],
+        categoryNodeId: 100,
       });
 
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
@@ -625,8 +625,8 @@ describe('SearchService', () => {
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
       const result = await service.search(RAW_LANE, undefined, 1, 20, {
-        brandIds: ['4'],
-        categoryNodeId: '100',
+        brandIds: [4],
+        categoryNodeId: 100,
       });
 
       expect(result.total).toBe(0);
@@ -651,7 +651,7 @@ describe('SearchService', () => {
       searchArticlesMock.mockImplementation(
         (
           query: string,
-          _vehicleId: string | undefined,
+          _vehicleId: number | undefined,
           _execution: unknown,
           page: number,
         ) =>
@@ -680,9 +680,9 @@ describe('SearchService', () => {
         pageOf([articleItem(STRIPPED_LANE)]),
       );
 
-      await service.search(RAW_LANE, undefined, 1, 20, { brandIds: ['4'] });
+      await service.search(RAW_LANE, undefined, 1, 20, { brandIds: [4] });
       await service.search(RAW_LANE, undefined, 3, 50, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
       });
 
       expect(readMemoMock.mock.calls[0][0]).toBe(readMemoMock.mock.calls[1][0]);
@@ -705,7 +705,7 @@ describe('SearchService', () => {
       );
 
       await service.search(RAW_LANE);
-      await service.search(RAW_LANE, '10042');
+      await service.search(RAW_LANE, 10042);
 
       expect(readMemoMock.mock.calls[0][0]).not.toBe(
         readMemoMock.mock.calls[1][0],
@@ -729,7 +729,7 @@ describe('SearchService', () => {
       respondPerLane({ [RAW_LANE]: [articleItem(RAW_LANE)] });
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      await service.search(RAW_LANE, undefined, 1, 20, { brandIds: ['4'] });
+      await service.search(RAW_LANE, undefined, 1, 20, { brandIds: [4] });
 
       expect(writeMemoMock).toHaveBeenCalledWith(LANE_KEY, RAW_LANE, LANE_TTL);
     });
@@ -835,9 +835,9 @@ describe('SearchService', () => {
       );
 
       const filters = {
-        brandIds: ['4'],
-        categoryNodeId: '100',
-        criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+        brandIds: [4],
+        categoryNodeId: 100,
+        criteria: [{ criteriaId: 20, rawValue: '106.4' }],
       };
       await service.search('WL634', undefined, 1, 20, filters);
 
@@ -857,7 +857,7 @@ describe('SearchService', () => {
       );
 
       const result = await service.search('WL6340', undefined, 1, 20, {
-        brandIds: ['4'],
+        brandIds: [4],
       });
 
       expect(result.results).toHaveLength(1);
@@ -966,17 +966,17 @@ describe('SearchService', () => {
       searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
 
       await service.search('wl634', undefined, 1, 20, {
-        brandIds: ['8', '4'],
+        brandIds: [8, 4],
         criteria: [
-          { criteriaId: '44', rawValue: 'front' },
-          { criteriaId: '20', rawValue: '106.4' },
+          { criteriaId: 44, rawValue: 'front' },
+          { criteriaId: 20, rawValue: '106.4' },
         ],
       });
       await service.search('WL634', undefined, 1, 20, {
-        brandIds: ['4', '8'],
+        brandIds: [4, 8],
         criteria: [
-          { criteriaId: '20', rawValue: '106.4' },
-          { criteriaId: '44', rawValue: 'front' },
+          { criteriaId: 20, rawValue: '106.4' },
+          { criteriaId: 44, rawValue: 'front' },
         ],
       });
 
@@ -991,11 +991,11 @@ describe('SearchService', () => {
       searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
 
       await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
         categoryHasChildren: false,
       });
       await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
         categoryHasChildren: true,
       });
 
@@ -1010,10 +1010,10 @@ describe('SearchService', () => {
       searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
 
       await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
       });
       await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
         categoryHasChildren: true,
       });
 
@@ -1069,12 +1069,12 @@ describe('SearchService', () => {
         pageOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
-      const result = await service.search('WL634', 'V10042');
+      const result = await service.search('WL634', 10042);
 
       expect(searchArticlesMock).toHaveBeenCalledTimes(1);
       expect(searchArticlesMock).toHaveBeenCalledWith(
         'WL634',
-        'V10042',
+        10042,
         PART,
         1,
         20,
@@ -1094,13 +1094,13 @@ describe('SearchService', () => {
           pageOf([articleItem('WL6340'), articleItem('WL6341')]),
         ); // raw prefix_or_suffix
 
-      await service.search('WIX WA5432', 'V10042');
+      await service.search('WIX WA5432', 10042);
 
       expect(searchArticlesMock).toHaveBeenCalledTimes(2);
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         1,
         'WA5432',
-        'V10042',
+        10042,
         PART,
         1,
         20,
@@ -1109,7 +1109,7 @@ describe('SearchService', () => {
       expect(searchArticlesMock).toHaveBeenNthCalledWith(
         2,
         'WIX WA5432',
-        'V10042',
+        10042,
         PART,
         1,
         20,
@@ -1120,7 +1120,7 @@ describe('SearchService', () => {
     it('returns a one-item list on a single match even when a vehicleId is provided', async () => {
       searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
 
-      const result = await service.search('WL6340', 'V10042');
+      const result = await service.search('WL6340', 10042);
 
       expect(result.results).toEqual([articleItem('WL6340')]);
       expect(result).not.toHaveProperty('redirect');
@@ -1155,7 +1155,7 @@ describe('SearchService', () => {
         .spyOn(Logger.prototype, 'log')
         .mockImplementation(() => undefined);
 
-      await service.search('ZZZ999', 'V10042');
+      await service.search('ZZZ999', 10042);
 
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('search_zero_result'),

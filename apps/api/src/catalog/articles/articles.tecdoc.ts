@@ -9,6 +9,7 @@ import {
   TecDocArticleRecord,
   mapArticleSummary,
 } from '../../tecdoc';
+import { ArticleNotFoundException } from './article-not-found.exception';
 
 /**
  * Upper bound on comparable (cross-reference) articles fetched and returned for
@@ -30,20 +31,21 @@ export class ArticlesTecDoc {
   constructor(private readonly transport: TecDocTransport) {}
 
   async getArticles(
-    vehicleId: string,
-    categoryId: string,
+    vehicleId: number,
+    categoryId: number,
     page: number,
     pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
     const data = await this.transport.call<{
       totalMatchingArticles: number;
-      articles: TecDocArticleRecord[];
+      // Absent, not empty, when nothing matches — TecDoc omits the collection.
+      articles?: TecDocArticleRecord[];
     }>('getArticles', {
       articleCountry: 'BG',
       lang: 'bg',
-      assemblyGroupNodeIds: Number(categoryId),
+      assemblyGroupNodeIds: categoryId,
       linkageTargetType: 'P',
-      linkageTargetId: Number(vehicleId),
+      linkageTargetId: vehicleId,
       perPage: pageSize,
       page,
       includeAll: true,
@@ -53,14 +55,14 @@ export class ArticlesTecDoc {
       total: data.totalMatchingArticles,
       page,
       pageSize,
-      items: data.articles.map((article) => mapArticleSummary(article)),
+      items: (data.articles ?? []).map((article) => mapArticleSummary(article)),
     };
   }
 
   async getArticleDetails(
     articleNumber: string,
     // Reserved for the future per-vehicle fit lookup; fit is null until then.
-    _vehicleId?: string,
+    _vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
     const data = await this.transport.call<{
       articles: TecDocArticleRecord[];
@@ -75,7 +77,7 @@ export class ArticlesTecDoc {
     });
 
     if (!data.articles || data.articles.length === 0) {
-      throw new Error(`Article not found: ${articleNumber}`);
+      throw new ArticleNotFoundException();
     }
 
     const article = data.articles[0];

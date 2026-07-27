@@ -56,4 +56,14 @@ describe('BrandsTecDoc', () => {
       { brandName: 'B', logoUrl: null },
     ]);
   });
+
+  // TecDoc omits a collection rather than sending an empty one, at every level.
+  it.each([
+    ['the whole data block', { status: 200 }],
+    ['just the array', { data: {}, status: 200 }],
+  ])('returns an empty list when TecDoc omits %s', async (_label, payload) => {
+    call.mockResolvedValueOnce(payload);
+
+    await expect(tecdoc.getBrands()).resolves.toEqual([]);
+  });
 });

@@ -32,7 +32,7 @@ describe('VehiclesTecDoc', () => {
       vehicleModelSeriesFacets: { counts: [{ id: 2, name: 'Golf' }] },
     });
 
-    const result = await tecdoc.getModelSeries('16');
+    const result = await tecdoc.getModelSeries(16);
 
     expect(call).toHaveBeenCalledWith(
       'getLinkageTargets',
@@ -58,7 +58,7 @@ describe('VehiclesTecDoc', () => {
       ],
     });
 
-    const result = await tecdoc.getVehicleTypes('2');
+    const result = await tecdoc.getVehicleTypes(2);
 
     expect(result[0]).toMatchObject({
       vehicleId: '10001',
@@ -87,7 +87,7 @@ describe('VehiclesTecDoc', () => {
       },
     });
 
-    const result = await tecdoc.getAssemblyGroupTree('10001');
+    const result = await tecdoc.getAssemblyGroupTree(10001);
 
     expect(call).toHaveBeenCalledWith(
       'getArticles',
@@ -102,5 +102,22 @@ describe('VehiclesTecDoc', () => {
       { id: '100001', name: 'Brakes', parentId: null },
       { id: '100002', name: 'Discs', parentId: '100001' },
     ]);
+  });
+
+  // TecDoc signals "nothing matched" by omitting the collection, not by sending
+  // an empty one, and it still answers status 200 — an unknown-but-well-formed
+  // id looks exactly like a real one with no data. Dereferencing the missing key
+  // turned that ordinary outcome into a 500.
+  describe('when TecDoc omits the collection because nothing matched', () => {
+    it.each([
+      ['getManufacturers', () => tecdoc.getManufacturers()],
+      ['getModelSeries', () => tecdoc.getModelSeries(99999999)],
+      ['getVehicleTypes', () => tecdoc.getVehicleTypes(99999999)],
+      ['getAssemblyGroupTree', () => tecdoc.getAssemblyGroupTree(99999999)],
+    ])('%s returns an empty list', async (_name, load) => {
+      call.mockResolvedValueOnce({ status: 200 });
+
+      await expect(load()).resolves.toEqual([]);
+    });
   });
 });

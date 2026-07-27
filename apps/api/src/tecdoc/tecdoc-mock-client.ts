@@ -116,6 +116,41 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
   ],
 };
 
+/**
+ * Stable numeric ids for the labels the mock builds its facets from — brand
+ * names, technical-spec keys and article descriptions.
+ *
+ * Real TecDoc facets are keyed by numbers (`dataSupplierId`, `criteriaId`,
+ * `assemblyGroupNodeId`) and the API validates them as such at its boundary, so
+ * the mock has to mint numbers too. Using the label as its own id made the mock
+ * the one place where an id was not numeric — a facet selection round-tripped
+ * here but would be rejected against the real service.
+ *
+ * Ids are assigned on first sight and remembered for the life of the process, so
+ * a selection round-trips through {@link mockFacetLabel}. They are not stable
+ * across restarts, which is fine for a fixture: the client always reads a facet
+ * block before selecting from it.
+ */
+const mockIdByLabel = new Map<string, string>();
+const mockLabelById = new Map<string, string>();
+
+function mockFacetId(label: string): string {
+  const existing = mockIdByLabel.get(label);
+  if (existing) {
+    return existing;
+  }
+
+  const id = String(90001 + mockIdByLabel.size);
+  mockIdByLabel.set(label, id);
+  mockLabelById.set(id, label);
+
+  return id;
+}
+
+function mockFacetLabel(id: string): string | undefined {
+  return mockLabelById.get(id);
+}
+
 const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
   { id: '100001', name: 'Brake System', parentId: null },
   { id: '100002', name: 'Brake Discs', parentId: '100001' },
@@ -493,15 +528,15 @@ export class TecDocMockClient {
     return Promise.resolve(MANUFACTURERS);
   }
 
-  getModelSeries(manufacturerId: string): Promise<ModelSeriesDto[]> {
+  getModelSeries(manufacturerId: number): Promise<ModelSeriesDto[]> {
     return Promise.resolve(MODEL_SERIES[manufacturerId] ?? []);
   }
 
-  getVehicleTypes(seriesId: string): Promise<VehicleVariantDto[]> {
+  getVehicleTypes(seriesId: number): Promise<VehicleVariantDto[]> {
     return Promise.resolve(VEHICLE_VARIANTS[seriesId] ?? []);
   }
 
-  getAssemblyGroupTree(_vehicleId: string): Promise<AssemblyGroupDto[]> {
+  getAssemblyGroupTree(_vehicleId: number): Promise<AssemblyGroupDto[]> {
     return Promise.resolve(ASSEMBLY_GROUPS);
   }
 
@@ -510,8 +545,8 @@ export class TecDocMockClient {
   }
 
   getArticles(
-    _vehicleId: string,
-    categoryId: string,
+    _vehicleId: number,
+    categoryId: number,
     page: number,
     pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
@@ -526,7 +561,7 @@ export class TecDocMockClient {
 
   searchArticles(
     query: string,
-    vehicleId?: string,
+    vehicleId?: number,
     execution?: SearchExecution,
     page = 1,
     pageSize = 50,
@@ -554,7 +589,7 @@ export class TecDocMockClient {
     // for "did we ask TecDoc for criteria at all"; the leaf gate then decides
     // whether to surface them (mock nodes are all leaves, so a selected node has
     // hasChildren=false).
-    const categorySelected = Boolean(filters?.categoryNodeId);
+    const categorySelected = filters?.categoryNodeId !== undefined;
     const atLeaf =
       categorySelected &&
       (categoryNavigation.current
@@ -649,7 +684,7 @@ export class TecDocMockClient {
       .map(([label, count]) => ({
         kind: 'category' as const,
         term: query,
-        categoryNodeId: label,
+        categoryNodeId: mockFacetId(label),
         label,
         count,
       }));
@@ -675,7 +710,7 @@ export class TecDocMockClient {
 
   getArticleDetails(
     articleNumber: string,
-    _vehicleId?: string,
+    _vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
     const base = ARTICLE_DETAILS[articleNumber] ?? {
       ...DEFAULT_ARTICLE_DETAIL,
@@ -783,18 +818,20 @@ export class TecDocMockClient {
   ): boolean {
     const brandOk =
       !filters?.brandIds?.length ||
-      filters.brandIds.includes(article.brandName);
+      filters.brandIds.some(
+        (brandId) => mockFacetLabel(String(brandId)) === article.brandName,
+      );
 
     const categoryOk =
-      !filters?.categoryNodeId ||
-      filters.categoryNodeId === article.description;
+      filters?.categoryNodeId === undefined ||
+      mockFacetLabel(String(filters.categoryNodeId)) === article.description;
 
     const criteriaOk =
       !filters?.criteria?.length ||
       filters.criteria.every((selected) =>
         article.technicalSpecs.some(
           (spec) =>
-            spec.key === selected.criteriaId &&
+            spec.key === mockFacetLabel(String(selected.criteriaId)) &&
             spec.value === selected.rawValue,
         ),
       );
@@ -804,15 +841,15 @@ export class TecDocMockClient {
 
   /**
    * Builds the brand facet counts over the matched set, mirroring the real
-   * client's `dataSupplierFacets`. Ids equal the labels (mock has no numeric
-   * ids) so a selection round-trips through {@link matchesFilters}; brand logos
-   * stay null for the catalog layer to join.
+   * client's `dataSupplierFacets`. Values carry a minted numeric id (see
+   * {@link mockFacetId}) that round-trips through {@link matchesFilters}; brand
+   * logos stay null for the catalog layer to join.
    */
   private buildFacets(items: ArticleSummaryDto[]): SearchFacetDto[] {
     const brandValues = this.countBy(
       items,
       (item) => item.brandName,
-      (label) => ({ id: label, label, count: 0, imageUrl: null }),
+      (label) => ({ id: mockFacetId(label), label, count: 0, imageUrl: null }),
     );
 
     return brandValues.length > 0
@@ -823,8 +860,8 @@ export class TecDocMockClient {
   /**
    * Builds attribute (criteria) facets from the matched set's technical specs,
    * mirroring the real client's `criteriaFacets`. Each distinct spec key becomes
-   * one facet group and each distinct value a selectable value; the id/value
-   * equal the spec's key/value so a selection round-trips through
+   * one facet group — identified by a minted numeric criteriaId — and each
+   * distinct value a selectable value, so a selection round-trips through
    * {@link matchesFilters}.
    */
   private buildAttributeFacets(
@@ -848,7 +885,7 @@ export class TecDocMockClient {
     }
 
     return [...byKey.entries()].map(([key, valuesByRaw]) => ({
-      id: key,
+      id: mockFacetId(key),
       label: key,
       unit: null,
       type: 'A',
@@ -861,7 +898,7 @@ export class TecDocMockClient {
   /**
    * Builds single-level category navigation from the matched set's descriptions,
    * mirroring the real client. Mock categories are a flat single level (each
-   * distinct description is a root leaf whose id is the description): a broad
+   * distinct description is a root leaf under a minted numeric node id): a broad
    * search exposes them all as `options`; selecting one narrows the match set to
    * that description, so it becomes `current` with no further `options` (a leaf).
    */
@@ -869,7 +906,10 @@ export class TecDocMockClient {
     items: ArticleSummaryDto[],
     filters?: SearchFilters,
   ): CategoryNavigationDto {
-    const selectedNodeId = filters?.categoryNodeId;
+    const selectedNodeId =
+      filters?.categoryNodeId !== undefined
+        ? String(filters.categoryNodeId)
+        : undefined;
     const countByLabel = new Map<string, number>();
 
     for (const item of items) {
@@ -880,7 +920,12 @@ export class TecDocMockClient {
     }
 
     const nodes: CategoryOptionDto[] = [...countByLabel.entries()].map(
-      ([label, count]) => ({ id: label, label, count, hasChildren: false }),
+      ([label, count]) => ({
+        id: mockFacetId(label),
+        label,
+        count,
+        hasChildren: false,
+      }),
     );
 
     if (selectedNodeId) {

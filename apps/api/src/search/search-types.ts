@@ -99,7 +99,7 @@ export const DEFAULT_SEARCH_MODE: SearchMode = SearchMode.PartNumber;
  * plus the machine `rawValue` echoed back from an `AttributeFacetValueDto`.
  */
 export interface CriteriaFilter {
-  criteriaId: string;
+  criteriaId: number;
   rawValue: string;
 }
 
@@ -117,8 +117,8 @@ export interface CriteriaFilter {
  * `categoryNodeId` — see {@link shouldRequestCriteriaFacets}.
  */
 export interface SearchFilters {
-  brandIds?: string[];
-  categoryNodeId?: string;
+  brandIds?: number[];
+  categoryNodeId?: number;
   categoryHasChildren?: boolean;
   criteria?: CriteriaFilter[];
 }
@@ -135,7 +135,7 @@ export function hasActiveFilters(filters: SearchFilters | undefined): boolean {
 
   return (
     (filters.brandIds?.length ?? 0) > 0 ||
-    Boolean(filters.categoryNodeId) ||
+    filters.categoryNodeId !== undefined ||
     (filters.criteria?.length ?? 0) > 0
   );
 }
@@ -177,7 +177,7 @@ export function shouldRequestCriteriaFacets(
   filters: SearchFilters | undefined,
   page: number,
 ): boolean {
-  if (!filters?.categoryNodeId) {
+  if (filters?.categoryNodeId === undefined) {
     return false;
   }
 
