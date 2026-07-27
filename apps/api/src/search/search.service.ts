@@ -14,6 +14,7 @@ import {
   DEFAULT_AUTOCOMPLETE_EXECUTION,
   DEFAULT_SEARCH_MODE,
   EXACT_AUTOCOMPLETE_EXECUTION,
+  hasActiveFilters,
   SearchExecution,
   SearchFilters,
   SearchMode,
@@ -31,8 +32,24 @@ const SUGGESTION_PREFIX_LENGTH = 5;
 
 const SEARCH_TTL = 60 * 60;
 const SEARCH_MISS_TTL = 5 * 60;
+/**
+ * How long a resolved lane stays pinned. Matches {@link SEARCH_TTL} so a memo
+ * and the search entries it points at age out together.
+ */
+const SEARCH_LANE_TTL = SEARCH_TTL;
 const AUTOCOMPLETE_TTL = 15 * 60;
 const AUTOCOMPLETE_MISS_TTL = 5 * 60;
+
+/**
+ * The one request the lane probe ever makes: the unnarrowed first page. Fixing
+ * it is what makes the winning lane a property of the query alone — the
+ * caller's filters and page can never influence which lane wins — and it is the
+ * page every user loads before they can filter or paginate, so it is also the
+ * warmest key in the search cache.
+ */
+const LANE_PROBE_PAGE = SEARCH_DEFAULT_PAGE;
+const LANE_PROBE_PAGE_SIZE = SEARCH_DEFAULT_PAGE_SIZE;
+const LANE_PROBE_FILTERS: SearchFilters = Object.freeze({});
 
 const DEFAULT_EXECUTION: SearchExecution = {
   type: TecDocSearchType.AnyNumber,
@@ -47,6 +64,16 @@ const DEFAULT_EXECUTION: SearchExecution = {
 interface SearchPlanStep {
   query: string;
   execution: SearchExecution;
+}
+
+/**
+ * The outcome of probing a plan: the step that produced a non-empty total — the
+ * "lane" — or `null` when every step came back empty, plus the probe page it
+ * returned so an unnarrowed first-page request needs no second call.
+ */
+interface ResolvedSearch {
+  result: PaginatedSearchArticlesDto;
+  lane: SearchPlanStep | null;
 }
 
 @Injectable()
@@ -71,7 +98,7 @@ export class SearchService {
     const parsed = await this.parse(rawQuery);
     const plan = this.buildSearchPlan(parsed, searchMode);
 
-    const result = await this.executeSearchWithFallback(
+    const result = await this.executePlan(
       plan,
       vehicleId,
       page,
@@ -177,8 +204,7 @@ export class SearchService {
    * Expands a parsed query + the client-selected {@link SearchMode} into the
    * ordered TecDoc calls to attempt. The mode is chosen up front on the FE, so
    * we no longer guess number-vs-text: each mode maps to a distinct, minimal
-   * plan and the first call with a non-empty total wins (see
-   * executeSearchWithFallback).
+   * plan and the first call with a non-empty total wins (see {@link probePlan}).
    *
    * - `generic` → a single `searchType 99` free-text call over the **raw**
    *   query. No brand stripping, no number lane.
@@ -229,48 +255,213 @@ export class SearchService {
   }
 
   /**
-   * Runs each planned TecDoc call in order until one returns a non-empty total.
-   * When a vehicleId is given, every call is scoped to it so TecDoc returns only
-   * parts that fit that vehicle (no separate fit lookup, no per-item badge).
-   * Active facet `filters` are applied to every call. The first call with a
-   * non-empty total wins; its total, facets, attributes and category navigation
-   * are authoritative for pagination and are stable across pages.
+   * Runs a search plan and returns the page the caller asked for.
+   *
+   * A single-step plan has no lane to choose, so it goes straight to TecDoc.
+   * Only a `part_number` search whose brand token was stripped yields more than
+   * one step; those first resolve which lane the query belongs to and then run
+   * that one lane — never the whole plan — for the caller's page and filters.
+   *
+   * Resolving before narrowing is what keeps a filtered search honest. Filters
+   * apply to every step, so a plan run with them would fall through a
+   * legitimately emptied lane and answer from the other one, with facets
+   * recomputed over a result set the user never saw. Resolving first makes an
+   * emptied lane stay empty, which is the truthful answer for facets the user
+   * picked from that lane.
    */
-  private async executeSearchWithFallback(
+  private async executePlan(
     plan: SearchPlanStep[],
     vehicleId: string | undefined,
     page: number,
     pageSize: number,
     filters: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
-    let lastResult: PaginatedSearchArticlesDto = {
-      total: 0,
+    if (plan.length === 1) {
+      return this.executeStep(plan[0], vehicleId, page, pageSize, filters);
+    }
+
+    const { lane, result } = await this.resolveLane(plan, vehicleId);
+
+    if (this.isLaneProbe(page, pageSize, filters)) {
+      return result;
+    }
+
+    return this.executeStep(
+      lane ?? plan[0],
+      vehicleId,
       page,
       pageSize,
-      items: [],
-      facets: [],
-      attributes: [],
-      categoryNavigation: { current: null, options: [] },
-    };
+      filters,
+    );
+  }
+
+  /**
+   * Decides which lane the query belongs to by running the plan over the
+   * {@link LANE_PROBE_PAGE} request until a step reports a non-empty total.
+   * Because the probe is always unnarrowed, the answer depends on the query and
+   * the vehicle scope alone — never on the caller's filters, and never on
+   * whether Redis happens to hold a memo.
+   *
+   * The memo is therefore only an ordering hint: it moves the lane that won
+   * last time to the front so the probe stops on its first step and the losing
+   * call is never made. That makes the probe cheaper, never wrong — a lane that
+   * has since gone empty simply loses again and the memo is rewritten. Pinning
+   * it is still worth doing because the losing step is cached under the short
+   * {@link SEARCH_MISS_TTL}, so without the memo that call would come back
+   * every few minutes.
+   */
+  private async resolveLane(
+    plan: SearchPlanStep[],
+    vehicleId: string | undefined,
+  ): Promise<ResolvedSearch> {
+    const laneKey = this.laneCacheKey(plan, vehicleId);
+    const pinnedToken = await this.cache.readMemo<string>(laneKey);
+
+    const probe = await this.probePlan(
+      this.pinnedFirst(plan, pinnedToken),
+      vehicleId,
+    );
+
+    const winningToken = probe.lane ? this.laneToken(probe.lane) : undefined;
+    if (winningToken !== undefined && winningToken !== pinnedToken) {
+      await this.cache.writeMemo(laneKey, winningToken, SEARCH_LANE_TTL);
+    }
+
+    return probe;
+  }
+
+  /**
+   * The plan reordered to try the memoised lane first. A memo left over from a
+   * plan that no longer exists — a changed brand dictionary, a different mode —
+   * matches no step and leaves the order untouched.
+   */
+  private pinnedFirst(
+    plan: SearchPlanStep[],
+    pinnedToken: string | undefined,
+  ): SearchPlanStep[] {
+    if (pinnedToken === undefined) {
+      return plan;
+    }
+
+    const isPinned = (step: SearchPlanStep): boolean =>
+      this.laneToken(step) === pinnedToken;
+
+    return [
+      ...plan.filter(isPinned),
+      ...plan.filter((step) => !isPinned(step)),
+    ];
+  }
+
+  /**
+   * Runs each planned TecDoc call over the probe request in order until one
+   * returns a non-empty total, and reports which step that was. When a
+   * vehicleId is given every call is scoped to it, so a lane that only matches
+   * outside the selected vehicle correctly loses. The winning step's total,
+   * facets, attributes and category navigation are authoritative for the whole
+   * match set and are stable across pages.
+   */
+  private async probePlan(
+    plan: SearchPlanStep[],
+    vehicleId: string | undefined,
+  ): Promise<ResolvedSearch> {
+    let lastResult = this.emptyProbePage();
 
     for (const step of plan) {
-      const result = await this.searchArticlesCached(
-        step.query,
+      const result = await this.executeStep(
+        step,
         vehicleId,
-        step.execution,
-        page,
-        pageSize,
-        filters,
+        LANE_PROBE_PAGE,
+        LANE_PROBE_PAGE_SIZE,
+        LANE_PROBE_FILTERS,
       );
 
       if (result.total > 0) {
-        return result;
+        return { result, lane: step };
       }
 
       lastResult = result;
     }
 
-    return lastResult;
+    return { result: lastResult, lane: null };
+  }
+
+  /**
+   * Whether the caller asked for exactly the page the probe already fetched, in
+   * which case the probe's result is the answer and no second call is needed.
+   * A bare `categoryHasChildren` hint does not disqualify it: the hint changes
+   * nothing about the TecDoc request without a category to describe.
+   */
+  private isLaneProbe(
+    page: number,
+    pageSize: number,
+    filters: SearchFilters,
+  ): boolean {
+    return (
+      page === LANE_PROBE_PAGE &&
+      pageSize === LANE_PROBE_PAGE_SIZE &&
+      !hasActiveFilters(filters)
+    );
+  }
+
+  private emptyProbePage(): PaginatedSearchArticlesDto {
+    return {
+      total: 0,
+      page: LANE_PROBE_PAGE,
+      pageSize: LANE_PROBE_PAGE_SIZE,
+      items: [],
+      facets: [],
+      attributes: [],
+      categoryNavigation: { current: null, options: [] },
+    };
+  }
+
+  private executeStep(
+    step: SearchPlanStep,
+    vehicleId: string | undefined,
+    page: number,
+    pageSize: number,
+    filters: SearchFilters,
+  ): Promise<PaginatedSearchArticlesDto> {
+    return this.searchArticlesCached(
+      step.query,
+      vehicleId,
+      step.execution,
+      page,
+      pageSize,
+      filters,
+    );
+  }
+
+  /**
+   * Cache key for the lane memo. It deliberately leaves out the filters, the
+   * page and the page size: the lane is a property of the query itself, so one
+   * entry serves every refinement and every page of that search. The vehicle
+   * scope is part of it because it changes which lane has matches.
+   */
+  private laneCacheKey(
+    plan: SearchPlanStep[],
+    vehicleId: string | undefined,
+  ): string {
+    const identity = {
+      plan: plan.map((step) => ({
+        query: this.laneToken(step),
+        execution: step.execution,
+      })),
+      vehicleId: vehicleId ?? null,
+    };
+    const digest = createHash('sha256')
+      .update(JSON.stringify(identity))
+      .digest('hex');
+
+    return `tecdoc:search:lane:${digest}`;
+  }
+
+  /**
+   * A lane's stored identity: its query in the same normalised form the search
+   * cache key uses, so the same number typed in different cases shares one memo.
+   */
+  private laneToken(step: SearchPlanStep): string {
+    return this.normaliseCacheQuery(step.query, step.execution.type);
   }
 
   /**

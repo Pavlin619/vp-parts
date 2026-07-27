@@ -71,6 +71,22 @@ export class RedisCache {
     return value;
   }
 
+  /**
+   * Reads a memo: a value the cache cannot produce on its own because it falls
+   * out of another call as a side effect (e.g. which of several attempts
+   * succeeded). Having no loader is what makes it a memo rather than a
+   * read-through entry — the caller reads the previous answer, does its own
+   * work, and pins the new one with {@link writeMemo}. Prefer the read-through
+   * helpers above whenever the value does have a loader of its own.
+   */
+  async readMemo<T>(key: string): Promise<T | undefined> {
+    return this.read<T>(key);
+  }
+
+  async writeMemo<T>(key: string, value: T, ttl: number): Promise<void> {
+    return this.write(key, value, ttl);
+  }
+
   private async read<T>(key: string): Promise<T | undefined> {
     try {
       const cached = await this.redis.get(key);

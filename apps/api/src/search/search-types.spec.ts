@@ -1,6 +1,7 @@
 import {
   attributeRoleFor,
   FITTING_POSITION_CRITERIA_ID,
+  hasActiveFilters,
   shouldRequestCriteriaFacets,
   TecDocSearchType,
 } from './search-types';
@@ -69,5 +70,36 @@ describe('shouldRequestCriteriaFacets', () => {
         2,
       ),
     ).toBe(false);
+  });
+});
+
+describe('hasActiveFilters', () => {
+  it('is false for a search with no narrowing at all', () => {
+    expect(hasActiveFilters({})).toBe(false);
+    expect(hasActiveFilters(undefined)).toBe(false);
+  });
+
+  it('is false for empty selection groups', () => {
+    expect(hasActiveFilters({ brandIds: [], criteria: [] })).toBe(false);
+  });
+
+  it('is true when a brand is selected', () => {
+    expect(hasActiveFilters({ brandIds: ['4'] })).toBe(true);
+  });
+
+  it('is true when a category is selected', () => {
+    expect(hasActiveFilters({ categoryNodeId: '100' })).toBe(true);
+  });
+
+  it('is true when a technical attribute is selected', () => {
+    expect(
+      hasActiveFilters({ criteria: [{ criteriaId: '20', rawValue: '106.4' }] }),
+    ).toBe(true);
+  });
+
+  // The leafness hint describes a selection, it is not one itself — on its own
+  // it narrows nothing.
+  it('is false for a bare leafness hint with no category selected', () => {
+    expect(hasActiveFilters({ categoryHasChildren: false })).toBe(false);
   });
 });

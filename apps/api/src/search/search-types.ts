@@ -124,6 +124,23 @@ export interface SearchFilters {
 }
 
 /**
+ * Whether a search carries any facet narrowing at all. `categoryHasChildren` is
+ * deliberately not counted: it is a hint describing `categoryNodeId`, not a
+ * selection of its own, so on its own it narrows nothing.
+ */
+export function hasActiveFilters(filters: SearchFilters | undefined): boolean {
+  if (!filters) {
+    return false;
+  }
+
+  return (
+    (filters.brandIds?.length ?? 0) > 0 ||
+    Boolean(filters.categoryNodeId) ||
+    (filters.criteria?.length ?? 0) > 0
+  );
+}
+
+/**
  * The only page whose response carries the attribute (dimension) facets. They
  * describe the whole match set, so every later page would repeat page 1's block
  * verbatim; the client keeps the page-1 set while paginating. The cheap brand

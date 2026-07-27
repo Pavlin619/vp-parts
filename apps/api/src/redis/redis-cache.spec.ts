@@ -67,6 +67,38 @@ describe('RedisCache', () => {
     });
   });
 
+  describe('memo', () => {
+    it('returns the parsed memo on a hit', async () => {
+      redis.get.mockResolvedValueOnce(JSON.stringify('WA5432'));
+
+      await expect(cache.readMemo('k')).resolves.toBe('WA5432');
+    });
+
+    it('returns undefined when nothing is pinned', async () => {
+      redis.get.mockResolvedValueOnce(null);
+
+      await expect(cache.readMemo('k')).resolves.toBeUndefined();
+    });
+
+    it('pins a value with the given TTL', async () => {
+      await cache.writeMemo('k', 'WA5432', 3600);
+
+      expect(redis.set).toHaveBeenCalledWith('k', '"WA5432"', 'EX', 3600);
+    });
+
+    // A memo is an optimisation, so an unreachable Redis must degrade to "no
+    // memo" rather than fail the request that was reading it.
+    it('reports no memo when Redis cannot be read, and swallows a failed write', async () => {
+      redis.get.mockRejectedValueOnce(new Error('Redis unavailable'));
+      redis.set.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      await expect(cache.readMemo('k')).resolves.toBeUndefined();
+      await expect(
+        cache.writeMemo('k', 'WA5432', 3600),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('cachedPaginated', () => {
     it('uses the miss TTL when the page has no items', async () => {
       redis.get.mockResolvedValueOnce(null);
