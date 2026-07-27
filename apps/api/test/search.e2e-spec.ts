@@ -490,6 +490,184 @@ describe('SearchController (e2e)', () => {
     });
   });
 
+  // A two-lane plan only exists for a part-number query whose brand token was
+  // stripped, so these tests give the app a brand dictionary and search
+  // "WIX WA5432": lane 1 is the bare number, lane 2 the raw query.
+  describe('GET /search — lane resolution', () => {
+    const RAW_QUERY = 'WIX WA5432';
+    const STRIPPED_QUERY = 'WA5432';
+    const SEARCH_URL = '/search?q=WIX%20WA5432';
+
+    beforeEach(() => {
+      mockTecDocClient.getBrands.mockResolvedValue([
+        { brandName: 'WIX Filters', logoUrl: null },
+      ]);
+    });
+
+    async function primeLaneWithRawQueryWinner(): Promise<void> {
+      mockTecDocClient.searchArticles
+        .mockResolvedValueOnce(pageOf([])) // WA5432 misses
+        .mockResolvedValueOnce(pageOf([makeArticle('WA5432')])); // raw wins
+
+      await request(app.getHttpServer()).get(SEARCH_URL).expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(2);
+      mockTecDocClient.searchArticles.mockReset();
+    }
+
+    /**
+     * Answers each lane independently, and separately for the unnarrowed probe
+     * and the narrowed request, so a test can state exactly which combination
+     * has matches — the only way to tell a resolved lane from a crossed one.
+     */
+    function respondPerLane(
+      unnarrowed: Record<string, ArticleSummaryDto[]>,
+      narrowed: Record<string, ArticleSummaryDto[]> = {},
+    ): void {
+      // Authoritative: drops any queued one-shot answers so the lane tables
+      // below are the only thing deciding what a call returns.
+      mockTecDocClient.searchArticles.mockReset();
+      mockTecDocClient.searchArticles.mockImplementation(
+        (
+          query: string,
+          _vehicleId: string | undefined,
+          _execution: unknown,
+          _page: number,
+          _pageSize: number,
+          filters: { brandIds?: string[]; categoryNodeId?: string },
+        ) => {
+          const isNarrowed = Boolean(
+            filters.brandIds?.length ?? filters.categoryNodeId,
+          );
+
+          return Promise.resolve(
+            pageOf((isNarrowed ? narrowed : unnarrowed)[query] ?? []),
+          );
+        },
+      );
+    }
+
+    /**
+     * Drops the cached search pages but keeps the lane memo, reproducing the
+     * real stale window: a lane's pages are held under the five-minute miss TTL
+     * (or evicted under memory pressure) while the memo is pinned for an hour.
+     */
+    async function expireSearchPagesKeepingLaneMemo(): Promise<void> {
+      const keys = await redisClient.keys('tecdoc:search:*');
+      const pages = keys.filter(
+        (key) => !key.startsWith('tecdoc:search:lane:'),
+      );
+
+      if (pages.length > 0) {
+        await redisClient.del(...pages);
+      }
+    }
+
+    it('pins the winning lane so a faceted refinement costs one catalogue call', async () => {
+      await primeLaneWithRawQueryWinner();
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WA5432')]),
+      );
+
+      await request(app.getHttpServer())
+        .get(`${SEARCH_URL}&brandIds=4`)
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        RAW_QUERY,
+        undefined,
+        PART,
+        1,
+        20,
+        { ...NO_FILTERS, brandIds: ['4'] },
+      );
+    });
+
+    it('pins the winning lane across pages', async () => {
+      await primeLaneWithRawQueryWinner();
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WA5432')], { total: 87, page: 3 }),
+      );
+
+      await request(app.getHttpServer())
+        .get(`${SEARCH_URL}&page=3`)
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        RAW_QUERY,
+        undefined,
+        PART,
+        3,
+        20,
+        NO_FILTERS,
+      );
+    });
+
+    // The facets came from the pinned lane, so a combination that empties it is
+    // genuinely empty — answering from the other lane would show articles the
+    // user's selection was never derived from.
+    it('answers an emptied lane with no results rather than crossing lanes', async () => {
+      await primeLaneWithRawQueryWinner();
+      respondPerLane(
+        { [RAW_QUERY]: [makeArticle('WA5432')] },
+        { [STRIPPED_QUERY]: [makeArticle('OTHER-LANE')] },
+      );
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
+
+      const res = await request(app.getHttpServer())
+        .get(`${SEARCH_URL}&brandIds=4&categoryNodeId=100`)
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
+      expect(res.body.results).toEqual([]);
+      expect(res.body.total).toBe(0);
+    });
+
+    // Which lane a query belongs to must not depend on what Redis happens to
+    // hold. A narrowed request arriving cold — a shared link, a fresh deploy,
+    // an eviction — has to resolve the same lane an unnarrowed one would,
+    // otherwise it answers from a lane the user's facets never came from.
+    it('resolves the lane from an unnarrowed probe when a narrowed request arrives cold', async () => {
+      respondPerLane(
+        { [RAW_QUERY]: [makeArticle('WA5432')] },
+        { [STRIPPED_QUERY]: [makeArticle('WRONG-LANE')] },
+      );
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
+
+      const res = await request(app.getHttpServer())
+        .get(`${SEARCH_URL}&brandIds=4`)
+        .expect(200);
+
+      expect(res.body.results).toEqual([]);
+      expect(res.body.total).toBe(0);
+      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalledWith(
+        STRIPPED_QUERY,
+        undefined,
+        PART,
+        1,
+        20,
+        { ...NO_FILTERS, brandIds: ['4'] },
+      );
+    });
+
+    // A memo outliving the matches it was written for must cost a slower probe,
+    // never a wrong answer.
+    it('re-resolves the lane when the memoised one has stopped matching', async () => {
+      await primeLaneWithRawQueryWinner();
+      await expireSearchPagesKeepingLaneMemo();
+      respondPerLane({ [STRIPPED_QUERY]: [makeArticle('BACK-ON-LANE-ONE')] });
+
+      const res = await request(app.getHttpServer())
+        .get(SEARCH_URL)
+        .expect(200);
+
+      expect(res.body.results).toEqual([makeArticle('BACK-ON-LANE-ONE')]);
+      expect(res.body.total).toBe(1);
+    });
+  });
+
   describe('GET /search/autocomplete', () => {
     it('returns article suggestions for a part-number query (default mode)', async () => {
       const suggestions = [makeSuggestion('WL6340'), makeSuggestion('WL6341')];
