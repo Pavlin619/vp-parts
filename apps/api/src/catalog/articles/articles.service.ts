@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
@@ -16,8 +16,6 @@ const SUBSTITUTES_MISS_TTL = 60 * 60;
 
 @Injectable()
 export class ArticlesService {
-  private readonly logger = new Logger(ArticlesService.name);
-
   constructor(
     private readonly tecdoc: ArticlesTecDoc,
     private readonly cache: RedisCache,
@@ -34,8 +32,8 @@ export class ArticlesService {
    * cached payload is what lets us never serve a stale delivery date.
    */
   async listArticleMetadata(
-    vehicleId: string,
-    categoryId: string,
+    vehicleId: number,
+    categoryId: number,
     page: number,
     pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
@@ -102,28 +100,31 @@ export class ArticlesService {
    */
   async getArticleDetail(
     articleNumber: string,
-    vehicleId?: string,
+    vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
     return this.loadCatalogDetail(articleNumber, vehicleId);
   }
 
+  /**
+   * Nothing is caught here on purpose. This used to wrap the read in a
+   * catch-all that reported every failure as `Article not found`, which turned a
+   * TecDoc outage into a permanent-sounding 404 for a part we do in fact sell.
+   * The TecDoc layer now distinguishes the two — {@link ArticleNotFoundException}
+   * for a genuine miss, CATALOG_UNAVAILABLE for a failed read — so letting both
+   * through unchanged is what keeps them apart.
+   */
   private async loadCatalogDetail(
     articleNumber: string,
-    vehicleId?: string,
+    vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
-    try {
-      const detail = await this.cache.cached(
-        `tecdoc:article-detail:${articleNumber}:${vehicleId ?? 'none'}`,
-        ARTICLE_TTL,
-        () => this.tecdoc.getArticleDetails(articleNumber, vehicleId),
-      );
+    const detail = await this.cache.cached(
+      `tecdoc:article-detail:${articleNumber}:${vehicleId ?? 'none'}`,
+      ARTICLE_TTL,
+      () => this.tecdoc.getArticleDetails(articleNumber, vehicleId),
+    );
 
-      const [enriched] = await this.brands.attachLogos([detail]);
+    const [enriched] = await this.brands.attachLogos([detail]);
 
-      return enriched;
-    } catch {
-      this.logger.warn(`Article not found: ${articleNumber}`);
-      throw new NotFoundException(`Article not found: ${articleNumber}`);
-    }
+    return enriched;
   }
 }

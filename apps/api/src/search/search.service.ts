@@ -88,7 +88,7 @@ export class SearchService {
 
   async search(
     query: string,
-    vehicleId?: string,
+    vehicleId?: number,
     page: number = SEARCH_DEFAULT_PAGE,
     pageSize: number = SEARCH_DEFAULT_PAGE_SIZE,
     filters: SearchFilters = {},
@@ -271,7 +271,7 @@ export class SearchService {
    */
   private async executePlan(
     plan: SearchPlanStep[],
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
     page: number,
     pageSize: number,
     filters: SearchFilters,
@@ -312,7 +312,7 @@ export class SearchService {
    */
   private async resolveLane(
     plan: SearchPlanStep[],
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
   ): Promise<ResolvedSearch> {
     const laneKey = this.laneCacheKey(plan, vehicleId);
     const pinnedToken = await this.cache.readMemo<string>(laneKey);
@@ -362,7 +362,7 @@ export class SearchService {
    */
   private async probePlan(
     plan: SearchPlanStep[],
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
   ): Promise<ResolvedSearch> {
     let lastResult = this.emptyProbePage();
 
@@ -417,7 +417,7 @@ export class SearchService {
 
   private executeStep(
     step: SearchPlanStep,
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
     page: number,
     pageSize: number,
     filters: SearchFilters,
@@ -440,7 +440,7 @@ export class SearchService {
    */
   private laneCacheKey(
     plan: SearchPlanStep[],
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
   ): string {
     const identity = {
       plan: plan.map((step) => ({
@@ -473,7 +473,7 @@ export class SearchService {
    */
   private async searchArticlesCached(
     query: string,
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
     execution: SearchExecution,
     page: number,
     pageSize: number,
@@ -499,7 +499,7 @@ export class SearchService {
 
   private searchCacheKey(
     query: string,
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
     execution: SearchExecution = DEFAULT_EXECUTION,
     page: number,
     pageSize: number,
@@ -511,7 +511,9 @@ export class SearchService {
       execution,
       page,
       pageSize,
-      brandIds: [...(filters?.brandIds ?? [])].sort(),
+      // Numeric comparator: the default sort is lexicographic, which would order
+      // [4, 30] as [30, 4] and make the key needlessly hard to reason about.
+      brandIds: [...(filters?.brandIds ?? [])].sort((a, b) => a - b),
       categoryNodeId: filters?.categoryNodeId ?? null,
       // The decision, not the raw `categoryHasChildren` hint: it is what
       // actually changes the TecDoc payload, so hints that resolve the same way
@@ -634,7 +636,7 @@ export class SearchService {
   private logZeroResult(
     query: string,
     brandStripped: string,
-    vehicleId: string | undefined,
+    vehicleId: number | undefined,
   ): void {
     this.logger.log(
       `search_zero_result query=${JSON.stringify(query)} ` +

@@ -14,28 +14,9 @@ import {
   ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared';
 import { Public } from '../../auth/public.decorator';
+import { ParseTecDocIdPipe } from '../../tecdoc';
+import { ArticlesAvailabilityQueryDto } from './articles.dto';
 import { ArticlesService } from './articles.service';
-
-/**
- * Parses the comma-separated `numbers` query for the bulk availability endpoint
- * into a de-duplicated list of article numbers. Blank tokens are dropped; an
- * absent or empty value yields an empty list (the service returns an empty map).
- */
-export function parseArticleNumbers(numbers?: string): string[] {
-  if (!numbers) {
-    return [];
-  }
-
-  const seen = new Set<string>();
-  for (const token of numbers.split(',')) {
-    const trimmed = token.trim();
-    if (trimmed) {
-      seen.add(trimmed);
-    }
-  }
-
-  return [...seen];
-}
 
 @Public()
 @Controller('catalog')
@@ -44,8 +25,8 @@ export class ArticlesController {
 
   @Get('vehicles/:vehicleId/categories/:categoryId/articles')
   listArticles(
-    @Param('vehicleId') vehicleId: string,
-    @Param('categoryId') categoryId: string,
+    @Param('vehicleId', ParseTecDocIdPipe) vehicleId: number,
+    @Param('categoryId', ParseTecDocIdPipe) categoryId: number,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('pageSize', new DefaultValuePipe(20), ParseIntPipe) pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
@@ -67,15 +48,15 @@ export class ArticlesController {
   @Get('articles-availability')
   @Header('Cache-Control', 'no-store')
   getArticlesAvailability(
-    @Query('numbers') numbers?: string,
+    @Query() dto: ArticlesAvailabilityQueryDto,
   ): Promise<ArticlesAvailabilityDto> {
-    return this.articles.getArticlesAvailability(parseArticleNumbers(numbers));
+    return this.articles.getArticlesAvailability(dto.numbers);
   }
 
   @Get('articles/:articleNumber')
   getArticleDetail(
     @Param('articleNumber') articleNumber: string,
-    @Query('vehicleId') vehicleId?: string,
+    @Query('vehicleId', ParseTecDocIdPipe) vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
     return this.articles.getArticleDetail(articleNumber, vehicleId);
   }

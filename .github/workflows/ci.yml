@@ -60,6 +60,7 @@ jobs:
       # they exist only to satisfy the Joi required() validation in ConfigModule at startup.
       TECDOC_API_KEY: stub
       TECDOC_BASE_URL: https://stub.tecdoc.invalid
+      TECDOC_PROVIDER_ID: 12345
       RESEND_API_KEY: re_stub
       EMAIL_FROM: noreply@example.com
 

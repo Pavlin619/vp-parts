@@ -5,7 +5,9 @@ import {
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { InventoryService } from '../../inventory';
+import { CatalogUnavailableException } from '../../tecdoc';
 import { BrandsService } from '../brands';
+import { ArticleNotFoundException } from './article-not-found.exception';
 import { ArticlesTecDoc } from './articles.tecdoc';
 import { ArticlesService } from './articles.service';
 
@@ -76,12 +78,7 @@ describe('ArticlesService', () => {
         items: [item('A1')],
       });
 
-      const result = await service.listArticleMetadata(
-        '10001',
-        '100002',
-        1,
-        20,
-      );
+      const result = await service.listArticleMetadata(10001, 100002, 1, 20);
 
       expect(cache.cached).toHaveBeenCalledWith(
         'tecdoc:articles:10001:100002:1:20',
@@ -101,10 +98,10 @@ describe('ArticlesService', () => {
         compatibleVehicles: [],
       });
 
-      await service.getArticleDetail('A1', 'V1');
+      await service.getArticleDetail('A1', 10001);
 
       expect(cache.cached).toHaveBeenCalledWith(
-        'tecdoc:article-detail:A1:V1',
+        'tecdoc:article-detail:A1:10001',
         24 * 60 * 60,
         expect.any(Function),
       );
@@ -127,11 +124,26 @@ describe('ArticlesService', () => {
       );
     });
 
-    it('maps a TecDoc miss to a NotFoundException', async () => {
-      tecdoc.getArticleDetails.mockRejectedValueOnce(new Error('not found'));
+    it('surfaces a TecDoc miss as a 404', async () => {
+      tecdoc.getArticleDetails.mockRejectedValueOnce(
+        new ArticleNotFoundException(),
+      );
 
       await expect(service.getArticleDetail('missing')).rejects.toBeInstanceOf(
         NotFoundException,
+      );
+    });
+
+    it('keeps a failed catalogue read out of the 404 path', async () => {
+      tecdoc.getArticleDetails.mockRejectedValueOnce(
+        new CatalogUnavailableException(),
+      );
+
+      // A TecDoc outage used to be reported as "article not found", telling the
+      // customer a part we do sell does not exist — and inviting the client to
+      // treat a transient failure as permanent.
+      await expect(service.getArticleDetail('A1')).rejects.toBeInstanceOf(
+        CatalogUnavailableException,
       );
     });
   });

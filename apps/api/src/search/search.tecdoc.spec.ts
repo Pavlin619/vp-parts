@@ -69,15 +69,15 @@ describe('SearchTecDoc', () => {
 
       await tecdoc.searchArticles(
         'WL634',
-        '1',
+        1,
         { type: 10, matchType: 'exact' },
         1,
         50,
         {
-          brandIds: ['4', '7'],
-          categoryNodeId: '100',
+          brandIds: [4, 7],
+          categoryNodeId: 100,
           categoryHasChildren: false,
-          criteria: [{ criteriaId: '20', rawValue: '106.4' }],
+          criteria: [{ criteriaId: 20, rawValue: '106.4' }],
         },
       );
 
@@ -98,7 +98,7 @@ describe('SearchTecDoc', () => {
       });
 
       await tecdoc.searchArticles('WL634', undefined, { type: 10 }, 1, 50, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
       });
 
       const params = call.mock.calls[0][1];
@@ -139,7 +139,7 @@ describe('SearchTecDoc', () => {
         { type: 10, matchType: 'prefix_or_suffix' },
         1,
         50,
-        { categoryNodeId: '100', categoryHasChildren: false },
+        { categoryNodeId: 100, categoryHasChildren: false },
       );
 
       expect(result.attributes).toHaveLength(1);
@@ -154,7 +154,7 @@ describe('SearchTecDoc', () => {
       });
 
       await tecdoc.searchArticles('brake', undefined, { type: 99 }, 1, 50, {
-        categoryNodeId: '100',
+        categoryNodeId: 100,
         categoryHasChildren: true,
       });
 
@@ -198,7 +198,7 @@ describe('SearchTecDoc', () => {
         { type: 99 },
         1,
         50,
-        { categoryNodeId: '100', categoryHasChildren: false },
+        { categoryNodeId: 100, categoryHasChildren: false },
       );
 
       expect(call.mock.calls[0][1]).toMatchObject({
@@ -222,7 +222,7 @@ describe('SearchTecDoc', () => {
         { type: 10, matchType: 'prefix_or_suffix' },
         2,
         50,
-        { categoryNodeId: '100', categoryHasChildren: false },
+        { categoryNodeId: 100, categoryHasChildren: false },
       );
 
       const params = call.mock.calls[0][1];

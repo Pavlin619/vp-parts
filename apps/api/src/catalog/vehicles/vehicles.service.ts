@@ -28,7 +28,7 @@ export class VehiclesService {
     );
   }
 
-  async getModelSeries(manufacturerId: string): Promise<ModelSeriesDto[]> {
+  async getModelSeries(manufacturerId: number): Promise<ModelSeriesDto[]> {
     return this.cache.cached(
       `tecdoc:model-series:${manufacturerId}`,
       VEHICLE_TREE_TTL,
@@ -36,7 +36,7 @@ export class VehiclesService {
     );
   }
 
-  async getVehicleVariants(seriesId: string): Promise<VehicleVariantDto[]> {
+  async getVehicleVariants(seriesId: number): Promise<VehicleVariantDto[]> {
     return this.cache.cached(
       `tecdoc:vehicle-types:${seriesId}`,
       VEHICLE_TREE_TTL,
@@ -44,7 +44,7 @@ export class VehiclesService {
     );
   }
 
-  async getCategoryTree(vehicleId: string): Promise<AssemblyGroupDto[]> {
+  async getCategoryTree(vehicleId: number): Promise<AssemblyGroupDto[]> {
     return this.cache.cached(
       `tecdoc:assembly-groups:${vehicleId}`,
       VEHICLE_TREE_TTL,

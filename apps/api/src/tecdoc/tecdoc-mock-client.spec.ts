@@ -46,6 +46,8 @@ describe('TecDocMockClient', () => {
       const broad = await mock.searchArticles('Brake Pad');
       expect(broad.attributes).toEqual([]);
 
+      const categoryNodeId = await brakePadCategoryNodeId();
+
       const scoped = await mock.searchArticles('Brake Pad', undefined, {
         type: TecDocSearchType.FreeText,
         matchType: undefined,
@@ -58,7 +60,7 @@ describe('TecDocMockClient', () => {
         { type: TecDocSearchType.FreeText },
         1,
         50,
-        { categoryNodeId: 'Brake Pad Set, disc brake' },
+        { categoryNodeId },
       );
 
       const leaf = await mock.searchArticles(
@@ -67,17 +69,62 @@ describe('TecDocMockClient', () => {
         { type: TecDocSearchType.FreeText },
         1,
         50,
-        {
-          categoryNodeId: 'Brake Pad Set, disc brake',
-          categoryHasChildren: false,
-        },
+        { categoryNodeId, categoryHasChildren: false },
       );
 
       expect(scoped.attributes).toEqual([]);
       expect(unhinted.attributes).toEqual([]);
       expect(leaf.attributes.length).toBeGreaterThan(0);
     });
+
+    // Facet ids must be TecDoc-shaped numbers, not labels: the API validates them
+    // at its boundary, so a mock that minted labels would round-trip here and be
+    // rejected in front of the real service.
+    it('identifies facets by numeric ids that round-trip as filters', async () => {
+      const unfiltered = await mock.searchArticles('Brake Pad', undefined, {
+        type: TecDocSearchType.FreeText,
+      });
+      const brandFacet = unfiltered.facets.find(
+        (facet) => facet.id === 'brands',
+      );
+      const brand = brandFacet?.values[0];
+
+      expect(brand).toBeDefined();
+      expect(brand!.id).toMatch(/^[1-9][0-9]*$/);
+
+      const filtered = await mock.searchArticles(
+        'Brake Pad',
+        undefined,
+        { type: TecDocSearchType.FreeText },
+        1,
+        50,
+        { brandIds: [Number(brand!.id)] },
+      );
+
+      expect(filtered.total).toBeGreaterThan(0);
+      expect(
+        filtered.items.every((item) => item.brandName === brand!.label),
+      ).toBe(true);
+    });
   });
+
+  // Facet ids travel to the client as strings (the DTO contract) and come back
+  // as numbers (parsed at the query boundary), so the round-trip goes through
+  // Number here exactly as it does in SearchQueryDto.
+  async function brakePadCategoryNodeId(): Promise<number> {
+    const unfiltered = await mock.searchArticles('Brake Pad', undefined, {
+      type: TecDocSearchType.FreeText,
+    });
+    const option = unfiltered.categoryNavigation.options.find(
+      (candidate) => candidate.label === 'Brake Pad Set, disc brake',
+    );
+
+    if (!option) {
+      throw new Error('Fixture no longer exposes the brake pad category');
+    }
+
+    return Number(option.id);
+  }
 
   describe('getAutocompleteArticles', () => {
     function articlesOf(

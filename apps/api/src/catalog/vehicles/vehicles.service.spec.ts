@@ -40,17 +40,17 @@ describe('VehiclesService', () => {
   });
 
   it('caches model series per manufacturer id', async () => {
-    await service.getModelSeries('16');
+    await service.getModelSeries(16);
     expect(cachedMock).toHaveBeenCalledWith(
       'tecdoc:model-series:16',
       WEEK,
       expect.any(Function),
     );
-    expect(tecdoc.getModelSeries).toHaveBeenCalledWith('16');
+    expect(tecdoc.getModelSeries).toHaveBeenCalledWith(16);
   });
 
   it('caches vehicle variants per series id', async () => {
-    await service.getVehicleVariants('2');
+    await service.getVehicleVariants(2);
     expect(cachedMock).toHaveBeenCalledWith(
       'tecdoc:vehicle-types:2',
       WEEK,
@@ -59,7 +59,7 @@ describe('VehiclesService', () => {
   });
 
   it('caches the category tree per vehicle id', async () => {
-    await service.getCategoryTree('10001');
+    await service.getCategoryTree(10001);
     expect(cachedMock).toHaveBeenCalledWith(
       'tecdoc:assembly-groups:10001',
       WEEK,

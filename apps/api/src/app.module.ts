@@ -52,6 +52,13 @@ import { AppService } from './app.service';
 
         TECDOC_API_KEY: Joi.string().required(),
         TECDOC_BASE_URL: Joi.string().uri().required(),
+        // The ProviderId TecAlliance assigns at onboarding. It travels in the
+        // body of every JSON-RPC call as `provider` and identifies which
+        // subscription the request is billed and entitled against. Required and
+        // numeric: an absent value would become `Number(undefined)` → NaN, which
+        // JSON.stringify serialises as `null`, and TecDoc answers an
+        // unrecognised provider with "Access not allowed" on every single call.
+        TECDOC_PROVIDER_ID: Joi.number().integer().positive().required(),
 
         RESEND_API_KEY: Joi.string().required(),
         EMAIL_FROM: Joi.string().email().required(),

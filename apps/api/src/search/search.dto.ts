@@ -38,6 +38,17 @@ function toStringArray({ value }: { value: unknown }): string[] | undefined {
 }
 
 /**
+ * Normalises a repeatable id param into a `number[]`. TecDoc ids are numbers in
+ * the JSON-RPC payload, so they become numbers here at the boundary and stay
+ * that way inwards. A non-numeric entry converts to `NaN`, which `@IsInt` then
+ * rejects with a 400 — deliberately, because these values are echoed back from a
+ * facet block we served, so a broken one is a hand-edited URL.
+ */
+function toNumberArray({ value }: { value: unknown }): number[] | undefined {
+  return toStringArray({ value })?.map(Number);
+}
+
+/**
  * Parses a `true`/`false` query param. Anything else — including a malformed
  * value — becomes `undefined`, so a caller can never turn a hint into a 400 on
  * an otherwise valid search.
@@ -63,10 +74,17 @@ export class SearchQueryDto {
   @MaxLength(200)
   q!: string;
 
+  /**
+   * The selected vehicle (TecDoc linkageTargetId). Parsed to a number here so it
+   * can go straight into the JSON-RPC payload: left as an unchecked string it
+   * would reach `JSON.stringify` as `NaN`, serialise to `null`, and silently
+   * widen the search instead of failing it.
+   */
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  vehicleId?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  vehicleId?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -81,13 +99,14 @@ export class SearchQueryDto {
   @Max(SEARCH_MAX_PAGE_SIZE)
   pageSize?: number;
 
+  /** Selected brands (TecDoc dataSupplierIds). */
   @IsOptional()
-  @Transform(toStringArray)
+  @Transform(toNumberArray)
   @IsArray()
   @ArrayMaxSize(SEARCH_MAX_FILTER_VALUES)
-  @IsString({ each: true })
-  @MaxLength(100, { each: true })
-  brandIds?: string[];
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  brandIds?: number[];
 
   /**
    * The single selected category-tree node (TecDoc assemblyGroupNodeId).
@@ -95,9 +114,10 @@ export class SearchQueryDto {
    * an array like {@link brandIds}.
    */
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  categoryNodeId?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  categoryNodeId?: number;
 
   /**
    * Whether {@link categoryNodeId} has child categories, echoed back from the
@@ -140,7 +160,14 @@ export class SearchQueryDto {
 /**
  * Parses the repeatable `attr` query param into criteria filters. Each entry is
  * a `criteriaId:rawValue` pair split on the FIRST colon, so a rawValue may
- * itself contain colons. Entries missing either side are dropped.
+ * itself contain colons.
+ *
+ * A malformed entry is dropped rather than rejected, matching how the other
+ * facet params behave — these values are echoed back from a facet block we
+ * ourselves served, so a broken one means a hand-edited URL, not a caller who
+ * deserves a 400 on an otherwise valid search. Dropping includes a criteriaId
+ * that is not a TecDoc id: forwarding it would put `criteriaId: null` in the
+ * payload, which TecDoc reads as a different filter rather than no filter.
  */
 export function parseCriteriaFilters(attr?: string[]): CriteriaFilter[] {
   if (!attr?.length) {
@@ -153,9 +180,9 @@ export function parseCriteriaFilters(attr?: string[]): CriteriaFilter[] {
       return filters;
     }
 
-    const criteriaId = entry.slice(0, separatorIndex);
+    const criteriaId = Number(entry.slice(0, separatorIndex));
     const rawValue = entry.slice(separatorIndex + 1);
-    if (rawValue.length > 0) {
+    if (rawValue.length > 0 && Number.isInteger(criteriaId) && criteriaId > 0) {
       filters.push({ criteriaId, rawValue });
     }
 

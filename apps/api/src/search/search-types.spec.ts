@@ -40,7 +40,7 @@ describe('shouldRequestCriteriaFacets', () => {
   it('is false when the client reports the selected category has children', () => {
     expect(
       shouldRequestCriteriaFacets(
-        { categoryNodeId: '100', categoryHasChildren: true },
+        { categoryNodeId: 100, categoryHasChildren: true },
         FIRST_PAGE,
       ),
     ).toBe(false);
@@ -49,7 +49,7 @@ describe('shouldRequestCriteriaFacets', () => {
   it('is true when the client reports the selected category is a leaf', () => {
     expect(
       shouldRequestCriteriaFacets(
-        { categoryNodeId: '100', categoryHasChildren: false },
+        { categoryNodeId: 100, categoryHasChildren: false },
         FIRST_PAGE,
       ),
     ).toBe(true);
@@ -59,14 +59,14 @@ describe('shouldRequestCriteriaFacets', () => {
   // for the criteria block.
   it('is false when the hint is absent', () => {
     expect(
-      shouldRequestCriteriaFacets({ categoryNodeId: '100' }, FIRST_PAGE),
+      shouldRequestCriteriaFacets({ categoryNodeId: 100 }, FIRST_PAGE),
     ).toBe(false);
   });
 
   it('is false beyond the first page, where facets repeat the first page verbatim', () => {
     expect(
       shouldRequestCriteriaFacets(
-        { categoryNodeId: '100', categoryHasChildren: false },
+        { categoryNodeId: 100, categoryHasChildren: false },
         2,
       ),
     ).toBe(false);
@@ -84,16 +84,16 @@ describe('hasActiveFilters', () => {
   });
 
   it('is true when a brand is selected', () => {
-    expect(hasActiveFilters({ brandIds: ['4'] })).toBe(true);
+    expect(hasActiveFilters({ brandIds: [4] })).toBe(true);
   });
 
   it('is true when a category is selected', () => {
-    expect(hasActiveFilters({ categoryNodeId: '100' })).toBe(true);
+    expect(hasActiveFilters({ categoryNodeId: 100 })).toBe(true);
   });
 
   it('is true when a technical attribute is selected', () => {
     expect(
-      hasActiveFilters({ criteria: [{ criteriaId: '20', rawValue: '106.4' }] }),
+      hasActiveFilters({ criteria: [{ criteriaId: 20, rawValue: '106.4' }] }),
     ).toBe(true);
   });
 

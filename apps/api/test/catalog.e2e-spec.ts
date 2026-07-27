@@ -2,8 +2,15 @@ import { INestApplication } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createTestApp } from './helpers/create-test-app';
-import { VehiclesTecDoc, ArticlesTecDoc, BrandsTecDoc } from '../src/catalog';
+import {
+  VehiclesTecDoc,
+  ArticlesTecDoc,
+  BrandsTecDoc,
+  ArticleNotFoundException,
+  AVAILABILITY_MAX_ARTICLE_NUMBERS,
+} from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
+import { CatalogUnavailableException } from '../src/tecdoc';
 import {
   ManufacturerDto,
   ModelSeriesDto,
@@ -163,7 +170,7 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual(MODEL_SERIES);
-      expect(mockTecDocClient.getModelSeries).toHaveBeenCalledWith('16');
+      expect(mockTecDocClient.getModelSeries).toHaveBeenCalledWith(16);
     });
   });
 
@@ -176,7 +183,7 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual(VEHICLE_VARIANTS);
-      expect(mockTecDocClient.getVehicleTypes).toHaveBeenCalledWith('2');
+      expect(mockTecDocClient.getVehicleTypes).toHaveBeenCalledWith(2);
     });
   });
 
@@ -191,9 +198,23 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual(ASSEMBLY_GROUPS);
-      expect(mockTecDocClient.getAssemblyGroupTree).toHaveBeenCalledWith(
-        '10001',
-      );
+      expect(mockTecDocClient.getAssemblyGroupTree).toHaveBeenCalledWith(10001);
+    });
+  });
+
+  // Route ids are parsed by ParseTecDocIdPipe before the controller runs, so an
+  // unparseable one never reaches TecDoc as a `null` filter. The pipe is
+  // stricter than ParseIntPipe, which would accept `1.5` and truncate it to 1.
+  describe('TecDoc id parsing on route params', () => {
+    it.each([
+      ['/catalog/manufacturers/abc/model-series', 'getModelSeries'],
+      ['/catalog/model-series/0/variants', 'getVehicleTypes'],
+      ['/catalog/vehicles/1.5/categories', 'getAssemblyGroupTree'],
+      ['/catalog/vehicles/-1/categories/100001/articles', 'getArticles'],
+    ] as const)('returns 400 for %s', async (url, method) => {
+      await request(app.getHttpServer()).get(url).expect(400);
+
+      expect(mockTecDocClient[method]).not.toHaveBeenCalled();
     });
   });
 
@@ -230,8 +251,8 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
-        '10001',
-        '100001',
+        10001,
+        100001,
         2,
         10,
       );
@@ -245,8 +266,8 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
-        '10001',
-        '100001',
+        10001,
+        100001,
         1,
         20,
       );
@@ -270,12 +291,43 @@ describe('CatalogController (e2e)', () => {
       });
     });
 
-    it('returns an empty map when no numbers are requested', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/catalog/articles-availability')
-        .expect(200);
+    // The response is a map keyed by article number, so answering an empty
+    // request with `{}` would be indistinguishable from "none of these are in
+    // stock" and would render a whole grid as out of stock. A request that asks
+    // about nothing is a caller bug and is answered as one.
+    it.each([
+      ['no numbers param', '/catalog/articles-availability'],
+      ['an empty numbers param', '/catalog/articles-availability?numbers='],
+      [
+        'a numbers param of only separators',
+        '/catalog/articles-availability?numbers=%20,%20',
+      ],
+    ])('returns 400 for %s', async (_label, url) => {
+      await request(app.getHttpServer()).get(url).expect(400);
+    });
 
-      expect(res.body).toEqual({});
+    // Unbounded batches fan out into a single `IN (...)` against the shared
+    // database on an endpoint that is deliberately never cached.
+    it('returns 400 for a batch over the cap', async () => {
+      const numbers = Array.from(
+        { length: AVAILABILITY_MAX_ARTICLE_NUMBERS + 1 },
+        (_, index) => `A${index}`,
+      ).join(',');
+
+      await request(app.getHttpServer())
+        .get(`/catalog/articles-availability?numbers=${numbers}`)
+        .expect(400);
+    });
+
+    it('accepts a batch at the cap', async () => {
+      const numbers = Array.from(
+        { length: AVAILABILITY_MAX_ARTICLE_NUMBERS },
+        (_, index) => `A${index}`,
+      ).join(',');
+
+      await request(app.getHttpServer())
+        .get(`/catalog/articles-availability?numbers=${numbers}`)
+        .expect(200);
     });
 
     // Exercises the real SQL read against the seeded backoffice stock tables:
@@ -334,18 +386,38 @@ describe('CatalogController (e2e)', () => {
 
       expect(mockTecDocClient.getArticleDetails).toHaveBeenCalledWith(
         'BD-001',
-        '10001',
+        10001,
       );
     });
 
-    it('returns 404 when TecDoc does not find the article', async () => {
+    it('rejects a vehicleId that is not a TecDoc id', async () => {
+      await request(app.getHttpServer())
+        .get('/catalog/articles/BD-001?vehicleId=abc')
+        .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
+
+      expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 ARTICLE_NOT_FOUND when TecDoc does not find the article', async () => {
       mockTecDocClient.getArticleDetails.mockRejectedValueOnce(
-        new Error('Article not found: NOTFOUND'),
+        new ArticleNotFoundException(),
       );
 
       await request(app.getHttpServer())
         .get('/catalog/articles/NOTFOUND')
-        .expect(404);
+        .expect(404, { statusCode: 404, errorCode: 'ARTICLE_NOT_FOUND' });
+    });
+
+    // A TecDoc outage used to be reported as a 404, telling the customer a part
+    // we do sell does not exist and inviting the client to cache that as fact.
+    it('returns 503 CATALOG_UNAVAILABLE when the catalogue read fails', async () => {
+      mockTecDocClient.getArticleDetails.mockRejectedValueOnce(
+        new CatalogUnavailableException(),
+      );
+
+      await request(app.getHttpServer())
+        .get('/catalog/articles/BD-001')
+        .expect(503, { statusCode: 503, errorCode: 'CATALOG_UNAVAILABLE' });
     });
   });
 
