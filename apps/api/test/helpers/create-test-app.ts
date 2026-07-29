@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
+import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
 import RedisMock from 'ioredis-mock';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
@@ -64,4 +65,14 @@ export async function createTestApp(
   await app.init();
 
   return app;
+}
+
+/**
+ * A suite shares one app and every request comes from loopback, so the whole
+ * file otherwise spends one client's allowance and the test that crosses it
+ * fails an unrelated assertion. Resetting per case keeps the guard switched on
+ * rather than disabling it.
+ */
+export function resetRateLimits(app: INestApplication): void {
+  app.get<ThrottlerStorageService>(ThrottlerStorage).storage.clear();
 }

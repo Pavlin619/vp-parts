@@ -170,6 +170,34 @@ Cross-schema permissions (enforced by Postgres users):
 ### Frontend → Backend
 REST/JSON over HTTPS. All API calls go through NestJS — the browser never calls TecDoc or the backoffice directly. Real-time order status updates delivered via **Server-Sent Events (SSE)** — NestJS pushes status changes to the customer's open browser connection immediately when a fulfillment event is consumed.
 
+The frontend reaches the API on two paths, and they are attributed differently for rate limiting:
+
+- **Browser → NestJS** (`NEXT_PUBLIC_API_URL`) — client components: autocomplete, live availability, cart. The caller's own address arrives via the Lightsail load balancer.
+- **Next.js server → NestJS** (`API_URL`) — server-rendered reads, currently the search page. These arrive from a Vercel egress address shared by every visitor.
+
+### Rate limiting and client attribution
+
+A global NestJS Throttler allows **100 requests/minute per client per route handler**; `/search` and `/search/autocomplete` are capped lower (30 and 60) because a cache miss on either becomes a metered TecDoc call.
+
+"Per client" is the hard part, because the address the connection came from is never the visitor's:
+
+- Behind the Lightsail load balancer it is the balancer.
+- For a server-rendered page it is Vercel.
+
+Either one collapses every visitor into a single allowance and makes the shop throttle itself under normal traffic. `resolveClientIp` (`apps/api/src/common/client-ip.ts`) resolves the real caller instead, and two env vars configure it:
+
+| Env var | Where | Meaning |
+|---|---|---|
+| `TRUSTED_PROXY_COUNT` | NestJS | Proxies that append to `X-Forwarded-For` in front of the API. `1` behind the Lightsail load balancer, `0` when reached directly. |
+| `WEB_ORIGIN_TOKEN` | NestJS **and** Vercel | Shared secret letting the Next.js server speak for the browser it is serving. |
+
+The rules that keep a forgeable header trustworthy:
+
+- A proxy **appends** the address it saw, so the entry our own load balancer wrote is the **last** one. Counting back `TRUSTED_PROXY_COUNT` entries from the right yields an address the caller cannot choose; anything they prepended is ignored.
+- Our Next.js server is the one caller that legitimately knows better, since it relays a browser the API never sees. It forwards `X-Forwarded-For` plus `WEB_ORIGIN_TOKEN` (in `x-web-origin-token`), and only then is the address it declares believed.
+
+Both vars are **required in production** — misconfiguring either degrades silently into the self-throttling behaviour rather than failing visibly. `WEB_ORIGIN_TOKEN` is deliberately *not* `INTERNAL_API_TOKEN`: the frontend and the backoffice are different trust domains and must not share a secret.
+
 ### NestJS → Backoffice (synchronous REST)
 Internal REST API secured with a **shared-secret bearer token**. Both NestJS and Spring Boot hold the same secret in their environment (`INTERNAL_API_TOKEN`). NestJS includes `Authorization: Bearer <INTERNAL_API_TOKEN>` on every internal call. The backoffice verifies the token on arrival. Internal endpoints are only reachable within the Lightsail private network — they are not exposed to the public internet.
 
