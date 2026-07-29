@@ -83,6 +83,8 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
         // JSON.stringify serialises as `null`, and TecDoc answers an
         // unrecognised provider with "Access not allowed" on every single call.
         TECDOC_PROVIDER_ID: Joi.number().integer().positive().required(),
+        // Node's fetch has no deadline of its own; see TecDocTransport.
+        TECDOC_TIMEOUT_MS: Joi.number().integer().positive().default(10000),
 
         RESEND_API_KEY: Joi.string().required(),
         EMAIL_FROM: Joi.string().email().required(),
