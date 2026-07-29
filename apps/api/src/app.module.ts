@@ -1,16 +1,40 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import {
+  ThrottlerModule,
+  ThrottlerGuard,
+  ThrottlerModuleOptions,
+} from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AuthModule } from './auth';
-import { CommonModule } from './common';
+import { ClientIpOptions, CommonModule, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
 import { CatalogModule } from './catalog';
 import { InventoryModule } from './inventory';
 import { SearchModule } from './search';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
+// Per client and per route handler, since the guard folds the handler into the
+// storage key. The search routes set their own lower limit on top.
+const GLOBAL_RATE_LIMIT_WINDOW_MS = 60_000;
+const GLOBAL_RATE_LIMIT = 100;
+
+/** Attribution rules are resolved once here rather than on every request. */
+function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
+  const clientIpOptions: ClientIpOptions = {
+    trustedProxyCount: config.get<number>('TRUSTED_PROXY_COUNT', 0),
+    webOriginToken: config.get<string>('WEB_ORIGIN_TOKEN'),
+  };
+
+  return {
+    throttlers: [
+      { ttl: GLOBAL_RATE_LIMIT_WINDOW_MS, limit: GLOBAL_RATE_LIMIT },
+    ],
+    getTracker: (request) => resolveClientIp(request, clientIpOptions),
+  };
+}
 
 @Module({
   imports: [
@@ -70,6 +94,23 @@ import { AppService } from './app.service';
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
 
+        // Rate-limit attribution (see resolveClientIp). Required in production
+        // because getting either wrong degrades silently into every visitor
+        // sharing one bucket rather than failing in any visible way.
+        TRUSTED_PROXY_COUNT: Joi.number()
+          .integer()
+          .min(0)
+          .default(0)
+          .when('NODE_ENV', {
+            is: 'production',
+            then: Joi.required(),
+          }),
+        WEB_ORIGIN_TOKEN: Joi.string().when('NODE_ENV', {
+          is: 'production',
+          then: Joi.required(),
+          otherwise: Joi.optional(),
+        }),
+
         // Delivery scheduling (see DeliveryScheduleService + docs/DELIVERY-LOGIC.md).
         SHOP_TIMEZONE: Joi.string().default('Europe/Sofia'),
         SHOP_HOURS_WEEKDAY_OPEN: Joi.number()
@@ -106,12 +147,10 @@ import { AppService } from './app.service';
         abortEarly: false,
       },
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: 100,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: buildThrottlerOptions,
+    }),
     AuthModule,
     CommonModule,
     PrismaModule,

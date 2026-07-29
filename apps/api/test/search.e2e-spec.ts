@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import request from 'supertest';
-import { createTestApp } from './helpers/create-test-app';
+import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { SearchTecDoc } from '../src/search';
 import { BrandsTecDoc } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
@@ -107,6 +107,7 @@ describe('SearchController (e2e)', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    resetRateLimits(app);
     // The search flow joins brand logos via getBrands on every non-empty result
     // set; give every test a default so the enrichment resolves.
     mockTecDocClient.getBrands.mockResolvedValue([]);

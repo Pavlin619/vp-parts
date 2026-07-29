@@ -339,6 +339,23 @@ export interface ApiErrorResponse {
 - Extract complex boolean expressions into a named variable or function.
 - Prefer `switch` / lookup tables over long `if-else` chains when branching on a known set of values.
 
+**Comments**
+
+Default to no comment. Well-named code explains itself, and every comment is a second thing to keep true — a stale one is worse than none. Write one only when a reader who understands the code would still ask "why?".
+
+Worth a comment:
+- A non-obvious constraint or external contract (`the load balancer appends, so the last entry is the trustworthy one`).
+- A decision whose alternative looks more sensible at first glance — say why the obvious option was rejected.
+- A rule the type system can't express (`must not be called inside a 'use cache' scope`).
+
+Not worth a comment:
+- Restating the code (`// loop over the items`, `// return the result`).
+- A docblock on every function, parameter, and constant by default. Export docs are for genuinely non-obvious public API, not a house style.
+- Explaining a change or its history — that belongs in the commit message. Never write `// changed to fix X` or `// previously we did Y`.
+- Section banners inside a function. Use a blank line and a well-named helper instead.
+
+Keep them short. One or two lines carries almost every real explanation; if it takes a paragraph, the design probably needs the explanation more than the reader does — put it in `docs/` and link it. Prefer naming a thing over describing it: a `private` helper called `proxyReportedIp` beats a comment above an index expression.
+
 **General**
 - Don't repeat yourself — if the same logic appears twice, extract it.
 - Leave the code cleaner than you found it (Boy Scout Rule), but only within the scope of the current task.
