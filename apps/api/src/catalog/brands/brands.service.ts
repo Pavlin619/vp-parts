@@ -1,13 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   BrandDto,
   PaginatedSearchArticlesDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
+import { TtlMemo } from '../../common';
 import { BrandsTecDoc } from './brands.tecdoc';
 
 const BRAND_TTL = 7 * 24 * 60 * 60;
+
+/**
+ * How long a derived brand lookup is held in process memory. Far shorter than
+ * the Redis entry it is built from, so it never widens the staleness we already
+ * accept — it only stops every request re-reading and re-parsing the same list.
+ * Shared with the search brand dictionary, which derives from the same read.
+ */
+export const BRAND_MEMO_TTL_MS = 10 * 60 * 1000;
+
+/** Kept short: brands rarely change, but a stuck lookup should not last. */
+export const BRAND_MEMO_RETRY_AFTER_MS = 30 * 1000;
 
 /**
  * Reusable brand feature: the Redis-cached TecDoc data-supplier list plus the
@@ -19,6 +31,15 @@ const BRAND_TTL = 7 * 24 * 60 * 60;
  */
 @Injectable()
 export class BrandsService {
+  private readonly logger = new Logger(BrandsService.name);
+
+  private readonly logoMap = new TtlMemo({
+    name: 'Brand logos',
+    ttlMs: BRAND_MEMO_TTL_MS,
+    retryAfterMs: BRAND_MEMO_RETRY_AFTER_MS,
+    load: async () => toLogoMap(await this.getBrands()),
+  });
+
   constructor(
     private readonly tecdoc: BrandsTecDoc,
     private readonly cache: RedisCache,
@@ -37,12 +58,22 @@ export class BrandsService {
 
   /**
    * The brand-name -> logo lookup used to enrich both article rows and the
-   * brand search facet. Backed by the (cached) getBrands read.
+   * brand search facet, memoised in process on top of the Redis-cached read.
+   *
+   * Never throws. A logo is decoration on a catalogue response the caller has
+   * already paid for, and every consumer already renders `brandLogoUrl: null`
+   * for a brand it has no logo on file for — so an unavailable brand list
+   * degrades to that rather than failing the listing, detail or search request
+   * it was only decorating.
    */
   async getBrandLogoMap(): Promise<Map<string, string | null>> {
-    const brands = await this.getBrands();
+    try {
+      return await this.logoMap.get();
+    } catch {
+      this.logger.warn('Brand logos unavailable; rendering rows without one');
 
-    return new Map(brands.map((brand) => [brand.brandName, brand.logoUrl]));
+      return new Map();
+    }
   }
 
   /**
@@ -109,4 +140,8 @@ export class BrandsService {
       })),
     }));
   }
+}
+
+function toLogoMap(brands: BrandDto[]): Map<string, string | null> {
+  return new Map(brands.map((brand) => [brand.brandName, brand.logoUrl]));
 }

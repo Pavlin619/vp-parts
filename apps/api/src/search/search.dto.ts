@@ -20,6 +20,13 @@ export const SEARCH_MAX_PAGE_SIZE = 50;
 export const SEARCH_MAX_FILTER_VALUES = 50;
 
 /**
+ * Bounds how deep a caller may page. Every page is a metered TecDoc call, and
+ * past a few pages nobody is reading results — they refine the search instead.
+ * Unbounded, `?page=999999` is a free way to spend the subscription.
+ */
+export const SEARCH_MAX_PAGE = 100;
+
+/**
  * Normalises a repeatable query param into a clean `string[]`. A single
  * `?brandIds=x` arrives as a string, `?brandIds=x&brandIds=y` as an array, and
  * an absent param as `undefined`; blanks are dropped so an empty filter never
@@ -90,6 +97,7 @@ export class SearchQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(SEARCH_MAX_PAGE)
   page?: number;
 
   @IsOptional()

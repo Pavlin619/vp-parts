@@ -5,6 +5,7 @@ import RedisMock from 'ioredis-mock';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
+import { TtlMemo } from '../../src/common/ttl-memo';
 import { REDIS_CLIENT } from '../../src/redis';
 
 export interface TestAppOptions {
@@ -75,4 +76,13 @@ export async function createTestApp(
  */
 export function resetRateLimits(app: INestApplication): void {
   app.get<ThrottlerStorageService>(ThrottlerStorage).storage.clear();
+}
+
+/**
+ * Same reason, different process state: a suite shares one app, so a value
+ * memoised in one case would still be served in the next — while these suites
+ * change what the TecDoc mock returns per case.
+ */
+export function resetMemos(): void {
+  TtlMemo.clearAll();
 }

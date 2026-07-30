@@ -363,6 +363,20 @@ describe('SearchService', () => {
   });
 
   describe('search — brand stripping for number searches', () => {
+    // The dictionary is derived from a Redis-cached read, so without the memo
+    // every search re-reads and re-tokenises the whole brand list.
+    it('builds the brand dictionary once across searches', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      searchArticlesMock.mockResolvedValue(
+        pageOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
+      );
+
+      await service.search('WA5432 WIX');
+      await service.search('WA5432 WIX');
+
+      expect(getBrandsMock).toHaveBeenCalledTimes(1);
+    });
+
     it('strips a trailing brand token and searches the bare number', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       searchArticlesMock.mockResolvedValueOnce(

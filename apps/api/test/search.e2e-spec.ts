@@ -1,8 +1,16 @@
 import { INestApplication } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import request from 'supertest';
-import { createTestApp, resetRateLimits } from './helpers/create-test-app';
-import { SearchTecDoc } from '../src/search';
+import {
+  createTestApp,
+  resetMemos,
+  resetRateLimits,
+} from './helpers/create-test-app';
+import {
+  SEARCH_MAX_PAGE,
+  SEARCH_MAX_PAGE_SIZE,
+  SearchTecDoc,
+} from '../src/search';
 import { BrandsTecDoc } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
 import {
@@ -108,6 +116,7 @@ describe('SearchController (e2e)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     resetRateLimits(app);
+    resetMemos();
     // The search flow joins brand logos via getBrands on every non-empty result
     // set; give every test a default so the enrichment resolves.
     mockTecDocClient.getBrands.mockResolvedValue([]);
@@ -503,6 +512,36 @@ describe('SearchController (e2e)', () => {
       await request(app.getHttpServer()).get(url).expect(400);
 
       expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+    });
+
+    // Every page is a metered catalogue call, so the depth a caller can ask for
+    // is bounded rather than being whatever fits in an int.
+    it.each([
+      ['page', `/search?q=WL634&page=${SEARCH_MAX_PAGE + 1}`],
+      ['pageSize', `/search?q=WL634&pageSize=${SEARCH_MAX_PAGE_SIZE + 1}`],
+    ])('returns 400 for a %s above the maximum', async (_property, url) => {
+      await request(app.getHttpServer()).get(url).expect(400);
+
+      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+    });
+
+    it('still accepts the maximum page and pageSize', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(pageOf([]));
+
+      await request(app.getHttpServer())
+        .get(
+          `/search?q=WL634&page=${SEARCH_MAX_PAGE}&pageSize=${SEARCH_MAX_PAGE_SIZE}`,
+        )
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'WL634',
+        undefined,
+        PART,
+        SEARCH_MAX_PAGE,
+        SEARCH_MAX_PAGE_SIZE,
+        NO_FILTERS,
+      );
     });
   });
 

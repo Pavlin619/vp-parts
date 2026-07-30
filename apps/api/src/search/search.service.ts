@@ -4,7 +4,12 @@ import {
   CategoryNavigationDto,
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
-import { BrandsService } from '../catalog/brands';
+import {
+  BRAND_MEMO_RETRY_AFTER_MS,
+  BRAND_MEMO_TTL_MS,
+  BrandsService,
+} from '../catalog/brands';
+import { TtlMemo } from '../common';
 import { DEFAULT_SEARCH_MODE, SearchFilters, SearchMode } from './search-types';
 import { buildSearchPlan } from './search-plan';
 import { SearchLaneResolver } from './search-lane-resolver';
@@ -22,6 +27,13 @@ import { SEARCH_DEFAULT_PAGE, SEARCH_DEFAULT_PAGE_SIZE } from './search.dto';
 @Injectable()
 export class SearchService {
   private readonly logger = new Logger(SearchService.name);
+
+  private readonly brandTokens = new TtlMemo({
+    name: 'Brand dictionary',
+    ttlMs: BRAND_MEMO_TTL_MS,
+    retryAfterMs: BRAND_MEMO_RETRY_AFTER_MS,
+    load: async () => buildBrandTokenSet(await this.brands.getBrands()),
+  });
 
   constructor(
     private readonly lanes: SearchLaneResolver,
@@ -79,8 +91,7 @@ export class SearchService {
    */
   private async parse(rawQuery: string): Promise<ParsedQuery> {
     try {
-      const brandTokens = buildBrandTokenSet(await this.brands.getBrands());
-      return parseQuery(rawQuery, brandTokens);
+      return parseQuery(rawQuery, await this.brandTokens.get());
     } catch {
       this.logger.warn(
         'Brand dictionary unavailable; searching the query as typed',

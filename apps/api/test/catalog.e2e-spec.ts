@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import request from 'supertest';
-import { createTestApp, resetRateLimits } from './helpers/create-test-app';
+import {
+  createTestApp,
+  resetMemos,
+  resetRateLimits,
+} from './helpers/create-test-app';
 import {
   VehiclesTecDoc,
   ArticlesTecDoc,
@@ -129,6 +133,7 @@ describe('CatalogController (e2e)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     resetRateLimits(app);
+    resetMemos();
     // The article-detail flow joins a brand logo via getBrands; give every test
     // a default brand set so the join resolves.
     mockTecDocClient.getBrands.mockResolvedValue(BRANDS);
