@@ -162,6 +162,96 @@ describe('TecDocTransport', () => {
     });
   });
 
+  describe('request deadline', () => {
+    let signalUsed: AbortSignal | undefined;
+
+    /** Mimics undici: settles only once the deadline aborts the request. */
+    function stallUntilAborted(signal: AbortSignal): Promise<never> {
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason as Error));
+      });
+    }
+
+    /**
+     * Asserts the call really did end on its deadline. Without this a stalled
+     * request could satisfy the exception assertion for an unrelated reason.
+     */
+    function expectTimedOut() {
+      expect(signalUsed?.reason).toMatchObject({ name: 'TimeoutError' });
+    }
+
+    function withTimeout(timeoutMs: string) {
+      return new TecDocTransport(
+        configWith({ ...validConfig, TECDOC_TIMEOUT_MS: timeoutMs }),
+      );
+    }
+
+    beforeEach(() => {
+      signalUsed = undefined;
+    });
+
+    it('gives every call the configured deadline', async () => {
+      const timeout = jest.spyOn(AbortSignal, 'timeout');
+      respondWith({ status: 200 });
+
+      await transport.call('getBrands', {});
+
+      expect(timeout).toHaveBeenCalledWith(10_000);
+      expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('honours an overridden deadline', async () => {
+      const timeout = jest.spyOn(AbortSignal, 'timeout');
+      transport = withTimeout('2500');
+      respondWith({ status: 200 });
+
+      await transport.call('getBrands', {});
+
+      expect(timeout).toHaveBeenCalledWith(2500);
+    });
+
+    // The bug this exists for: with no deadline, a hung connection blocks the
+    // request for Node's 300s default and takes the handler pool with it.
+    it('treats a stalled connection as retryable rather than hanging', async () => {
+      transport = withTimeout('5');
+      fetchMock.mockImplementation(
+        (_url: string, init: { signal: AbortSignal }) => {
+          signalUsed = init.signal;
+
+          return stallUntilAborted(init.signal);
+        },
+      );
+
+      await expect(transport.call('getBrands', {})).rejects.toBeInstanceOf(
+        CatalogUnavailableException,
+      );
+      expectTimedOut();
+    });
+
+    // The deadline has to cover the body too — a response whose headers arrive
+    // promptly can still stall mid-stream.
+    it('applies the deadline to the body read as well as the connection', async () => {
+      transport = withTimeout('5');
+      fetchMock.mockImplementation(
+        (_url: string, init: { signal: AbortSignal }) => {
+          signalUsed = init.signal;
+
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: '',
+            json: () => stallUntilAborted(init.signal),
+          });
+        },
+      );
+
+      await expect(transport.call('getBrands', {})).rejects.toBeInstanceOf(
+        CatalogUnavailableException,
+      );
+      expectTimedOut();
+    });
+  });
+
   describe('success envelope', () => {
     it('passes a status 200 payload through', async () => {
       respondWith({ status: 200, articles: [{ articleNumber: 'A1' }] });

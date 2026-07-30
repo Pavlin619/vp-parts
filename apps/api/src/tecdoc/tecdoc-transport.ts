@@ -31,17 +31,28 @@ import {
  * mapping. It is also the only place that decides whether a call failed: see
  * {@link TECDOC_SUCCESS_STATUS} for why the HTTP status alone is not enough.
  */
+/**
+ * Node leaves `fetch` without a deadline, so a connection TecAlliance accepts
+ * but never answers blocks for ~300s and takes a handler with it. Long enough
+ * that a genuinely slow catalogue search still completes.
+ */
+const DEFAULT_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class TecDocTransport {
   private readonly logger = new Logger(TecDocTransport.name);
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly providerId: number;
+  private readonly timeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.endpoint = `${this.config.get<string>('TECDOC_BASE_URL')}/services/TecdocToCatDLB.jsonEndpoint`;
     this.apiKey = this.config.get<string>('TECDOC_API_KEY')!;
     this.providerId = Number(this.config.get<string>('TECDOC_PROVIDER_ID'));
+    this.timeoutMs =
+      Number(this.config.get<string>('TECDOC_TIMEOUT_MS')) ||
+      DEFAULT_TIMEOUT_MS;
 
     // The Joi schema already guarantees this in the running app; the guard keeps
     // a directly constructed transport (a script, a test) from posting
@@ -57,7 +68,11 @@ export class TecDocTransport {
     functionName: string,
     params: Record<string, unknown>,
   ): Promise<T> {
-    const response = await this.post(functionName, params);
+    // One deadline for the whole exchange, shared with the body read below: a
+    // response whose headers arrive promptly can still stall mid-stream.
+    const signal = AbortSignal.timeout(this.timeoutMs);
+
+    const response = await this.post(functionName, params, signal);
     const payload = await this.readJson<T>(response, functionName);
 
     this.assertSucceeded(payload, functionName);
@@ -68,6 +83,7 @@ export class TecDocTransport {
   private async post(
     functionName: string,
     params: Record<string, unknown>,
+    signal: AbortSignal,
   ): Promise<Response> {
     const body = JSON.stringify({
       [functionName]: { provider: this.providerId, ...params },
@@ -82,15 +98,13 @@ export class TecDocTransport {
           'Content-Type': 'application/json',
         },
         body,
+        signal,
       });
     } catch (error) {
-      // No response at all: DNS failure, refused connection, dropped socket.
-      // TecAlliance's own status page reports these regularly, so treat them as
-      // the transient outages they are rather than as a bug in the caller.
-      this.logger.error(
-        `TecDoc ${functionName} unreachable: ${describe(error)}`,
-      );
-      throw new CatalogUnavailableException();
+      // No response at all: timed out, DNS failure, refused connection, dropped
+      // socket. TecAlliance's own status page reports these regularly, so treat
+      // them as the transient outages they are rather than a bug in the caller.
+      this.unavailable(functionName, this.describeTransportError(error));
     }
 
     if (!response.ok) {
@@ -109,11 +123,26 @@ export class TecDocTransport {
     } catch (error) {
       // A 200 that is not JSON is almost always an intermediary's error page
       // rather than TecDoc itself, so it is retryable like any other outage.
-      this.logger.error(
-        `TecDoc ${functionName} returned a non-JSON body: ${describe(error)}`,
+      this.unavailable(
+        functionName,
+        isTimeout(error)
+          ? this.describeTransportError(error)
+          : `returned a non-JSON body: ${describe(error)}`,
       );
-      throw new CatalogUnavailableException();
     }
+  }
+
+  /** Separated in the log because the two point at different runbooks. */
+  private describeTransportError(error: unknown): string {
+    return isTimeout(error)
+      ? `timed out after ${this.timeoutMs}ms`
+      : `unreachable: ${describe(error)}`;
+  }
+
+  private unavailable(functionName: string, reason: string): never {
+    this.logger.error(`TecDoc ${functionName} ${reason}`);
+
+    throw new CatalogUnavailableException();
   }
 
   /**
@@ -173,4 +202,9 @@ function exceptionFor(failure: TecDocFailure): HttpException {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** `AbortSignal.timeout` rejects with a DOMException named TimeoutError. */
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === 'TimeoutError';
 }
