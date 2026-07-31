@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type {
@@ -40,15 +40,31 @@ const results: ArticleSummaryDto[] = [
   },
 ]
 
+const WL6340_AVAILABILITY: ArticlesAvailabilityDto = {
+  WL6340: {
+    available: true,
+    bestPriceExVat: 1250,
+    bestPriceIncVat: 1500,
+    availabilityByWarehouse: [],
+    computedAt: null,
+  },
+}
+
 function renderResults() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
-      <SearchResultsAvailability query="WL634" results={results} />
+      <SearchResultsAvailability
+        query="WL634"
+        results={results}
+        total={results.length}
+      />
     </QueryClientProvider>,
   )
+
+  return { queryClient }
 }
 
 describe('SearchResultsAvailability', () => {
@@ -56,41 +72,69 @@ describe('SearchResultsAvailability', () => {
     availabilityMock.mockReset()
   })
 
-  it('shows a skeleton while the availability read is in flight', () => {
+  it('renders the hits immediately and skeletons only the inventory columns', () => {
     availabilityMock.mockReturnValue(new Promise(() => {}))
     renderResults()
 
-    expect(screen.getByLabelText('Зареждане на резултатите')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'WL6340' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'OC115' })).toBeInTheDocument()
+    expect(screen.getAllByTestId('article-row-buy-skeleton')).toHaveLength(2)
   })
 
-  it('merges availability onto the metadata rows on success', async () => {
-    availabilityMock.mockResolvedValue({
-      WL6340: {
-        available: true,
-        bestPriceExVat: 1250,
-        bestPriceIncVat: 1500,
-        availabilityByWarehouse: [],
-        computedAt: null,
-      },
-    } satisfies ArticlesAvailabilityDto)
+  it('merges availability onto the rows on success', async () => {
+    availabilityMock.mockResolvedValue(WL6340_AVAILABILITY)
 
     renderResults()
 
     // WL6340 hydrates to its price; OC115 has no row and degrades to unavailable.
     expect(await screen.findByText(/15[.,]00/)).toBeInTheDocument()
     expect(screen.getByText('—')).toBeInTheDocument()
-    expect(screen.getByText('Временно изчерпан')).toBeInTheDocument()
+    expect(screen.getByText('няма налично')).toBeInTheDocument()
   })
 
-  it('shows a scoped retry state when the read fails closed', async () => {
+  it('keeps the hits visible behind a scoped retry when the read fails closed', async () => {
     const user = userEvent.setup()
     availabilityMock.mockRejectedValue(new Error('inventory unavailable'))
 
     renderResults()
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'WL6340' })).toBeInTheDocument()
+    expect(screen.getAllByText('Няма данни')).toHaveLength(2)
 
     await user.click(screen.getByRole('button', { name: 'Опитай отново' }))
     expect(availabilityMock).toHaveBeenCalledTimes(2)
+  })
+
+  // A refetch (tab refocus, retry) that fails leaves the last good read in the
+  // cache. Dropping it would blank prices the visitor can already see.
+  it('keeps the prices it already has when a later read fails', async () => {
+    availabilityMock.mockResolvedValueOnce(WL6340_AVAILABILITY)
+    const { queryClient } = renderResults()
+    expect(await screen.findByText(/15[.,]00/)).toBeInTheDocument()
+
+    availabilityMock.mockRejectedValue(new Error('inventory unavailable'))
+    await act(async () => {
+      await queryClient.refetchQueries()
+    })
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText(/15[.,]00/)).toBeInTheDocument()
+    expect(screen.queryByText('Няма данни')).not.toBeInTheDocument()
+  })
+
+  it('warns that the prices it kept may be out of date', async () => {
+    availabilityMock.mockResolvedValueOnce(WL6340_AVAILABILITY)
+    const { queryClient } = renderResults()
+    expect(await screen.findByText(/15[.,]00/)).toBeInTheDocument()
+
+    availabilityMock.mockRejectedValue(new Error('inventory unavailable'))
+    await act(async () => {
+      await queryClient.refetchQueries()
+    })
+
+    expect(
+      await screen.findByText('Показаните наличности може да не са актуални.'),
+    ).toBeInTheDocument()
   })
 })

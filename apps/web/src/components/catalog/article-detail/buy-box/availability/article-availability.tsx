@@ -4,7 +4,7 @@ import type { WarehouseAvailabilityDto } from "@vp-parts-shop/shared";
 import { deliveryBand, summariseWarehouses } from "@/lib/delivery/availability";
 import { DELIVERY_BAND } from "@/lib/delivery/bands";
 import { cn } from "@/lib/utils";
-import { WarehouseAvailabilityDialog } from "./warehouse-availability-dialog";
+import { WarehouseAvailabilityDialog } from "@/components/catalog/availability/warehouse-availability-dialog";
 
 interface ArticleAvailabilityProps {
   availabilityByWarehouse?: WarehouseAvailabilityDto[];

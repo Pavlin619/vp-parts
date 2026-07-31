@@ -1,5 +1,5 @@
-import React from 'react'
 import { render, screen } from '@testing-library/react'
+import type { ArticlesAvailabilityDto } from '@vp-parts-shop/shared'
 import { SearchResults, type SearchResultRow } from './search-results'
 import { SearchEmptyState } from './search-empty-state'
 
@@ -15,13 +15,18 @@ function resultItem(
     technicalSpecs: [],
     oemNumbers: [],
     fitsVehicle: null,
+    ...overrides,
+  }
+}
+
+const availability: ArticlesAvailabilityDto = {
+  WL6340: {
     available: true,
     bestPriceExVat: 1250,
     bestPriceIncVat: 1500,
     availabilityByWarehouse: [],
     computedAt: null,
-    ...overrides,
-  }
+  },
 }
 
 describe('SearchResults', () => {
@@ -29,6 +34,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        total={2}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
     )
@@ -37,79 +43,110 @@ describe('SearchResults', () => {
     expect(screen.getByText(/2 намерени части/)).toBeInTheDocument()
   })
 
-  it('links each result to its article detail page', () => {
-    render(<SearchResults query="WL634" results={[resultItem()]} />)
+  // The API pages the hits, so the rows on screen are not the match count.
+  it('counts every match, not just the hits on this page', () => {
+    render(<SearchResults query="WL634" total={87} results={[resultItem()]} />)
 
-    expect(screen.getByRole('link')).toHaveAttribute(
+    expect(screen.getByText(/87 намерени части/)).toBeInTheDocument()
+  })
+
+  it('says how many of the matches are on screen when they are paged', () => {
+    render(
+      <SearchResults
+        query="WL634"
+        total={87}
+        results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
+      />,
+    )
+
+    expect(screen.getByText(/показани първите 2/)).toBeInTheDocument()
+  })
+
+  it('adds no paging note when every match is on screen', () => {
+    render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
+
+    expect(screen.queryByText(/показани първите/)).not.toBeInTheDocument()
+  })
+
+  it('links each result to its article detail page', () => {
+    render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
+
+    expect(screen.getByRole('link', { name: 'WL6340' })).toHaveAttribute(
       'href',
       '/catalog/articles/WL6340',
     )
   })
 
-  it('URL-encodes special characters in the article link', () => {
-    render(
-      <SearchResults
-        query="BD"
-        results={[resultItem({ articleNumber: 'BD 0986/451' })]}
-      />,
-    )
+  it('renders the hits before availability arrives', () => {
+    render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
 
-    expect(screen.getByRole('link')).toHaveAttribute(
-      'href',
-      `/catalog/articles/${encodeURIComponent('BD 0986/451')}`,
-    )
+    expect(screen.getByRole('link', { name: 'WL6340' })).toBeInTheDocument()
+    expect(screen.getByTestId('article-row-buy-skeleton')).toBeInTheDocument()
+    expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'true')
   })
 
-  it('shows the formatted price for available articles', () => {
-    render(<SearchResults query="WL634" results={[resultItem()]} />)
+  it('shows the formatted price once availability is passed in', () => {
+    render(
+      <SearchResults
+        query="WL634"
+        total={1}
+        results={[resultItem()]}
+        availability={availability}
+      />,
+    )
 
     expect(screen.getByText(/15[.,]00/)).toBeInTheDocument()
+    expect(screen.getByRole('list')).toHaveAttribute('aria-busy', 'false')
   })
 
-  it('shows a dash instead of a price for unavailable articles', () => {
+  it('treats a hit missing from the availability map as unavailable', () => {
     render(
       <SearchResults
         query="WL634"
-        results={[resultItem({ available: false, bestPriceIncVat: null })]}
+        total={1}
+        results={[resultItem({ articleNumber: 'OC115' })]}
+        availability={availability}
       />,
     )
 
+    expect(screen.getByText('няма налично')).toBeInTheDocument()
     expect(screen.getByText('—')).toBeInTheDocument()
-    expect(screen.getByText('Временно изчерпан')).toBeInTheDocument()
   })
 
-  it('shows a positive fit indicator when the part fits the vehicle', () => {
+  it('shows a neutral unknown state when the availability read failed', () => {
     render(
       <SearchResults
         query="WL634"
+        total={1}
+        results={[resultItem()]}
+        availability={null}
+      />,
+    )
+
+    expect(screen.getByText('Няма данни')).toBeInTheDocument()
+    expect(screen.queryByText('няма налично')).not.toBeInTheDocument()
+  })
+
+  // Search is vehicle-agnostic: the fit verdict belongs to the article detail
+  // page, so a hit must not show one even if the API starts sending it.
+  it('shows no fit verdict, whichever way the API resolves it', () => {
+    const { rerender } = render(
+      <SearchResults
+        query="WL634"
+        total={1}
         results={[resultItem({ fitsVehicle: true })]}
       />,
     )
+    expect(screen.queryByText(/подходяща за/i)).not.toBeInTheDocument()
 
-    expect(
-      screen.getByText('Подходяща за вашия автомобил'),
-    ).toBeInTheDocument()
-  })
-
-  it('shows a negative fit indicator when the part does not fit', () => {
-    render(
+    rerender(
       <SearchResults
         query="WL634"
+        total={1}
         results={[resultItem({ fitsVehicle: false })]}
       />,
     )
-
-    expect(
-      screen.getByText('Не е подходяща за вашия автомобил'),
-    ).toBeInTheDocument()
-  })
-
-  it('omits the fit indicator when no vehicle is selected', () => {
-    render(<SearchResults query="WL634" results={[resultItem()]} />)
-
-    expect(
-      screen.queryByText(/за вашия автомобил/),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/подходяща за/i)).not.toBeInTheDocument()
   })
 })
 
@@ -125,9 +162,7 @@ describe('SearchEmptyState', () => {
   it('shows a prompt to enter a query when the query is blank', () => {
     render(<SearchEmptyState query="" />)
 
-    expect(
-      screen.getByText(/Въведете номер на част/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Въведете номер на част/)).toBeInTheDocument()
   })
 
   it('offers vehicle search and category navigation links', () => {

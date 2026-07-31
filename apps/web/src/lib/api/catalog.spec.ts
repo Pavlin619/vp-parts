@@ -7,7 +7,6 @@ import {
   getArticlesAvailability,
   getArticleCatalogDetail,
   getSubstitutes,
-  searchByPartNumber,
   getAutocomplete,
   manufacturersQueryOptions,
   modelSeriesQueryOptions,
@@ -127,18 +126,6 @@ describe('getSubstitutes', () => {
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/articles/ABC%2F123/substitutes',
     )
-  })
-})
-
-describe('searchByPartNumber', () => {
-  it('calls /search with the URL-encoded query', () => {
-    searchByPartNumber('WL-6340 WIX')
-    expect(mockApiFetch).toHaveBeenCalledWith('/search?q=WL-6340+WIX')
-  })
-
-  it('includes the vehicleId query param when provided', () => {
-    searchByPartNumber('WL6340', 'v-789')
-    expect(mockApiFetch).toHaveBeenCalledWith('/search?q=WL6340&vehicleId=v-789')
   })
 })
 

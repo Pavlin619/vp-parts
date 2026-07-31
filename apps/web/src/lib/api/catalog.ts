@@ -8,7 +8,6 @@ import type {
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
-  SearchResponseDto,
   AutocompleteItemDto,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
@@ -105,17 +104,7 @@ export function getSubstitutes(
   );
 }
 
-export function searchByPartNumber(
-  query: string,
-  vehicleId?: string,
-): Promise<SearchResponseDto> {
-  const params = new URLSearchParams({ q: query });
-  if (vehicleId) {
-    params.set("vehicleId", vehicleId);
-  }
-  return apiFetch<SearchResponseDto>(`/search?${params}`);
-}
-
+/** Search itself lives in `./search`; only autocomplete is browser-side. */
 export function getAutocomplete(query: string): Promise<AutocompleteItemDto[]> {
   return apiFetch<AutocompleteItemDto[]>(
     `/search/autocomplete?${new URLSearchParams({ q: query })}`,

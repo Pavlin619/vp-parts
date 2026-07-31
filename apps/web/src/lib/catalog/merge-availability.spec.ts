@@ -1,4 +1,8 @@
-import { mergeArticleAvailability } from "./merge-availability";
+import {
+  mergeArticleAvailability,
+  selectArticleAvailability,
+  UNAVAILABLE_DETAIL,
+} from "./merge-availability";
 import type {
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
@@ -101,5 +105,37 @@ describe("mergeArticleAvailability", () => {
       "WL6340",
       "OC115",
     ]);
+  });
+});
+
+describe("selectArticleAvailability", () => {
+  const availability: ArticlesAvailabilityDto = {
+    WL6340: {
+      available: true,
+      bestPriceExVat: 1250,
+      bestPriceIncVat: 1500,
+      availabilityByWarehouse: [],
+      computedAt: null,
+    },
+  };
+
+  it("returns the article's detail when the read has a row for it", () => {
+    expect(selectArticleAvailability(availability, "WL6340")).toEqual(
+      availability.WL6340,
+    );
+  });
+
+  it("degrades a number the read had no row for to the neutral detail", () => {
+    expect(selectArticleAvailability(availability, "OC115")).toEqual(
+      UNAVAILABLE_DETAIL,
+    );
+  });
+
+  it("carries the pending state through so the row can skeleton", () => {
+    expect(selectArticleAvailability(undefined, "WL6340")).toBeUndefined();
+  });
+
+  it("carries the failed state through so the row can show 'unknown'", () => {
+    expect(selectArticleAvailability(null, "WL6340")).toBeNull();
   });
 });

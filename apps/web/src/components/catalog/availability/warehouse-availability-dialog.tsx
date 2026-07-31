@@ -2,7 +2,10 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { ChevronRight, Info, MapPin, X } from "lucide-react";
+import type { ReactNode } from "react";
 import type { WarehouseRow } from "@/lib/delivery/availability";
+import { useNow } from "@/hooks/use-now";
+import { cn } from "@/lib/utils";
 import { WarehouseBranchRow } from "./warehouse-branch-row";
 
 interface WarehouseAvailabilityDialogProps {
@@ -10,28 +13,47 @@ interface WarehouseAvailabilityDialogProps {
   warehouses: WarehouseRow[];
   quantity: number;
   subtitle?: string;
-  now: Date | null;
+  /**
+   * A caller-owned clock used to format the per-warehouse dates. Omit it and
+   * the panel runs its own — which is what list surfaces want, since a clock
+   * per row would tick every closed row twice a minute for nothing.
+   */
+  now?: Date | null;
+  /** Trigger contents — defaults to the buy box's chevron link. */
+  trigger?: ReactNode;
+  triggerClassName?: string;
 }
 
+const DEFAULT_TRIGGER_CLASS_NAME =
+  "ml-[17px] mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent-hover hover:[&_svg]:translate-x-0.5";
+
 /**
- * The full per-warehouse availability breakdown, opened from the buy box stock
- * summary. Lists each stocked warehouse with its projected ready date and order
- * cut-off; the backend owns the dates, this only lays them out.
+ * The full per-warehouse availability breakdown. Opened from the buy box stock
+ * summary and from a catalog row's stock cell, so the trigger is overridable
+ * while the panel itself stays identical everywhere. Lists each stocked
+ * warehouse with its projected ready date and order cut-off; the backend owns
+ * the dates, this only lays them out.
  */
 export function WarehouseAvailabilityDialog({
   warehouses,
   quantity,
   subtitle,
   now,
+  trigger,
+  triggerClassName,
 }: WarehouseAvailabilityDialogProps) {
   return (
     <Dialog.Root>
-      <Dialog.Trigger className="ml-[17px] mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-accent-hover hover:[&_svg]:translate-x-0.5">
-        Наличност по складове
-        <ChevronRight
-          className="h-3.5 w-3.5 transition-transform"
-          aria-hidden="true"
-        />
+      <Dialog.Trigger className={cn(triggerClassName ?? DEFAULT_TRIGGER_CLASS_NAME)}>
+        {trigger ?? (
+          <>
+            Наличност по складове
+            <ChevronRight
+              className="h-3.5 w-3.5 transition-transform"
+              aria-hidden="true"
+            />
+          </>
+        )}
       </Dialog.Trigger>
 
       <Dialog.Portal>
@@ -76,20 +98,46 @@ export function WarehouseAvailabilityDialog({
                 <span className="flex-1">Готово за / поръчай до</span>
                 <span className="shrink-0">Налич.</span>
               </div>
-              <div className="divide-y divide-line">
-                {warehouses.map((warehouse) => (
-                  <WarehouseBranchRow
-                    key={warehouse.warehouseId}
-                    warehouse={warehouse}
-                    quantity={quantity}
-                    now={now}
-                  />
-                ))}
-              </div>
+              <WarehouseBranchList
+                warehouses={warehouses}
+                quantity={quantity}
+                now={now}
+              />
             </div>
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/**
+ * The warehouse lines. Lives inside the portal so its clock only starts once
+ * the dialog is actually open; a caller-supplied `now` still wins so the buy
+ * box keeps formatting every date against its single shared clock.
+ */
+function WarehouseBranchList({
+  warehouses,
+  quantity,
+  now,
+}: {
+  warehouses: WarehouseRow[];
+  quantity: number;
+  now?: Date | null;
+}) {
+  const liveNow = useNow();
+  const effectiveNow = now === undefined ? liveNow : now;
+
+  return (
+    <div className="divide-y divide-line">
+      {warehouses.map((warehouse) => (
+        <WarehouseBranchRow
+          key={warehouse.warehouseId}
+          warehouse={warehouse}
+          quantity={quantity}
+          now={effectiveNow}
+        />
+      ))}
+    </div>
   );
 }
