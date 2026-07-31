@@ -25,6 +25,45 @@ describe('mapArticleSummary', () => {
     });
   });
 
+  it('drops an OE number TecDoc repeats for several manufacturers', () => {
+    const raw: TecDocArticleRecord = {
+      articleNumber: 'OC-115',
+      mfrName: 'MANN-FILTER',
+      oemNumbers: [
+        { articleNumber: '06J 115 403 Q' },
+        { articleNumber: '06J 115 403 Q' },
+        { articleNumber: '1J0 115 403 C' },
+      ],
+    };
+
+    expect(mapArticleSummary(raw).oemNumbers).toEqual([
+      '06J 115 403 Q',
+      '1J0 115 403 C',
+    ]);
+  });
+
+  it('drops a repeated criterion but keeps a repeated label with a new value', () => {
+    const raw: TecDocArticleRecord = {
+      articleNumber: 'OC-115',
+      mfrName: 'MANN-FILTER',
+      articleCriteria: [
+        { criteriaDescription: 'Height', formattedValue: '89 mm' },
+        { criteriaDescription: 'Height', formattedValue: '89 mm' },
+        { criteriaDescription: 'Note', formattedValue: 'with ABS' },
+        {
+          criteriaDescription: 'Note',
+          formattedValue: 'right-hand drive only',
+        },
+      ],
+    };
+
+    expect(mapArticleSummary(raw).technicalSpecs).toEqual([
+      { key: 'Height', value: '89 mm' },
+      { key: 'Note', value: 'with ABS' },
+      { key: 'Note', value: 'right-hand drive only' },
+    ]);
+  });
+
   it('defaults optional collections and leaves the brand logo / fit for later layers', () => {
     const raw: TecDocArticleRecord = {
       articleNumber: 'X1',

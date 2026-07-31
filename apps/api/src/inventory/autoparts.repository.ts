@@ -27,6 +27,15 @@ interface RawAutopartRow {
  * Read-only access to the backoffice-owned `public.autoparts` table — our own
  * stock. Checked first: when we carry a part the displayed price is locked to
  * our sell price. The shop role has column-scoped SELECT only; never writes.
+ *
+ * TODO(inventory-keying): confirm `tecdoc_number` alone identifies a part, i.e.
+ * that the WHERE clauses below are narrow enough. TecDoc keys an article by
+ * brand *and* article number, so two data suppliers shipping the same number
+ * would both match here and one brand's part could be priced from another's
+ * stock. The per-number row array hides it, because it cannot distinguish
+ * "several stock lines for this part" from "two brands collided". Check how the
+ * backoffice fills the table; if the number is not unique across brands, these
+ * lookups need the brand too.
  */
 @Injectable()
 export class AutopartsRepository {

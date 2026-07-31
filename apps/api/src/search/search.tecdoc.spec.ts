@@ -48,6 +48,34 @@ describe('SearchTecDoc', () => {
       expect(result.attributes).toEqual([]);
     });
 
+    // TecDoc omits a field rather than sending a zero, and the lane resolver
+    // reads `total > 0` to decide a lane matched — so an absent total would
+    // discard a page that did come back with articles.
+    it('falls back to the page size when TecDoc omits the total', async () => {
+      call.mockResolvedValueOnce({
+        articles: [record('WL6340'), record('WL6341')],
+      });
+
+      const result = await tecdoc.searchArticles('WL634', undefined, {
+        type: 10,
+        matchType: 'prefix_or_suffix',
+      });
+
+      expect(result.total).toBe(2);
+    });
+
+    it('reports a zero total for an empty page with no total', async () => {
+      call.mockResolvedValueOnce({});
+
+      const result = await tecdoc.searchArticles('WL634', undefined, {
+        type: 10,
+        matchType: 'prefix_or_suffix',
+      });
+
+      expect(result.total).toBe(0);
+      expect(result.items).toEqual([]);
+    });
+
     it('omits the match type for a free-text search', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 0,

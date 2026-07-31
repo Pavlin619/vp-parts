@@ -64,8 +64,10 @@ export class SearchTecDoc {
     filters?: SearchFilters,
   ): Promise<PaginatedSearchArticlesDto> {
     const data = await this.transport.call<{
-      totalMatchingArticles: number;
-      articles: TecDocArticleRecord[];
+      // Optional like the collections below: TecDoc omits a field rather than
+      // sending a zero or an empty one.
+      totalMatchingArticles?: number;
+      articles?: TecDocArticleRecord[];
       dataSupplierFacets?: { counts: TecDocBrandFacetCount[] };
       criteriaFacets?: { counts: TecDocCriteriaFacetCount[] };
       assemblyGroupFacets?: { counts: TecDocAssemblyGroupFacetCount[] };
@@ -80,12 +82,18 @@ export class SearchTecDoc {
     );
 
     const atLeaf = this.isAtLeafCategory(categoryNavigation, filters);
+    const items = (data.articles ?? []).map((article) =>
+      mapArticleSummary(article),
+    );
 
     return {
-      total: data.totalMatchingArticles,
+      // The lane resolver reads `total > 0` to decide a lane matched, so an
+      // absent total must not read as "no matches" for a page that did return
+      // articles. Falling back to the page keeps the two consistent.
+      total: data.totalMatchingArticles ?? items.length,
       page,
       pageSize,
-      items: (data.articles ?? []).map((article) => mapArticleSummary(article)),
+      items,
       facets: mapBrandFacets(data.dataSupplierFacets?.counts),
       attributes: atLeaf ? mapAttributeFacets(data.criteriaFacets?.counts) : [],
       categoryNavigation,

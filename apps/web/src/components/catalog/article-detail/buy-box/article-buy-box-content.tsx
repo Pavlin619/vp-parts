@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { useLiveDeliveryClock } from "@/hooks/use-live-delivery-clock";
 import { useFitVehicleName } from "@/hooks/use-fit-vehicle-name";
-import { VehicleFitBadge } from "../vehicle-fit-badge";
+import { VehicleFitBadge } from "@/components/catalog/vehicle-fit-badge";
 import { ArticleAvailability } from "./availability/article-availability";
 import { DeliveryEstimate } from "./delivery/delivery-estimate";
 import { PriceBlock } from "./price-block";

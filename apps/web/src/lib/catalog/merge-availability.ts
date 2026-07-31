@@ -29,3 +29,33 @@ export function mergeArticleAvailability<T extends { articleNumber: string }>(
     ...(availability[item.articleNumber] ?? UNAVAILABLE_DETAIL),
   }));
 }
+
+/**
+ * Live inventory for one row of a catalog surface, as the three states a
+ * separately-fetched availability read can be in:
+ *  - `undefined` — still in flight, the row shows skeletons;
+ *  - `null` — the read failed, the row shows a neutral "unknown" state;
+ *  - the detail — resolved.
+ *
+ * Modelling the states in the value (rather than as extra boolean props) keeps
+ * every row surface honest: a failed read can never be mistaken for "this part
+ * is out of stock".
+ */
+export type RowAvailability = ArticleInventoryDetailDto | null | undefined;
+
+/**
+ * Picks one article's live inventory out of a batch availability read, carrying
+ * the pending/failed state through untouched. A number the read had no row for
+ * degrades to {@link UNAVAILABLE_DETAIL}, matching
+ * {@link mergeArticleAvailability}.
+ */
+export function selectArticleAvailability(
+  availability: ArticlesAvailabilityDto | null | undefined,
+  articleNumber: string,
+): RowAvailability {
+  if (!availability) {
+    return availability;
+  }
+
+  return availability[articleNumber] ?? UNAVAILABLE_DETAIL;
+}
