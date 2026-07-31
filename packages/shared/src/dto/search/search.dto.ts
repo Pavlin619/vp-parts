@@ -59,12 +59,23 @@ export type PaginatedSearchArticlesDto = PaginatedCatalogArticlesDto & {
   categoryNavigation: CategoryNavigationDto;
 };
 
+/**
+ * The `/search` response.
+ *
+ * The echoed query and the pagination envelope are always sent, so a client can
+ * render the result list without guarding them. The four blocks below them are
+ * omitted rather than sent empty, which makes their absence the meaningful
+ * signal: no facet to narrow by, no sibling categories to drill into, no
+ * alternatives worth suggesting. Keep that split — widening the optional four to
+ * required would force empty arrays onto every response, and narrowing the
+ * required five would put a guard back into every consumer.
+ */
 export interface SearchResponseDto {
-  query?: string;
-  results?: ArticleSummaryDto[];
-  total?: number;
-  page?: number;
-  pageSize?: number;
+  query: string;
+  results: ArticleSummaryDto[];
+  total: number;
+  page: number;
+  pageSize: number;
   facets?: SearchFacetDto[];
   attributes?: AttributeFacetDto[];
   categoryNavigation?: CategoryNavigationDto;
