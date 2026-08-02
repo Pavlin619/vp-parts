@@ -20,6 +20,7 @@ jest.mock('@/lib/api/catalog', () => ({
 const results: ArticleSummaryDto[] = [
   {
     articleNumber: 'WL6340',
+    brandId: '268',
     brandName: 'WIX',
     brandLogoUrl: null,
     description: 'Oil Filter',
@@ -30,6 +31,7 @@ const results: ArticleSummaryDto[] = [
   },
   {
     articleNumber: 'OC115',
+    brandId: '268',
     brandName: 'MANN',
     brandLogoUrl: null,
     description: 'Oil Filter',

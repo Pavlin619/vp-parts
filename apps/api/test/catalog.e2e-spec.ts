@@ -50,6 +50,8 @@ const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
   { id: '100002', name: 'Brake Discs', parentId: '100001' },
 ];
 
+const BOSCH_BRAND_ID = '30';
+
 const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
   total: 2,
   page: 1,
@@ -57,6 +59,7 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
   items: [
     {
       articleNumber: 'BD-001',
+      brandId: BOSCH_BRAND_ID,
       brandName: 'Bosch',
       brandLogoUrl: null,
       description: 'Brake Disc',
@@ -67,6 +70,7 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
     },
     {
       articleNumber: 'BD-002',
+      brandId: '101',
       brandName: 'Ferodo',
       brandLogoUrl: null,
       description: 'Brake Disc',
@@ -80,19 +84,30 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
 
 const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: 'BD-001',
+  brandId: BOSCH_BRAND_ID,
   brandName: 'Bosch',
   brandLogoUrl: null,
   description: 'Brake Disc',
   thumbnailUrl: 'https://example.com/bd-001.jpg',
   images: ['https://example.com/bd-001.jpg'],
   technicalSpecs: [{ key: 'Diameter', value: '288 mm' }],
-  oemNumbers: ['1K0 615 301 AA'],
+  oemNumbers: [
+    {
+      articleNumber: '1K0 615 301 AA',
+      manufacturerName: 'VW',
+      interchangeability: null,
+    },
+  ],
   compatibleVehicles: [],
   fitsVehicle: null,
 };
 
 const BRANDS: BrandDto[] = [
-  { brandName: 'Bosch', logoUrl: 'https://logos.example/bosch.png' },
+  {
+    brandId: BOSCH_BRAND_ID,
+    brandName: 'Bosch',
+    logoUrl: 'https://logos.example/bosch.png',
+  },
 ];
 
 const mockTecDocClient = {
@@ -104,6 +119,9 @@ const mockTecDocClient = {
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
   getSubstitutes: jest.fn(),
+  getLegacyArticleIds: jest.fn(),
+  getLinkedTargetIds: jest.fn(),
+  getLinkageTargets: jest.fn(),
   searchArticles: jest.fn(),
   getAutocompleteArticles: jest.fn(),
   getAutocompleteTerms: jest.fn(),
@@ -132,6 +150,11 @@ describe('CatalogController (e2e)', () => {
     // The article-detail flow joins a brand logo via getBrands; give every test
     // a default brand set so the join resolves.
     mockTecDocClient.getBrands.mockResolvedValue(BRANDS);
+    // The linked-vehicles flow walks three TecDoc reads; default them to an
+    // empty chain so a test only has to stub the step it cares about.
+    mockTecDocClient.getLegacyArticleIds.mockResolvedValue([]);
+    mockTecDocClient.getLinkedTargetIds.mockResolvedValue([]);
+    mockTecDocClient.getLinkageTargets.mockResolvedValue([]);
     await redisClient.flushall();
   });
 
@@ -355,17 +378,17 @@ describe('CatalogController (e2e)', () => {
     });
   });
 
-  describe('GET /catalog/articles/:articleNumber', () => {
+  describe('GET /catalog/brands/:brandId/articles/:articleNumber', () => {
     it('returns cacheable catalog metadata only, without live inventory', async () => {
       mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001')
+        .get('/catalog/brands/30/articles/BD-001')
         .expect(200);
 
       expect(res.body.articleNumber).toBe('BD-001');
       expect(res.body.brandName).toBe('Bosch');
-      // Logo joined from getBrands by brand name.
+      // Logo joined from getBrands by brand id.
       expect(res.body.brandLogoUrl).toBe('https://logos.example/bosch.png');
       expect(res.body.images).toEqual(['https://example.com/bd-001.jpg']);
       expect(res.body.technicalSpecs).toEqual([
@@ -378,22 +401,58 @@ describe('CatalogController (e2e)', () => {
       expect(res.body).not.toHaveProperty('availabilityByWarehouse');
     });
 
-    it('forwards the optional vehicleId query param to TecDoc', async () => {
+    it('forwards the brand and the optional vehicleId to TecDoc', async () => {
       mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
 
       await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001?vehicleId=10001')
+        .get('/catalog/brands/30/articles/BD-001?vehicleId=10001')
         .expect(200);
 
       expect(mockTecDocClient.getArticleDetails).toHaveBeenCalledWith(
+        30,
         'BD-001',
         10001,
       );
     });
 
+    // The regression this route exists for: an article number is unique only
+    // within a data supplier, so two brands filing one number are two parts —
+    // and each has to be served its own, not whichever was cached first.
+    it('serves two brands sharing an article number as different parts', async () => {
+      mockTecDocClient.getArticleDetails
+        .mockResolvedValueOnce({ ...ARTICLE_DETAIL, articleNumber: 'OX 982D' })
+        .mockResolvedValueOnce({
+          ...ARTICLE_DETAIL,
+          articleNumber: 'OX 982D',
+          brandId: '94',
+          brandName: 'KNECHT',
+          technicalSpecs: [{ key: 'Filter type', value: 'Filter Insert' }],
+        });
+
+      const bosch = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/OX%20982D')
+        .expect(200);
+      const knecht = await request(app.getHttpServer())
+        .get('/catalog/brands/94/articles/OX%20982D')
+        .expect(200);
+
+      expect(bosch.body.brandName).toBe('Bosch');
+      expect(knecht.body.brandName).toBe('KNECHT');
+      expect(knecht.body.technicalSpecs).not.toEqual(bosch.body.technicalSpecs);
+      expect(mockTecDocClient.getArticleDetails).toHaveBeenCalledTimes(2);
+    });
+
     it('rejects a vehicleId that is not a TecDoc id', async () => {
       await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001?vehicleId=abc')
+        .get('/catalog/brands/30/articles/BD-001?vehicleId=abc')
+        .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
+
+      expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
+
+    it('rejects a brandId that is not a TecDoc id', async () => {
+      await request(app.getHttpServer())
+        .get('/catalog/brands/abc/articles/BD-001')
         .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
 
       expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
@@ -405,7 +464,7 @@ describe('CatalogController (e2e)', () => {
       );
 
       await request(app.getHttpServer())
-        .get('/catalog/articles/NOTFOUND')
+        .get('/catalog/brands/30/articles/NOTFOUND')
         .expect(404, { statusCode: 404, errorCode: 'ARTICLE_NOT_FOUND' });
     });
 
@@ -417,7 +476,7 @@ describe('CatalogController (e2e)', () => {
       );
 
       await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001')
+        .get('/catalog/brands/30/articles/BD-001')
         .expect(503, { statusCode: 503, errorCode: 'CATALOG_UNAVAILABLE' });
     });
   });
@@ -454,6 +513,94 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('GET /catalog/articles/:articleNumber/alternative-numbers', () => {
+    it('returns the cross-reference numbers with the brand that files them', async () => {
+      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([
+        {
+          articleNumber: 'OC115',
+          brandName: 'MANN-FILTER',
+          description: 'Oil Filter',
+          thumbnailUrl: null,
+        },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles/OX%20982D/alternative-numbers')
+        .expect(200);
+
+      expect(mockTecDocClient.getSubstitutes).toHaveBeenCalledWith('OX 982D');
+      // The section renders chips, so the substitutes' catalog metadata is
+      // projected away rather than shipped to every expanded row.
+      expect(res.body).toEqual([
+        { articleNumber: 'OC115', brandName: 'MANN-FILTER' },
+      ]);
+    });
+
+    it('returns an empty array when the part has no cross-references', async () => {
+      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles/BD-004/alternative-numbers')
+        .expect(200);
+
+      expect(res.body).toEqual([]);
+    });
+  });
+
+  describe('GET /catalog/brands/:brandId/articles/:articleNumber/linked-vehicles', () => {
+    it('returns the vehicles the part fits', async () => {
+      mockTecDocClient.getLegacyArticleIds.mockResolvedValueOnce([555]);
+      mockTecDocClient.getLinkedTargetIds.mockResolvedValueOnce([10020]);
+      mockTecDocClient.getLinkageTargets.mockResolvedValueOnce([
+        {
+          vehicleId: '10020',
+          manufacturerName: 'BMW',
+          modelSeriesName: '3 Series (E90)',
+          name: '320d',
+          yearFrom: 2005,
+          yearTo: 2011,
+          powerKw: 130,
+          powerHp: 177,
+          fuelType: 'Diesel',
+          engineCode: 'N47 D20 C',
+        },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/94/articles/OX%20982D/linked-vehicles')
+        .expect(200);
+
+      expect(mockTecDocClient.getLegacyArticleIds).toHaveBeenCalledWith(
+        94,
+        'OX 982D',
+      );
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({
+        vehicleId: '10020',
+        manufacturerName: 'BMW',
+        name: '320d',
+      });
+    });
+
+    it('returns an empty array when the part has no catalogued linkages', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/101/articles/BD-002/linked-vehicles')
+        .expect(200);
+
+      expect(res.body).toEqual([]);
+    });
+
+    // The route sits under the same prefix as the article detail route, which
+    // matches a single trailing segment — the sub-route must win, not 404.
+    it('does not collide with the article detail route', async () => {
+      await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-003/linked-vehicles')
+        .expect(200);
+
+      expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
     });
   });
 });

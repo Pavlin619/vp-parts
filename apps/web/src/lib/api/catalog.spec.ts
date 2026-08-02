@@ -7,7 +7,11 @@ import {
   getArticlesAvailability,
   getArticleCatalogDetail,
   getSubstitutes,
+  getLinkedVehicles,
+  getAlternativeNumbers,
   getAutocomplete,
+  alternativeNumbersQueryOptions,
+  linkedVehiclesQueryOptions,
   manufacturersQueryOptions,
   modelSeriesQueryOptions,
   variantsQueryOptions,
@@ -95,21 +99,27 @@ describe('getArticlesAvailability', () => {
 })
 
 describe('getArticleCatalogDetail', () => {
-  it('requests the metadata endpoint without a query when no vehicleId is given', () => {
-    getArticleCatalogDetail('ABC-123')
-    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/articles/ABC-123')
+  // The number alone is not an identity — two TecDoc data suppliers can file
+  // the same one — so the brand is part of the path, not an optional filter.
+  it('requests the brand-scoped metadata endpoint without a query when no vehicleId is given', () => {
+    getArticleCatalogDetail('30', 'ABC-123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/30/articles/ABC-123',
+    )
   })
 
   it('forwards the vehicleId so fitsVehicle is vehicle-scoped', () => {
-    getArticleCatalogDetail('ABC-123', 'v-789')
+    getArticleCatalogDetail('30', 'ABC-123', 'v-789')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC-123?vehicleId=v-789',
+      '/catalog/brands/30/articles/ABC-123?vehicleId=v-789',
     )
   })
 
   it('URL-encodes special characters in the article number', () => {
-    getArticleCatalogDetail('ABC/123 XYZ')
-    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/articles/ABC%2F123%20XYZ')
+    getArticleCatalogDetail('30', 'ABC/123 XYZ')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/30/articles/ABC%2F123%20XYZ',
+    )
   })
 })
 
@@ -125,6 +135,81 @@ describe('getSubstitutes', () => {
     getSubstitutes('ABC/123')
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/articles/ABC%2F123/substitutes',
+    )
+  })
+})
+
+describe('getLinkedVehicles', () => {
+  it('calls the brand-scoped linked-vehicles endpoint', () => {
+    getLinkedVehicles('94', 'OX 982D')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/94/articles/OX%20982D/linked-vehicles',
+    )
+  })
+
+  it('URL-encodes special characters in the article number', () => {
+    getLinkedVehicles('94', 'ABC/123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/94/articles/ABC%2F123/linked-vehicles',
+    )
+  })
+})
+
+describe('getAlternativeNumbers', () => {
+  it('calls the alternative-numbers endpoint for the article number', () => {
+    getAlternativeNumbers('OX 982D')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/OX%20982D/alternative-numbers',
+    )
+  })
+
+  it('URL-encodes special characters in the article number', () => {
+    getAlternativeNumbers('ABC/123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/ABC%2F123/alternative-numbers',
+    )
+  })
+})
+
+describe('linkedVehiclesQueryOptions', () => {
+  it('keys by the brand and the article number', () => {
+    expect(linkedVehiclesQueryOptions('94', 'OX 982D').queryKey).toEqual([
+      'catalog',
+      'linked-vehicles',
+      '94',
+      'OX 982D',
+    ])
+  })
+
+  // Two brands filing one number are two parts with two different vehicle
+  // lists; a shared key would serve one part's vehicles for the other.
+  it('does not share a cache entry between two brands of one number', () => {
+    expect(linkedVehiclesQueryOptions('30', 'OX 982D').queryKey).not.toEqual(
+      linkedVehiclesQueryOptions('94', 'OX 982D').queryKey,
+    )
+  })
+
+  it('stays fresh for an hour', () => {
+    expect(linkedVehiclesQueryOptions('94', 'OX 982D').staleTime).toBe(
+      60 * 60 * 1000,
+    )
+  })
+})
+
+describe('alternativeNumbersQueryOptions', () => {
+  it('keys by the article number', () => {
+    expect(alternativeNumbersQueryOptions('OX 982D').queryKey).toEqual([
+      'catalog',
+      'alternative-numbers',
+      'OX 982D',
+    ])
+  })
+
+  // Nothing in the payload is price-bearing, so reopening the section on
+  // another row for the same part must not refetch.
+  it('stays fresh for an hour', () => {
+    expect(alternativeNumbersQueryOptions('OX 982D').staleTime).toBe(
+      60 * 60 * 1000,
     )
   })
 })

@@ -5,7 +5,11 @@ import {
   VehicleVariantDto,
   AssemblyGroupDto,
 } from '@vp-parts-shop/shared';
-import { TecDocTransport } from '../../tecdoc';
+import {
+  AssemblyGroupType,
+  LinkageTargetType,
+  TecDocTransport,
+} from '../../tecdoc';
 
 /**
  * TecDoc source for the vehicle-selection tree: manufacturers, model series,
@@ -29,7 +33,7 @@ export class VehiclesTecDoc {
     }>('getLinkageTargets', {
       linkageTargetCountry: 'BG',
       lang: 'bg',
-      linkageTargetType: 'P',
+      linkageTargetType: LinkageTargetType.Vehicle,
       perPage: 0,
       page: 1,
       includeMfrFacets: true,
@@ -49,7 +53,7 @@ export class VehiclesTecDoc {
     }>('getLinkageTargets', {
       linkageTargetCountry: 'BG',
       lang: 'bg',
-      linkageTargetType: 'P',
+      linkageTargetType: LinkageTargetType.Vehicle,
       mfrIds: manufacturerId,
       perPage: 0,
       page: 1,
@@ -79,7 +83,7 @@ export class VehiclesTecDoc {
     }>('getLinkageTargets', {
       linkageTargetCountry: 'BG',
       lang: 'bg',
-      linkageTargetType: 'P',
+      linkageTargetType: LinkageTargetType.Vehicle,
       vehicleModelSeriesIds: seriesId,
       perPage: 100,
       page: 1,
@@ -116,10 +120,10 @@ export class VehiclesTecDoc {
       page: 1,
       assemblyGroupFacetOptions: {
         enabled: true,
-        assemblyGroupType: 'P',
+        assemblyGroupType: AssemblyGroupType.PassengerCar,
         includeCompleteTree: true,
       },
-      linkageTargetType: 'P',
+      linkageTargetType: LinkageTargetType.Vehicle,
       linkageTargetId: vehicleId,
     });
 

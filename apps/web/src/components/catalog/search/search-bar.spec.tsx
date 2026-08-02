@@ -36,12 +36,14 @@ const SUGGESTIONS: AutocompleteItemDto[] = [
   {
     kind: 'article',
     articleNumber: 'WL6340',
+    brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter',
   },
   {
     kind: 'article',
     articleNumber: 'WL6341',
+    brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter Heavy Duty',
   },
@@ -109,6 +111,7 @@ describe('SearchBar', () => {
       Array.from({ length: 10 }, (_, i) => ({
         kind: 'article',
         articleNumber: `WL63${i}`,
+        brandId: '268',
         brandName: 'WIX',
         description: 'Oil Filter',
       })),
@@ -129,7 +132,7 @@ describe('SearchBar', () => {
     await user.type(screen.getByRole('combobox'), 'WL6')
     await user.click(await screen.findByText('WL6340'))
 
-    expect(pushMock).toHaveBeenCalledWith('/catalog/articles/WL6340')
+    expect(pushMock).toHaveBeenCalledWith('/catalog/articles/268/WL6340')
   })
 
   it('navigates to the search page on submit', async () => {
@@ -181,6 +184,6 @@ describe('SearchBar', () => {
 
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}')
 
-    expect(pushMock).toHaveBeenCalledWith('/catalog/articles/WL6341')
+    expect(pushMock).toHaveBeenCalledWith('/catalog/articles/268/WL6341')
   })
 })

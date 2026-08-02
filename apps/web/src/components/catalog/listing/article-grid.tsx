@@ -22,8 +22,11 @@ export function ArticleGrid({ articles, total }: ArticleGridProps) {
           className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
           aria-label="Списък с части"
         >
+          {/* Brand and number together: a number alone is not unique in
+              TecDoc, and two brands filing one would collapse into a single
+              card. */}
           {articles.map((article) => (
-            <li key={article.articleNumber}>
+            <li key={`${article.brandId}-${article.articleNumber}`}>
               <ArticleCard article={article} />
             </li>
           ))}

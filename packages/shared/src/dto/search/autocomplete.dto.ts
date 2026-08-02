@@ -12,6 +12,8 @@ export type AutocompleteItemDto =
 export interface ArticleAutocompleteItemDto {
   kind: 'article';
   articleNumber: string;
+  /** TecDoc `dataSupplierId`; needed with the number to deep-link the part. */
+  brandId: string;
   brandName: string;
   description: string;
 }

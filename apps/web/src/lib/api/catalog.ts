@@ -9,6 +9,8 @@ import type {
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
+  AlternativeNumberDto,
+  LinkedVehicleDto,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
 
@@ -71,14 +73,25 @@ export function getArticlesAvailability(
 }
 
 /**
+ * The API path identifying one specific article. An article number is unique
+ * only within a TecDoc brand (`dataSupplierId`), so both halves are always sent
+ * together — a number-only lookup resolves to whichever brand the catalogue
+ * happened to sort first.
+ */
+function articlePath(brandId: string, articleNumber: string): string {
+  return `/catalog/brands/${encodeURIComponent(brandId)}/articles/${encodeURIComponent(articleNumber)}`;
+}
+
+/**
  * Stable TecDoc catalog metadata only — safe to cache; carries `fitsVehicle`.
  * Live price/availability is fetched separately via {@link getArticlesAvailability}.
  */
 export function getArticleCatalogDetail(
+  brandId: string,
   articleNumber: string,
   vehicleId?: string,
 ): Promise<ArticleCatalogDetailDto> {
-  const path = `/catalog/articles/${encodeURIComponent(articleNumber)}`;
+  const path = articlePath(brandId, articleNumber);
   const params = new URLSearchParams();
 
   if (vehicleId) {
@@ -101,6 +114,33 @@ export function getSubstitutes(
 ): Promise<ArticleSummaryDto[]> {
   return apiFetch<ArticleSummaryDto[]>(
     `/catalog/articles/${encodeURIComponent(articleNumber)}/substitutes`,
+  );
+}
+
+/**
+ * The numbers other brands sell the same part under. Its own read because the
+ * catalog response carries only the OE numbers beside them — the
+ * alternative-numbers section fetches this when a visitor opens it.
+ */
+export function getAlternativeNumbers(
+  articleNumber: string,
+): Promise<AlternativeNumberDto[]> {
+  return apiFetch<AlternativeNumberDto[]>(
+    `/catalog/articles/${encodeURIComponent(articleNumber)}/alternative-numbers`,
+  );
+}
+
+/**
+ * The vehicles an article fits. Its own read because no list surface shows them
+ * — the applicable-vehicles section fetches this when a visitor opens it, so a
+ * part with hundreds of linkages costs nothing until someone asks.
+ */
+export function getLinkedVehicles(
+  brandId: string,
+  articleNumber: string,
+): Promise<LinkedVehicleDto[]> {
+  return apiFetch<LinkedVehicleDto[]>(
+    `${articlePath(brandId, articleNumber)}/linked-vehicles`,
   );
 }
 
@@ -155,4 +195,33 @@ export const autocompleteQueryOptions = (query: string) =>
   queryOptions({
     queryKey: ["catalog", "autocomplete", query],
     queryFn: () => getAutocomplete(query),
+  });
+
+/**
+ * Applicable vehicles for one article. Pure TecDoc catalog data with no
+ * inventory in it, so it stays fresh far longer than anything price-bearing —
+ * long enough that reopening the section, or opening it on another row for the
+ * same part, never refetches.
+ */
+export const linkedVehiclesQueryOptions = (
+  brandId: string,
+  articleNumber: string,
+) =>
+  queryOptions({
+    queryKey: ["catalog", "linked-vehicles", brandId, articleNumber],
+    queryFn: () => getLinkedVehicles(brandId, articleNumber),
+    staleTime: 60 * 60 * 1000,
+  });
+
+/**
+ * Cross-reference numbers for one article. Pure TecDoc catalog data with no
+ * inventory in it, so it stays fresh as long as the linkages above — long
+ * enough that reopening the section, or opening it on another row for the same
+ * part, never refetches.
+ */
+export const alternativeNumbersQueryOptions = (articleNumber: string) =>
+  queryOptions({
+    queryKey: ["catalog", "alternative-numbers", articleNumber],
+    queryFn: () => getAlternativeNumbers(articleNumber),
+    staleTime: 60 * 60 * 1000,
   });

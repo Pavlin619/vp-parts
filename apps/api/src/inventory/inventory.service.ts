@@ -65,6 +65,15 @@ export class InventoryService {
    * the global filter) rather than reporting stock as unavailable. It is up to
    * the caller/UI to decide what to render on that error. Article numbers with
    * no stock still resolve to `available: false` — that is not an error.
+   *
+   * TODO(inventory-brand-scope): key this on brand + number, as the catalog
+   * already does. An article number is not unique in TecDoc, but
+   * `public.autoparts` and `public.supplier_stock` are keyed by `tecdoc_number`
+   * alone, so two suppliers filing one number collapse into a single row here —
+   * meaning we can quote one part's price for another. Those tables are owned
+   * by the Spring Boot backoffice, so the column has to be added there (and
+   * backfilled from the supplier feeds) before this signature can change; needs
+   * a cross-team ticket rather than a change in this repo.
    */
   async getAvailability(
     articleNumbers: string[],

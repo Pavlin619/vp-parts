@@ -12,8 +12,14 @@ import {
   ArticleBuyBox,
 } from "@/components/catalog/article-detail";
 
+/**
+ * The route carries the brand as well as the number because a TecDoc article
+ * number is unique only within a data supplier — two brands can file the same
+ * one, and a number-only route resolves to whichever the catalogue sorted
+ * first.
+ */
 interface ArticleDetailPageProps {
-  params: Promise<{ articleNumber: string }>;
+  params: Promise<{ brandId: string; articleNumber: string }>;
   searchParams: Promise<{ vehicleId?: string; categoryId?: string }>;
 }
 
@@ -22,30 +28,33 @@ interface ArticleDetailPageProps {
  * vehicles, vehicle fit). This is stable TecDoc data, so it is cached and
  * shared across requests via the `details`-only endpoint — the live
  * price/availability buy box is fetched separately and never cached. Keyed by
- * vehicleId so `fitsVehicle` stays correct per vehicle.
+ * vehicleId so `fitsVehicle` stays correct per vehicle, and by brand so two
+ * parts sharing a number never share a cache entry.
  */
 async function fetchArticleChrome(
+  brandId: string,
   articleNumber: string,
   vehicleId?: string,
 ): Promise<ArticleCatalogDetailDto> {
   "use cache";
   cacheLife("hours");
-  cacheTag(`article-${articleNumber}`);
+  cacheTag(`article-${brandId}-${articleNumber}`);
 
-  return getArticleCatalogDetail(articleNumber, vehicleId);
+  return getArticleCatalogDetail(brandId, articleNumber, vehicleId);
 }
 
 export default async function ArticleDetailPage({
   params,
   searchParams,
 }: ArticleDetailPageProps) {
-  const { articleNumber: rawArticleNumber } = await params;
+  const { brandId: rawBrandId, articleNumber: rawArticleNumber } = await params;
+  const brandId = decodeRouteParam(rawBrandId);
   const articleNumber = decodeRouteParam(rawArticleNumber);
   const { vehicleId } = await searchParams;
 
   let article: ArticleCatalogDetailDto;
   try {
-    article = await fetchArticleChrome(articleNumber, vehicleId);
+    article = await fetchArticleChrome(brandId, articleNumber, vehicleId);
   } catch (error) {
     if (error instanceof ApiError && error.statusCode === 404) {
       notFound();

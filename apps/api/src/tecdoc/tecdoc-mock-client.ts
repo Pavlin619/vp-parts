@@ -14,6 +14,8 @@ import {
   CategoryOptionDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
+  LinkedVehicleDto,
+  OemNumberDto,
   ArticleAutocompleteItemDto,
   CategoryAutocompleteItemDto,
   AutocompleteItemDto,
@@ -41,6 +43,38 @@ type MockArticleBase = Pick<
   ArticleSummaryDto,
   'articleNumber' | 'brandName' | 'description' | 'thumbnailUrl'
 >;
+
+/**
+ * Stand-in TecDoc `dataSupplierId`s, one per mock brand. Arbitrary but stable:
+ * what matters is that the mock can key an article on brand + number the way
+ * the real catalogue does, so mock mode exercises the same identity as
+ * production instead of pretending a number is unique.
+ */
+const BRAND_ID_BY_NAME: Record<string, string> = {
+  Bosch: '30',
+  'MANN-FILTER': '72',
+  KNECHT: '94',
+  Ferodo: '101',
+  'WIX Filters': '268',
+  Monroe: '4346',
+  MockBrand: '99001',
+};
+
+function brandIdFor(brandName: string): string {
+  return BRAND_ID_BY_NAME[brandName] ?? '0';
+}
+
+/** The mock's article identity: the brand id and number, same as TecDoc's. */
+function articleKey(brandId: string, articleNumber: string): string {
+  return `${brandId}:${articleNumber}`;
+}
+
+function articleKeyForBrandName(
+  brandName: string,
+  articleNumber: string,
+): string {
+  return articleKey(brandIdFor(brandName), articleNumber);
+}
 
 const MANUFACTURERS: ManufacturerDto[] = [
   { id: '16', name: 'Volkswagen' },
@@ -168,26 +202,32 @@ const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
 // placeholder images (real logos arrive once getBrands is wired to TecDoc).
 const BRANDS: BrandDto[] = [
   {
+    brandId: brandIdFor('Bosch'),
     brandName: 'Bosch',
     logoUrl: 'https://placehold.co/240x80/eef2ff/1e3a8a.png?text=BOSCH',
   },
   {
+    brandId: brandIdFor('MANN-FILTER'),
     brandName: 'MANN-FILTER',
     logoUrl: 'https://placehold.co/240x80/fffbeb/b45309.png?text=MANN-FILTER',
   },
   {
+    brandId: brandIdFor('KNECHT'),
     brandName: 'KNECHT',
     logoUrl: 'https://placehold.co/240x80/eff6ff/1d4ed8.png?text=KNECHT',
   },
   {
+    brandId: brandIdFor('Ferodo'),
     brandName: 'Ferodo',
     logoUrl: 'https://placehold.co/240x80/fef2f2/991b1b.png?text=Ferodo',
   },
   {
+    brandId: brandIdFor('WIX Filters'),
     brandName: 'WIX Filters',
     logoUrl: 'https://placehold.co/240x80/f0fdf4/166534.png?text=WIX+Filters',
   },
   {
+    brandId: brandIdFor('Monroe'),
     brandName: 'Monroe',
     logoUrl: 'https://placehold.co/240x80/f8fafc/0f172a.png?text=Monroe',
   },
@@ -246,6 +286,16 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       description: 'Oil Filter',
       thumbnailUrl:
         'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    // Deliberate collision: the same number filed by a second data supplier,
+    // with its own specs and its own applicable vehicles. An article number is
+    // not unique in TecDoc, and this fixture is what makes a lookup that
+    // forgets the brand return visibly wrong data in dev rather than in prod.
+    {
+      articleNumber: 'OX 982D',
+      brandName: 'Bosch',
+      description: 'Oil Filter',
+      thumbnailUrl: null,
     },
     // Catalog-only part: full TecDoc details but intentionally NO row in
     // public.autoparts / public.supplier_stock, so the buy box has no price or
@@ -322,8 +372,11 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
 };
 
 // Comparable (cross-reference) parts keyed by the article being viewed — the
-// mock stand-in for TecDoc getArticles searchType 3. OX 982D returns the same
-// oil filter from other data suppliers so the "Заменки" tab lights up in dev.
+// mock stand-in for TecDoc getArticles searchType 3. Backs two surfaces: the
+// "Заменки" tab, which lists them as parts, and the alternative-numbers section
+// of a catalog row, which lists their numbers. Cross-references are mutual, so
+// the oil filters point at each other; two brands per entry keep the section's
+// per-brand grouping exercised in dev, and an article absent here has none.
 const SUBSTITUTES_BY_ARTICLE: Record<string, MockArticleBase[]> = {
   'OX 982D': [
     {
@@ -347,7 +400,153 @@ const SUBSTITUTES_BY_ARTICLE: Record<string, MockArticleBase[]> = {
         'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
     },
   ],
+  'OF-OC115': [
+    {
+      articleNumber: 'OX 982D',
+      brandName: 'KNECHT',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    {
+      articleNumber: 'OF-WL7090',
+      brandName: 'WIX Filters',
+      description: 'Oil Filter',
+      thumbnailUrl: null,
+    },
+  ],
+  'OF-WL7090': [
+    {
+      articleNumber: 'OX 982D',
+      brandName: 'KNECHT',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    {
+      articleNumber: 'OF-OC115',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    {
+      articleNumber: 'OF-HU816X',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter',
+      thumbnailUrl:
+        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+  ],
 };
+
+function linkedVehicle(
+  vehicleId: string,
+  manufacturerName: string,
+  modelSeriesName: string,
+  name: string,
+  yearFrom: number,
+  yearTo: number | null,
+  powerKw: number,
+  powerHp: number,
+  fuelType: string,
+  engineCode: string,
+): LinkedVehicleDto {
+  return {
+    vehicleId,
+    manufacturerName,
+    modelSeriesName,
+    name,
+    yearFrom,
+    yearTo,
+    powerKw,
+    powerHp,
+    fuelType,
+    engineCode,
+  };
+}
+
+/**
+ * Applicable vehicles per article, keyed by brand + number. Deliberately spans
+ * three makes and several series: the section groups make → series →
+ * modification, and a single-make fixture would leave that disclosure untested
+ * in dev. `OF-WL7090` is the sparse case — one make, one series — and an
+ * article absent here lists none, which is how a genuinely unlinked part
+ * behaves.
+ *
+ * The two `OX 982D` entries are the collision pair: same number, different
+ * supplier, disjoint vehicle lists. A brand-blind lookup returns one part's
+ * vehicles for the other, which is exactly the bug this keying prevents.
+ */
+const LINKED_VEHICLES_BY_ARTICLE: Record<string, LinkedVehicleDto[]> = {
+  [articleKeyForBrandName('KNECHT', 'OX 982D')]: [
+    // prettier-ignore
+    linkedVehicle('20010', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 220 CDI', 2007, 2014, 125, 170, 'Diesel', 'OM 651 DE22'),
+    // prettier-ignore
+    linkedVehicle('20011', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 250 CDI', 2009, 2014, 150, 204, 'Diesel', 'OM 651 DE22'),
+  ],
+  [articleKeyForBrandName('Bosch', 'OX 982D')]: [
+    // prettier-ignore
+    linkedVehicle('10001', 'VOLKSWAGEN', 'Golf VII', '2.0 TDI', 2012, 2020, 110, 150, 'Diesel', 'CRBC'),
+  ],
+  [articleKeyForBrandName('MANN-FILTER', 'OF-OC115')]: [
+    // prettier-ignore
+    linkedVehicle('10020', 'BMW', '3 Series (E90)', '320d', 2005, 2011, 130, 177, 'Diesel', 'N47 D20 C'),
+    // prettier-ignore
+    linkedVehicle('10021', 'BMW', '3 Series (E90)', '320d Touring', 2005, 2012, 130, 177, 'Diesel', 'N47 D20 C'),
+    // prettier-ignore
+    linkedVehicle('10022', 'BMW', '3 Series (E90)', '318d', 2007, 2011, 105, 143, 'Diesel', 'N47 D20 A'),
+    // prettier-ignore
+    linkedVehicle('10023', 'BMW', '1 Series (E87)', '120d', 2004, 2011, 130, 177, 'Diesel', 'N47 D20 C'),
+    // prettier-ignore
+    linkedVehicle('10024', 'BMW', '5 Series (E60)', '520d', 2005, 2010, 130, 177, 'Diesel', 'N47 D20 C'),
+    // prettier-ignore
+    linkedVehicle('20010', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 220 CDI', 2007, 2014, 125, 170, 'Diesel', 'OM 651 DE22'),
+    // prettier-ignore
+    linkedVehicle('20011', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 250 CDI', 2009, 2014, 150, 204, 'Diesel', 'OM 651 DE22'),
+    // prettier-ignore
+    linkedVehicle('20012', 'MERCEDES-BENZ', 'E-Class (W212)', 'E 220 CDI', 2009, 2016, 125, 170, 'Diesel', 'OM 651 DE22'),
+    // prettier-ignore
+    linkedVehicle('30010', 'VOLKSWAGEN', 'Golf VI (5K1)', '2.0 TDI', 2008, 2013, 103, 140, 'Diesel', 'CBAB'),
+    // prettier-ignore
+    linkedVehicle('30011', 'VOLKSWAGEN', 'Passat (B7)', '2.0 TDI', 2010, 2015, 103, 140, 'Diesel', 'CFFB'),
+    // An open-ended production run, so the section renders a "2015–" span.
+    // prettier-ignore
+    linkedVehicle('30012', 'VOLKSWAGEN', 'Passat (B8)', '2.0 TDI', 2015, null, 110, 150, 'Diesel', 'DFCA'),
+  ],
+  [articleKeyForBrandName('WIX Filters', 'OF-WL7090')]: [
+    // prettier-ignore
+    linkedVehicle('10001', 'VOLKSWAGEN', 'Golf VII', '2.0 TDI', 2012, 2020, 110, 150, 'Diesel', 'CRBC'),
+  ],
+};
+
+/**
+ * The mock's stand-in for TecDoc's article-number → `legacyArticleId` → vehicle
+ * chain. Real TecDoc answers the applicable-vehicles question in three steps
+ * and the service is what joins them, so the mock offers the same three steps
+ * rather than the finished list — otherwise mock mode would never exercise the
+ * orchestration that production runs. The ids are arbitrary; only the chain
+ * between them has to hold together.
+ */
+const LEGACY_ARTICLE_ID_BY_KEY: Record<string, number> = Object.fromEntries(
+  Object.keys(LINKED_VEHICLES_BY_ARTICLE).map((key, index) => [
+    key,
+    900_000 + index,
+  ]),
+);
+
+const LINKED_VEHICLES_BY_LEGACY_ID = new Map<number, LinkedVehicleDto[]>(
+  Object.entries(LINKED_VEHICLES_BY_ARTICLE).map(([key, vehicles]) => [
+    LEGACY_ARTICLE_ID_BY_KEY[key],
+    vehicles,
+  ]),
+);
+
+const LINKED_VEHICLE_BY_TARGET_ID = new Map<number, LinkedVehicleDto>(
+  Object.values(LINKED_VEHICLES_BY_ARTICLE)
+    .flat()
+    .map((vehicle) => [Number(vehicle.vehicleId), vehicle]),
+);
 
 /**
  * Builds a small gallery of placeholder images for a mock article. Real TecDoc
@@ -369,11 +568,40 @@ function mockGallery(label: string): string[] {
 const BRAKE_DISC_IMAGES = mockGallery('Brake Disc');
 const OIL_FILTER_IMAGES = mockGallery('Oil Filter');
 
-const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
+/**
+ * The mock leaves `interchangeability` null throughout: TecDoc only fills it to
+ * qualify a reference, so null is the common case and the fixtures should not
+ * make the rarer one look normal.
+ */
+function oem(articleNumber: string, manufacturerName: string): OemNumberDto {
+  return { articleNumber, manufacturerName, interchangeability: null };
+}
+
+/**
+ * Indexes the detail fixtures by brand + number and fills each one's `brandId`
+ * from its brand name, so a fixture only has to state the brand once and the
+ * collision pair below can carry genuinely different data.
+ */
+function indexDetails(
+  details: Array<Omit<ArticleCatalogDetailDto, 'brandId'>>,
+): Record<string, ArticleCatalogDetailDto> {
+  return Object.fromEntries(
+    details.map((detail) => {
+      const brandId = brandIdFor(detail.brandName);
+
+      return [
+        articleKey(brandId, detail.articleNumber),
+        { ...detail, brandId },
+      ];
+    }),
+  );
+}
+
+const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
   // Front/rear brake-pad pair. The "Позиция на монтаж" spec maps to the
   // fitting-position role (see ATTRIBUTE_ROLE_BY_ID) so the mock surfaces a
   // role-tagged attribute facet once the brake-pad leaf category is selected.
-  'BP-0986494061': {
+  {
     articleNumber: 'BP-0986494061',
     brandName: 'Bosch',
     brandLogoUrl: null,
@@ -385,11 +613,11 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Width', value: '155.1 mm' },
       { key: 'Height', value: '66 mm' },
     ],
-    oemNumbers: ['1K0 698 151 B'],
+    oemNumbers: [oem('1K0 698 151 B', 'VW')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
-  'BP-DF4145': {
+  {
     articleNumber: 'BP-DF4145',
     brandName: 'Ferodo',
     brandLogoUrl: null,
@@ -401,11 +629,11 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Width', value: '105.3 mm' },
       { key: 'Height', value: '55.9 mm' },
     ],
-    oemNumbers: ['5Q0 698 451'],
+    oemNumbers: [oem('5Q0 698 451', 'VW')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
-  'BD-0986478451': {
+  {
     articleNumber: 'BD-0986478451',
     brandName: 'Bosch',
     brandLogoUrl: null,
@@ -417,11 +645,11 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Brake Disc Type', value: 'Internally Vented' },
       { key: 'Minimum Thickness', value: '25 mm' },
     ],
-    oemNumbers: ['1K0 615 301 AA', '1K0 615 301 R'],
+    oemNumbers: [oem('1K0 615 301 AA', 'VW'), oem('1K0 615 301 R', 'VW')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
-  'OF-OC115': {
+  {
     articleNumber: 'OF-OC115',
     brandName: 'MANN-FILTER',
     brandLogoUrl: null,
@@ -435,14 +663,14 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
     ],
     // Shares OE 06J 115 403 Q with OF-WL7090 so an OE-number search returns
     // both brands — the "one OE, many aftermarket options" multi-result case.
-    oemNumbers: ['06J 115 403 Q', '06H 115 562'],
+    oemNumbers: [oem('06J 115 403 Q', 'VW'), oem('06H 115 562', 'AUDI')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
   // Second aftermarket oil filter for VW OE 06J 115 403 Q. Paired with OF-OC115
   // so searching that OE number lands on the multi-result search page (both are
   // stocked in infra/db/02-mock-stock-seed.sql, so live prices render too).
-  'OF-WL7090': {
+  {
     articleNumber: 'OF-WL7090',
     brandName: 'WIX Filters',
     brandLogoUrl: null,
@@ -454,14 +682,14 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Outer Diameter 1', value: '76 mm' },
       { key: 'Thread Size', value: 'M 20 X 1.5' },
     ],
-    oemNumbers: ['06J 115 403 Q', '06J 115 403 C'],
+    oemNumbers: [oem('06J 115 403 Q', 'VW'), oem('06J 115 403 C', 'VW')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
   // Real Knecht/Mahle OX 982D oil filter insert (Mercedes-Benz M270/M274 &
   // Infiniti). Specs sourced from the manufacturer data sheet so the data is
   // legit for testing — this part is stocked across most of our suppliers.
-  'OX 982D': {
+  {
     articleNumber: 'OX 982D',
     brandName: 'KNECHT',
     brandLogoUrl: null,
@@ -477,21 +705,41 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Supplementary Info', value: 'with gaskets/seals' },
     ],
     oemNumbers: [
-      'A2701800009',
-      'A2701800109',
-      'A2701840025',
-      'A2701840125',
-      '2701800009',
-      '2701800109',
-      '15208HG00D',
+      oem('A2701800009', 'MERCEDES-BENZ'),
+      oem('A2701800109', 'MERCEDES-BENZ'),
+      oem('A2701840025', 'MERCEDES-BENZ'),
+      oem('A2701840125', 'MERCEDES-BENZ'),
+      oem('2701800009', 'MERCEDES-BENZ'),
+      oem('2701800109', 'MERCEDES-BENZ'),
+      oem('15208HG00D', 'NISSAN'),
     ],
+    compatibleVehicles: [],
+    fitsVehicle: null,
+  },
+  // The other half of the collision pair — same number, different supplier,
+  // and deliberately different specs and OE numbers so a brand-blind detail
+  // read is obvious on screen rather than merely wrong in the data.
+  {
+    articleNumber: 'OX 982D',
+    brandName: 'Bosch',
+    brandLogoUrl: null,
+    description: 'Oil Filter',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Filter type', value: 'Spin-on Filter' },
+      { key: 'Outer Diameter', value: '76 mm' },
+      { key: 'Height', value: '79 mm' },
+      { key: 'Thread Size', value: 'M 20 X 1.5' },
+    ],
+    oemNumbers: [oem('06J 115 403 Q', 'VW')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
   // Rich TecDoc details with NO stock/price data in the DB — the buy box shows
   // no price ("—") and the "Не е наличен" notice, while the page chrome (images,
   // specs, OEMs) still renders fully.
-  'OF-HU816X': {
+  {
     articleNumber: 'OF-HU816X',
     brandName: 'MANN-FILTER',
     brandLogoUrl: null,
@@ -504,14 +752,15 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = {
       { key: 'Height', value: '141 mm' },
       { key: 'Inner Diameter', value: '27.5 mm' },
     ],
-    oemNumbers: ['11427508969', '11427541827'],
+    oemNumbers: [oem('11427508969', 'BMW'), oem('11427541827', 'BMW')],
     compatibleVehicles: [],
     fitsVehicle: null,
   },
-};
+]);
 
 const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: '',
+  brandId: '0',
   brandName: 'Unknown',
   brandLogoUrl: null,
   description: 'Auto Part',
@@ -642,6 +891,7 @@ export class TecDocMockClient {
       .map(({ articleNumber, brandName, description }) => ({
         kind: 'article' as const,
         articleNumber,
+        brandId: brandIdFor(brandName),
         brandName,
         description,
       }));
@@ -709,11 +959,15 @@ export class TecDocMockClient {
   }
 
   getArticleDetails(
+    brandId: number,
     articleNumber: string,
     _vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
-    const base = ARTICLE_DETAILS[articleNumber] ?? {
+    const base = ARTICLE_DETAILS[
+      articleKey(String(brandId), articleNumber)
+    ] ?? {
       ...DEFAULT_ARTICLE_DETAIL,
+      brandId: String(brandId),
       articleNumber,
     };
 
@@ -729,6 +983,39 @@ export class TecDocMockClient {
   }
 
   /**
+   * Unlike the real client this never reports a miss: an article number with no
+   * linkage fixture simply has no vehicles, matching how the rest of the mock
+   * falls back to defaults rather than 404ing on an unknown part.
+   */
+  getLegacyArticleIds(
+    brandId: number,
+    articleNumber: string,
+  ): Promise<number[]> {
+    const legacyArticleId =
+      LEGACY_ARTICLE_ID_BY_KEY[articleKey(String(brandId), articleNumber)];
+
+    return Promise.resolve(
+      legacyArticleId === undefined ? [] : [legacyArticleId],
+    );
+  }
+
+  getLinkedTargetIds(legacyArticleId: number): Promise<number[]> {
+    const vehicles = LINKED_VEHICLES_BY_LEGACY_ID.get(legacyArticleId) ?? [];
+
+    return Promise.resolve(
+      vehicles.map((vehicle) => Number(vehicle.vehicleId)),
+    );
+  }
+
+  getLinkageTargets(targetIds: number[]): Promise<LinkedVehicleDto[]> {
+    const vehicles = targetIds
+      .map((targetId) => LINKED_VEHICLE_BY_TARGET_ID.get(targetId))
+      .filter((vehicle): vehicle is LinkedVehicleDto => vehicle !== undefined);
+
+    return Promise.resolve(vehicles);
+  }
+
+  /**
    * Expands a bare mock row into the shared summary shape. Specs and OE numbers
    * are borrowed from the article's detail fixture when present (mirroring how
    * the real client gets them free on the same `getArticles` response);
@@ -736,10 +1023,12 @@ export class TecDocMockClient {
    * getBrands, exactly as it does for the real client.
    */
   private toSummary(base: MockArticleBase): ArticleSummaryDto {
-    const detail = ARTICLE_DETAILS[base.articleNumber];
+    const brandId = brandIdFor(base.brandName);
+    const detail = ARTICLE_DETAILS[articleKey(brandId, base.articleNumber)];
 
     return {
       ...base,
+      brandId,
       brandLogoUrl: null,
       technicalSpecs: detail?.technicalSpecs ?? [],
       oemNumbers: detail?.oemNumbers ?? [],
@@ -792,9 +1081,13 @@ export class TecDocMockClient {
     article: MockArticleBase,
     normalisedQuery: string,
   ): boolean {
+    const detail =
+      ARTICLE_DETAILS[
+        articleKey(brandIdFor(article.brandName), article.articleNumber)
+      ];
     const candidateNumbers = [
       article.articleNumber,
-      ...(ARTICLE_DETAILS[article.articleNumber]?.oemNumbers ?? []),
+      ...(detail?.oemNumbers ?? []).map((oemNumber) => oemNumber.articleNumber),
     ];
 
     return candidateNumbers.some((number) =>
@@ -806,11 +1099,12 @@ export class TecDocMockClient {
   }
 
   /**
-   * Applies the active facet selections to a mock row. The mock has no numeric
-   * TecDoc ids, so brand facets key on `brandName`, category-tree nodes on
-   * `description`, and attribute facets on a `key:value` technical-spec pair —
-   * the same values the builders below emit as facet ids. Groups are
-   * AND-combined; a missing or empty group matches everything.
+   * Applies the active facet selections to a mock row. Brand facets key on the
+   * row's own `brandId` (a stand-in `dataSupplierId`, exactly as the real
+   * client does); category-tree nodes and attribute facets have no TecDoc id in
+   * the mock, so they key on minted ids for `description` and a `key:value`
+   * technical-spec pair. Groups are AND-combined; a missing or empty group
+   * matches everything.
    */
   private matchesFilters(
     article: ArticleSummaryDto,
@@ -818,9 +1112,7 @@ export class TecDocMockClient {
   ): boolean {
     const brandOk =
       !filters?.brandIds?.length ||
-      filters.brandIds.some(
-        (brandId) => mockFacetLabel(String(brandId)) === article.brandName,
-      );
+      filters.brandIds.some((brandId) => String(brandId) === article.brandId);
 
     const categoryOk =
       filters?.categoryNodeId === undefined ||
@@ -841,15 +1133,20 @@ export class TecDocMockClient {
 
   /**
    * Builds the brand facet counts over the matched set, mirroring the real
-   * client's `dataSupplierFacets`. Values carry a minted numeric id (see
-   * {@link mockFacetId}) that round-trips through {@link matchesFilters}; brand
-   * logos stay null for the catalog layer to join.
+   * client's `dataSupplierFacets`: the value id is the brand id, so a selection
+   * round-trips through {@link matchesFilters} and the catalog layer can join
+   * the logo onto it. Logos stay null here for that layer to fill.
    */
   private buildFacets(items: ArticleSummaryDto[]): SearchFacetDto[] {
     const brandValues = this.countBy(
       items,
-      (item) => item.brandName,
-      (label) => ({ id: mockFacetId(label), label, count: 0, imageUrl: null }),
+      (item) => item.brandId,
+      (item) => ({
+        id: item.brandId,
+        label: item.brandName,
+        count: 0,
+        imageUrl: null,
+      }),
     );
 
     return brandValues.length > 0
@@ -939,17 +1236,17 @@ export class TecDocMockClient {
   private countBy(
     items: ArticleSummaryDto[],
     keyOf: (item: ArticleSummaryDto) => string,
-    seed: (label: string) => FacetValueDto,
+    seed: (item: ArticleSummaryDto) => FacetValueDto,
   ): FacetValueDto[] {
-    const byLabel = new Map<string, FacetValueDto>();
+    const byKey = new Map<string, FacetValueDto>();
 
     for (const item of items) {
-      const label = keyOf(item);
-      const value = byLabel.get(label) ?? seed(label);
+      const key = keyOf(item);
+      const value = byKey.get(key) ?? seed(item);
       value.count += 1;
-      byLabel.set(label, value);
+      byKey.set(key, value);
     }
 
-    return [...byLabel.values()];
+    return [...byKey.values()];
   }
 }

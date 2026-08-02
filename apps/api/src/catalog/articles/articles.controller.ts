@@ -9,9 +9,11 @@ import {
 } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
+  AlternativeNumberDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
+  LinkedVehicleDto,
 } from '@vp-parts-shop/shared';
 import { Public } from '../../auth/public.decorator';
 import { ParseTecDocIdPipe } from '../../tecdoc';
@@ -53,12 +55,18 @@ export class ArticlesController {
     return this.articles.getArticlesAvailability(dto.numbers);
   }
 
-  @Get('articles/:articleNumber')
+  /**
+   * Nested under the brand because an article number is not unique on its own:
+   * two TecDoc data suppliers can file the same one, and resolving it without a
+   * brand returns whichever the catalogue happened to sort first.
+   */
+  @Get('brands/:brandId/articles/:articleNumber')
   getArticleDetail(
+    @Param('brandId', ParseTecDocIdPipe) brandId: number,
     @Param('articleNumber') articleNumber: string,
     @Query('vehicleId', ParseTecDocIdPipe) vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
-    return this.articles.getArticleDetail(articleNumber, vehicleId);
+    return this.articles.getArticleDetail(brandId, articleNumber, vehicleId);
   }
 
   @Get('articles/:articleNumber/substitutes')
@@ -66,5 +74,36 @@ export class ArticlesController {
     @Param('articleNumber') articleNumber: string,
   ): Promise<ArticleSummaryDto[]> {
     return this.articles.getSubstitutes(articleNumber);
+  }
+
+  /**
+   * The numbers other brands sell this part under. Its own route because no
+   * list surface carries them — only the OE numbers ride along on the catalog
+   * response — so the alternative-numbers section fetches them when a visitor
+   * opens it.
+   *
+   * Not nested under a brand, like the substitutes route it shares a source
+   * with: the comparable-number search is keyed on the number alone.
+   */
+  @Get('articles/:articleNumber/alternative-numbers')
+  getAlternativeNumbers(
+    @Param('articleNumber') articleNumber: string,
+  ): Promise<AlternativeNumberDto[]> {
+    return this.articles.getAlternativeNumbers(articleNumber);
+  }
+
+  /**
+   * The vehicles this article fits. Its own route because no list surface shows
+   * it — the applicable-vehicles section fetches it when a visitor opens it, so
+   * a part with thousands of linkages costs nothing until then. Brand-scoped
+   * for the same reason as the detail route above; the linkages are per part,
+   * so the wrong brand answers with another part's vehicles.
+   */
+  @Get('brands/:brandId/articles/:articleNumber/linked-vehicles')
+  getLinkedVehicles(
+    @Param('brandId', ParseTecDocIdPipe) brandId: number,
+    @Param('articleNumber') articleNumber: string,
+  ): Promise<LinkedVehicleDto[]> {
+    return this.articles.getLinkedVehicles(brandId, articleNumber);
   }
 }

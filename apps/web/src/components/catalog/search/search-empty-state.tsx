@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SearchX } from "lucide-react";
 import type { AutocompleteItemDto } from "@vp-parts-shop/shared";
+import { articleDetailHref } from "@/lib/catalog/article-href";
 
 interface SearchEmptyStateProps {
   query: string;
@@ -40,9 +41,12 @@ export function SearchEmptyState({ query, suggestions }: SearchEmptyStateProps) 
           </p>
           <ul className="flex flex-col gap-2">
             {articleSuggestions.map((suggestion) => (
-              <li key={`${suggestion.brandName}-${suggestion.articleNumber}`}>
+              <li key={`${suggestion.brandId}-${suggestion.articleNumber}`}>
                 <Link
-                  href={`/catalog/articles/${encodeURIComponent(suggestion.articleNumber)}`}
+                  href={articleDetailHref(
+                    suggestion.brandId,
+                    suggestion.articleNumber,
+                  )}
                   className="flex items-center gap-3 px-4 py-2.5 bg-bg-card border border-line rounded-lg hover:border-ink transition-colors"
                 >
                   <span className="font-mono text-xs text-muted min-w-[80px]">

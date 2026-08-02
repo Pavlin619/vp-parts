@@ -20,6 +20,7 @@ const makeArticle = (
   description = 'Oil Filter',
 ): ArticleSummaryDto => ({
   articleNumber,
+  brandId: '268',
   brandName: 'WIX',
   brandLogoUrl: null,
   description,
@@ -67,6 +68,7 @@ const AC_EXACT = { type: 10, matchType: 'exact' };
 const makeSuggestion = (articleNumber: string): ArticleAutocompleteItemDto => ({
   kind: 'article',
   articleNumber,
+  brandId: '268',
   brandName: 'WIX',
   description: 'Oil Filter',
 });
@@ -280,7 +282,8 @@ describe('SearchController (e2e)', () => {
         {
           id: 'brands',
           label: 'Производител',
-          values: [{ id: '4', label: 'WIX', count: 2, imageUrl: null }],
+          // The facet value id is the brand id, which is what the logo joins on.
+          values: [{ id: '268', label: 'WIX', count: 2, imageUrl: null }],
         },
       ];
       const attributes: AttributeFacetDto[] = [
@@ -312,7 +315,7 @@ describe('SearchController (e2e)', () => {
         }),
       );
       mockTecDocClient.getBrands.mockResolvedValue([
-        { brandName: 'WIX', logoUrl: 'https://logos/wix.png' },
+        { brandId: '268', brandName: 'WIX', logoUrl: 'https://logos/wix.png' },
       ]);
 
       const res = await request(app.getHttpServer())
@@ -325,7 +328,7 @@ describe('SearchController (e2e)', () => {
           label: 'Производител',
           values: [
             {
-              id: '4',
+              id: '268',
               label: 'WIX',
               count: 2,
               imageUrl: 'https://logos/wix.png',

@@ -117,6 +117,7 @@ Response `200`:
   "items": [
     {
       "articleNumber": "WL6340",
+      "brandId": "268",
       "brandName": "WIX",
       "description": "Oil Filter",
       "thumbnailUrl": "https://cdn.example.com/img/WL6340.jpg"
@@ -158,11 +159,37 @@ Response `200`:
 
 ---
 
+### Article identity
+
+A TecDoc article number is **not** unique: two data suppliers can file the same
+one for different parts. An article is identified by `(brandId, articleNumber)`,
+where `brandId` is TecDoc's `dataSupplierId` — the same id `GET /catalog/brands`
+is keyed by, carried on every article row as `brandId`.
+
+This splits the article routes in two, and the split is deliberate rather than a
+naming inconsistency:
+
+- Endpoints that **resolve one specific part** are nested under the brand:
+  `/catalog/brands/:brandId/articles/:articleNumber…`. Without the brand the
+  lookup returns whichever supplier the catalogue sorted first, so the response
+  can describe a different company's part.
+- Endpoints that **search by a number** stay flat at
+  `/catalog/articles/:articleNumber/…`. Cross-reference (comparable-number)
+  lookups take a number as their query, not as an identity, and answer with
+  parts from every brand; adding a brand segment would narrow the answer to the
+  one brand the caller already has.
+
+---
+
 ### Article Detail
 
-**`GET /catalog/articles/:articleNumber`** `[PUBLIC]`
+**`GET /catalog/brands/:brandId/articles/:articleNumber`** `[PUBLIC]`
 
 Full article detail. Includes cross-references, images, specs, compatible vehicles.
+
+Path params:
+- `brandId` — TecDoc `dataSupplierId`. Required: see *Article identity* above. A
+  non-numeric value is a `400` / `VALIDATION_ERROR`.
 
 Query params:
 - `vehicleId` (optional) — if provided, adds `fitsVehicle: boolean` to the response.
@@ -179,6 +206,7 @@ Response `200`:
 ```json
 {
   "articleNumber": "WL6340",
+  "brandId": "268",
   "brandName": "WIX",
   "description": "Oil Filter, Manual Transmission",
   "images": ["https://cdn.example.com/img/WL6340-1.jpg"],
@@ -186,7 +214,18 @@ Response `200`:
     { "key": "Height (mm)", "value": "87" },
     { "key": "Outer Diameter (mm)", "value": "76" }
   ],
-  "oemNumbers": ["06L115561", "06L115562"],
+  "oemNumbers": [
+    {
+      "articleNumber": "06L115561",
+      "manufacturerName": "VW",
+      "interchangeability": null
+    },
+    {
+      "articleNumber": "06L115562",
+      "manufacturerName": "AUDI",
+      "interchangeability": "Interchangeable, but different scope of supply"
+    }
+  ],
   "compatibleVehicles": [
     { "vehicleId": "V10042", "name": "VW Golf VII 2.0 TDI 110kW (2012–2020)" }
   ],
@@ -211,7 +250,95 @@ Response `200`:
 
 Note: a single locked sell price (`bestPriceExVat` / `bestPriceIncVat`) is returned for all callers — there are no role-specific trade-price fields (per-mechanic discounts are applied separately later). Availability is expressed entirely by `available` plus the per-warehouse `availabilityByWarehouse` breakdown (quantity + pickup/courier dates); there is no `stockStatus` or `estimatedDeliveryDays` field — the frontend derives the delivery label per warehouse from the breakdown. All price fields are integer EUR cents.
 
-Cache: catalog metadata (TecDoc) is Redis-cached 24h; price/availability is read live from the shared DB per request and embedded into this response.
+Cache: catalog metadata (TecDoc) is Redis-cached 24h under a brand-scoped key
+(`tecdoc:article-detail:{brandId}:{articleNumber}:{vehicleId|none}`), so two
+brands sharing a number never share an entry; price/availability is read live
+from the shared DB per request and embedded into this response.
+
+---
+
+### Alternative Numbers
+
+**`GET /catalog/articles/:articleNumber/alternative-numbers`** `[PUBLIC]`
+
+The numbers other parts brands sell the same article under. Its **own** endpoint
+because, unlike the OE numbers it is displayed beside, no list response carries
+them: TecDoc only resolves them through a comparable-number search. The
+alternative-numbers section of a catalog row fetches this when a visitor opens
+it, so an unopened section costs nothing. Shape: `AlternativeNumberDto[]`.
+
+Keyed on the number alone — see *Article identity* above. Rows are deduplicated
+on each result's own `(brandId, articleNumber)`, so two brands answering with the
+same number are kept as the two cross-references they are.
+
+This is the same TecDoc comparable-number set that backs
+`GET /catalog/articles/:articleNumber/substitutes` (`getArticles`,
+`searchType: 3`), projected down to number + brand and sharing one Redis entry —
+opening either surface warms the other. The section renders chips, so the
+substitutes' catalog metadata (description, thumbnail, specs) is deliberately
+projected away rather than shipped to every expanded row. Capped at 20 numbers
+(`SUBSTITUTES_LIMIT`); a part with no cross-references is a `200` with `[]`.
+
+Response `200`:
+```json
+[
+  { "articleNumber": "OC 115", "brandName": "MANN-FILTER" },
+  { "articleNumber": "WL7090", "brandName": "WIX Filters" }
+]
+```
+
+Cache: Redis, 24h on a hit / 1h on an empty result — shared with the substitutes
+endpoint (key `tecdoc:substitutes:{articleNumber}`).
+
+---
+
+### Applicable Vehicles
+
+**`GET /catalog/brands/:brandId/articles/:articleNumber/linked-vehicles`** `[PUBLIC]`
+
+The vehicle modifications an article is confirmed to fit. Its **own** endpoint
+because no list surface renders it: a common service part is linked to thousands
+of modifications, far more than the article payload they would otherwise ride
+along with. The applicable-vehicles section of a catalog row fetches this when a
+visitor opens it, so an unopened section costs nothing. Shape:
+`LinkedVehicleDto[]`.
+
+Rows arrive flat, each carrying its make and model series — the make → series →
+modification grouping is the client's presentation choice, not the contract's.
+Every field TecDoc files as optional is nullable, so a sparsely catalogued
+vehicle still lists rather than being dropped. `yearTo: null` means the model is
+still in production. Capped at 200 rows (`LINKED_VEHICLES_LIMIT`).
+
+Brand-scoped, because linkages are per part: see *Article identity* above.
+Reading `OX 982D` under the wrong brand lists the other supplier's vehicles.
+
+Behind it sits a two-call TecDoc sequence: `getArticles` resolves brand + number
+to TecDoc's internal `articleId`, then `getArticleLinkedAllLinkingTarget4`
+returns the linkages. A brand/number pair TecDoc does not know is a `404` /
+`ARTICLE_NOT_FOUND`; a part with no catalogued linkages is a `200` with `[]`.
+
+Response `200`:
+```json
+[
+  {
+    "vehicleId": "10020",
+    "manufacturerName": "BMW",
+    "modelSeriesName": "3 Series (E90)",
+    "name": "320d",
+    "yearFrom": 2005,
+    "yearTo": 2011,
+    "powerKw": 130,
+    "powerHp": 177,
+    "fuelType": "Diesel",
+    "engineCode": "N47 D20 C"
+  }
+]
+```
+
+Cache: Redis, 24h on a hit / 1h on an empty result, under the brand-scoped key
+`tecdoc:linked-vehicles:{brandId}:{articleNumber}` — pure TecDoc data with no
+inventory in it, and the shorter miss TTL keeps a part briefly missing its
+linkages from being remembered as vehicle-less for a whole day.
 
 ---
 
@@ -359,6 +486,7 @@ Response `200` — matches, scoped to a leaf category (e.g.
   "results": [
     {
       "articleNumber": "0 986 494 104",
+      "brandId": "30",
       "brandName": "BOSCH",
       "description": "Brake Pad Set",
       "thumbnailUrl": null,
@@ -419,8 +547,8 @@ Returns up to 8 suggestions for queries of 3+ characters.
 Response `200`:
 ```json
 [
-  { "articleNumber": "WL6340", "brandName": "WIX", "description": "Oil Filter" },
-  { "articleNumber": "WL6341", "brandName": "WIX", "description": "Oil Filter Heavy Duty" }
+  { "articleNumber": "WL6340", "brandId": "268", "brandName": "WIX", "description": "Oil Filter" },
+  { "articleNumber": "WL6341", "brandId": "268", "brandName": "WIX", "description": "Oil Filter Heavy Duty" }
 ]
 ```
 Cache: Redis, 15 min for suggestions and 5 min for empty results.

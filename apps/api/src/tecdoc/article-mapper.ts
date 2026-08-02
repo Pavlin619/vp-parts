@@ -1,4 +1,9 @@
-import { ArticleSummaryDto, TechnicalSpecDto } from '@vp-parts-shop/shared';
+import {
+  ArticleSummaryDto,
+  OemNumberDto,
+  TechnicalSpecDto,
+} from '@vp-parts-shop/shared';
+import { LinkageTargetType } from './tecdoc-target-types';
 
 /**
  * The subset of a TecDoc `getArticles` (`includeAll: true`) article record the
@@ -8,8 +13,31 @@ import { ArticleSummaryDto, TechnicalSpecDto } from '@vp-parts-shop/shared';
  */
 export interface TecDocArticleRecord {
   articleNumber: string;
+  /**
+   * The brand, in TecDoc's own terms: the onboarding guide's catalogue-data
+   * table lists it as `BrandId`, `getBrands` is keyed by it, and it is the only
+   * brand axis `getArticles` can filter on (`dataSupplierIds`). The raw record
+   * also carries an `mfrId` next to `mfrName` below, which looks like the
+   * matching id for that name but belongs to a different id space that nothing
+   * can be looked up by — hence it is not read at all.
+   */
+  dataSupplierId: number;
   mfrName: string;
-  genericArticles?: Array<{ genericArticleDescription?: string }>;
+  genericArticles?: Array<{
+    genericArticleDescription?: string;
+    /**
+     * TecDoc's legacy id for this article/generic-article pair, and the only id
+     * the vehicle linkage lookup accepts. It is filed per generic article, not
+     * per article, so a part covering two generic articles carries two of them.
+     */
+    legacyArticleId?: number;
+    /**
+     * The linkage target families this generic-article combination has links
+     * for. Reading it is what keeps the vehicle lookup from calling for a
+     * combination that has no vehicle links to give.
+     */
+    linkageTargetTypes?: LinkageTargetType[];
+  }>;
   images?: Array<{ imageURL800?: string }>;
   articleCriteria?: Array<{
     criteriaId?: number;
@@ -18,7 +46,11 @@ export interface TecDocArticleRecord {
     criteriaUnitDescription?: string;
     criteriaType?: string;
   }>;
-  oemNumbers?: Array<{ articleNumber: string }>;
+  oemNumbers?: Array<{
+    articleNumber: string;
+    mfrName?: string;
+    referenceTypeDescription?: string;
+  }>;
 }
 
 /**
@@ -34,22 +66,21 @@ export interface TecDocArticleRecord {
  * `linkageTargetId`.
  *
  * TODO(vehicle-fit): resolve it for the single-article detail read, which is the
- * only surface that renders a fit verdict
- * (`getArticleLinkedAllLinkingTarget4`, doc section 8.4).
+ * only surface that renders a fit verdict — `getArticleLinkedAllLinkingTarget4`
+ * scoped to one `linkingTargetId` answers it with a single `linked` boolean.
  */
 export function mapArticleSummary(
   article: TecDocArticleRecord,
 ): ArticleSummaryDto {
   return {
     articleNumber: article.articleNumber,
+    brandId: String(article.dataSupplierId),
     brandName: article.mfrName,
     brandLogoUrl: null,
     description: article.genericArticles?.[0]?.genericArticleDescription ?? '',
     thumbnailUrl: article.images?.[0]?.imageURL800 ?? null,
     technicalSpecs: mapTechnicalSpecs(article.articleCriteria),
-    oemNumbers: [
-      ...new Set((article.oemNumbers ?? []).map((oem) => oem.articleNumber)),
-    ],
+    oemNumbers: mapOemNumbers(article.oemNumbers),
     fitsVehicle: null,
   };
 }
@@ -62,21 +93,42 @@ export function mapArticleSummary(
 function mapTechnicalSpecs(
   criteria: TecDocArticleRecord['articleCriteria'],
 ): TechnicalSpecDto[] {
+  const specs = (criteria ?? []).map((criterion) => ({
+    key: criterion.criteriaDescription,
+    value: criterion.formattedValue,
+  }));
+
+  return dedupeBy(specs, (spec) => [spec.key, spec.value]);
+}
+
+/**
+ * TecDoc files an OE number once per vehicle manufacturer that uses it, so the
+ * pair is the identity: one make listed twice is a repeat, two makes sharing a
+ * number are two separate facts worth showing.
+ */
+function mapOemNumbers(
+  oemNumbers: TecDocArticleRecord['oemNumbers'],
+): OemNumberDto[] {
+  const numbers = (oemNumbers ?? []).map((oem) => ({
+    articleNumber: oem.articleNumber,
+    manufacturerName: oem.mfrName ?? null,
+    interchangeability: oem.referenceTypeDescription ?? null,
+  }));
+
+  return dedupeBy(numbers, (oem) => [oem.manufacturerName, oem.articleNumber]);
+}
+
+function dedupeBy<T>(items: T[], identity: (item: T) => unknown[]): T[] {
   const seen = new Set<string>();
 
-  return (criteria ?? [])
-    .map((criterion) => ({
-      key: criterion.criteriaDescription,
-      value: criterion.formattedValue,
-    }))
-    .filter((spec) => {
-      const identity = JSON.stringify([spec.key, spec.value]);
+  return items.filter((item) => {
+    const key = JSON.stringify(identity(item));
 
-      if (seen.has(identity)) {
-        return false;
-      }
+    if (seen.has(key)) {
+      return false;
+    }
 
-      seen.add(identity);
-      return true;
-    });
+    seen.add(key);
+    return true;
+  });
 }

@@ -3,9 +3,10 @@ import { BrandDto } from '@vp-parts-shop/shared';
 import { TecDocTransport } from '../../tecdoc';
 
 /**
- * TecDoc `getBrands` source. TecDoc keys articles by brand name (`mfrName`), not
- * by logo, so the brand -> logo join happens in {@link BrandsService}; this
- * class only fetches and maps the raw supplier list.
+ * TecDoc `getBrands` source. The logo lives here but articles are fetched
+ * elsewhere, so the brand -> logo join happens in {@link BrandsService}; this
+ * class only fetches and maps the raw supplier list. Both sides key on
+ * `dataSupplierId`, which is the same id an article row carries as `brandId`.
  */
 @Injectable()
 export class BrandsTecDoc {
@@ -22,6 +23,7 @@ export class BrandsTecDoc {
       // empty one, so every level here can be absent on a nothing-found result.
       data?: {
         array?: Array<{
+          dataSupplierId: number;
           mfrName: string;
           dataSupplierLogo?: {
             imageURL100?: string;
@@ -38,6 +40,7 @@ export class BrandsTecDoc {
     });
 
     return (data.data?.array ?? []).map((brand) => ({
+      brandId: String(brand.dataSupplierId),
       brandName: brand.mfrName,
       logoUrl:
         brand.dataSupplierLogo?.imageURL200 ??

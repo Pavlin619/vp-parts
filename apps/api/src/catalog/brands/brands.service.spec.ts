@@ -7,9 +7,12 @@ import { RedisCache } from '../../redis';
 import { BrandsTecDoc } from './brands.tecdoc';
 import { BrandsService } from './brands.service';
 
+const BOSCH = '30';
+const FERODO = '101';
+
 const BRANDS: BrandDto[] = [
-  { brandName: 'Bosch', logoUrl: 'https://logo/bosch.png' },
-  { brandName: 'Ferodo', logoUrl: null },
+  { brandId: BOSCH, brandName: 'Bosch', logoUrl: 'https://logo/bosch.png' },
+  { brandId: FERODO, brandName: 'Ferodo', logoUrl: null },
 ];
 
 function articleItem(
@@ -17,6 +20,7 @@ function articleItem(
 ): ArticleSummaryDto {
   return {
     articleNumber: 'A1',
+    brandId: BOSCH,
     brandName: 'Bosch',
     brandLogoUrl: null,
     description: 'Part',
@@ -55,10 +59,10 @@ describe('BrandsService', () => {
   });
 
   describe('attachLogos', () => {
-    it('joins logos by brand name and leaves unknown brands null', async () => {
+    it('joins logos by brand id and leaves unknown brands null', async () => {
       const result = await service.attachLogos([
-        articleItem({ brandName: 'Bosch' }),
-        articleItem({ articleNumber: 'A2', brandName: 'Unknown' }),
+        articleItem({ brandId: BOSCH }),
+        articleItem({ articleNumber: 'A2', brandId: '9999' }),
       ]);
 
       expect(result[0].brandLogoUrl).toBe('https://logo/bosch.png');
@@ -95,14 +99,14 @@ describe('BrandsService', () => {
       const results: PaginatedSearchArticlesDto = {
         ...emptyResults,
         total: 1,
-        items: [articleItem({ brandName: 'Bosch' })],
+        items: [articleItem({ brandId: BOSCH })],
         facets: [
           {
             id: 'brands',
             label: 'Производител',
             values: [
-              { id: '1', label: 'Bosch', count: 1, imageUrl: null },
-              { id: '2', label: 'Ferodo', count: 1, imageUrl: null },
+              { id: BOSCH, label: 'Bosch', count: 1, imageUrl: null },
+              { id: FERODO, label: 'Ferodo', count: 1, imageUrl: null },
             ],
           },
         ],

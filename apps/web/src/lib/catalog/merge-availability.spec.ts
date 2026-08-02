@@ -12,6 +12,7 @@ import type {
 const metadata: ArticleSummaryDto[] = [
   {
     articleNumber: "WL6340",
+    brandId: '268',
     brandName: "WIX",
     brandLogoUrl: null,
     description: "Oil Filter",
@@ -22,6 +23,7 @@ const metadata: ArticleSummaryDto[] = [
   },
   {
     articleNumber: "OC115",
+    brandId: '268',
     brandName: "MANN-FILTER",
     brandLogoUrl: null,
     description: "Oil Filter",
