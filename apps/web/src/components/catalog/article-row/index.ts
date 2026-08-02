@@ -2,4 +2,6 @@ export { ArticleRow } from "./article-row";
 export { ArticleRowAvailability } from "./article-row-availability";
 export { ArticleRowBuy } from "./article-row-buy";
 export { ArticleRowDetail } from "./article-row-detail";
-export { OemNumberChip } from "./oem-number-chip";
+export { ArticleRowNumbers } from "./article-row-numbers";
+export { ArticleRowVehicles } from "./article-row-vehicles";
+export { PartNumberChip } from "./part-number-chip";

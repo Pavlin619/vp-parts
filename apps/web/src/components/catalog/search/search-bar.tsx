@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import type { ArticleAutocompleteItemDto } from "@vp-parts-shop/shared";
 import { autocompleteQueryOptions } from "@/lib/api/catalog";
+import { articleDetailHref } from "@/lib/catalog/article-href";
 import { useVehicleContext } from "@/hooks/use-vehicle-context";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { cn } from "@/lib/utils";
@@ -61,9 +62,11 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
     router.push(`/search?${params}`);
   }
 
-  function navigateToArticle(articleNumber: string) {
+  function navigateToArticle(suggestion: ArticleAutocompleteItemDto) {
     setIsDropdownOpen(false);
-    router.push(`/catalog/articles/${encodeURIComponent(articleNumber)}`);
+    router.push(
+      articleDetailHref(suggestion.brandId, suggestion.articleNumber),
+    );
   }
 
   function handleChange(value: string) {
@@ -93,7 +96,7 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
       );
     } else if (event.key === "Enter" && activeIndex >= 0) {
       event.preventDefault();
-      navigateToArticle(suggestions[activeIndex].articleNumber);
+      navigateToArticle(suggestions[activeIndex]);
     }
   }
 
@@ -150,7 +153,9 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
         >
           {suggestions.map((suggestion, index) => (
             <li
-              key={suggestion.articleNumber}
+              // Two brands can file one number, so the number alone is not a
+              // stable key — React would collapse the two suggestions into one.
+              key={`${suggestion.brandId}-${suggestion.articleNumber}`}
               id={`part-search-option-${index}`}
               role="option"
               aria-selected={index === activeIndex}
@@ -160,7 +165,7 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
               )}
               onMouseDown={(event) => {
                 event.preventDefault();
-                navigateToArticle(suggestion.articleNumber);
+                navigateToArticle(suggestion);
               }}
               onMouseEnter={() => setActiveIndex(index)}
             >

@@ -1,7 +1,11 @@
 import { BrandDto } from '@vp-parts-shop/shared';
 import { buildBrandTokenSet, isBrandToken } from './brand-dictionary';
 
-const brand = (brandName: string): BrandDto => ({ brandName, logoUrl: null });
+const brand = (brandName: string): BrandDto => ({
+  brandId: '1',
+  brandName,
+  logoUrl: null,
+});
 
 describe('brand-dictionary', () => {
   describe('buildBrandTokenSet', () => {

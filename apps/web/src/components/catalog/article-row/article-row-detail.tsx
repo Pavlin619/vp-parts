@@ -2,34 +2,44 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import type { TechnicalSpecDto } from "@vp-parts-shop/shared";
+import type { OemNumberDto, TechnicalSpecDto } from "@vp-parts-shop/shared";
 import { cn } from "@/lib/utils";
-import { OemNumberChip } from "./oem-number-chip";
+import { ArticleRowNumbers } from "./article-row-numbers";
+import { ArticleRowVehicles } from "./article-row-vehicles";
 
-type DetailSectionId = "specs" | "oem";
+type DetailSectionId = "specs" | "numbers" | "vehicles";
 
 interface ArticleRowDetailProps {
+  /** TecDoc brand id; needed with the number to read this exact part. */
+  brandId: string;
+  articleNumber: string;
   technicalSpecs: TechnicalSpecDto[];
-  oemNumbers: string[];
+  oemNumbers: OemNumberDto[];
 }
 
 const SECTION_LABEL: Record<DetailSectionId, string> = {
   specs: "Технически характеристики",
-  oem: "OE номера",
+  numbers: "Алтернативни номера",
+  vehicles: "Приложими автомобили",
 };
 
 /**
- * The expanded body of a catalog row — an accordion over the metadata the
- * catalog response already carries, so opening a row costs no extra request.
- * Sections with no data are not offered at all.
+ * The expanded body of a catalog row — an accordion over the article's detail.
+ *
+ * Only the technical specs come free with the catalog response. Both other
+ * sections read from TecDoc when opened — cross-reference numbers and vehicle
+ * linkages are volumes no list response could carry per row — which is why
+ * neither is ever the section that opens by itself.
  */
 export function ArticleRowDetail({
+  brandId,
+  articleNumber,
   technicalSpecs,
   oemNumbers,
 }: ArticleRowDetailProps) {
-  const sections = availableSections(technicalSpecs, oemNumbers);
+  const sections = availableSections(technicalSpecs);
   const [openSection, setOpenSection] = useState<DetailSectionId | null>(
-    sections[0] ?? null,
+    defaultOpenSection(technicalSpecs),
   );
 
   const toggle = (section: DetailSectionId) =>
@@ -66,7 +76,18 @@ export function ArticleRowDetail({
           {openSection === "specs" && (
             <TechnicalSpecTable technicalSpecs={technicalSpecs} />
           )}
-          {openSection === "oem" && <OemNumberGrid oemNumbers={oemNumbers} />}
+          {openSection === "numbers" && (
+            <ArticleRowNumbers
+              articleNumber={articleNumber}
+              oemNumbers={oemNumbers}
+            />
+          )}
+          {openSection === "vehicles" && (
+            <ArticleRowVehicles
+              brandId={brandId}
+              articleNumber={articleNumber}
+            />
+          )}
         </div>
       )}
     </div>
@@ -104,29 +125,31 @@ function TechnicalSpecTable({
   );
 }
 
-function OemNumberGrid({ oemNumbers }: { oemNumbers: string[] }) {
-  return (
-    <div className="flex flex-wrap gap-[7px]">
-      {oemNumbers.map((code, index) => (
-        <OemNumberChip key={`${code}-${index}`} code={code} />
-      ))}
-    </div>
-  );
-}
-
-/** The sections that actually have data, in display order. */
+/**
+ * The sections worth offering, in display order. The two read-on-demand
+ * sections are always offered: whether an article has cross-references or
+ * applicable vehicles is only known once they are fetched, and fetching them
+ * per row to decide is the cost those sections are designed to avoid.
+ */
 function availableSections(
   technicalSpecs: TechnicalSpecDto[],
-  oemNumbers: string[],
 ): DetailSectionId[] {
   const sections: DetailSectionId[] = [];
 
   if (technicalSpecs.length > 0) {
     sections.push("specs");
   }
-  if (oemNumbers.length > 0) {
-    sections.push("oem");
-  }
+  sections.push("numbers", "vehicles");
 
   return sections;
+}
+
+/**
+ * Only a section that costs nothing may open by itself; anything else would
+ * fire a TecDoc read for every row a visitor expands.
+ */
+function defaultOpenSection(
+  technicalSpecs: TechnicalSpecDto[],
+): DetailSectionId | null {
+  return technicalSpecs.length > 0 ? "specs" : null;
 }

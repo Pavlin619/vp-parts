@@ -293,6 +293,7 @@ describe('SearchTecDoc', () => {
     function articleRecord(articleNumber: string, description = 'Oil Filter') {
       return {
         articleNumber,
+        dataSupplierId: 268,
         mfrName: 'WIX',
         genericArticles: [{ genericArticleDescription: description }],
       };
@@ -331,10 +332,13 @@ describe('SearchTecDoc', () => {
           },
         }),
       );
+      // The brand id rides along so the suggestion can deep-link the part: the
+      // number alone does not identify one.
       expect(result).toEqual([
         {
           kind: 'article',
           articleNumber: 'WL6340',
+          brandId: '268',
           brandName: 'WIX',
           description: 'Oil Filter',
         },

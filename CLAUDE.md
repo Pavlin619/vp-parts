@@ -127,6 +127,21 @@ POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
 
 **Never assume a field name or endpoint path.** Always check the Service Index or the onboarding guide (`specs/002-autoparts-shop-spec/TecDoc Pegasus 3.0 API - Onboarding Guide 3.0.pdf`) before adding a new TecDoc call.
 
+#### Article identity: an article number is not unique
+
+**A TecDoc article is identified by `(dataSupplierId, articleNumber)`, never by the number alone.** Two data suppliers can and do file the same number for different parts. A number-only `getArticles` lookup returns every one of them and the caller takes whichever the catalogue sorted first — which is a coin toss, not a lookup. This surfaced as an article detail page showing another company's specs and applicable vehicles.
+
+`dataSupplierId` is the brand: it is what `getBrands` is keyed by, what the onboarding guide's catalogue-data table calls `BrandId`, and the only brand axis `getArticles` can filter on. It travels through our own contracts as `brandId` on `ArticleSummaryDto`, `ArticleAutocompleteItemDto` and `BrandDto`.
+
+Rules when adding anything article-scoped:
+
+- **Resolving one specific part** — send `dataSupplierIds: [brandId]` plus `searchMatchType: 'exact'`, and route it through `ArticlesTecDoc.articleLookupPayload`. The public route is `/catalog/brands/:brandId/articles/:articleNumber`.
+- **Cache keys, query keys and React list keys** carry both halves. A number-only key serves one brand's part to everyone asking for the other.
+- **Cross-reference (comparable-number) reads are the exception** and stay keyed on the number alone. `searchType: 3` searches *by* number and `dataSupplierIds` filters the *results*, so sending a brand narrows a cross-reference list to the one brand you already have. Dedupe those results on each row's own `(dataSupplierId, articleNumber)`.
+- **Every link to a part** goes through `articleDetailHref(brandId, articleNumber)` in `apps/web/src/lib/catalog/article-href.ts`.
+
+The same ambiguity exists in inventory (`public.autoparts` and `public.supplier_stock` are keyed by `tecdoc_number` alone) but those tables belong to the Spring Boot backoffice — see the TODO on `InventoryService.getAvailability`.
+
 ### Path aliases
 - `apps/web`: `@/*` → `./src/*`
 - `apps/api`: no aliases; use relative imports

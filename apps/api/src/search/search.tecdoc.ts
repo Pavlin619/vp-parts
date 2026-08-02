@@ -6,6 +6,8 @@ import {
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
+  AssemblyGroupType,
+  LinkageTargetType,
   TecDocTransport,
   TecDocArticleRecord,
   mapArticleSummary,
@@ -122,6 +124,7 @@ export class SearchTecDoc {
       totalMatchingArticles: number;
       articles: Array<{
         articleNumber: string;
+        dataSupplierId: number;
         mfrName: string;
         genericArticles: Array<{ genericArticleDescription: string }>;
       }>;
@@ -141,7 +144,7 @@ export class SearchTecDoc {
       // source for the `category` suggestions below.
       assemblyGroupFacetOptions: {
         enabled: true,
-        assemblyGroupType: 'P',
+        assemblyGroupType: AssemblyGroupType.PassengerCar,
         includeCompleteTree: false,
       },
     });
@@ -150,6 +153,9 @@ export class SearchTecDoc {
       (article) => ({
         kind: 'article',
         articleNumber: article.articleNumber,
+        // Carried so a suggestion can deep-link the part: the number alone does
+        // not identify one.
+        brandId: String(article.dataSupplierId),
         brandName: article.mfrName,
         description:
           article.genericArticles[0]?.genericArticleDescription ?? '',
@@ -232,15 +238,15 @@ export class SearchTecDoc {
       }),
       // Match-scoped category facet: only the assembly groups present in the
       // result set, with article counts — NOT the whole catalogue tree
-      // (that is getAssemblyGroupTree's job). `assemblyGroupType: 'P'` scopes to
+      // (that is getAssemblyGroupTree's job). `assemblyGroupType` scopes to
       // passenger cars, matching getAssemblyGroupTree.
       assemblyGroupFacetOptions: {
         enabled: true,
-        assemblyGroupType: 'P',
+        assemblyGroupType: AssemblyGroupType.PassengerCar,
         includeCompleteTree: false,
       },
       ...(vehicleId != null && {
-        linkageTargetType: 'P',
+        linkageTargetType: LinkageTargetType.Vehicle,
         linkageTargetId: vehicleId,
       }),
       ...(filters?.brandIds?.length && {

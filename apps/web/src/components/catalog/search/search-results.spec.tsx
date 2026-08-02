@@ -8,6 +8,7 @@ function resultItem(
 ): SearchResultRow {
   return {
     articleNumber: 'WL6340',
+    brandId: '268',
     brandName: 'WIX',
     brandLogoUrl: null,
     description: 'Oil Filter',
@@ -73,7 +74,7 @@ describe('SearchResults', () => {
 
     expect(screen.getByRole('link', { name: 'WL6340' })).toHaveAttribute(
       'href',
-      '/catalog/articles/WL6340',
+      '/catalog/articles/268/WL6340',
     )
   })
 
@@ -189,12 +190,14 @@ describe('SearchEmptyState', () => {
       {
         kind: 'article' as const,
         articleNumber: 'XXXX900',
+        brandId: '268',
         brandName: 'WIX',
         description: 'Oil Filter',
       },
       {
         kind: 'article' as const,
         articleNumber: 'XXXX901',
+        brandId: '268',
         brandName: 'BOSCH',
         description: 'Air Filter',
       },
@@ -211,6 +214,7 @@ describe('SearchEmptyState', () => {
       {
         kind: 'article' as const,
         articleNumber: 'WA6546',
+        brandId: '268',
         brandName: 'WIX',
         description: 'Air Filter',
       },
@@ -218,7 +222,7 @@ describe('SearchEmptyState', () => {
     render(<SearchEmptyState query="WA6456" suggestions={suggestions} />)
 
     const link = screen.getByRole('link', { name: /WA6546/ })
-    expect(link).toHaveAttribute('href', '/catalog/articles/WA6546')
+    expect(link).toHaveAttribute('href', '/catalog/articles/268/WA6546')
   })
 
   it('does not render the suggestions section when suggestions are absent', () => {

@@ -13,12 +13,19 @@ function article(
 ): ArticleSummaryDto {
   return {
     articleNumber: 'WL6340',
+    brandId: '268',
     brandName: 'WIX',
     brandLogoUrl: null,
     description: 'Маслен филтър',
     thumbnailUrl: null,
     technicalSpecs: [{ key: 'Височина', value: '79 mm' }],
-    oemNumbers: ['13717521033'],
+    oemNumbers: [
+      {
+        articleNumber: '13717521033',
+        manufacturerName: 'BMW',
+        interchangeability: null,
+      },
+    ],
     fitsVehicle: null,
     ...overrides,
   }
@@ -83,7 +90,7 @@ describe('ArticleRow — catalog metadata', () => {
 
     expect(screen.getByRole('link', { name: 'WL6340' })).toHaveAttribute(
       'href',
-      '/catalog/articles/WL6340',
+      '/catalog/articles/268/WL6340',
     )
   })
 
@@ -92,7 +99,7 @@ describe('ArticleRow — catalog metadata', () => {
 
     expect(
       screen.getByRole('link', { name: 'BD 0986/451' }),
-    ).toHaveAttribute('href', `/catalog/articles/${encodeURIComponent('BD 0986/451')}`)
+    ).toHaveAttribute('href', `/catalog/articles/268/${encodeURIComponent('BD 0986/451')}`)
   })
 
   // Fit is an article-detail concern; the row stays vehicle-agnostic even when
@@ -221,13 +228,35 @@ describe('ArticleRow — interactions', () => {
     expect(screen.getByText('79 mm')).toBeInTheDocument()
   })
 
-  it('hides the expander when the article carries no detail metadata', () => {
+  // Applicable vehicles are fetched on demand, so every row has something to
+  // expand into even when the catalog response carried no specs or OE numbers.
+  it('keeps the expander on a row with no catalog detail, offering the vehicles section', async () => {
+    const user = userEvent.setup()
     render(
       <ArticleRow article={article({ technicalSpecs: [], oemNumbers: [] })} />,
     )
 
+    await user.click(
+      screen.getByRole('button', { name: 'Допълнителна информация за WL6340' }),
+    )
+
     expect(
-      screen.queryByRole('button', { name: /Допълнителна информация/ }),
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: /Приложими автомобили/ }),
+    ).toBeInTheDocument()
+  })
+
+  // Opening a row must not fetch anything — the vehicles section is behind its
+  // own click, so the row still paints from catalog metadata alone.
+  it('does not open the vehicles section by default', async () => {
+    const user = userEvent.setup()
+    render(<ArticleRow article={article()} />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'Допълнителна информация за WL6340' }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: /Приложими автомобили/ }),
+    ).toHaveAttribute('aria-expanded', 'false')
   })
 })

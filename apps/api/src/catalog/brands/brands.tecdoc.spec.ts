@@ -10,11 +10,12 @@ describe('BrandsTecDoc', () => {
     tecdoc = new BrandsTecDoc({ call } as unknown as TecDocTransport);
   });
 
-  it('calls getBrands with includeAll and maps mfrName + preferred logo size', async () => {
+  it('calls getBrands with includeAll and maps the id, name and preferred logo size', async () => {
     call.mockResolvedValueOnce({
       data: {
         array: [
           {
+            dataSupplierId: 30,
             mfrName: 'Bosch',
             dataSupplierLogo: {
               imageURL100: 'https://logo/100.png',
@@ -33,9 +34,10 @@ describe('BrandsTecDoc', () => {
       lang: 'bg',
       includeAll: true,
     });
-    // Prefers the 200px logo when present.
+    // Prefers the 200px logo when present. The id is what article rows join on,
+    // so it has to survive the mapping as well as the name.
     expect(result).toEqual([
-      { brandName: 'Bosch', logoUrl: 'https://logo/200.png' },
+      { brandId: '30', brandName: 'Bosch', logoUrl: 'https://logo/200.png' },
     ]);
   });
 
@@ -43,8 +45,12 @@ describe('BrandsTecDoc', () => {
     call.mockResolvedValueOnce({
       data: {
         array: [
-          { mfrName: 'A', dataSupplierLogo: { imageURL800: 'https://a/800' } },
-          { mfrName: 'B' },
+          {
+            dataSupplierId: 1,
+            mfrName: 'A',
+            dataSupplierLogo: { imageURL800: 'https://a/800' },
+          },
+          { dataSupplierId: 2, mfrName: 'B' },
         ],
       },
     });
@@ -52,8 +58,8 @@ describe('BrandsTecDoc', () => {
     const result = await tecdoc.getBrands();
 
     expect(result).toEqual([
-      { brandName: 'A', logoUrl: 'https://a/800' },
-      { brandName: 'B', logoUrl: null },
+      { brandId: '1', brandName: 'A', logoUrl: 'https://a/800' },
+      { brandId: '2', brandName: 'B', logoUrl: null },
     ]);
   });
 

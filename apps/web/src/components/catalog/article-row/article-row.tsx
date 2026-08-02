@@ -10,6 +10,7 @@ import type {
   WarehouseAvailabilityDto,
 } from "@vp-parts-shop/shared";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
+import { articleDetailHref } from "@/lib/catalog/article-href";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 import { cn } from "@/lib/utils";
 import { ArticleRowAvailability } from "./article-row-availability";
@@ -44,13 +45,17 @@ const NO_WAREHOUSES: WarehouseAvailabilityDto[] = [];
  * every list surface, but only search renders it so far — the listing grid and
  * substitutes still use `ArticleCard`.
  *
- * The row renders from catalog metadata alone. Live price/stock arrives on its
- * own schedule via `availability`, which lets a cacheable catalog response
- * paint immediately instead of blocking the whole list on the inventory read.
+ * The collapsed row renders from catalog metadata alone. Live price/stock
+ * arrives on its own schedule via `availability`, which lets a cacheable catalog
+ * response paint immediately instead of blocking the whole list on the
+ * inventory read; the expander's applicable-vehicles section is the only other
+ * read, and it waits until a visitor opens it.
  *
  * Deliberately shows no vehicle-fit verdict even though `ArticleSummaryDto`
  * carries one: list surfaces are vehicle-agnostic, and resolving fit per row
  * would cost a lookup per hit. Fit is rendered only on the article detail page.
+ * The applicable-vehicles section is not that verdict — it lists what the part
+ * fits, rather than judging it against the visitor's selected vehicle.
  */
 export function ArticleRow({
   article,
@@ -63,11 +68,9 @@ export function ArticleRow({
     availability?.availabilityByWarehouse ?? NO_WAREHOUSES,
   );
 
-  const { articleNumber, brandName, description } = article;
-  const href = `/catalog/articles/${encodeURIComponent(articleNumber)}`;
+  const { articleNumber, brandId, brandName, description } = article;
+  const href = articleDetailHref(brandId, articleNumber);
   const specSummary = formatSpecSummary(article.technicalSpecs);
-  const hasDetail =
-    article.technicalSpecs.length > 0 || article.oemNumbers.length > 0;
 
   return (
     <article
@@ -75,26 +78,24 @@ export function ArticleRow({
       aria-busy={availability === undefined}
     >
       <div className="flex items-stretch">
-        {hasDetail && (
-          <button
-            type="button"
-            onClick={() => setIsExpanded((expanded) => !expanded)}
-            aria-expanded={isExpanded}
-            aria-label={`Допълнителна информация за ${articleNumber}`}
+        <button
+          type="button"
+          onClick={() => setIsExpanded((expanded) => !expanded)}
+          aria-expanded={isExpanded}
+          aria-label={`Допълнителна информация за ${articleNumber}`}
+          className={cn(
+            "grid w-[34px] shrink-0 place-items-center border-r border-line text-ink-3 transition-colors hover:bg-bg-sunken hover:text-ink focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-accent",
+            isExpanded && "bg-accent-soft text-accent-hover",
+          )}
+        >
+          <ChevronRight
             className={cn(
-              "grid w-[34px] shrink-0 place-items-center border-r border-line text-ink-3 transition-colors hover:bg-bg-sunken hover:text-ink focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-accent",
-              isExpanded && "bg-accent-soft text-accent-hover",
+              "h-3.5 w-3.5 transition-transform",
+              isExpanded && "rotate-90",
             )}
-          >
-            <ChevronRight
-              className={cn(
-                "h-3.5 w-3.5 transition-transform",
-                isExpanded && "rotate-90",
-              )}
-              aria-hidden="true"
-            />
-          </button>
-        )}
+            aria-hidden="true"
+          />
+        </button>
 
         <div className="grid min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)] items-center gap-x-3.5 gap-y-3 p-3 lg:grid-cols-[44px_minmax(150px,1fr)_68px_116px_142px_152px] lg:px-4 lg:py-[13px]">
           <ArticleThumbnail href={href} thumbnailUrl={article.thumbnailUrl} />
@@ -138,8 +139,10 @@ export function ArticleRow({
         </div>
       </div>
 
-      {hasDetail && isExpanded && (
+      {isExpanded && (
         <ArticleRowDetail
+          brandId={brandId}
+          articleNumber={articleNumber}
           technicalSpecs={article.technicalSpecs}
           oemNumbers={article.oemNumbers}
         />

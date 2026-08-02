@@ -5,6 +5,7 @@ import { ArticleCard } from './article-card'
 
 const baseArticle: ArticleListItemDto = {
   articleNumber: 'ART-001',
+  brandId: '268',
   brandName: 'Bosch',
   brandLogoUrl: null,
   description: 'Oil Filter',

@@ -15,6 +15,7 @@ const SEARCH_RATE_LIMIT = 30;
 
 const ARTICLE: ArticleSummaryDto = {
   articleNumber: 'WL6340',
+  brandId: '268',
   brandName: 'WIX',
   brandLogoUrl: null,
   description: 'Oil Filter',

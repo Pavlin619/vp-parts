@@ -36,6 +36,7 @@ function suggestionItem(articleNumber: string): ArticleAutocompleteItemDto {
   return {
     kind: 'article',
     articleNumber,
+    brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter',
   };

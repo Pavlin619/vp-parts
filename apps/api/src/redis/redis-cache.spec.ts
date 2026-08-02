@@ -37,6 +37,16 @@ describe('RedisCache', () => {
       );
     });
 
+    // Callers lean on this to keep a failed read out of the cache — a lookup
+    // that threw must be retried next time, not remembered for the whole TTL.
+    it('caches nothing when the loader throws', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      const loader = jest.fn().mockRejectedValue(new Error('not found'));
+
+      await expect(cache.cached('k', 60, loader)).rejects.toThrow('not found');
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
     it('returns the loaded value when Redis cannot read or write', async () => {
       redis.get.mockRejectedValueOnce(new Error('Redis unavailable'));
       redis.set.mockRejectedValueOnce(new Error('Redis unavailable'));

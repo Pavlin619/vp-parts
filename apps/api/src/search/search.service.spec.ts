@@ -73,6 +73,7 @@ function articleItem(
 ): ArticleSummaryDto {
   return {
     articleNumber,
+    brandId: '268',
     brandName: 'WIX',
     brandLogoUrl: null,
     description: 'Oil Filter',
@@ -104,6 +105,7 @@ function suggestionItem(articleNumber: string): ArticleAutocompleteItemDto {
   return {
     kind: 'article',
     articleNumber,
+    brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter',
   };
@@ -123,9 +125,9 @@ function categorySuggestionItem(
 }
 
 const BRANDS: BrandDto[] = [
-  { brandName: 'WIX Filters', logoUrl: null },
-  { brandName: 'Bosch', logoUrl: null },
-  { brandName: 'MANN-FILTER', logoUrl: null },
+  { brandId: '268', brandName: 'WIX Filters', logoUrl: null },
+  { brandId: '30', brandName: 'Bosch', logoUrl: null },
+  { brandId: '72', brandName: 'MANN-FILTER', logoUrl: null },
 ];
 
 // SearchService is exercised over its real collaborators (cache → lane resolver

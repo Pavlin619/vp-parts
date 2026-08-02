@@ -43,6 +43,7 @@ const metadata: PaginatedCatalogArticlesDto = {
   items: [
     {
       articleNumber: 'A-001',
+      brandId: '268',
       brandName: 'Bosch',
       brandLogoUrl: null,
       description: 'Filter',
@@ -53,6 +54,7 @@ const metadata: PaginatedCatalogArticlesDto = {
     },
     {
       articleNumber: 'A-002',
+      brandId: '268',
       brandName: 'MANN',
       brandLogoUrl: null,
       description: 'Filter',

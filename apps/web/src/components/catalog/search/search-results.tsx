@@ -53,7 +53,7 @@ export function SearchResults({
 
       <ul className="flex flex-col gap-2" aria-busy={availability === undefined}>
         {results.map((result) => (
-          <li key={`${result.brandName}-${result.articleNumber}`}>
+          <li key={`${result.brandId}-${result.articleNumber}`}>
             <ArticleRow
               article={result}
               availability={selectArticleAvailability(

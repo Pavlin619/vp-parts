@@ -11,11 +11,11 @@ const BRAND_TTL = 7 * 24 * 60 * 60;
 
 /**
  * Reusable brand feature: the Redis-cached TecDoc data-supplier list plus the
- * brand-name -> logo join every list surface (catalog listing, article detail,
- * substitutes) and the search facets need. TecDoc keys articles by brand name
- * but returns logos only from `getBrands`, so the two are joined here by brand
- * name. This is a synchronous read-enrichment dependency other features inject
- * via the brands barrel.
+ * brand -> logo join every list surface (catalog listing, article detail,
+ * substitutes) and the search facets need. `getArticles` carries no logo and
+ * `getBrands` carries nothing else, so the two are joined here on the
+ * `dataSupplierId` both sides key on. This is a synchronous read-enrichment
+ * dependency other features inject via the brands barrel.
  */
 @Injectable()
 export class BrandsService {
@@ -36,24 +36,26 @@ export class BrandsService {
   }
 
   /**
-   * The brand-name -> logo lookup used to enrich both article rows and the
-   * brand search facet. Backed by the (cached) getBrands read.
+   * The brand-id -> logo lookup used to enrich both article rows and the brand
+   * search facet. Backed by the (cached) getBrands read. Keyed on
+   * `dataSupplierId` rather than the display name, which is neither unique nor
+   * stable across TecDoc data releases.
    */
   async getBrandLogoMap(): Promise<Map<string, string | null>> {
     const brands = await this.getBrands();
 
-    return new Map(brands.map((brand) => [brand.brandName, brand.logoUrl]));
+    return new Map(brands.map((brand) => [brand.brandId, brand.logoUrl]));
   }
 
   /**
-   * Joins brand logos onto a batch of article rows by brand name for every list
-   * and detail surface. A row whose brand has no logo on file keeps
-   * `brandLogoUrl: null`. Skips the (cached) getBrands read entirely for an
-   * empty batch so an empty search or substitutes result never triggers it.
+   * Joins brand logos onto a batch of article rows for every list and detail
+   * surface. A row whose brand has no logo on file keeps `brandLogoUrl: null`.
+   * Skips the (cached) getBrands read entirely for an empty batch so an empty
+   * search or substitutes result never triggers it.
    */
-  async attachLogos<
-    T extends { brandName: string; brandLogoUrl: string | null },
-  >(items: T[]): Promise<T[]> {
+  async attachLogos<T extends { brandId: string; brandLogoUrl: string | null }>(
+    items: T[],
+  ): Promise<T[]> {
     if (items.length === 0) {
       return items;
     }
@@ -62,7 +64,7 @@ export class BrandsService {
 
     return items.map((item) => ({
       ...item,
-      brandLogoUrl: logoByBrand.get(item.brandName) ?? null,
+      brandLogoUrl: logoByBrand.get(item.brandId) ?? null,
     }));
   }
 
@@ -90,13 +92,14 @@ export class BrandsService {
 
     const items = results.items.map((item) => ({
       ...item,
-      brandLogoUrl: logoByBrand.get(item.brandName) ?? null,
+      brandLogoUrl: logoByBrand.get(item.brandId) ?? null,
     }));
     const facets = this.attachFacetLogos(results.facets, logoByBrand);
 
     return { ...results, items, facets };
   }
 
+  /** Facet value ids are `dataSupplierId`s, so they key the logo map directly. */
   private attachFacetLogos(
     facets: SearchFacetDto[],
     logoByBrand: Map<string, string | null>,
@@ -105,7 +108,7 @@ export class BrandsService {
       ...facet,
       values: facet.values.map((value) => ({
         ...value,
-        imageUrl: logoByBrand.get(value.label) ?? null,
+        imageUrl: logoByBrand.get(value.id) ?? null,
       })),
     }));
   }
