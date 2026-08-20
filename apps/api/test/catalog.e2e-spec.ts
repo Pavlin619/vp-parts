@@ -6,11 +6,15 @@ import {
   VehiclesTecDoc,
   ArticlesTecDoc,
   BrandsTecDoc,
+  LinkedVehiclesTecDoc,
   ArticleNotFoundException,
   AVAILABILITY_MAX_ARTICLE_NUMBERS,
 } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
-import { CatalogUnavailableException } from '../src/tecdoc';
+import {
+  CatalogArticlesPage,
+  CatalogUnavailableException,
+} from '../src/tecdoc';
 import {
   ManufacturerDto,
   ModelSeriesDto,
@@ -98,7 +102,6 @@ const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
       interchangeability: null,
     },
   ],
-  compatibleVehicles: [],
   fitsVehicle: null,
 };
 
@@ -110,6 +113,20 @@ const BRANDS: BrandDto[] = [
   },
 ];
 
+/**
+ * What `getArticles` answers with: the mapped page plus the linkage roles that
+ * came down with it, which the service pins so the applicable-vehicles section
+ * need not read them again.
+ */
+const ARTICLES_PAGE: CatalogArticlesPage = {
+  articles: PAGINATED_ARTICLES,
+  roles: PAGINATED_ARTICLES.items.map((row) => ({
+    brandId: row.brandId,
+    articleNumber: row.articleNumber,
+    legacyArticleIds: [555],
+  })),
+};
+
 const mockTecDocClient = {
   getManufacturers: jest.fn(),
   getModelSeries: jest.fn(),
@@ -118,10 +135,11 @@ const mockTecDocClient = {
   getBrands: jest.fn(),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
-  getSubstitutes: jest.fn(),
+  getComparableArticles: jest.fn(),
   getLegacyArticleIds: jest.fn(),
+  getLinkedManufacturers: jest.fn(),
   getLinkedTargetIds: jest.fn(),
-  getLinkageTargets: jest.fn(),
+  getVehiclesByIds: jest.fn(),
   searchArticles: jest.fn(),
   getAutocompleteArticles: jest.fn(),
   getAutocompleteTerms: jest.fn(),
@@ -136,6 +154,7 @@ describe('CatalogController (e2e)', () => {
       builder.overrideProvider(VehiclesTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(ArticlesTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(BrandsTecDoc).useValue(mockTecDocClient);
+      builder.overrideProvider(LinkedVehiclesTecDoc).useValue(mockTecDocClient);
     });
     redisClient = app.get<Redis>(REDIS_CLIENT);
   });
@@ -150,11 +169,12 @@ describe('CatalogController (e2e)', () => {
     // The article-detail flow joins a brand logo via getBrands; give every test
     // a default brand set so the join resolves.
     mockTecDocClient.getBrands.mockResolvedValue(BRANDS);
-    // The linked-vehicles flow walks three TecDoc reads; default them to an
-    // empty chain so a test only has to stub the step it cares about.
+    // Both applicable-vehicles routes resolve the article's roles first;
+    // default the chain to empty so a test only stubs the step it cares about.
     mockTecDocClient.getLegacyArticleIds.mockResolvedValue([]);
+    mockTecDocClient.getLinkedManufacturers.mockResolvedValue([]);
     mockTecDocClient.getLinkedTargetIds.mockResolvedValue([]);
-    mockTecDocClient.getLinkageTargets.mockResolvedValue([]);
+    mockTecDocClient.getVehiclesByIds.mockResolvedValue([]);
     await redisClient.flushall();
   });
 
@@ -244,7 +264,7 @@ describe('CatalogController (e2e)', () => {
 
   describe('GET /catalog/vehicles/:vehicleId/categories/:categoryId/articles', () => {
     it('returns cacheable catalog metadata without live inventory', async () => {
-      mockTecDocClient.getArticles.mockResolvedValueOnce(PAGINATED_ARTICLES);
+      mockTecDocClient.getArticles.mockResolvedValueOnce(ARTICLES_PAGE);
 
       const res = await request(app.getHttpServer())
         .get('/catalog/vehicles/10001/categories/100001/articles')
@@ -262,10 +282,8 @@ describe('CatalogController (e2e)', () => {
 
     it('forwards page and pageSize query params to TecDoc', async () => {
       mockTecDocClient.getArticles.mockResolvedValueOnce({
-        ...PAGINATED_ARTICLES,
-        page: 2,
-        pageSize: 10,
-        items: [],
+        articles: { ...PAGINATED_ARTICLES, page: 2, pageSize: 10, items: [] },
+        roles: [],
       });
 
       await request(app.getHttpServer())
@@ -283,7 +301,7 @@ describe('CatalogController (e2e)', () => {
     });
 
     it('defaults to page 1 and pageSize 20 when query params are absent', async () => {
-      mockTecDocClient.getArticles.mockResolvedValueOnce(PAGINATED_ARTICLES);
+      mockTecDocClient.getArticles.mockResolvedValueOnce(ARTICLES_PAGE);
 
       await request(app.getHttpServer())
         .get('/catalog/vehicles/10001/categories/100001/articles')
@@ -483,7 +501,7 @@ describe('CatalogController (e2e)', () => {
 
   describe('GET /catalog/articles/:articleNumber/substitutes', () => {
     it('returns the cross-reference parts as catalog metadata only', async () => {
-      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([
+      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([
         {
           articleNumber: 'OC115',
           brandName: 'MANN-FILTER',
@@ -496,7 +514,9 @@ describe('CatalogController (e2e)', () => {
         .get('/catalog/articles/OX%20982D/substitutes')
         .expect(200);
 
-      expect(mockTecDocClient.getSubstitutes).toHaveBeenCalledWith('OX 982D');
+      expect(mockTecDocClient.getComparableArticles).toHaveBeenCalledWith(
+        'OX 982D',
+      );
       expect(res.body).toHaveLength(1);
       expect(res.body[0].articleNumber).toBe('OC115');
       // Availability is fetched live and separately via
@@ -506,7 +526,7 @@ describe('CatalogController (e2e)', () => {
     });
 
     it('returns an empty array when the part has no cross-references', async () => {
-      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([]);
+      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([]);
 
       const res = await request(app.getHttpServer())
         .get('/catalog/articles/BD-001/substitutes')
@@ -518,7 +538,7 @@ describe('CatalogController (e2e)', () => {
 
   describe('GET /catalog/articles/:articleNumber/alternative-numbers', () => {
     it('returns the cross-reference numbers with the brand that files them', async () => {
-      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([
+      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([
         {
           articleNumber: 'OC115',
           brandName: 'MANN-FILTER',
@@ -531,7 +551,9 @@ describe('CatalogController (e2e)', () => {
         .get('/catalog/articles/OX%20982D/alternative-numbers')
         .expect(200);
 
-      expect(mockTecDocClient.getSubstitutes).toHaveBeenCalledWith('OX 982D');
+      expect(mockTecDocClient.getComparableArticles).toHaveBeenCalledWith(
+        'OX 982D',
+      );
       // The section renders chips, so the substitutes' catalog metadata is
       // projected away rather than shipped to every expanded row.
       expect(res.body).toEqual([
@@ -540,7 +562,7 @@ describe('CatalogController (e2e)', () => {
     });
 
     it('returns an empty array when the part has no cross-references', async () => {
-      mockTecDocClient.getSubstitutes.mockResolvedValueOnce([]);
+      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([]);
 
       const res = await request(app.getHttpServer())
         .get('/catalog/articles/BD-004/alternative-numbers')
@@ -550,44 +572,31 @@ describe('CatalogController (e2e)', () => {
     });
   });
 
-  describe('GET /catalog/brands/:brandId/articles/:articleNumber/linked-vehicles', () => {
-    it('returns the vehicles the part fits', async () => {
+  describe('GET .../linked-vehicles/manufacturers', () => {
+    it('returns the makes the part fits', async () => {
       mockTecDocClient.getLegacyArticleIds.mockResolvedValueOnce([555]);
-      mockTecDocClient.getLinkedTargetIds.mockResolvedValueOnce([10020]);
-      mockTecDocClient.getLinkageTargets.mockResolvedValueOnce([
-        {
-          vehicleId: '10020',
-          manufacturerName: 'BMW',
-          modelSeriesName: '3 Series (E90)',
-          name: '320d',
-          yearFrom: 2005,
-          yearTo: 2011,
-          powerKw: 130,
-          powerHp: 177,
-          fuelType: 'Diesel',
-          engineCode: 'N47 D20 C',
-        },
+      mockTecDocClient.getLinkedManufacturers.mockResolvedValueOnce([
+        { manufacturerId: '5', name: 'BMW' },
       ]);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/brands/94/articles/OX%20982D/linked-vehicles')
+        .get(
+          '/catalog/brands/94/articles/OX%20982D/linked-vehicles/manufacturers',
+        )
         .expect(200);
 
       expect(mockTecDocClient.getLegacyArticleIds).toHaveBeenCalledWith(
         94,
         'OX 982D',
       );
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0]).toMatchObject({
-        vehicleId: '10020',
-        manufacturerName: 'BMW',
-        name: '320d',
-      });
+      expect(res.body).toEqual([{ manufacturerId: '5', name: 'BMW' }]);
     });
 
     it('returns an empty array when the part has no catalogued linkages', async () => {
       const res = await request(app.getHttpServer())
-        .get('/catalog/brands/101/articles/BD-002/linked-vehicles')
+        .get(
+          '/catalog/brands/101/articles/BD-002/linked-vehicles/manufacturers',
+        )
         .expect(200);
 
       expect(res.body).toEqual([]);
@@ -597,10 +606,64 @@ describe('CatalogController (e2e)', () => {
     // matches a single trailing segment — the sub-route must win, not 404.
     it('does not collide with the article detail route', async () => {
       await request(app.getHttpServer())
-        .get('/catalog/brands/30/articles/BD-003/linked-vehicles')
+        .get('/catalog/brands/30/articles/BD-003/linked-vehicles/manufacturers')
         .expect(200);
 
       expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET .../linked-vehicles', () => {
+    function hydrated(carId: number, name: string) {
+      return {
+        seriesId: '8506',
+        seriesName: '3 Series (E90)',
+        manufacturerId: '5',
+        vehicle: {
+          vehicleId: String(carId),
+          name,
+          yearFrom: 2005,
+          yearTo: 2011,
+          powerKw: 130,
+          powerHp: 177,
+          fuelType: 'Diesel',
+          engineCodes: ['N47 D20 C'],
+        },
+      };
+    }
+
+    it('returns the vehicles of the make, grouped into model series', async () => {
+      mockTecDocClient.getLegacyArticleIds.mockResolvedValueOnce([555]);
+      mockTecDocClient.getLinkedTargetIds.mockResolvedValueOnce([10020, 10021]);
+      mockTecDocClient.getVehiclesByIds.mockResolvedValueOnce([
+        hydrated(10021, '320d Touring'),
+        hydrated(10020, '320d'),
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get(
+          '/catalog/brands/94/articles/OX%20982D/linked-vehicles?manufacturerId=5',
+        )
+        .expect(200);
+
+      expect(mockTecDocClient.getLinkedTargetIds).toHaveBeenCalledWith(555, 5);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({
+        seriesId: '8506',
+        manufacturerId: '5',
+        name: '3 Series (E90)',
+      });
+      expect(
+        res.body[0].vehicles.map((vehicle: { name: string }) => vehicle.name),
+      ).toEqual(['320d', '320d Touring']);
+    });
+
+    // Without the make the answer is every vehicle the part fits, which is the
+    // unbounded list this section exists to avoid.
+    it('rejects a request with no manufacturer', async () => {
+      await request(app.getHttpServer())
+        .get('/catalog/brands/94/articles/OX%20982D/linked-vehicles')
+        .expect(400);
     });
   });
 });

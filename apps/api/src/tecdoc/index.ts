@@ -1,16 +1,18 @@
 export { TecDocModule } from './tecdoc.module';
 export { TecDocTransport } from './tecdoc-transport';
 export { TecDocMockClient } from './tecdoc-mock-client';
-export { mapArticleSummary } from './article-mapper';
-export type { TecDocArticleRecord } from './article-mapper';
+export { tecDocSourceProvider } from './tecdoc-source.provider';
 export {
-  collectLinkedTargetIds,
-  mapLinkedVehicle,
-} from './linked-vehicle-mapper';
+  legacyArticleIdsOf,
+  linkageRolesOf,
+  mapArticleSummary,
+} from './article-mapper';
 export type {
-  TecDocArticleLinkagesResponse,
-  TecDocLinkageTargetRecord,
-} from './linked-vehicle-mapper';
+  ArticleLinkageRoles,
+  CatalogArticlesPage,
+  TecDocArticleRecord,
+} from './article-mapper';
+export type { LinkedVehicleWithSeries } from './linked-vehicle';
 export {
   CatalogRequestRejectedException,
   CatalogUnavailableException,
@@ -21,5 +23,12 @@ export {
   classifyTecDocStatus,
 } from './tecdoc-status';
 export type { TecDocResponseStatus } from './tecdoc-status';
-export { ParseTecDocIdPipe } from './parse-tecdoc-id.pipe';
-export { AssemblyGroupType, LinkageTargetType } from './tecdoc-target-types';
+export {
+  ParseRequiredTecDocIdPipe,
+  ParseTecDocIdPipe,
+} from './parse-tecdoc-id.pipe';
+export {
+  AssemblyGroupType,
+  LinkageFunctionTargetType,
+  LinkageTargetType,
+} from './tecdoc-target-types';

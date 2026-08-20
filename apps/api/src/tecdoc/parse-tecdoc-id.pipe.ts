@@ -14,7 +14,8 @@ import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
  *
  * Stricter than the built-in `ParseIntPipe`, which accepts `'1.5'` and truncates
  * it to `1`. `undefined` passes through, so the same pipe guards an optional
- * query parameter.
+ * query parameter; use {@link ParseRequiredTecDocIdPipe} where an absent id
+ * would widen the query the same way an unparsed one does.
  */
 @Injectable()
 export class ParseTecDocIdPipe implements PipeTransform<
@@ -22,16 +23,35 @@ export class ParseTecDocIdPipe implements PipeTransform<
   number | undefined
 > {
   transform(value: unknown): number | undefined {
+    return value === undefined ? undefined : parseTecDocId(value);
+  }
+}
+
+/**
+ * The same parse for a parameter the handler cannot do without — a facet filter,
+ * say, where an absent value asks for the whole catalogue instead of the branch
+ * the caller named.
+ */
+@Injectable()
+export class ParseRequiredTecDocIdPipe implements PipeTransform<
+  unknown,
+  number
+> {
+  transform(value: unknown): number {
     if (value === undefined) {
-      return undefined;
-    }
-
-    const id = Number(value);
-
-    if (!Number.isInteger(id) || id <= 0) {
       throw new BadRequestException();
     }
 
-    return id;
+    return parseTecDocId(value);
   }
+}
+
+function parseTecDocId(value: unknown): number {
+  const id = Number(value);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new BadRequestException();
+  }
+
+  return id;
 }

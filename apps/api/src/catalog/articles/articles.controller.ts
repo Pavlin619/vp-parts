@@ -13,7 +13,6 @@ import {
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
-  LinkedVehicleDto,
 } from '@vp-parts-shop/shared';
 import { Public } from '../../auth/public.decorator';
 import { ParseTecDocIdPipe } from '../../tecdoc';
@@ -90,20 +89,5 @@ export class ArticlesController {
     @Param('articleNumber') articleNumber: string,
   ): Promise<AlternativeNumberDto[]> {
     return this.articles.getAlternativeNumbers(articleNumber);
-  }
-
-  /**
-   * The vehicles this article fits. Its own route because no list surface shows
-   * it — the applicable-vehicles section fetches it when a visitor opens it, so
-   * a part with thousands of linkages costs nothing until then. Brand-scoped
-   * for the same reason as the detail route above; the linkages are per part,
-   * so the wrong brand answers with another part's vehicles.
-   */
-  @Get('brands/:brandId/articles/:articleNumber/linked-vehicles')
-  getLinkedVehicles(
-    @Param('brandId', ParseTecDocIdPipe) brandId: number,
-    @Param('articleNumber') articleNumber: string,
-  ): Promise<LinkedVehicleDto[]> {
-    return this.articles.getLinkedVehicles(brandId, articleNumber);
   }
 }

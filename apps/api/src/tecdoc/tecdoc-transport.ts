@@ -64,6 +64,19 @@ export class TecDocTransport {
     }
   }
 
+  /**
+   * One TecDoc call, deadlined but otherwise unpaced.
+   *
+   * There is deliberately no process-wide cap on how many of these run at
+   * once. TecAlliance publishes no rate limit, so any figure would be a guess,
+   * and a cap has to queue what it holds back: a queue then needs a deadline or
+   * a slow upstream becomes unbounded latency, and that deadline sheds ordinary
+   * single-call reads as soon as more visitors browse at once than the guess
+   * allows. The one caller that genuinely fans out bounds itself instead — see
+   * `mapWithConcurrency` in `LinkedVehiclesTecDoc.getVehiclesByIds`. If
+   * TecAlliance ever starts rejecting us, a cap here is the answer, sized to
+   * whatever they tell us rather than to a guess.
+   */
   async call<T>(
     functionName: string,
     params: Record<string, unknown>,

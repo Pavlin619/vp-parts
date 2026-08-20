@@ -1,4 +1,7 @@
-import { ArticleAutocompleteItemDto } from '@vp-parts-shop/shared';
+import {
+  ArticleAutocompleteItemDto,
+  LinkedVehicleManufacturerDto,
+} from '@vp-parts-shop/shared';
 import { TecDocMockClient } from './tecdoc-mock-client';
 import { TecDocSearchType } from '../search/search-types';
 
@@ -213,68 +216,115 @@ describe('TecDocMockClient', () => {
   });
 
   describe('linked vehicles', () => {
-    /**
-     * Walks the mock's three steps exactly as ArticlesService does, so the
-     * fixture assertions below also prove the chain between article number,
-     * legacy id, and target id holds together.
-     */
     const MANN = 72;
     const KNECHT = 94;
     const BOSCH = 30;
+    const MOCK_BRAND = 99001;
 
-    async function linkedVehicles(brandId: number, articleNumber: string) {
-      const legacyArticleIds = await mock.getLegacyArticleIds(
+    /**
+     * Walks an article to its makes exactly as ArticlesService does, so every
+     * assertion below also proves the chain between article number, legacy id
+     * and make holds together.
+     */
+    async function makesOf(
+      brandId: number,
+      articleNumber: string,
+    ): Promise<LinkedVehicleManufacturerDto[]> {
+      const [legacyArticleId] = await mock.getLegacyArticleIds(
         brandId,
         articleNumber,
       );
 
-      const targetIds = await Promise.all(
-        legacyArticleIds.map((id) => mock.getLinkedTargetIds(id)),
-      );
-
-      return mock.getLinkageTargets(targetIds.flat());
+      return legacyArticleId === undefined
+        ? []
+        : mock.getLinkedManufacturers(legacyArticleId);
     }
 
-    // The section groups make → series → modification, so a fixture confined to
-    // one make would leave both levels of that disclosure unexercised in dev.
-    it('spans several makes and series so the grouped section has something to group', async () => {
-      const vehicles = await linkedVehicles(MANN, 'OF-OC115');
+    async function vehiclesOf(
+      brandId: number,
+      articleNumber: string,
+      manufacturerId: number,
+    ) {
+      const [legacyArticleId] = await mock.getLegacyArticleIds(
+        brandId,
+        articleNumber,
+      );
+      const targetIds = await mock.getLinkedTargetIds(
+        legacyArticleId,
+        manufacturerId,
+      );
 
-      const makes = new Set(vehicles.map((v) => v.manufacturerName));
-      const series = new Set(vehicles.map((v) => v.modelSeriesName));
+      return mock.getVehiclesByIds(targetIds);
+    }
 
-      expect(makes.size).toBeGreaterThan(1);
-      expect(series.size).toBeGreaterThan(makes.size);
+    // Every step reads the same fixture rows, so a make that offers itself must
+    // have vehicles behind it — the fixture would otherwise be useless for the
+    // one thing this section is built around.
+    it('walks a make to the vehicles behind it', async () => {
+      const makes = await makesOf(MANN, 'OF-OC115');
+      const bmw = makes.find((make) => make.name === 'BMW')!;
+
+      const vehicles = await vehiclesOf(
+        MANN,
+        'OF-OC115',
+        Number(bmw.manufacturerId),
+      );
+
+      expect(makes.length).toBeGreaterThan(1);
+      expect(vehicles.length).toBeGreaterThan(1);
+      expect(new Set(vehicles.map((row) => row.seriesId)).size).toBeGreaterThan(
+        1,
+      );
+      expect(
+        vehicles.every((row) => row.manufacturerId === bmw.manufacturerId),
+      ).toBe(true);
     });
 
     it('carries the full modification detail the table renders', async () => {
-      const [vehicle] = await linkedVehicles(MANN, 'OF-OC115');
+      const makes = await makesOf(MANN, 'OF-OC115');
+      const [row] = await vehiclesOf(
+        MANN,
+        'OF-OC115',
+        Number(makes[0].manufacturerId),
+      );
 
-      expect(vehicle).toMatchObject({
-        vehicleId: expect.any(String),
-        manufacturerName: 'BMW',
-        modelSeriesName: expect.any(String),
-        name: expect.any(String),
-        powerKw: expect.any(Number),
-        powerHp: expect.any(Number),
-        fuelType: expect.any(String),
-        engineCode: expect.any(String),
+      expect(row).toMatchObject({
+        seriesId: expect.any(String),
+        seriesName: expect.any(String),
+        manufacturerId: makes[0].manufacturerId,
+        vehicle: {
+          vehicleId: expect.any(String),
+          name: expect.any(String),
+          powerKw: expect.any(Number),
+          powerHp: expect.any(Number),
+          fuelType: expect.any(String),
+          engineCodes: [expect.any(String)],
+        },
       });
     });
 
-    it('leaves a model still in production without an end year', async () => {
-      const vehicles = await linkedVehicles(MANN, 'OF-OC115');
+    // The hand-written fixtures fit on one screen at every level, so without a
+    // broad one nothing that only shows up at breadth is ever seen in dev.
+    it('offers one article broad enough to exercise the disclosure', async () => {
+      const makes = await makesOf(MOCK_BRAND, 'TEST-MANY-VEHICLES');
 
-      expect(vehicles.some((v) => v.yearTo === null)).toBe(true);
+      const vehicles = await vehiclesOf(
+        MOCK_BRAND,
+        'TEST-MANY-VEHICLES',
+        Number(makes[0].manufacturerId),
+      );
+
+      expect(makes.length).toBeGreaterThanOrEqual(10);
+      expect(vehicles.length).toBeGreaterThan(15);
     });
 
-    it('returns no vehicles for an article with no catalogued linkages', async () => {
-      expect(await linkedVehicles(BOSCH, 'BP-0986494061')).toEqual([]);
+    it('returns no makes for an article with no catalogued linkages', async () => {
+      expect(await makesOf(BOSCH, 'BP-0986494061')).toEqual([]);
     });
 
     // Unlike the real client the mock never 404s on an unknown part, so the
     // chain has to stop on its own rather than throwing partway through.
-    it('resolves an unknown article number to no legacy ids', async () => {
+    it('resolves an unknown article number to no legacy id', async () => {
       expect(await mock.getLegacyArticleIds(BOSCH, 'NOPE-1')).toEqual([]);
     });
 
@@ -283,14 +333,14 @@ describe('TecDocMockClient', () => {
     // the fixture would stop catching a brand-blind lookup.
     it('gives each brand of a shared article number its own vehicles', async () => {
       const [knecht, bosch] = await Promise.all([
-        linkedVehicles(KNECHT, 'OX 982D'),
-        linkedVehicles(BOSCH, 'OX 982D'),
+        makesOf(KNECHT, 'OX 982D'),
+        makesOf(BOSCH, 'OX 982D'),
       ]);
 
       expect(knecht.length).toBeGreaterThan(0);
       expect(bosch.length).toBeGreaterThan(0);
-      expect(knecht.map((v) => v.vehicleId)).not.toEqual(
-        bosch.map((v) => v.vehicleId),
+      expect(knecht.map((make) => make.name)).not.toEqual(
+        bosch.map((make) => make.name),
       );
     });
   });
@@ -308,14 +358,14 @@ describe('TecDocMockClient', () => {
     });
   });
 
-  describe('getSubstitutes', () => {
+  describe('getComparableArticles', () => {
     // Cross-references are mutual in TecDoc, so a part listed as another's
     // comparable must list that other part back — otherwise the
     // alternative-numbers section of one row contradicts the other's.
     it('cross-references the oil filters both ways', async () => {
       const [forKnecht, forMann] = await Promise.all([
-        mock.getSubstitutes('OX 982D'),
-        mock.getSubstitutes('OF-OC115'),
+        mock.getComparableArticles('OX 982D'),
+        mock.getComparableArticles('OF-OC115'),
       ]);
 
       expect(forKnecht.map((part) => part.articleNumber)).toContain('OF-OC115');
@@ -325,15 +375,15 @@ describe('TecDocMockClient', () => {
     // The alternative-numbers section groups the chips per brand, which a
     // single-brand fixture would leave unexercised in dev.
     it('spans several brands so the grouped section has something to group', async () => {
-      const substitutes = await mock.getSubstitutes('OX 982D');
+      const comparable = await mock.getComparableArticles('OX 982D');
 
-      const brands = new Set(substitutes.map((part) => part.brandName));
+      const brands = new Set(comparable.map((part) => part.brandName));
 
       expect(brands.size).toBeGreaterThan(1);
     });
 
-    it('returns no substitutes for an article with no cross-references', async () => {
-      expect(await mock.getSubstitutes('BP-0986494061')).toEqual([]);
+    it('returns no comparables for an article with no cross-references', async () => {
+      expect(await mock.getComparableArticles('BP-0986494061')).toEqual([]);
     });
   });
 });

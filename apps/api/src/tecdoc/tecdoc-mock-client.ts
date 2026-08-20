@@ -4,7 +4,6 @@ import {
   VehicleVariantDto,
   AssemblyGroupDto,
   BrandDto,
-  PaginatedCatalogArticlesDto,
   PaginatedSearchArticlesDto,
   SearchFacetDto,
   FacetValueDto,
@@ -15,12 +14,18 @@ import {
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   LinkedVehicleDto,
+  LinkedVehicleManufacturerDto,
   OemNumberDto,
   ArticleAutocompleteItemDto,
   CategoryAutocompleteItemDto,
   AutocompleteItemDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
+import type {
+  ArticleLinkageRoles,
+  CatalogArticlesPage,
+} from './article-mapper';
+import type { LinkedVehicleWithSeries } from './linked-vehicle';
 import {
   SearchExecution,
   SearchFilters,
@@ -352,6 +357,14 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       description: 'ТЕСТ · собствена по-висока цена',
       thumbnailUrl: null,
     },
+    // Its applicable-vehicles fixture spans a dozen makes, so the section can be
+    // opened at a realistic breadth in dev — see LINKED_VEHICLES_BY_ARTICLE.
+    {
+      articleNumber: 'TEST-MANY-VEHICLES',
+      brandName: 'MockBrand',
+      description: 'ТЕСТ · много приложими автомобили',
+      thumbnailUrl: null,
+    },
   ],
   '200003': [
     {
@@ -440,6 +453,17 @@ const SUBSTITUTES_BY_ARTICLE: Record<string, MockArticleBase[]> = {
   ],
 };
 
+/**
+ * A fixture row. The make and series are stored alongside the vehicle because
+ * TecDoc carries them on the hydration record it answers with, and the mock has
+ * to be able to group and filter by them the same way — the shared DTO drops
+ * both, since a rendered row always sits inside the series that owns it.
+ */
+interface MockLinkedVehicle extends LinkedVehicleDto {
+  manufacturerName: string;
+  modelSeriesName: string;
+}
+
 function linkedVehicle(
   vehicleId: string,
   manufacturerName: string,
@@ -450,8 +474,8 @@ function linkedVehicle(
   powerKw: number,
   powerHp: number,
   fuelType: string,
-  engineCode: string,
-): LinkedVehicleDto {
+  engineCodes: string[],
+): MockLinkedVehicle {
   return {
     vehicleId,
     manufacturerName,
@@ -462,8 +486,69 @@ function linkedVehicle(
     powerKw,
     powerHp,
     fuelType,
-    engineCode,
+    engineCodes,
   };
+}
+
+/**
+ * Makes for the generated breadth fixture. Twelve of them, because the
+ * hand-written fixtures top out at three makes and eleven vehicles — a scale at
+ * which every level of the disclosure fits on screen at once, so nothing that
+ * only appears at breadth (a make list worth scrolling, counts that differ per
+ * branch) is ever seen in dev.
+ */
+const BREADTH_MAKES = [
+  'AUDI',
+  'BMW',
+  'CITROËN',
+  'FIAT',
+  'FORD',
+  'MERCEDES-BENZ',
+  'NISSAN',
+  'OPEL',
+  'PEUGEOT',
+  'RENAULT',
+  'SKODA',
+  'VOLKSWAGEN',
+];
+
+/**
+ * ~300 vehicles across those makes, deliberately uneven: a uniform grid would
+ * hide a count taken from the wrong level as readily as a wrong grouping.
+ */
+function generateBreadthVehicles(): MockLinkedVehicle[] {
+  const vehicles: MockLinkedVehicle[] = [];
+  const fuelTypes = ['Diesel', 'Petrol'];
+
+  BREADTH_MAKES.forEach((make, makeIndex) => {
+    const seriesCount = 3 + (makeIndex % 3);
+
+    for (let series = 1; series <= seriesCount; series += 1) {
+      const modificationCount = 5 + ((makeIndex + series) % 5);
+
+      for (let index = 0; index < modificationCount; index += 1) {
+        const powerKw = 85 + index * 7;
+        const yearFrom = 2004 + ((makeIndex + series + index) % 14);
+
+        vehicles.push(
+          linkedVehicle(
+            String(700_000 + vehicles.length),
+            make,
+            `Series ${series}`,
+            `${((14 + index) / 10).toFixed(1)} ${index % 2 === 0 ? 'TDI' : 'TSI'}`,
+            yearFrom,
+            index % 4 === 0 ? null : yearFrom + 6,
+            powerKw,
+            Math.round(powerKw * 1.36),
+            fuelTypes[index % fuelTypes.length],
+            [`ENG${makeIndex}${series}${index}`],
+          ),
+        );
+      }
+    }
+  });
+
+  return vehicles;
 }
 
 /**
@@ -477,54 +562,60 @@ function linkedVehicle(
  * The two `OX 982D` entries are the collision pair: same number, different
  * supplier, disjoint vehicle lists. A brand-blind lookup returns one part's
  * vehicles for the other, which is exactly the bug this keying prevents.
+ *
+ * `TEST-MANY-VEHICLES` is the breadth case — see {@link BREADTH_MAKES}.
  */
-const LINKED_VEHICLES_BY_ARTICLE: Record<string, LinkedVehicleDto[]> = {
+const LINKED_VEHICLES_BY_ARTICLE: Record<string, MockLinkedVehicle[]> = {
   [articleKeyForBrandName('KNECHT', 'OX 982D')]: [
     // prettier-ignore
-    linkedVehicle('20010', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 220 CDI', 2007, 2014, 125, 170, 'Diesel', 'OM 651 DE22'),
+    linkedVehicle('20010', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 220 CDI', 2007, 2014, 125, 170, 'Diesel', ['OM 651 DE22']),
+    // A modification filed under several engine codes — the common case for a
+    // long-running platform, and the reason the row carries a list.
     // prettier-ignore
-    linkedVehicle('20011', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 250 CDI', 2009, 2014, 150, 204, 'Diesel', 'OM 651 DE22'),
+    linkedVehicle('20011', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 250 CDI', 2009, 2014, 150, 204, 'Diesel', ['OM 651 DE22', 'OM 651 DE22 LA', '651.911']),
   ],
   [articleKeyForBrandName('Bosch', 'OX 982D')]: [
     // prettier-ignore
-    linkedVehicle('10001', 'VOLKSWAGEN', 'Golf VII', '2.0 TDI', 2012, 2020, 110, 150, 'Diesel', 'CRBC'),
+    linkedVehicle('10001', 'VOLKSWAGEN', 'Golf VII', '2.0 TDI', 2012, 2020, 110, 150, 'Diesel', ['CRBC']),
   ],
   [articleKeyForBrandName('MANN-FILTER', 'OF-OC115')]: [
     // prettier-ignore
-    linkedVehicle('10020', 'BMW', '3 Series (E90)', '320d', 2005, 2011, 130, 177, 'Diesel', 'N47 D20 C'),
+    linkedVehicle('10020', 'BMW', '3 Series (E90)', '320d', 2005, 2011, 130, 177, 'Diesel', ['N47 D20 C']),
     // prettier-ignore
-    linkedVehicle('10021', 'BMW', '3 Series (E90)', '320d Touring', 2005, 2012, 130, 177, 'Diesel', 'N47 D20 C'),
+    linkedVehicle('10021', 'BMW', '3 Series (E90)', '320d Touring', 2005, 2012, 130, 177, 'Diesel', ['N47 D20 C']),
     // prettier-ignore
-    linkedVehicle('10022', 'BMW', '3 Series (E90)', '318d', 2007, 2011, 105, 143, 'Diesel', 'N47 D20 A'),
+    linkedVehicle('10022', 'BMW', '3 Series (E90)', '318d', 2007, 2011, 105, 143, 'Diesel', ['N47 D20 A']),
     // prettier-ignore
-    linkedVehicle('10023', 'BMW', '1 Series (E87)', '120d', 2004, 2011, 130, 177, 'Diesel', 'N47 D20 C'),
+    linkedVehicle('10023', 'BMW', '1 Series (E87)', '120d', 2004, 2011, 130, 177, 'Diesel', ['N47 D20 C']),
     // prettier-ignore
-    linkedVehicle('10024', 'BMW', '5 Series (E60)', '520d', 2005, 2010, 130, 177, 'Diesel', 'N47 D20 C'),
+    linkedVehicle('10024', 'BMW', '5 Series (E60)', '520d', 2005, 2010, 130, 177, 'Diesel', ['N47 D20 C']),
     // prettier-ignore
-    linkedVehicle('20010', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 220 CDI', 2007, 2014, 125, 170, 'Diesel', 'OM 651 DE22'),
+    linkedVehicle('20010', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 220 CDI', 2007, 2014, 125, 170, 'Diesel', ['OM 651 DE22']),
     // prettier-ignore
-    linkedVehicle('20011', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 250 CDI', 2009, 2014, 150, 204, 'Diesel', 'OM 651 DE22'),
+    linkedVehicle('20011', 'MERCEDES-BENZ', 'C-Class (W204)', 'C 250 CDI', 2009, 2014, 150, 204, 'Diesel', ['OM 651 DE22']),
     // prettier-ignore
-    linkedVehicle('20012', 'MERCEDES-BENZ', 'E-Class (W212)', 'E 220 CDI', 2009, 2016, 125, 170, 'Diesel', 'OM 651 DE22'),
+    linkedVehicle('20012', 'MERCEDES-BENZ', 'E-Class (W212)', 'E 220 CDI', 2009, 2016, 125, 170, 'Diesel', ['OM 651 DE22']),
     // prettier-ignore
-    linkedVehicle('30010', 'VOLKSWAGEN', 'Golf VI (5K1)', '2.0 TDI', 2008, 2013, 103, 140, 'Diesel', 'CBAB'),
+    linkedVehicle('30010', 'VOLKSWAGEN', 'Golf VI (5K1)', '2.0 TDI', 2008, 2013, 103, 140, 'Diesel', ['CBAB']),
     // prettier-ignore
-    linkedVehicle('30011', 'VOLKSWAGEN', 'Passat (B7)', '2.0 TDI', 2010, 2015, 103, 140, 'Diesel', 'CFFB'),
+    linkedVehicle('30011', 'VOLKSWAGEN', 'Passat (B7)', '2.0 TDI', 2010, 2015, 103, 140, 'Diesel', ['CFFB']),
     // An open-ended production run, so the section renders a "2015–" span.
     // prettier-ignore
-    linkedVehicle('30012', 'VOLKSWAGEN', 'Passat (B8)', '2.0 TDI', 2015, null, 110, 150, 'Diesel', 'DFCA'),
+    linkedVehicle('30012', 'VOLKSWAGEN', 'Passat (B8)', '2.0 TDI', 2015, null, 110, 150, 'Diesel', ['DFCA']),
   ],
   [articleKeyForBrandName('WIX Filters', 'OF-WL7090')]: [
     // prettier-ignore
-    linkedVehicle('10001', 'VOLKSWAGEN', 'Golf VII', '2.0 TDI', 2012, 2020, 110, 150, 'Diesel', 'CRBC'),
+    linkedVehicle('10001', 'VOLKSWAGEN', 'Golf VII', '2.0 TDI', 2012, 2020, 110, 150, 'Diesel', ['CRBC']),
   ],
+  [articleKeyForBrandName('MockBrand', 'TEST-MANY-VEHICLES')]:
+    generateBreadthVehicles(),
 };
 
 /**
  * The mock's stand-in for TecDoc's article-number → `legacyArticleId` → vehicle
- * chain. Real TecDoc answers the applicable-vehicles question in three steps
- * and the service is what joins them, so the mock offers the same three steps
- * rather than the finished list — otherwise mock mode would never exercise the
+ * chain. Real TecDoc answers the applicable-vehicles question in several steps
+ * and the service is what joins them, so the mock offers the same steps rather
+ * than the finished list — otherwise mock mode would never exercise the
  * orchestration that production runs. The ids are arbitrary; only the chain
  * between them has to hold together.
  */
@@ -535,18 +626,77 @@ const LEGACY_ARTICLE_ID_BY_KEY: Record<string, number> = Object.fromEntries(
   ]),
 );
 
-const LINKED_VEHICLES_BY_LEGACY_ID = new Map<number, LinkedVehicleDto[]>(
+const LINKED_VEHICLES_BY_LEGACY_ID = new Map<number, MockLinkedVehicle[]>(
   Object.entries(LINKED_VEHICLES_BY_ARTICLE).map(([key, vehicles]) => [
     LEGACY_ARTICLE_ID_BY_KEY[key],
     vehicles,
   ]),
 );
 
-const LINKED_VEHICLE_BY_TARGET_ID = new Map<number, LinkedVehicleDto>(
+const LINKED_VEHICLE_BY_TARGET_ID = new Map<number, MockLinkedVehicle>(
   Object.values(LINKED_VEHICLES_BY_ARTICLE)
     .flat()
     .map((vehicle) => [Number(vehicle.vehicleId), vehicle]),
 );
+
+/**
+ * Numeric ids for the makes and model series the fixtures name.
+ *
+ * The fixture rows carry names because that is what a vehicle row shows, but
+ * the applicable-vehicles levels are addressed by id — the client reads a make
+ * id at one level and sends it back at the next. Both maps are built eagerly
+ * over the whole fixture so an id resolves whichever level is called first,
+ * which a test does but a browsing visitor never would.
+ */
+const MAKE_ID_BY_NAME = new Map<string, number>();
+const SERIES_ID_BY_NAME = new Map<string, number>();
+
+function seriesKey(manufacturerName: string, modelSeriesName: string): string {
+  return `${manufacturerName}|${modelSeriesName}`;
+}
+
+for (const vehicle of LINKED_VEHICLE_BY_TARGET_ID.values()) {
+  if (!MAKE_ID_BY_NAME.has(vehicle.manufacturerName)) {
+    MAKE_ID_BY_NAME.set(
+      vehicle.manufacturerName,
+      800_001 + MAKE_ID_BY_NAME.size,
+    );
+  }
+
+  const key = seriesKey(vehicle.manufacturerName, vehicle.modelSeriesName);
+  if (!SERIES_ID_BY_NAME.has(key)) {
+    SERIES_ID_BY_NAME.set(key, 810_001 + SERIES_ID_BY_NAME.size);
+  }
+}
+
+function makeIdOf(vehicle: MockLinkedVehicle): number {
+  return MAKE_ID_BY_NAME.get(vehicle.manufacturerName) ?? 0;
+}
+
+function seriesIdOf(vehicle: MockLinkedVehicle): number {
+  const key = seriesKey(vehicle.manufacturerName, vehicle.modelSeriesName);
+
+  return SERIES_ID_BY_NAME.get(key) ?? 0;
+}
+
+/** Splits a fixture row into the vehicle and the series it hangs under. */
+function hydrateMockVehicle(row: MockLinkedVehicle): LinkedVehicleWithSeries {
+  return {
+    seriesId: String(seriesIdOf(row)),
+    seriesName: row.modelSeriesName,
+    manufacturerId: String(makeIdOf(row)),
+    vehicle: {
+      vehicleId: row.vehicleId,
+      name: row.name,
+      yearFrom: row.yearFrom,
+      yearTo: row.yearTo,
+      powerKw: row.powerKw,
+      powerHp: row.powerHp,
+      fuelType: row.fuelType,
+      engineCodes: row.engineCodes,
+    },
+  };
+}
 
 /**
  * Builds a small gallery of placeholder images for a mock article. Real TecDoc
@@ -614,7 +764,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Height', value: '66 mm' },
     ],
     oemNumbers: [oem('1K0 698 151 B', 'VW')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   {
@@ -630,7 +779,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Height', value: '55.9 mm' },
     ],
     oemNumbers: [oem('5Q0 698 451', 'VW')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   {
@@ -646,7 +794,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Minimum Thickness', value: '25 mm' },
     ],
     oemNumbers: [oem('1K0 615 301 AA', 'VW'), oem('1K0 615 301 R', 'VW')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   {
@@ -664,7 +811,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
     // Shares OE 06J 115 403 Q with OF-WL7090 so an OE-number search returns
     // both brands — the "one OE, many aftermarket options" multi-result case.
     oemNumbers: [oem('06J 115 403 Q', 'VW'), oem('06H 115 562', 'AUDI')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   // Second aftermarket oil filter for VW OE 06J 115 403 Q. Paired with OF-OC115
@@ -683,7 +829,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Thread Size', value: 'M 20 X 1.5' },
     ],
     oemNumbers: [oem('06J 115 403 Q', 'VW'), oem('06J 115 403 C', 'VW')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   // Real Knecht/Mahle OX 982D oil filter insert (Mercedes-Benz M270/M274 &
@@ -713,7 +858,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       oem('2701800109', 'MERCEDES-BENZ'),
       oem('15208HG00D', 'NISSAN'),
     ],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   // The other half of the collision pair — same number, different supplier,
@@ -733,7 +877,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Thread Size', value: 'M 20 X 1.5' },
     ],
     oemNumbers: [oem('06J 115 403 Q', 'VW')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
   // Rich TecDoc details with NO stock/price data in the DB — the buy box shows
@@ -753,7 +896,6 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Inner Diameter', value: '27.5 mm' },
     ],
     oemNumbers: [oem('11427508969', 'BMW'), oem('11427541827', 'BMW')],
-    compatibleVehicles: [],
     fitsVehicle: null,
   },
 ]);
@@ -768,7 +910,6 @@ const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   images: [],
   technicalSpecs: [],
   oemNumbers: [],
-  compatibleVehicles: [],
   fitsVehicle: null,
 };
 
@@ -793,19 +934,30 @@ export class TecDocMockClient {
     return Promise.resolve(BRANDS);
   }
 
+  /**
+   * Returns the same rows the real client does, plus the linkage roles it
+   * carries alongside them — mock mode has to warm the same memo, or it would
+   * exercise a fallback path production rarely takes.
+   */
   getArticles(
     _vehicleId: number,
     categoryId: number,
     page: number,
     pageSize: number,
-  ): Promise<PaginatedCatalogArticlesDto> {
+  ): Promise<CatalogArticlesPage> {
     const all = ARTICLES_BY_CATEGORY[categoryId] ?? [];
     const start = (page - 1) * pageSize;
-    const items = all
-      .slice(start, start + pageSize)
-      .map((base) => this.toSummary(base));
+    const rows = all.slice(start, start + pageSize);
 
-    return Promise.resolve({ total: all.length, page, pageSize, items });
+    return Promise.resolve({
+      articles: {
+        total: all.length,
+        page,
+        pageSize,
+        items: rows.map((base) => this.toSummary(base)),
+      },
+      roles: rows.map((base) => this.linkageRolesOf(base)),
+    });
   }
 
   searchArticles(
@@ -974,12 +1126,12 @@ export class TecDocMockClient {
     return Promise.resolve(base);
   }
 
-  getSubstitutes(articleNumber: string): Promise<ArticleSummaryDto[]> {
-    const substitutes = (SUBSTITUTES_BY_ARTICLE[articleNumber] ?? []).map(
+  getComparableArticles(articleNumber: string): Promise<ArticleSummaryDto[]> {
+    const comparable = (SUBSTITUTES_BY_ARTICLE[articleNumber] ?? []).map(
       (base) => this.toSummary(base),
     );
 
-    return Promise.resolve(substitutes);
+    return Promise.resolve(comparable);
   }
 
   /**
@@ -999,20 +1151,49 @@ export class TecDocMockClient {
     );
   }
 
-  getLinkedTargetIds(legacyArticleId: number): Promise<number[]> {
+  /**
+   * Every step reads the same fixture rows rather than a table of its own, so
+   * the makes offered can never name one the vehicles behind them do not — the
+   * way TecDoc's own manufacturer list and linkages cannot disagree either.
+   */
+  getLinkedManufacturers(
+    legacyArticleId: number,
+  ): Promise<LinkedVehicleManufacturerDto[]> {
+    const byId = new Map<number, LinkedVehicleManufacturerDto>();
+
+    for (const vehicle of LINKED_VEHICLES_BY_LEGACY_ID.get(legacyArticleId) ??
+      []) {
+      const manufacturerId = makeIdOf(vehicle);
+
+      byId.set(manufacturerId, {
+        manufacturerId: String(manufacturerId),
+        name: vehicle.manufacturerName,
+      });
+    }
+
+    return Promise.resolve([...byId.values()]);
+  }
+
+  getLinkedTargetIds(
+    legacyArticleId: number,
+    manufacturerId: number,
+  ): Promise<number[]> {
     const vehicles = LINKED_VEHICLES_BY_LEGACY_ID.get(legacyArticleId) ?? [];
 
     return Promise.resolve(
-      vehicles.map((vehicle) => Number(vehicle.vehicleId)),
+      vehicles
+        .filter((vehicle) => makeIdOf(vehicle) === manufacturerId)
+        .map((vehicle) => Number(vehicle.vehicleId)),
     );
   }
 
-  getLinkageTargets(targetIds: number[]): Promise<LinkedVehicleDto[]> {
-    const vehicles = targetIds
-      .map((targetId) => LINKED_VEHICLE_BY_TARGET_ID.get(targetId))
-      .filter((vehicle): vehicle is LinkedVehicleDto => vehicle !== undefined);
+  getVehiclesByIds(carIds: number[]): Promise<LinkedVehicleWithSeries[]> {
+    const hydrated = carIds
+      .map((carId) => LINKED_VEHICLE_BY_TARGET_ID.get(carId))
+      .filter((vehicle): vehicle is MockLinkedVehicle => vehicle !== undefined)
+      .map(hydrateMockVehicle);
 
-    return Promise.resolve(vehicles);
+    return Promise.resolve(hydrated);
   }
 
   /**
@@ -1033,6 +1214,18 @@ export class TecDocMockClient {
       technicalSpecs: detail?.technicalSpecs ?? [],
       oemNumbers: detail?.oemNumbers ?? [],
       fitsVehicle: null,
+    };
+  }
+
+  private linkageRolesOf(base: MockArticleBase): ArticleLinkageRoles {
+    const brandId = brandIdFor(base.brandName);
+    const legacyArticleId =
+      LEGACY_ARTICLE_ID_BY_KEY[articleKey(brandId, base.articleNumber)];
+
+    return {
+      brandId,
+      articleNumber: base.articleNumber,
+      legacyArticleIds: legacyArticleId === undefined ? [] : [legacyArticleId],
     };
   }
 

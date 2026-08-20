@@ -9,7 +9,8 @@ import { CatalogUnavailableException } from '../../tecdoc';
 import { BrandsService } from '../brands';
 import { ArticleNotFoundException } from './article-not-found.exception';
 import { ArticlesTecDoc } from './articles.tecdoc';
-import { ArticlesService, LINKED_VEHICLES_LIMIT } from './articles.service';
+import { ArticlesService } from './articles.service';
+import { LinkedVehiclesService } from './linked-vehicles';
 
 const BOSCH = 30;
 
@@ -31,28 +32,35 @@ function item(
   };
 }
 
+/** A `getArticles` answer: mapped rows plus the linkage roles beside them. */
+function catalogPage(items: ArticleSummaryDto[]) {
+  return {
+    articles: { total: items.length, page: 1, pageSize: 20, items },
+    roles: items.map((row) => ({
+      brandId: row.brandId,
+      articleNumber: row.articleNumber,
+      legacyArticleIds: [555],
+    })),
+  };
+}
+
 describe('ArticlesService', () => {
   let tecdoc: {
     getArticles: jest.Mock;
     getArticleDetails: jest.Mock;
-    getSubstitutes: jest.Mock;
-    getLegacyArticleIds: jest.Mock;
-    getLinkedTargetIds: jest.Mock;
-    getLinkageTargets: jest.Mock;
+    getComparableArticles: jest.Mock;
   };
   let cache: { cached: jest.Mock; cachedArray: jest.Mock };
   let brands: { attachLogos: jest.Mock };
   let inventory: { getAvailability: jest.Mock };
+  let linkedVehicles: { rememberLinkageRoles: jest.Mock };
   let service: ArticlesService;
 
   beforeEach(() => {
     tecdoc = {
       getArticles: jest.fn(),
       getArticleDetails: jest.fn(),
-      getSubstitutes: jest.fn(),
-      getLegacyArticleIds: jest.fn().mockResolvedValue([]),
-      getLinkedTargetIds: jest.fn().mockResolvedValue([]),
-      getLinkageTargets: jest.fn().mockResolvedValue([]),
+      getComparableArticles: jest.fn(),
     };
     cache = {
       cached: jest.fn((_key: string, _ttl: number, loader: () => unknown) =>
@@ -69,23 +77,22 @@ describe('ArticlesService', () => {
       attachLogos: jest.fn((items: unknown) => Promise.resolve(items)),
     };
     inventory = { getAvailability: jest.fn() };
+    linkedVehicles = {
+      rememberLinkageRoles: jest.fn().mockResolvedValue(undefined),
+    };
 
     service = new ArticlesService(
       tecdoc as unknown as ArticlesTecDoc,
       cache as unknown as RedisCache,
       brands as unknown as BrandsService,
       inventory as unknown as InventoryService,
+      linkedVehicles as unknown as LinkedVehiclesService,
     );
   });
 
   describe('listArticleMetadata', () => {
     it('caches by vehicle/category/page/size for 24h and joins brand logos', async () => {
-      tecdoc.getArticles.mockResolvedValueOnce({
-        total: 1,
-        page: 1,
-        pageSize: 20,
-        items: [item('A1')],
-      });
+      tecdoc.getArticles.mockResolvedValueOnce(catalogPage([item('A1')]));
 
       const result = await service.listArticleMetadata(10001, 100002, 1, 20);
 
@@ -97,40 +104,71 @@ describe('ArticlesService', () => {
       expect(brands.attachLogos).toHaveBeenCalledWith([item('A1')]);
       expect(result.items).toEqual([item('A1')]);
     });
+
+    // The listing response already carries the ids the applicable-vehicles
+    // section is keyed by. Handing them over is what keeps that section from
+    // re-reading the article the first time a visitor expands a row; which key
+    // they land under is the owning service's business, not this one's.
+    it('hands every row’s linkage roles to the vehicles section', async () => {
+      const page = catalogPage([item('A1'), item('A2')]);
+      tecdoc.getArticles.mockResolvedValueOnce(page);
+
+      await service.listArticleMetadata(10001, 100002, 1, 20);
+
+      expect(linkedVehicles.rememberLinkageRoles).toHaveBeenCalledWith(
+        page.roles,
+      );
+    });
+
+    // Warming belongs inside the loader: on a hit the memos are already there
+    // from the read that filled the page, and both entries age out together.
+    it('does not warm the memo when the page is served from cache', async () => {
+      cache.cached.mockResolvedValueOnce({
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        items: [item('A1')],
+      });
+
+      await service.listArticleMetadata(10001, 100002, 1, 20);
+
+      expect(tecdoc.getArticles).not.toHaveBeenCalled();
+      expect(linkedVehicles.rememberLinkageRoles).not.toHaveBeenCalled();
+    });
   });
 
   describe('getArticleDetail', () => {
-    it('caches with the brand and vehicle key and joins the logo', async () => {
+    it('caches with the brand key and joins the logo', async () => {
       tecdoc.getArticleDetails.mockResolvedValueOnce({
         ...item('A1'),
         images: [],
-        compatibleVehicles: [],
       });
 
       await service.getArticleDetail(BOSCH, 'A1', 10001);
 
       expect(cache.cached).toHaveBeenCalledWith(
-        'tecdoc:article-detail:30:A1:10001',
+        'tecdoc:article-detail:30:A1',
         24 * 60 * 60,
         expect.any(Function),
       );
       expect(brands.attachLogos).toHaveBeenCalled();
     });
 
-    it('uses the "none" vehicle key when no vehicle is given', async () => {
-      tecdoc.getArticleDetails.mockResolvedValueOnce({
+    // Nothing in the payload varies by vehicle while fitsVehicle is unresolved,
+    // so keying on it stored one identical copy per vehicle a visitor arrived
+    // from.
+    it('serves one entry regardless of the vehicle the visitor arrived from', async () => {
+      tecdoc.getArticleDetails.mockResolvedValue({
         ...item('A1'),
         images: [],
-        compatibleVehicles: [],
       });
 
+      await service.getArticleDetail(BOSCH, 'A1', 10001);
+      await service.getArticleDetail(BOSCH, 'A1', 20002);
       await service.getArticleDetail(BOSCH, 'A1');
 
-      expect(cache.cached).toHaveBeenCalledWith(
-        'tecdoc:article-detail:30:A1:none',
-        24 * 60 * 60,
-        expect.any(Function),
-      );
+      const keys = cache.cached.mock.calls.map(([key]) => key);
+      expect(new Set(keys)).toEqual(new Set(['tecdoc:article-detail:30:A1']));
     });
 
     // Two suppliers filing one number are two parts, and a key that omits the
@@ -139,7 +177,6 @@ describe('ArticlesService', () => {
       tecdoc.getArticleDetails.mockResolvedValue({
         ...item('OX 982D'),
         images: [],
-        compatibleVehicles: [],
       });
 
       await service.getArticleDetail(BOSCH, 'OX 982D');
@@ -147,13 +184,13 @@ describe('ArticlesService', () => {
 
       expect(cache.cached).toHaveBeenNthCalledWith(
         1,
-        'tecdoc:article-detail:30:OX 982D:none',
+        'tecdoc:article-detail:30:OX 982D',
         expect.any(Number),
         expect.any(Function),
       );
       expect(cache.cached).toHaveBeenNthCalledWith(
         2,
-        'tecdoc:article-detail:94:OX 982D:none',
+        'tecdoc:article-detail:94:OX 982D',
         expect.any(Number),
         expect.any(Function),
       );
@@ -186,7 +223,7 @@ describe('ArticlesService', () => {
   describe('getSubstitutes', () => {
     it('caches (24h hit / 1h miss), joins logos and caps at the limit', async () => {
       const many = Array.from({ length: 25 }, (_, i) => item(`S${i}`));
-      tecdoc.getSubstitutes.mockResolvedValueOnce(many);
+      tecdoc.getComparableArticles.mockResolvedValueOnce(many);
 
       const result = await service.getSubstitutes('SRC');
 
@@ -198,11 +235,25 @@ describe('ArticlesService', () => {
       );
       expect(result).toHaveLength(20);
     });
+
+    // A comparable-number search matches the searched number itself, and a part
+    // is not its own substitute — whichever brand filed it.
+    it('drops the searched part from its own comparable list', async () => {
+      tecdoc.getComparableArticles.mockResolvedValueOnce([
+        item('SRC'),
+        item('SRC', { brandId: '72', brandName: 'MANN-FILTER' }),
+        item('A1'),
+      ]);
+
+      const result = await service.getSubstitutes('SRC');
+
+      expect(result.map((part) => part.articleNumber)).toEqual(['A1']);
+    });
   });
 
   describe('getAlternativeNumbers', () => {
     it('projects the comparable parts down to number and brand', async () => {
-      tecdoc.getSubstitutes.mockResolvedValueOnce([
+      tecdoc.getComparableArticles.mockResolvedValueOnce([
         item('OF-OC115', { brandName: 'MANN-FILTER' }),
         item('OF-WL7090', { brandName: 'WIX Filters' }),
       ]);
@@ -216,7 +267,7 @@ describe('ArticlesService', () => {
     // Both surfaces read the same TecDoc comparable-number set, so opening one
     // warms the other instead of paying for a second lookup.
     it('shares the substitutes cache entry', async () => {
-      tecdoc.getSubstitutes.mockResolvedValueOnce([]);
+      tecdoc.getComparableArticles.mockResolvedValueOnce([]);
 
       await service.getAlternativeNumbers('SRC');
 
@@ -229,7 +280,7 @@ describe('ArticlesService', () => {
     });
 
     it('caps at the substitutes limit', async () => {
-      tecdoc.getSubstitutes.mockResolvedValueOnce(
+      tecdoc.getComparableArticles.mockResolvedValueOnce(
         Array.from({ length: 25 }, (_, index) => item(`S${index}`)),
       );
 
@@ -239,124 +290,11 @@ describe('ArticlesService', () => {
     // The chips render the brand as text, so the logo join would be a round trip
     // spent on a field nothing in the response carries.
     it('skips the brand-logo join', async () => {
-      tecdoc.getSubstitutes.mockResolvedValueOnce([item('OF-OC115')]);
+      tecdoc.getComparableArticles.mockResolvedValueOnce([item('OF-OC115')]);
 
       await service.getAlternativeNumbers('SRC');
 
       expect(brands.attachLogos).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('getLinkedVehicles', () => {
-    it('caches by brand and article number (24h hit / 1h miss)', async () => {
-      await service.getLinkedVehicles(BOSCH, 'OF-OC115');
-
-      expect(cache.cachedArray).toHaveBeenCalledWith(
-        'tecdoc:linked-vehicles:30:OF-OC115',
-        24 * 60 * 60,
-        60 * 60,
-        expect.any(Function),
-      );
-    });
-
-    // TecDoc splits the answer three ways — the number resolves to a legacy id,
-    // the id answers with bare target ids, and only the target read knows what
-    // those ids are called — so joining them is this service's job.
-    // Unlike the summary surfaces there is no brand-logo join: these are
-    // vehicles, not articles, so the TecDoc rows pass through untouched.
-    it('joins the three TecDoc reads into vehicle rows', async () => {
-      const vehicles = [{ vehicleId: '10020', manufacturerName: 'BMW' }];
-      tecdoc.getLegacyArticleIds.mockResolvedValueOnce([555]);
-      tecdoc.getLinkedTargetIds.mockResolvedValueOnce([10020]);
-      tecdoc.getLinkageTargets.mockResolvedValueOnce(vehicles);
-
-      const result = await service.getLinkedVehicles(BOSCH, 'OF-OC115');
-
-      expect(tecdoc.getLegacyArticleIds).toHaveBeenCalledWith(
-        BOSCH,
-        'OF-OC115',
-      );
-      expect(tecdoc.getLinkedTargetIds).toHaveBeenCalledWith(555);
-      expect(tecdoc.getLinkageTargets).toHaveBeenCalledWith([10020]);
-      expect(result).toEqual(vehicles);
-      expect(brands.attachLogos).not.toHaveBeenCalled();
-    });
-
-    // The mapping only moves when TecDoc ships a data release, so it is
-    // memoised separately from the vehicles assembled out of it.
-    it('memoises the article-number lookup by brand and number', async () => {
-      await service.getLinkedVehicles(BOSCH, 'OF-OC115');
-
-      expect(cache.cached).toHaveBeenCalledWith(
-        'tecdoc:article-legacy-ids:30:OF-OC115',
-        24 * 60 * 60,
-        expect.any(Function),
-      );
-    });
-
-    // The saving the memo exists for: a part looked up again inside the TTL
-    // costs the two reads that actually carry linkage data, not three.
-    it('skips the article read when the ids are already memoised', async () => {
-      cache.cached.mockResolvedValueOnce([7]);
-      tecdoc.getLinkedTargetIds.mockResolvedValueOnce([10020]);
-
-      await service.getLinkedVehicles(BOSCH, 'OF-OC115');
-
-      expect(tecdoc.getLegacyArticleIds).not.toHaveBeenCalled();
-      expect(tecdoc.getLinkedTargetIds).toHaveBeenCalledWith(7);
-    });
-
-    // Linkages are filed per generic-article role, so a part sold in two roles
-    // needs both read — and the sets overlap wherever a vehicle takes the part
-    // in either one.
-    it('merges and dedupes the linkages of every role', async () => {
-      tecdoc.getLegacyArticleIds.mockResolvedValueOnce([1, 2]);
-      tecdoc.getLinkedTargetIds
-        .mockResolvedValueOnce([10020, 10021])
-        .mockResolvedValueOnce([10021, 10022]);
-
-      await service.getLinkedVehicles(BOSCH, 'OF-OC115');
-
-      expect(tecdoc.getLinkedTargetIds).toHaveBeenNthCalledWith(1, 1);
-      expect(tecdoc.getLinkedTargetIds).toHaveBeenNthCalledWith(2, 2);
-      expect(tecdoc.getLinkageTargets).toHaveBeenCalledWith([
-        10020, 10021, 10022,
-      ]);
-    });
-
-    // TecDoc's linkage read takes no page parameters and always answers in
-    // full, so the cap has to be applied to the ids before hydrating them.
-    it('caps the ids it hydrates', async () => {
-      const targetIds = Array.from(
-        { length: LINKED_VEHICLES_LIMIT + 5 },
-        (_, index) => index + 1,
-      );
-      tecdoc.getLegacyArticleIds.mockResolvedValueOnce([1]);
-      tecdoc.getLinkedTargetIds.mockResolvedValueOnce(targetIds);
-
-      await service.getLinkedVehicles(BOSCH, 'OF-OC115');
-
-      expect(tecdoc.getLinkageTargets).toHaveBeenCalledWith(
-        targetIds.slice(0, LINKED_VEHICLES_LIMIT),
-      );
-    });
-
-    it('hydrates nothing when the article has no linked vehicles', async () => {
-      tecdoc.getLegacyArticleIds.mockResolvedValueOnce([1]);
-      tecdoc.getLinkedTargetIds.mockResolvedValueOnce([]);
-
-      expect(await service.getLinkedVehicles(BOSCH, 'OF-OC115')).toEqual([]);
-      expect(tecdoc.getLinkageTargets).not.toHaveBeenCalled();
-    });
-
-    // A part whose only role is axle- or universal-linked resolves to no ids
-    // at all, and there is nothing to ask the linkage read about.
-    it('reads nothing further when the part has no vehicle-linked role', async () => {
-      tecdoc.getLegacyArticleIds.mockResolvedValueOnce([]);
-
-      expect(await service.getLinkedVehicles(BOSCH, 'OF-OC115')).toEqual([]);
-      expect(tecdoc.getLinkedTargetIds).not.toHaveBeenCalled();
-      expect(tecdoc.getLinkageTargets).not.toHaveBeenCalled();
     });
   });
 

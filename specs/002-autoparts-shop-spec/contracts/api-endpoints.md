@@ -226,9 +226,6 @@ Response `200`:
       "interchangeability": "Interchangeable, but different scope of supply"
     }
   ],
-  "compatibleVehicles": [
-    { "vehicleId": "V10042", "name": "VW Golf VII 2.0 TDI 110kW (2012–2020)" }
-  ],
   "fitsVehicle": true,
   "available": true,
   "bestPriceExVat": 1250,
@@ -294,51 +291,177 @@ endpoint (key `tecdoc:substitutes:{articleNumber}`).
 
 ### Applicable Vehicles
 
-**`GET /catalog/brands/:brandId/articles/:articleNumber/linked-vehicles`** `[PUBLIC]`
+Two sibling endpoints disclosing the vehicles an article fits: the makes, then
+every vehicle of one make. A common service part is linked to thousands of
+modifications, so the section opens with makes alone and hydrates one make at a
+time. An unopened section costs nothing, and an opened make costs one response.
 
-The vehicle modifications an article is confirmed to fit. Its **own** endpoint
-because no list surface renders it: a common service part is linked to thousands
-of modifications, far more than the article payload they would otherwise ride
-along with. The applicable-vehicles section of a catalog row fetches this when a
-visitor opens it, so an unopened section costs nothing. Shape:
-`LinkedVehicleDto[]`.
+Both are brand-scoped, because linkages are per part: see *Article identity*
+above. Reading `OX 982D` under the wrong brand lists the other supplier's
+vehicles. Both start the same way — brand + number has to resolve to the
+article's `legacyArticleId`s, cached on a key of their own. A brand/number pair
+TecDoc does not know is a `404` / `ARTICLE_NOT_FOUND`; a part with no catalogued
+linkages is a `200` with `[]`.
 
-Rows arrive flat, each carrying its make and model series — the make → series →
-modification grouping is the client's presentation choice, not the contract's.
-Every field TecDoc files as optional is nullable, so a sparsely catalogued
-vehicle still lists rather than being dropped. `yearTo: null` means the model is
-still in production. Capped at 200 rows (`LINKED_VEHICLES_LIMIT`).
+That lookup is normally already answered. The catalog listing is an `includeAll`
+read, so every row it returns carries its own `genericArticles` — and with them
+the `legacyArticleId`s — which the listing pins onto the same memo key as it
+maps the page. A visitor who reaches the section through the catalog therefore
+opens it without any `getArticles` of its own; `getLegacyArticleIds` remains as
+the fallback for a part reached some other way. Rows TecDoc files no generic
+article against are skipped rather than pinned as an empty list, so "no roles"
+keeps the shorter miss TTL the read path gives it.
 
-Brand-scoped, because linkages are per part: see *Article identity* above.
-Reading `OX 982D` under the wrong brand lists the other supplier's vehicles.
+The TecDoc chain is the one the Functions guide documents under *Article direct
+search → "Find linked vehicles, motors, axles and linked vehicle, motor, axle
+details"*: `getArticleLinkedAllLinkingTargetManufacturer2` for the makes, then
+`getArticleLinkedAllLinkingTarget4` (scoped with `linkingTargetManuId`) for the
+linkage target ids, then a hydration call to turn those ids into rows. The
+hydration response carries `modId` and `modelName` on every row, so the
+model-series grouping is done here rather than asked of TecDoc separately —
+which is why a series can carry its vehicles instead of a count that might
+disagree with them.
 
-Behind it sits a two-call TecDoc sequence: `getArticles` resolves brand + number
-to TecDoc's internal `articleId`, then `getArticleLinkedAllLinkingTarget4`
-returns the linkages. A brand/number pair TecDoc does not know is a `404` /
-`ARTICLE_NOT_FOUND`; a part with no catalogued linkages is a `200` with `[]`.
+For that third step the guide names `getArticleLinkedAllLinkingTargetsByIds3`
+and we use **`getVehicleByIds4` instead**, deliberately. The recommended
+function is article-scoped, which is genuinely nicer, but its record
+(`ArticleLinkedVehiclesById2Record`) files neither fuel type nor motor codes —
+two of the five columns the section shows — and its rows are keyed per
+article-link rather than per vehicle, so they could not be cached across the
+articles that share a vehicle. It also brings no relief on request size: its
+Service Index entry caps `linkedArticlePairs` at 25 items, exactly as
+`getVehicleByIds4` caps `carIds` at "List of Vehicle ID's (max 25)". Batching is
+required either way.
 
-Response `200`:
+So hydration splits a make into batches of 25 and merges them in the order the
+ids were given. A batch that fails fails the whole read: a part fits every
+vehicle on its list or the list is wrong, and a partial answer is
+indistinguishable on screen from a part that fits fewer cars. The layer warns
+when fewer vehicles come back than were asked for — ordinary on its own, since
+TecDoc retires vehicles, but the only signal that a make is quietly listing
+short.
+
+At most four of those batches travel at once, and that limit lives here rather
+than in `TecDocTransport`. Hydration is the only read in the catalogue that fans
+out — every other one is a call or two — so it is the only read with anything to
+pace. A process-wide cap was tried and removed: TecAlliance publishes no rate
+limit, so any figure is a guess, and a cap has to queue what it holds back. That
+queue then needs a deadline of its own or a slow TecDoc becomes unbounded
+latency; and that deadline sheds ordinary single-call reads as `CATALOG_UNAVAILABLE`
+as soon as more visitors browse at once than the guessed cap allows, while a wide
+make sheds its own tail waiting behind itself. If TecAlliance ever starts
+rejecting us, a transport-level cap is the answer, sized to what they tell us.
+
+Every call still carries its own deadline (`TECDOC_TIMEOUT_MS`, 10 s), which
+covers the body read as well as the connection.
+
+Hydrated vehicles are then cached per `carId`, not per article. A vehicle record
+belongs to no part — it is TecDoc master data — so the twenty brake pads on one
+category page all resolve the same E90 modifications, and keying them by article
+would buy the same rows twenty times. Only the ids with no memo are sent, and the
+list is rebuilt from the ids afterwards so a cached row keeps its position. A
+`carId` TecDoc no longer holds is simply never memoised and rides along in the
+next batch; no tombstone, since it would outlive the vehicle coming back.
+
+The key carries a version segment (`tecdoc:vehicle:v1:<carId>`) because the row's
+shape is decided by things the `carId` says nothing about: the fields the mapper
+reads, the detail blocks the request asks for, and the language the names come
+back in. Change any of those and bump the segment; otherwise the old shape is
+served for a full day, and a second caller wanting different detail blocks would
+collide with the first outright.
+
+Scope: passenger cars (`linkingTargetType: 'P'`), across **every**
+generic-article role the part is filed under. TecDoc keys linkages by role, and
+a part catalogued as both an oil filter and a filter set has its vehicles split
+across the two, so both endpoints fan out per role and merge — de-duplicating by
+make id and by linkage target id respectively.
+
+`'P'` does **not** mean the same thing to both API generations, and this is now
+settled rather than assumed. The Service Index documents `linkingTargetType` on
+the linkage functions as "P: Passenger car, O: Commercial vehicle, M: Motor, A:
+Axles, K: Body type", noting that P and O "may be combined" — the Functions
+guide spells the combination `'PO'`. The newer generation (`getArticles`,
+`getLinkageTargets`) reads the same `'P'` as passenger cars, motorcycles and
+LCVs together, splitting the narrow senses out as `'V'`, `'B'` and `'L'`. The
+two sets are therefore named apart in code (`LinkageFunctionTargetType` vs
+`LinkageTargetType`), since sending one where the other belongs is accepted in
+silence. Passenger cars are this shop's deliberate scope; widening the section
+to commercial vehicles is a change to `'PO'`, not a change of function.
+
+Kit membership is out of scope: `getArticleLinkedAllLinkingTarget4` is sent
+`withMainArticles: false`, so a component's vehicles are the ones filed against
+the component. TecDoc will also report the vehicles filed against the *parent*
+article a part belongs to — the timing-belt kit a tensioner pulley ships in —
+under a separate `mainArticleLinkages` collection. Turning the flag on alone
+would achieve nothing: the makes call
+(`getArticleLinkedAllLinkingTargetManufacturer2`) has no equivalent option, so a
+make reachable only through the parent never appears at the level a visitor
+opens. Inheriting kit applicability means resolving the parent through
+`getArticles` (`mainArticle`) and running the whole §8.4 chain against it — a
+feature, and one that should label the result rather than merge it, since "this
+kit fits your car" is a weaker claim than "this part does".
+
+The trade-off is real either way: a component only ever catalogued as a kit
+member currently shows an empty section despite demonstrably fitting cars.
+
+**`GET .../linked-vehicles/manufacturers`** `[PUBLIC]` → `LinkedVehicleManufacturerDto[]`
+
+The makes the part fits, sorted by name. Read when the section opens. No count
+rides along: the documented call answers with names and ids only, and numbering
+them would mean hydrating every vehicle of every make before a visitor has asked
+for any of them.
+
+```json
+[
+  { "manufacturerId": "5", "name": "BMW" },
+  { "manufacturerId": "16", "name": "MERCEDES-BENZ" }
+]
+```
+
+**`GET .../linked-vehicles?manufacturerId={id}`** `[PUBLIC]` → `LinkedVehicleSeriesDto[]`
+
+Every vehicle of one make, grouped into model series and sorted by name at both
+levels. Read when that make is opened. `manufacturerId` is required — without it
+the answer is every vehicle the part fits, which is the unbounded list this
+section exists to avoid — so an absent or unparseable value is a `400`.
+
+A vehicle row repeats neither its make nor its series; both are on the parent,
+and a make can hold several hundred rows. Every field TecDoc files as optional is
+nullable, so a sparsely catalogued vehicle still lists rather than being dropped;
+`yearTo: null` means the model is still in production, and `engineCodes` holds
+**every** code on file, since a mechanic matching the one stamped on the block
+against a shortened list would conclude the part does not fit.
+
 ```json
 [
   {
-    "vehicleId": "10020",
-    "manufacturerName": "BMW",
-    "modelSeriesName": "3 Series (E90)",
-    "name": "320d",
-    "yearFrom": 2005,
-    "yearTo": 2011,
-    "powerKw": 130,
-    "powerHp": 177,
-    "fuelType": "Diesel",
-    "engineCode": "N47 D20 C"
+    "seriesId": "8506",
+    "manufacturerId": "5",
+    "name": "3 Series (E90)",
+    "vehicles": [
+      {
+        "vehicleId": "10020",
+        "name": "320d",
+        "yearFrom": 2005,
+        "yearTo": 2011,
+        "powerKw": 130,
+        "powerHp": 177,
+        "fuelType": "Diesel",
+        "engineCodes": ["N47 D20 C"]
+      }
+    ]
   }
 ]
 ```
 
-Cache: Redis, 24h on a hit / 1h on an empty result, under the brand-scoped key
-`tecdoc:linked-vehicles:{brandId}:{articleNumber}` — pure TecDoc data with no
-inventory in it, and the shorter miss TTL keeps a part briefly missing its
-linkages from being remembered as vehicle-less for a whole day.
+Cache: Redis, 24h on a hit / 1h on an empty result for all three keys below. Pure
+TecDoc data with no inventory in it, and the shorter miss TTL keeps a part
+briefly missing its linkages from being remembered as vehicle-less for a whole
+day.
+
+- `tecdoc:article-legacy-ids:{brandId}:{articleNumber}` — shared by both
+- `tecdoc:linked-makes:{brandId}:{articleNumber}`
+- `tecdoc:linked-vehicles:{brandId}:{articleNumber}:{manufacturerId}`
 
 ---
 
