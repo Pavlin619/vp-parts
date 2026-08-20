@@ -10,7 +10,8 @@ import type {
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
   AlternativeNumberDto,
-  LinkedVehicleDto,
+  LinkedVehicleManufacturerDto,
+  LinkedVehicleSeriesDto,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
 
@@ -131,16 +132,33 @@ export function getAlternativeNumbers(
 }
 
 /**
- * The vehicles an article fits. Its own read because no list surface shows them
- * — the applicable-vehicles section fetches this when a visitor opens it, so a
- * part with hundreds of linkages costs nothing until someone asks.
+ * The makes an article fits. First of two reads that disclose the applicable
+ * vehicles: a part fits thousands of modifications, so the vehicles themselves
+ * are fetched only once a visitor opens one make.
  */
-export function getLinkedVehicles(
+export function getLinkedManufacturers(
   brandId: string,
   articleNumber: string,
-): Promise<LinkedVehicleDto[]> {
-  return apiFetch<LinkedVehicleDto[]>(
-    `${articlePath(brandId, articleNumber)}/linked-vehicles`,
+): Promise<LinkedVehicleManufacturerDto[]> {
+  return apiFetch<LinkedVehicleManufacturerDto[]>(
+    `${articlePath(brandId, articleNumber)}/linked-vehicles/manufacturers`,
+  );
+}
+
+/**
+ * Every vehicle of one make the article fits, grouped into model series. One
+ * read rather than a series read and a modifications read below it — the series
+ * arrive with their vehicles nested, so expanding one is local state.
+ */
+export function getLinkedVehiclesByManufacturer(
+  brandId: string,
+  articleNumber: string,
+  manufacturerId: string,
+): Promise<LinkedVehicleSeriesDto[]> {
+  const params = new URLSearchParams({ manufacturerId });
+
+  return apiFetch<LinkedVehicleSeriesDto[]>(
+    `${articlePath(brandId, articleNumber)}/linked-vehicles?${params}`,
   );
 }
 
@@ -198,19 +216,46 @@ export const autocompleteQueryOptions = (query: string) =>
   });
 
 /**
- * Applicable vehicles for one article. Pure TecDoc catalog data with no
- * inventory in it, so it stays fresh far longer than anything price-bearing —
- * long enough that reopening the section, or opening it on another row for the
- * same part, never refetches.
+ * How long an applicable-vehicles answer stays fresh, and how long it survives
+ * with nothing subscribed to it.
+ *
+ * Pure TecDoc catalog data with no inventory in it, so it ages far more slowly
+ * than anything price-bearing. `gcTime` is set alongside `staleTime` rather
+ * than left at the app-wide five minutes: this section unmounts the moment it
+ * is collapsed, and a five-minute `gcTime` would drop the answer long before it
+ * went stale, so closing and reopening a make would refetch.
  */
-export const linkedVehiclesQueryOptions = (
+const LINKED_VEHICLES_STALE_TIME = 60 * 60 * 1000;
+const LINKED_VEHICLES_GC_TIME = LINKED_VEHICLES_STALE_TIME;
+
+export const linkedManufacturersQueryOptions = (
   brandId: string,
   articleNumber: string,
 ) =>
   queryOptions({
-    queryKey: ["catalog", "linked-vehicles", brandId, articleNumber],
-    queryFn: () => getLinkedVehicles(brandId, articleNumber),
-    staleTime: 60 * 60 * 1000,
+    queryKey: ["catalog", "linked-manufacturers", brandId, articleNumber],
+    queryFn: () => getLinkedManufacturers(brandId, articleNumber),
+    staleTime: LINKED_VEHICLES_STALE_TIME,
+    gcTime: LINKED_VEHICLES_GC_TIME,
+  });
+
+export const linkedVehiclesByMakeQueryOptions = (
+  brandId: string,
+  articleNumber: string,
+  manufacturerId: string,
+) =>
+  queryOptions({
+    queryKey: [
+      "catalog",
+      "linked-vehicles",
+      brandId,
+      articleNumber,
+      manufacturerId,
+    ],
+    queryFn: () =>
+      getLinkedVehiclesByManufacturer(brandId, articleNumber, manufacturerId),
+    staleTime: LINKED_VEHICLES_STALE_TIME,
+    gcTime: LINKED_VEHICLES_GC_TIME,
   });
 
 /**

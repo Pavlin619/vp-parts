@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { TecDocModule, TecDocTransport, TecDocMockClient } from '../tecdoc';
+import { TecDocModule, tecDocSourceProvider } from '../tecdoc';
 import { RedisModule } from '../redis';
 import { InventoryModule } from '../inventory';
 import { BrandsModule } from './brands';
@@ -10,37 +9,26 @@ import { VehiclesController } from './vehicles/vehicles.controller';
 import { ArticlesTecDoc } from './articles/articles.tecdoc';
 import { ArticlesService } from './articles/articles.service';
 import { ArticlesController } from './articles/articles.controller';
+import {
+  LinkedVehiclesController,
+  LinkedVehiclesService,
+  LinkedVehiclesTecDoc,
+} from './articles/linked-vehicles';
 
 @Module({
   imports: [TecDocModule, RedisModule, BrandsModule, InventoryModule],
-  controllers: [VehiclesController, ArticlesController],
+  controllers: [
+    VehiclesController,
+    ArticlesController,
+    LinkedVehiclesController,
+  ],
   providers: [
-    {
-      provide: VehiclesTecDoc,
-      inject: [ConfigService, TecDocTransport, TecDocMockClient],
-      useFactory: (
-        config: ConfigService,
-        transport: TecDocTransport,
-        mock: TecDocMockClient,
-      ): VehiclesTecDoc | TecDocMockClient =>
-        config.get<string>('TECDOC_MOCK') === 'true'
-          ? mock
-          : new VehiclesTecDoc(transport),
-    },
+    tecDocSourceProvider(VehiclesTecDoc),
     VehiclesService,
-    {
-      provide: ArticlesTecDoc,
-      inject: [ConfigService, TecDocTransport, TecDocMockClient],
-      useFactory: (
-        config: ConfigService,
-        transport: TecDocTransport,
-        mock: TecDocMockClient,
-      ): ArticlesTecDoc | TecDocMockClient =>
-        config.get<string>('TECDOC_MOCK') === 'true'
-          ? mock
-          : new ArticlesTecDoc(transport),
-    },
+    tecDocSourceProvider(ArticlesTecDoc),
     ArticlesService,
+    tecDocSourceProvider(LinkedVehiclesTecDoc),
+    LinkedVehiclesService,
   ],
 })
 export class CatalogModule {}

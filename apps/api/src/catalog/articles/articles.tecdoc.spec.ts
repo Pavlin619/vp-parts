@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { TecDocTransport } from '../../tecdoc';
 import { ArticleNotFoundException } from './article-not-found.exception';
-import { ArticlesTecDoc, SUBSTITUTES_LIMIT } from './articles.tecdoc';
+import { ArticlesTecDoc, COMPARABLE_PAGE_SIZE } from './articles.tecdoc';
 
 const BOSCH = 30;
 
@@ -19,30 +19,6 @@ function record(
       { genericArticleDescription: 'Part', legacyArticleId: 555 },
     ],
     images: [{ imageURL800: `https://img/${articleNumber}.jpg` }],
-  };
-}
-
-/**
- * A `getArticleLinkedAllLinkingTarget4` response. The real one nests the
- * linkages two levels deep and carries ids only — no vehicle detail whatsoever.
- */
-function linkageResponse(...targets: Array<{ id: number; linked?: boolean }>) {
-  return {
-    status: 200,
-    data: {
-      array: [
-        {
-          articleLinkages: {
-            array: targets.map(({ id, linked = true }) => ({
-              articleLinkId: id * 10,
-              linked,
-              linkingTargetId: id,
-              linkingTargetType: 'P',
-            })),
-          },
-        },
-      ],
-    },
   };
 }
 
@@ -74,8 +50,50 @@ describe('ArticlesTecDoc', () => {
           includeAll: true,
         }),
       );
-      expect(result.total).toBe(2);
-      expect(result.items.map((i) => i.articleNumber)).toEqual(['A1', 'A2']);
+      expect(result.articles.total).toBe(2);
+      expect(result.articles.items.map((i) => i.articleNumber)).toEqual([
+        'A1',
+        'A2',
+      ]);
+    });
+
+    // The ids the applicable-vehicles section needs ride along on every
+    // `includeAll` response. Dropping them here is what used to make that
+    // section re-read each article through `getLegacyArticleIds`.
+    it('returns each row\u2019s linkage roles beside the page', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 2,
+        articles: [
+          record('A1'),
+          {
+            ...record('A2', { dataSupplierId: 77 }),
+            genericArticles: [
+              { genericArticleDescription: 'Filter', legacyArticleId: 900 },
+              { genericArticleDescription: 'Filter set', legacyArticleId: 901 },
+            ],
+          },
+        ],
+      });
+
+      const { roles } = await tecdoc.getArticles(10001, 100002, 1, 20);
+
+      expect(roles).toEqual([
+        { brandId: '30', articleNumber: 'A1', legacyArticleIds: [555] },
+        { brandId: '77', articleNumber: 'A2', legacyArticleIds: [900, 901] },
+      ]);
+    });
+
+    it('reports no roles for a row TecDoc files no generic article against', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [{ ...record('A1'), genericArticles: undefined }],
+      });
+
+      const { roles } = await tecdoc.getArticles(10001, 100002, 1, 20);
+
+      expect(roles).toEqual([
+        { brandId: '30', articleNumber: 'A1', legacyArticleIds: [] },
+      ]);
     });
 
     // A category with no parts for this vehicle is an ordinary status-200
@@ -85,7 +103,10 @@ describe('ArticlesTecDoc', () => {
 
       const result = await tecdoc.getArticles(10001, 100002, 1, 20);
 
-      expect(result).toEqual({ total: 0, page: 1, pageSize: 20, items: [] });
+      expect(result).toEqual({
+        articles: { total: 0, page: 1, pageSize: 20, items: [] },
+        roles: [],
+      });
     });
   });
 
@@ -97,7 +118,6 @@ describe('ArticlesTecDoc', () => {
 
       expect(result.images).toEqual(['https://img/A1.jpg']);
       expect(result.brandId).toBe('30');
-      expect(result.compatibleVehicles).toEqual([]);
     });
 
     // The bug this exists to prevent: an article number is unique only within a
@@ -173,22 +193,30 @@ describe('ArticlesTecDoc', () => {
     });
   });
 
-  describe('getSubstitutes', () => {
-    it('uses comparable search (type 3), caps the page and excludes/dedupes the source', async () => {
-      call.mockResolvedValueOnce({
-        articles: [record('SRC'), record('A1'), record('A1'), record('A2')],
-      });
+  describe('getComparableArticles', () => {
+    it('uses comparable search (type 3) and caps the page', async () => {
+      call.mockResolvedValueOnce({ articles: [record('A1')] });
 
-      const result = await tecdoc.getSubstitutes('SRC');
+      await tecdoc.getComparableArticles('SRC');
 
       expect(call).toHaveBeenCalledWith(
         'getArticles',
         expect.objectContaining({
           searchType: 3,
           searchMatchType: 'exact',
-          perPage: SUBSTITUTES_LIMIT,
+          perPage: COMPARABLE_PAGE_SIZE,
         }),
       );
+    });
+
+    // TecDoc lists the same record once per data variant of the article.
+    it('drops a record TecDoc reports twice', async () => {
+      call.mockResolvedValueOnce({
+        articles: [record('A1'), record('A1'), record('A2')],
+      });
+
+      const result = await tecdoc.getComparableArticles('SRC');
+
       expect(result.map((r) => r.articleNumber)).toEqual(['A1', 'A2']);
     });
 
@@ -202,9 +230,21 @@ describe('ArticlesTecDoc', () => {
         ],
       });
 
-      const result = await tecdoc.getSubstitutes('SRC');
+      const result = await tecdoc.getComparableArticles('SRC');
 
       expect(result.map((r) => r.brandName)).toEqual(['Bosch', 'MANN-FILTER']);
+    });
+
+    // Whether the searched part belongs in the list is a decision about the
+    // list, so it is the service's to make — this read reports what TecDoc said.
+    it('reports the searched article like any other comparable row', async () => {
+      call.mockResolvedValueOnce({
+        articles: [record('SRC'), record('A1')],
+      });
+
+      const result = await tecdoc.getComparableArticles('SRC');
+
+      expect(result.map((r) => r.articleNumber)).toEqual(['SRC', 'A1']);
     });
 
     // Sending `dataSupplierIds` here would filter the results down to the one
@@ -212,7 +252,7 @@ describe('ArticlesTecDoc', () => {
     it('does not narrow the comparable search to a brand', async () => {
       call.mockResolvedValueOnce({ articles: [] });
 
-      await tecdoc.getSubstitutes('SRC');
+      await tecdoc.getComparableArticles('SRC');
 
       expect(call).toHaveBeenCalledWith(
         'getArticles',
@@ -223,171 +263,7 @@ describe('ArticlesTecDoc', () => {
     it('returns an empty list when there are no articles', async () => {
       call.mockResolvedValueOnce({});
 
-      expect(await tecdoc.getSubstitutes('SRC')).toEqual([]);
-    });
-  });
-
-  describe('getLegacyArticleIds', () => {
-    it('reads the ids the linkage lookup is keyed by off the article', async () => {
-      call.mockResolvedValueOnce({ articles: [record('OF-OC115')] });
-
-      expect(await tecdoc.getLegacyArticleIds(BOSCH, 'OF-OC115')).toEqual([
-        555,
-      ]);
-      expect(call).toHaveBeenCalledWith(
-        'getArticles',
-        expect.objectContaining({
-          searchQuery: 'OF-OC115',
-          searchType: 0,
-          searchMatchType: 'exact',
-          dataSupplierIds: [BOSCH],
-          includeGenericArticles: true,
-        }),
-      );
-    });
-
-    // TecDoc files one id per article/generic-article pair, so a part sold in
-    // two roles carries two of them — with its vehicles split across both.
-    it('returns one id per generic article', async () => {
-      call.mockResolvedValueOnce({
-        articles: [
-          {
-            ...record('OF-OC115'),
-            genericArticles: [
-              { genericArticleDescription: 'Oil Filter', legacyArticleId: 1 },
-              { genericArticleDescription: 'Filter Set', legacyArticleId: 2 },
-            ],
-          },
-        ],
-      });
-
-      expect(await tecdoc.getLegacyArticleIds(BOSCH, 'OF-OC115')).toEqual([
-        1, 2,
-      ]);
-    });
-
-    // Each id costs a linkage call, and TecDoc already says which families it
-    // holds links for — an axle-only role would answer that call with nothing.
-    it('skips a generic article with no vehicle linkages', async () => {
-      call.mockResolvedValueOnce({
-        articles: [
-          {
-            ...record('OF-OC115'),
-            genericArticles: [
-              { legacyArticleId: 1, linkageTargetTypes: ['P', 'M'] },
-              { legacyArticleId: 2, linkageTargetTypes: ['A'] },
-            ],
-          },
-        ],
-      });
-
-      expect(await tecdoc.getLegacyArticleIds(BOSCH, 'OF-OC115')).toEqual([1]);
-    });
-
-    // Absent is TecDoc not saying which families it holds, not saying none, so
-    // the id is kept and the linkage call decides.
-    it('keeps a generic article that lists no linkage target types', async () => {
-      call.mockResolvedValueOnce({
-        articles: [
-          { ...record('OF-OC115'), genericArticles: [{ legacyArticleId: 1 }] },
-        ],
-      });
-
-      expect(await tecdoc.getLegacyArticleIds(BOSCH, 'OF-OC115')).toEqual([1]);
-    });
-
-    it('reports an unknown article number as a typed miss', async () => {
-      call.mockResolvedValueOnce({ articles: [] });
-
-      await expect(
-        tecdoc.getLegacyArticleIds(BOSCH, 'missing'),
-      ).rejects.toBeInstanceOf(ArticleNotFoundException);
-    });
-
-    // A part TecDoc holds but links to no vehicle is an empty section, not a
-    // missing part — the one case that must not become a 404.
-    it('returns no ids for a known part with no vehicle-linked role', async () => {
-      call.mockResolvedValueOnce({
-        articles: [
-          {
-            ...record('OF-OC115'),
-            genericArticles: [
-              { legacyArticleId: 1, linkageTargetTypes: ['U'] },
-            ],
-          },
-        ],
-      });
-
-      expect(await tecdoc.getLegacyArticleIds(BOSCH, 'OF-OC115')).toEqual([]);
-    });
-  });
-
-  describe('getLinkedTargetIds', () => {
-    // Note the singular `linking`: this function predates the `linkageTarget*`
-    // naming the rest of the catalog uses, and ignores the other spelling.
-    it('asks for vehicle linkages by legacy article id', async () => {
-      call.mockResolvedValueOnce(linkageResponse({ id: 10020 }));
-
-      expect(await tecdoc.getLinkedTargetIds(555)).toEqual([10020]);
-      expect(call).toHaveBeenCalledWith(
-        'getArticleLinkedAllLinkingTarget4',
-        expect.objectContaining({ articleId: 555, linkingTargetType: 'P' }),
-      );
-    });
-
-    // TecDoc states a non-fit explicitly rather than omitting the row, so a
-    // `linked: false` linkage is an answer — and the answer is "not this one".
-    it('drops the targets TecDoc marks as not linked', async () => {
-      call.mockResolvedValueOnce(
-        linkageResponse({ id: 10020 }, { id: 10021, linked: false }),
-      );
-
-      expect(await tecdoc.getLinkedTargetIds(555)).toEqual([10020]);
-    });
-
-    // A part with no catalogued linkages is an ordinary status-200 response
-    // with the collection simply absent.
-    it('reads an omitted linkage collection as no linkages', async () => {
-      call.mockResolvedValueOnce({ status: 200 });
-
-      expect(await tecdoc.getLinkedTargetIds(555)).toEqual([]);
-    });
-  });
-
-  describe('getLinkageTargets', () => {
-    it('hydrates bare target ids into vehicle rows', async () => {
-      call.mockResolvedValueOnce({
-        linkageTargets: [
-          {
-            linkageTargetId: 10020,
-            mfrName: 'BMW',
-            vehicleModelSeriesName: '3 Series (E90)',
-            description: '320d',
-          },
-        ],
-      });
-
-      const result = await tecdoc.getLinkageTargets([10020]);
-
-      expect(call).toHaveBeenCalledWith(
-        'getLinkageTargets',
-        expect.objectContaining({
-          linkageTargetType: 'P',
-          linkageTargetIds: [{ type: 'P', id: 10020 }],
-        }),
-      );
-      expect(result).toEqual([
-        expect.objectContaining({
-          vehicleId: '10020',
-          manufacturerName: 'BMW',
-        }),
-      ]);
-    });
-
-    it('reads an omitted target collection as no vehicles', async () => {
-      call.mockResolvedValueOnce({});
-
-      expect(await tecdoc.getLinkageTargets([10020])).toEqual([]);
+      expect(await tecdoc.getComparableArticles('SRC')).toEqual([]);
     });
   });
 });

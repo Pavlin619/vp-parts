@@ -2,11 +2,24 @@ import { Redis } from 'ioredis';
 import { RedisCache } from './redis-cache';
 
 describe('RedisCache', () => {
-  let redis: { get: jest.Mock; set: jest.Mock };
+  let redis: {
+    get: jest.Mock;
+    set: jest.Mock;
+    mget: jest.Mock;
+    multi: jest.Mock;
+  };
+  let pipeline: { set: jest.Mock; exec: jest.Mock };
   let cache: RedisCache;
 
   beforeEach(() => {
-    redis = { get: jest.fn(), set: jest.fn() };
+    pipeline = { set: jest.fn(), exec: jest.fn().mockResolvedValue([]) };
+    pipeline.set.mockReturnValue(pipeline);
+    redis = {
+      get: jest.fn(),
+      set: jest.fn(),
+      mget: jest.fn(),
+      multi: jest.fn(() => pipeline),
+    };
     cache = new RedisCache(redis as unknown as Redis);
   });
 
@@ -94,6 +107,59 @@ describe('RedisCache', () => {
       await cache.writeMemo('k', 'WA5432', 3600);
 
       expect(redis.set).toHaveBeenCalledWith('k', '"WA5432"', 'EX', 3600);
+    });
+
+    // Callers pair the answer back up with what they derived the keys from, so
+    // a miss has to hold its place rather than shorten the list.
+    it('answers a batch read positionally, with a gap where there was no memo', async () => {
+      redis.mget.mockResolvedValueOnce(['[1]', null, '[3]']);
+
+      const result = await cache.readMemos<number[]>(['a', 'b', 'c']);
+
+      expect(redis.mget).toHaveBeenCalledWith(['a', 'b', 'c']);
+      expect(result).toEqual([[1], undefined, [3]]);
+    });
+
+    it('does not call Redis for an empty batch read', async () => {
+      expect(await cache.readMemos([])).toEqual([]);
+      expect(redis.mget).not.toHaveBeenCalled();
+    });
+
+    it('reports every key as a miss when the batch read fails', async () => {
+      redis.mget.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      expect(await cache.readMemos(['a', 'b'])).toEqual([undefined, undefined]);
+    });
+
+    // A catalog page pins one memo per row, so these go out together rather
+    // than as one round trip each behind the read that just missed.
+    it('pins a batch of memos in a single pipeline', async () => {
+      await cache.writeMemos(
+        [
+          { key: 'a', value: [1] },
+          { key: 'b', value: [2] },
+        ],
+        3600,
+      );
+
+      expect(redis.multi).toHaveBeenCalledTimes(1);
+      expect(pipeline.set).toHaveBeenCalledWith('a', '[1]', 'EX', 3600);
+      expect(pipeline.set).toHaveBeenCalledWith('b', '[2]', 'EX', 3600);
+      expect(pipeline.exec).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not open a pipeline for an empty batch', async () => {
+      await cache.writeMemos([], 3600);
+
+      expect(redis.multi).not.toHaveBeenCalled();
+    });
+
+    it('swallows a failed batch write', async () => {
+      pipeline.exec.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      await expect(
+        cache.writeMemos([{ key: 'a', value: [1] }], 3600),
+      ).resolves.toBeUndefined();
     });
 
     // A memo is an optimisation, so an unreachable Redis must degrade to "no

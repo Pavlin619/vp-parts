@@ -83,8 +83,61 @@ export class RedisCache {
     return this.read<T>(key);
   }
 
+  /**
+   * Reads several memos in one round trip, answering positionally: entry `i` is
+   * the value for key `i`, or `undefined` where there was none. Callers pair the
+   * result back up with whatever they derived the keys from, so the alignment
+   * matters more than the order Redis happens to return.
+   *
+   * An unreachable Redis reports every key as a miss rather than throwing —
+   * these are optimisations, and the caller has a loader for the ones it lacks.
+   */
+  async readMemos<T>(keys: string[]): Promise<Array<T | undefined>> {
+    if (keys.length === 0) {
+      return [];
+    }
+
+    try {
+      const values = await this.redis.mget(keys);
+
+      return values.map((value) =>
+        value === null ? undefined : (JSON.parse(value) as T),
+      );
+    } catch (error) {
+      this.logger.warn(`Cache read failed: ${this.errorMessage(error)}`);
+
+      return keys.map(() => undefined);
+    }
+  }
+
   async writeMemo<T>(key: string, value: T, ttl: number): Promise<void> {
     return this.write(key, value, ttl);
+  }
+
+  /**
+   * Pins several memos in one round trip. A catalog page memoises a value per
+   * row, and writing them one at a time would hang twenty round trips off the
+   * read that just missed.
+   */
+  async writeMemos<T>(
+    entries: Array<{ key: string; value: T }>,
+    ttl: number,
+  ): Promise<void> {
+    if (entries.length === 0) {
+      return;
+    }
+
+    try {
+      const pipeline = this.redis.multi();
+
+      for (const { key, value } of entries) {
+        pipeline.set(key, JSON.stringify(value), 'EX', ttl);
+      }
+
+      await pipeline.exec();
+    } catch (error) {
+      this.logger.warn(`Cache write failed: ${this.errorMessage(error)}`);
+    }
   }
 
   private async read<T>(key: string): Promise<T | undefined> {

@@ -6,11 +6,6 @@ export interface TechnicalSpecDto {
   value: string;
 }
 
-export interface CompatibleVehicleDto {
-  vehicleId: string;
-  name: string;
-}
-
 /**
  * An OE part number the article replaces, as filed by the vehicle manufacturer
  * that uses it. TecDoc lists the same number once per manufacturer, so the
@@ -43,20 +38,45 @@ export interface AlternativeNumberDto {
 }
 
 /**
+ * One make in the applicable-vehicles section — the top level of the
+ * disclosure, and the only one read when the section opens.
+ *
+ * No count rides along. TecDoc answers "which makes does this part fit" with
+ * names alone (`getArticleLinkedAllLinkingTargetManufacturer2`), and the only
+ * way to number them would be to hydrate every vehicle of every make before a
+ * visitor has asked for any of them.
+ */
+export interface LinkedVehicleManufacturerDto {
+  /** TecDoc `manuId` — the same id the vehicle selector resolves. */
+  manufacturerId: string;
+  name: string;
+}
+
+/**
+ * One model series of a make, with the modifications under it. Opening a make
+ * answers with its whole tree, so a series carries its vehicles rather than a
+ * count — the two can then never disagree.
+ */
+export interface LinkedVehicleSeriesDto {
+  /** TecDoc `modId`. */
+  seriesId: string;
+  manufacturerId: string;
+  name: string;
+  vehicles: LinkedVehicleDto[];
+}
+
+/**
  * One vehicle modification an article is confirmed to fit — a single row of the
  * applicable-vehicles table.
  *
- * Flat by design, carrying the make and model series on every row rather than
- * arriving pre-nested: the make → series → modification grouping is a
- * presentation choice, and the surfaces that render it differ in how deep they
- * nest. Every field TecDoc files as optional is nullable here, so a sparsely
+ * Neither make nor series is repeated here: a row only ever renders inside the
+ * {@link LinkedVehicleSeriesDto} that owns it, and a make can hold several
+ * hundred rows. Every field TecDoc files as optional is nullable, so a sparsely
  * catalogued vehicle still lists rather than being dropped.
  */
 export interface LinkedVehicleDto {
-  /** TecDoc linkage target id — the same id the vehicle selector resolves. */
+  /** TecDoc `carId`, which is the linkage target id under another name. */
   vehicleId: string;
-  manufacturerName: string;
-  modelSeriesName: string;
   /** The modification itself, e.g. `320d Touring`. */
   name: string;
   yearFrom: number | null;
@@ -64,8 +84,13 @@ export interface LinkedVehicleDto {
   powerKw: number | null;
   powerHp: number | null;
   fuelType: string | null;
-  /** Engine/KBA code, e.g. `N47 D20 C`. */
-  engineCode: string | null;
+  /**
+   * Every engine code filed for the modification, e.g. `['N47 D20 C']`. A plural
+   * because one modification genuinely carries several, and a mechanic checking
+   * the code stamped on the block against a single one of them would conclude
+   * the part does not fit. Empty when TecDoc files none.
+   */
+  engineCodes: string[];
 }
 
 /**
@@ -104,8 +129,12 @@ export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
 
 /**
  * Catalog metadata TecDoc owns for a single article.
+ *
+ * The vehicles it fits are not part of this: that list runs to thousands of
+ * modifications for a common service part and costs three further TecDoc reads,
+ * so the applicable-vehicles section fetches it per make on demand through
+ * `/catalog/brands/:brandId/articles/:articleNumber/linked-vehicles`.
  */
 export interface ArticleCatalogDetailDto extends ArticleSummaryDto {
   images: string[];
-  compatibleVehicles: CompatibleVehicleDto[];
 }

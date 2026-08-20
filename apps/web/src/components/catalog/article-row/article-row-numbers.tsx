@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { AlternativeNumberDto, OemNumberDto } from "@vp-parts-shop/shared";
 import { alternativeNumbersQueryOptions } from "@/lib/api/catalog";
 import { PartNumberChip } from "./part-number-chip";
+import { SectionLoadError } from "./section-load-error";
 
 interface ArticleRowNumbersProps {
   articleNumber: string;
@@ -71,18 +72,10 @@ function AlternativeNumbers({ articleNumber }: { articleNumber: string }) {
 
   if (isError) {
     return (
-      <div role="alert" className="flex flex-col items-start gap-2 text-[13px]">
-        <p className="text-ink-3">
-          В момента не можем да заредим номерата от други производители.
-        </p>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="font-semibold text-accent underline underline-offset-2 hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          Опитай отново
-        </button>
-      </div>
+      <SectionLoadError
+        message="В момента не можем да заредим номерата от други производители."
+        onRetry={() => refetch()}
+      />
     );
   }
 

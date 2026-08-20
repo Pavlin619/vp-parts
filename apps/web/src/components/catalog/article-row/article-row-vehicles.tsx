@@ -3,9 +3,17 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
-import type { LinkedVehicleDto } from "@vp-parts-shop/shared";
-import { linkedVehiclesQueryOptions } from "@/lib/api/catalog";
+import type {
+  LinkedVehicleDto,
+  LinkedVehicleManufacturerDto,
+  LinkedVehicleSeriesDto,
+} from "@vp-parts-shop/shared";
+import {
+  linkedManufacturersQueryOptions,
+  linkedVehiclesByMakeQueryOptions,
+} from "@/lib/api/catalog";
 import { cn } from "@/lib/utils";
+import { SectionLoadError } from "./section-load-error";
 
 interface ArticleRowVehiclesProps {
   /**
@@ -17,56 +25,34 @@ interface ArticleRowVehiclesProps {
   articleNumber: string;
 }
 
-export interface LinkedVehicleSeriesGroup {
-  modelSeriesName: string;
-  /** Span across the modifications listed, not a separate TecDoc field. */
-  yearFrom: number | null;
-  yearTo: number | null;
-  vehicles: LinkedVehicleDto[];
-}
-
-export interface LinkedVehicleMakeGroup {
-  manufacturerName: string;
-  series: LinkedVehicleSeriesGroup[];
-  vehicleCount: number;
-}
-
 /**
- * The applicable-vehicles section of a catalog row.
+ * The applicable-vehicles section of a catalog row: makes, then the model
+ * series and modifications of whichever make a visitor opens.
  *
- * Unlike the other sections of the expander, this data does not ride along on
- * the catalog response — a common service part fits thousands of modifications,
- * far more than the row it belongs to. So it is read on demand: this component
- * only mounts once the section is opened, which is what triggers the fetch.
- * The query cache is what makes reopening it — or opening it on another row for
- * the same part — free.
+ * A common service part fits thousands of modifications, so the section opens
+ * with makes alone and hydrates one make at a time. Opening a make brings back
+ * its whole tree, which is why expanding a series below it costs nothing —
+ * every make nonetheless starts collapsed, since a make is the one level that
+ * still has to be fetched.
  */
 export function ArticleRowVehicles({
   brandId,
   articleNumber,
 }: ArticleRowVehiclesProps) {
   const { data, isPending, isError, refetch } = useQuery(
-    linkedVehiclesQueryOptions(brandId, articleNumber),
+    linkedManufacturersQueryOptions(brandId, articleNumber),
   );
 
   if (isPending) {
-    return <VehiclesSkeleton />;
+    return <VehiclesSkeleton testId="article-row-vehicles-skeleton" />;
   }
 
   if (isError) {
     return (
-      <div role="alert" className="flex flex-col items-start gap-2 text-[13px]">
-        <p className="text-ink-3">
-          В момента не можем да заредим приложимите автомобили.
-        </p>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="font-semibold text-accent underline underline-offset-2 hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          Опитай отново
-        </button>
-      </div>
+      <SectionLoadError
+        message="В момента не можем да заредим приложимите автомобили."
+        onRetry={() => refetch()}
+      />
     );
   }
 
@@ -78,111 +64,118 @@ export function ArticleRowVehicles({
     );
   }
 
-  return <VehicleGroups groups={groupLinkedVehicles(data)} />;
-}
-
-/**
- * Make → series → modification, two levels of disclosure, so a part that fits
- * BMW, Mercedes and VW stays scannable instead of unrolling into one long
- * table. The first make and its first series open by default: something has to
- * be on screen when the section opens, and the alternative — everything open —
- * is the flat table this structure exists to avoid.
- */
-function VehicleGroups({ groups }: { groups: LinkedVehicleMakeGroup[] }) {
-  const [openMakes, setOpenMakes] = useState<Set<string> | null>(null);
-  const [openSeries, setOpenSeries] = useState<Set<string> | null>(null);
-
-  const isMakeOpen = (make: string, index: number) =>
-    openMakes ? openMakes.has(make) : index === 0;
-
-  const isSeriesOpen = (key: string, isFirstOfFirstMake: boolean) =>
-    openSeries ? openSeries.has(key) : isFirstOfFirstMake;
-
-  const toggleMake = (make: string) =>
-    setOpenMakes((open) => toggled(open ?? defaultOpenMakes(groups), make));
-
-  const toggleSeries = (key: string) =>
-    setOpenSeries((open) => toggled(open ?? defaultOpenSeries(groups), key));
-
   return (
     <div className="max-w-[780px]">
-      {groups.map((group, groupIndex) => {
-        const isOpen = isMakeOpen(group.manufacturerName, groupIndex);
-
-        return (
-          <div
-            key={group.manufacturerName}
-            className="mb-1.5 overflow-hidden rounded-md border border-line bg-canvas last:mb-0"
-          >
-            <button
-              type="button"
-              onClick={() => toggleMake(group.manufacturerName)}
-              aria-expanded={isOpen}
-              className={cn(
-                "flex w-full items-center gap-[9px] px-[13px] py-[11px] text-left transition-colors hover:bg-bg-card focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-accent",
-                isOpen && "border-b border-line bg-bg-card",
-              )}
-            >
-              <ChevronRight
-                className={cn(
-                  "h-3 w-3 shrink-0 text-ink-3 transition-transform",
-                  isOpen && "rotate-90",
-                )}
-                aria-hidden="true"
-              />
-              <span className="font-display text-[13px] font-bold tracking-[0.02em] text-ink">
-                {group.manufacturerName}
-              </span>
-              <span className="ml-auto text-[11.5px] text-ink-3">
-                {countLabel(group.series.length, "модел", "модела")} ·{" "}
-                {countLabel(
-                  group.vehicleCount,
-                  "модификация",
-                  "модификации",
-                )}
-              </span>
-            </button>
-
-            {isOpen && (
-              <div className="flex flex-col gap-1.5 p-2">
-                {group.series.map((series, seriesIndex) => (
-                  <SeriesDisclosure
-                    key={series.modelSeriesName}
-                    series={series}
-                    isOpen={isSeriesOpen(
-                      seriesKey(group.manufacturerName, series),
-                      groupIndex === 0 && seriesIndex === 0,
-                    )}
-                    onToggle={() =>
-                      toggleSeries(seriesKey(group.manufacturerName, series))
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {data.map((manufacturer) => (
+        <MakeDisclosure
+          key={manufacturer.manufacturerId}
+          brandId={brandId}
+          articleNumber={articleNumber}
+          manufacturer={manufacturer}
+        />
+      ))}
     </div>
   );
 }
 
+function MakeDisclosure({
+  brandId,
+  articleNumber,
+  manufacturer,
+}: {
+  brandId: string;
+  articleNumber: string;
+  manufacturer: LinkedVehicleManufacturerDto;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const { data, isPending, isError, refetch } = useQuery({
+    ...linkedVehiclesByMakeQueryOptions(
+      brandId,
+      articleNumber,
+      manufacturer.manufacturerId,
+    ),
+    enabled: isOpen,
+  });
+
+  return (
+    <div className="mb-1.5 overflow-hidden rounded-md border border-line bg-canvas last:mb-0">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        className={cn(
+          "flex w-full items-center gap-[9px] px-[13px] py-[11px] text-left transition-colors hover:bg-bg-card focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-accent",
+          isOpen && "border-b border-line bg-bg-card",
+        )}
+      >
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 shrink-0 text-ink-3 transition-transform",
+            isOpen && "rotate-90",
+          )}
+          aria-hidden="true"
+        />
+        <span className="font-display text-[13px] font-bold tracking-[0.02em] text-ink">
+          {manufacturer.name}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="flex flex-col gap-1.5 p-2">
+          {isPending && <VehiclesSkeleton testId="linked-vehicles-skeleton" />}
+
+          {isError && (
+            <SectionLoadError
+              message="В момента не можем да заредим моделите."
+              onRetry={() => refetch()}
+            />
+          )}
+
+          {/* The make came from the linkage read, so it having no vehicles
+              behind it is a contradiction — but it renders as an empty box, and
+              a visitor who opened it deserves an answer rather than blank
+              space. */}
+          {data?.length === 0 && (
+            <p className="px-[11px] py-[9px] text-[12.5px] text-ink-3">
+              Няма данни за моделите на тази марка.
+            </p>
+          )}
+
+          {data?.map((series) => (
+            <SeriesDisclosure
+              key={series.seriesId}
+              series={series}
+              isOnlySeries={data.length === 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One model series and the modifications under it. Presentational: its vehicles
+ * came down with the make, so opening it is local state and never a spinner.
+ *
+ * A make with a single series opens it straight away — collapsing the only
+ * choice on offer just costs a click.
+ */
 function SeriesDisclosure({
   series,
-  isOpen,
-  onToggle,
+  isOnlySeries,
 }: {
-  series: LinkedVehicleSeriesGroup;
-  isOpen: boolean;
-  onToggle: () => void;
+  series: LinkedVehicleSeriesDto;
+  isOnlySeries: boolean;
 }) {
-  const yearSpan = formatYearSpan(series.yearFrom, series.yearTo);
+  const [isOpen, setIsOpen] = useState(isOnlySeries);
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-canvas">
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
         className={cn(
           "flex w-full items-center gap-2 px-[11px] py-[9px] text-left transition-colors hover:bg-bg-card focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-accent",
@@ -196,12 +189,12 @@ function SeriesDisclosure({
           )}
           aria-hidden="true"
         />
+        {/* TecDoc leaves `modId` off a sparse vehicle, and every such row lands
+            in one unnamed group rather than under a heading a visitor can
+            read. */}
         <span className="text-[12.5px] font-semibold text-ink">
-          {series.modelSeriesName}
+          {series.name || "Други модели"}
         </span>
-        {yearSpan && (
-          <span className="font-mono text-[11px] text-ink-3">{yearSpan}</span>
-        )}
         <span className="ml-auto rounded-full bg-bg-sunken px-[7px] py-0.5 text-[10.5px] font-semibold text-ink-3">
           {series.vehicles.length}
         </span>
@@ -253,7 +246,10 @@ function ModificationTable({ vehicles }: { vehicles: LinkedVehicleDto[] }) {
                 {vehicle.fuelType ?? "—"}
               </td>
               <td className="px-3 py-[9px] font-mono text-ink-2">
-                {vehicle.engineCode ?? "—"}
+                {/* Every code, not the first: a mechanic matching the one stamped
+                    on the block against a shortened list concludes it does not
+                    fit. */}
+                {vehicle.engineCodes.join(", ") || "—"}
               </td>
             </tr>
           ))}
@@ -263,12 +259,12 @@ function ModificationTable({ vehicles }: { vehicles: LinkedVehicleDto[] }) {
   );
 }
 
-function VehiclesSkeleton() {
+function VehiclesSkeleton({ testId }: { testId: string }) {
   return (
     <div
       className="flex max-w-[780px] flex-col gap-1.5"
-      data-testid="article-row-vehicles-skeleton"
-      aria-hidden="true"
+      data-testid={testId}
+      aria-busy="true"
     >
       {[0, 1, 2].map((row) => (
         <div
@@ -278,82 +274,6 @@ function VehiclesSkeleton() {
       ))}
     </div>
   );
-}
-
-/**
- * Groups the flat linkage rows into make → series, keeping TecDoc's order at
- * both levels. The series year span is derived from the modifications listed
- * rather than read from a field of its own: it is the span of what this part
- * actually fits, which is the narrower and more useful claim.
- */
-export function groupLinkedVehicles(
-  vehicles: LinkedVehicleDto[],
-): LinkedVehicleMakeGroup[] {
-  const groups: LinkedVehicleMakeGroup[] = [];
-
-  for (const vehicle of vehicles) {
-    let make = groups.find(
-      (group) => group.manufacturerName === vehicle.manufacturerName,
-    );
-
-    if (!make) {
-      make = {
-        manufacturerName: vehicle.manufacturerName,
-        series: [],
-        vehicleCount: 0,
-      };
-      groups.push(make);
-    }
-
-    let series = make.series.find(
-      (candidate) => candidate.modelSeriesName === vehicle.modelSeriesName,
-    );
-
-    if (!series) {
-      series = {
-        modelSeriesName: vehicle.modelSeriesName,
-        yearFrom: null,
-        yearTo: null,
-        vehicles: [],
-      };
-      make.series.push(series);
-    }
-
-    series.vehicles.push(vehicle);
-    make.vehicleCount += 1;
-  }
-
-  for (const make of groups) {
-    for (const series of make.series) {
-      series.yearFrom = earliestYear(series.vehicles);
-      series.yearTo = latestYear(series.vehicles);
-    }
-  }
-
-  return groups;
-}
-
-function earliestYear(vehicles: LinkedVehicleDto[]): number | null {
-  const years = vehicles
-    .map((vehicle) => vehicle.yearFrom)
-    .filter((year): year is number => year !== null);
-
-  return years.length > 0 ? Math.min(...years) : null;
-}
-
-/**
- * A single modification still in production leaves the whole series open-ended,
- * so one `null` end year wins over every dated one.
- */
-function latestYear(vehicles: LinkedVehicleDto[]): number | null {
-  const dated = vehicles.filter((vehicle) => vehicle.yearFrom !== null);
-  const stillMade = dated.some((vehicle) => vehicle.yearTo === null);
-
-  if (dated.length === 0 || stillMade) {
-    return null;
-  }
-
-  return Math.max(...dated.map((vehicle) => vehicle.yearTo as number));
 }
 
 /**
@@ -382,40 +302,4 @@ export function formatPower(
   ].filter((part): part is string => part !== null);
 
   return parts.length > 0 ? parts.join(" / ") : null;
-}
-
-/** Bulgarian counts take the plural from two onwards, e.g. 1 модел / 2 модела. */
-function countLabel(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function seriesKey(
-  manufacturerName: string,
-  series: LinkedVehicleSeriesGroup,
-): string {
-  return `${manufacturerName}|${series.modelSeriesName}`;
-}
-
-function defaultOpenMakes(groups: LinkedVehicleMakeGroup[]): Set<string> {
-  return new Set(groups.length > 0 ? [groups[0].manufacturerName] : []);
-}
-
-function defaultOpenSeries(groups: LinkedVehicleMakeGroup[]): Set<string> {
-  const first = groups[0];
-
-  return new Set(
-    first && first.series.length > 0
-      ? [seriesKey(first.manufacturerName, first.series[0])]
-      : [],
-  );
-}
-
-function toggled(open: Set<string>, key: string): Set<string> {
-  const next = new Set(open);
-
-  if (!next.delete(key)) {
-    next.add(key);
-  }
-
-  return next;
 }

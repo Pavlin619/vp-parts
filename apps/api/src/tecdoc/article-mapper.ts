@@ -1,9 +1,9 @@
 import {
   ArticleSummaryDto,
   OemNumberDto,
+  PaginatedCatalogArticlesDto,
   TechnicalSpecDto,
 } from '@vp-parts-shop/shared';
-import { LinkageTargetType } from './tecdoc-target-types';
 
 /**
  * The subset of a TecDoc `getArticles` (`includeAll: true`) article record the
@@ -31,12 +31,6 @@ export interface TecDocArticleRecord {
      * per article, so a part covering two generic articles carries two of them.
      */
     legacyArticleId?: number;
-    /**
-     * The linkage target families this generic-article combination has links
-     * for. Reading it is what keeps the vehicle lookup from calling for a
-     * combination that has no vehicle links to give.
-     */
-    linkageTargetTypes?: LinkageTargetType[];
   }>;
   images?: Array<{ imageURL800?: string }>;
   articleCriteria?: Array<{
@@ -51,6 +45,54 @@ export interface TecDocArticleRecord {
     mfrName?: string;
     referenceTypeDescription?: string;
   }>;
+}
+
+/**
+ * The `legacyArticleId`s one article resolves to, alongside the identity they
+ * belong to.
+ *
+ * Carried beside the mapped rows rather than inside them: these are TecDoc's
+ * internal linkage ids and {@link ArticleSummaryDto} deliberately exposes none
+ * of them.
+ */
+export interface ArticleLinkageRoles {
+  brandId: string;
+  articleNumber: string;
+  legacyArticleIds: number[];
+}
+
+/**
+ * A mapped page of catalog rows and the linkage roles that came down with it.
+ *
+ * An `includeAll` response already carries every row's `genericArticles`, so
+ * the ids the applicable-vehicles section needs are in hand the moment a
+ * category page is read. Keeping them is what saves that section a
+ * `getArticles` of its own per article.
+ */
+export interface CatalogArticlesPage {
+  articles: PaginatedCatalogArticlesDto;
+  roles: ArticleLinkageRoles[];
+}
+
+/**
+ * TecDoc files one `legacyArticleId` per article/generic-article pair rather
+ * than one per part, so a part catalogued in two roles carries two — with its
+ * vehicle linkages split across both.
+ */
+export function legacyArticleIdsOf(article: TecDocArticleRecord): number[] {
+  return (article.genericArticles ?? [])
+    .map((genericArticle) => genericArticle.legacyArticleId)
+    .filter((articleId): articleId is number => articleId !== undefined);
+}
+
+export function linkageRolesOf(
+  article: TecDocArticleRecord,
+): ArticleLinkageRoles {
+  return {
+    brandId: String(article.dataSupplierId),
+    articleNumber: article.articleNumber,
+    legacyArticleIds: legacyArticleIdsOf(article),
+  };
 }
 
 /**

@@ -5,28 +5,23 @@ import {
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
-  LinkedVehicleDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { InventoryService } from '../../inventory';
 import { BrandsService } from '../brands';
-import { ArticlesTecDoc, SUBSTITUTES_LIMIT } from './articles.tecdoc';
+import { ArticlesTecDoc } from './articles.tecdoc';
+import { LinkedVehiclesService } from './linked-vehicles';
 
 const ARTICLE_TTL = 24 * 60 * 60;
 const SUBSTITUTES_TTL = 24 * 60 * 60;
 const SUBSTITUTES_MISS_TTL = 60 * 60;
-const LINKED_VEHICLES_TTL = 24 * 60 * 60;
-const LINKED_VEHICLES_MISS_TTL = 60 * 60;
-const LEGACY_ARTICLE_IDS_TTL = 24 * 60 * 60;
 
 /**
- * Upper bound on the vehicles listed for one article. A common service part
- * fits into the thousands of modifications; the section is a browsing tool, not
- * a data export. TecDoc's linkage lookup takes no page parameters and always
- * answers in full, so the cap is applied to the ids it returns — only that many
- * are then hydrated into rows.
+ * Upper bound on the cross-references shown for a single part, so a part with
+ * hundreds of them never floods the substitutes tab or the bulk inventory
+ * lookup behind it.
  */
-export const LINKED_VEHICLES_LIMIT = 200;
+export const SUBSTITUTES_LIMIT = 20;
 
 @Injectable()
 export class ArticlesService {
@@ -35,6 +30,7 @@ export class ArticlesService {
     private readonly cache: RedisCache,
     private readonly brands: BrandsService,
     private readonly inventory: InventoryService,
+    private readonly linkedVehicles: LinkedVehiclesService,
   ) {}
 
   /**
@@ -51,10 +47,11 @@ export class ArticlesService {
     page: number,
     pageSize: number,
   ): Promise<PaginatedCatalogArticlesDto> {
-    const articles = await this.cache.cached(
-      `tecdoc:articles:${vehicleId}:${categoryId}:${page}:${pageSize}`,
-      ARTICLE_TTL,
-      () => this.tecdoc.getArticles(vehicleId, categoryId, page, pageSize),
+    const articles = await this.loadArticlePage(
+      vehicleId,
+      categoryId,
+      page,
+      pageSize,
     );
 
     const items = await this.brands.attachLogos(articles.items);
@@ -122,27 +119,6 @@ export class ArticlesService {
   }
 
   /**
-   * The vehicles an article fits, for the applicable-vehicles section. Read on
-   * demand — the section is behind a click on every surface that offers it, and
-   * a common service part carries far more linkages than the row it expands.
-   *
-   * Pure TecDoc data with no inventory in it, so it caches like the rest of the
-   * catalog metadata; the shorter miss TTL keeps a part that is briefly missing
-   * its linkages from being remembered as vehicle-less for a whole day.
-   */
-  async getLinkedVehicles(
-    brandId: number,
-    articleNumber: string,
-  ): Promise<LinkedVehicleDto[]> {
-    return this.cache.cachedArray(
-      `tecdoc:linked-vehicles:${brandId}:${articleNumber}`,
-      LINKED_VEHICLES_TTL,
-      LINKED_VEHICLES_MISS_TTL,
-      () => this.loadLinkedVehicles(brandId, articleNumber),
-    );
-  }
-
-  /**
    * Cacheable TecDoc catalog metadata for the article detail page — identity,
    * brand, images, specs, OE numbers, and vehicle fit, with **no** live
    * inventory. The page caches this and hydrates price/availability separately
@@ -158,72 +134,48 @@ export class ArticlesService {
   }
 
   /**
-   * TecDoc splits the applicable-vehicles answer three ways, so this assembles
-   * it: our surfaces hold the article number a customer reads off a part, the
-   * linkage lookup is keyed by `legacyArticleId` and answers with bare target
-   * ids, and only the linkage-target read knows what those ids are called.
+   * A page of catalog rows, with each row's `legacyArticleId`s pinned on the
+   * way past.
+   *
+   * The `includeAll` listing already carries those ids, and the
+   * applicable-vehicles section needs exactly them — without this it re-reads
+   * each article the first time a visitor expands a row. Warming from inside the
+   * loader ties it to the TecDoc read itself, so the memos are written when the
+   * page is, and the two entries then age out together.
    */
-  private async loadLinkedVehicles(
-    brandId: number,
-    articleNumber: string,
-  ): Promise<LinkedVehicleDto[]> {
-    const targetIds = await this.collectLinkedTargetIds(brandId, articleNumber);
-
-    if (targetIds.length === 0) {
-      return [];
-    }
-
-    return this.tecdoc.getLinkageTargets(targetIds);
-  }
-
-  /**
-   * Every vehicle the article is linked to, across all its generic-article
-   * roles. The roles are read in parallel and merged because TecDoc files
-   * linkages per role, and the sets overlap wherever a vehicle takes the part
-   * in more than one — hence the dedupe before the cap.
-   */
-  private async collectLinkedTargetIds(
-    brandId: number,
-    articleNumber: string,
-  ): Promise<number[]> {
-    const legacyArticleIds = await this.resolveLegacyArticleIds(
-      brandId,
-      articleNumber,
-    );
-
-    const targetIdsPerRole = await Promise.all(
-      legacyArticleIds.map((legacyArticleId) =>
-        this.tecdoc.getLinkedTargetIds(legacyArticleId),
-      ),
-    );
-
-    const merged = new Set(targetIdsPerRole.flat());
-
-    return [...merged].slice(0, LINKED_VEHICLES_LIMIT);
-  }
-
-  /**
-   * The article number → `legacyArticleId` lookup, memoised because the mapping
-   * only moves when TecDoc ships a data release. Only a resolved number is
-   * written: an unknown one throws before the cache is touched, so a part
-   * TecDoc adds tomorrow is not remembered as missing.
-   */
-  private resolveLegacyArticleIds(
-    brandId: number,
-    articleNumber: string,
-  ): Promise<number[]> {
+  private loadArticlePage(
+    vehicleId: number,
+    categoryId: number,
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedCatalogArticlesDto> {
     return this.cache.cached(
-      `tecdoc:article-legacy-ids:${brandId}:${articleNumber}`,
-      LEGACY_ARTICLE_IDS_TTL,
-      () => this.tecdoc.getLegacyArticleIds(brandId, articleNumber),
+      `tecdoc:articles:${vehicleId}:${categoryId}:${page}:${pageSize}`,
+      ARTICLE_TTL,
+      async () => {
+        const catalogPage = await this.tecdoc.getArticles(
+          vehicleId,
+          categoryId,
+          page,
+          pageSize,
+        );
+
+        await this.linkedVehicles.rememberLinkageRoles(catalogPage.roles);
+
+        return catalogPage.articles;
+      },
     );
   }
 
   /**
-   * The cached TecDoc comparable-number read behind both the substitutes tab
-   * and the alternative-numbers section. The shorter miss TTL keeps a part that
-   * is briefly missing its cross-references from being remembered as having
-   * none for a whole day.
+   * The cached comparable-number read behind both the substitutes tab and the
+   * alternative-numbers section. The shorter miss TTL keeps a part that is
+   * briefly missing its cross-references from being remembered as having none
+   * for a whole day.
+   *
+   * The searched part is dropped here rather than at the TecDoc seam: a part is
+   * not its own substitute, whichever brand filed it, which is a statement about
+   * the list we show and not about what the comparable-number search returns.
    */
   private loadComparableParts(
     articleNumber: string,
@@ -232,7 +184,14 @@ export class ArticlesService {
       `tecdoc:substitutes:${articleNumber}`,
       SUBSTITUTES_TTL,
       SUBSTITUTES_MISS_TTL,
-      () => this.tecdoc.getSubstitutes(articleNumber),
+      async () => {
+        const comparable =
+          await this.tecdoc.getComparableArticles(articleNumber);
+
+        return comparable.filter(
+          (part) => part.articleNumber !== articleNumber,
+        );
+      },
     );
   }
 
@@ -243,6 +202,12 @@ export class ArticlesService {
    * The TecDoc layer now distinguishes the two — {@link ArticleNotFoundException}
    * for a genuine miss, CATALOG_UNAVAILABLE for a failed read — so letting both
    * through unchanged is what keeps them apart.
+   *
+   * `vehicleId` is deliberately absent from the cache key. Nothing in the
+   * payload varies by vehicle yet — `fitsVehicle` is unresolved, see the TODO
+   * in `article-mapper.ts` — and keying on it stored one identical copy of a
+   * popular part per vehicle a visitor happened to arrive from. Resolving fit
+   * is what puts it back.
    */
   private async loadCatalogDetail(
     brandId: number,
@@ -250,7 +215,7 @@ export class ArticlesService {
     vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
     const detail = await this.cache.cached(
-      `tecdoc:article-detail:${brandId}:${articleNumber}:${vehicleId ?? 'none'}`,
+      `tecdoc:article-detail:${brandId}:${articleNumber}`,
       ARTICLE_TTL,
       () => this.tecdoc.getArticleDetails(brandId, articleNumber, vehicleId),
     );

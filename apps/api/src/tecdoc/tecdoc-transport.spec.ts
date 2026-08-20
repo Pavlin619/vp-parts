@@ -252,6 +252,41 @@ describe('TecDocTransport', () => {
     });
   });
 
+  // Deliberately unpaced: the transport applies no process-wide cap, so a
+  // caller that fans out is the one that bounds itself. A cap here would have
+  // to queue what it held back, and the deadline such a queue needs sheds
+  // ordinary single-call reads as soon as enough visitors browse at once.
+  describe('pacing', () => {
+    it('sends every concurrent call rather than queueing any of them', async () => {
+      let inFlight = 0;
+      let peakInFlight = 0;
+
+      fetchMock.mockImplementation(() => {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+
+        return new Promise((resolve) => {
+          setImmediate(() => {
+            inFlight -= 1;
+            resolve({
+              ok: true,
+              status: 200,
+              statusText: '',
+              json: () => Promise.resolve({ status: 200 }),
+            });
+          });
+        });
+      });
+
+      await Promise.all(
+        Array.from({ length: 20 }, () => transport.call('getBrands', {})),
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(20);
+      expect(peakInFlight).toBe(20);
+    });
+  });
+
   describe('success envelope', () => {
     it('passes a status 200 payload through', async () => {
       respondWith({ status: 200, articles: [{ articleNumber: 'A1' }] });
