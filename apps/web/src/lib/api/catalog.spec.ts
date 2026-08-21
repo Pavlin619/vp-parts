@@ -12,6 +12,7 @@ import {
   getAlternativeNumbers,
   getAutocomplete,
   alternativeNumbersQueryOptions,
+  substitutesQueryOptions,
   linkedManufacturersQueryOptions,
   linkedVehiclesByMakeQueryOptions,
   manufacturersQueryOptions,
@@ -237,9 +238,41 @@ describe('alternativeNumbersQueryOptions', () => {
 
   // Nothing in the payload is price-bearing, so reopening the section on
   // another row for the same part must not refetch.
-  it('stays fresh for an hour', () => {
-    expect(alternativeNumbersQueryOptions('OX 982D').staleTime).toBe(
-      60 * 60 * 1000,
+  it('survives a collapsed section as long as it stays fresh', () => {
+    const options = alternativeNumbersQueryOptions('OX 982D')
+
+    expect(options.staleTime).toBe(60 * 60 * 1000)
+    expect(options.gcTime).toBe(options.staleTime)
+  })
+})
+
+describe('substitutesQueryOptions', () => {
+  it('keys by the article number', () => {
+    expect(substitutesQueryOptions('OX 982D').queryKey).toEqual([
+      'catalog',
+      'substitutes',
+      'OX 982D',
+    ])
+  })
+
+  // The comparable-number search is keyed on the number alone, so the two
+  // brands filing one number share the one cross-reference list — unlike the
+  // brand-scoped reads above, where a shared key would be a bug.
+  it('does not split the cache by the brand asking', () => {
+    expect(substitutesQueryOptions('OX 982D').queryKey).not.toContain('94')
+  })
+
+  it('survives a collapsed section as long as it stays fresh', () => {
+    const options = substitutesQueryOptions('OX 982D')
+
+    expect(options.staleTime).toBe(60 * 60 * 1000)
+    expect(options.gcTime).toBe(options.staleTime)
+  })
+
+  it('queryFn requests the substitutes for the article', () => {
+    substitutesQueryOptions('OX 982D').queryFn?.({} as never)
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/articles/OX%20982D/substitutes',
     )
   })
 })

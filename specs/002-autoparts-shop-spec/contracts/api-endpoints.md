@@ -289,6 +289,50 @@ endpoint (key `tecdoc:substitutes:{articleNumber}`).
 
 ---
 
+### Substitutes
+
+**`GET /catalog/articles/:articleNumber/substitutes`** `[PUBLIC]`
+
+The same cross-references as the endpoint above, as whole catalog rows rather
+than numbers: identity, brand, description, thumbnail and specs, so the
+substitutes section of a catalog row can render each one as a row a visitor can
+price and buy. Shape: `ArticleSummaryDto[]` — the same row shape the listing and
+search return, so every list surface shares one row component.
+
+Keyed on the number alone, and capped at 20 (`SUBSTITUTES_LIMIT`), for the same
+reasons as *Alternative Numbers*. A part with no cross-references is a `200`
+with `[]`.
+
+Catalog metadata only — **no** price or stock, like every other cacheable
+catalog read. The section hydrates the rows client-side through
+`GET /catalog/articles-availability?numbers=…`, so a substitute's delivery date
+is never served from a cache. Vehicle-independent by design: if the viewed part
+fits the selected vehicle then its comparables do too, so no per-substitute fit
+check is made.
+
+Response `200`:
+```json
+[
+  {
+    "articleNumber": "OC 115",
+    "brandId": "77",
+    "brandName": "MANN-FILTER",
+    "brandLogoUrl": "https://cdn.example.com/brands/77.png",
+    "description": "Маслен филтър",
+    "thumbnailUrl": "https://cdn.example.com/img/OC115.jpg",
+    "technicalSpecs": [{ "key": "Височина", "value": "79 mm" }],
+    "oemNumbers": [],
+    "fitsVehicle": null
+  }
+]
+```
+
+Cache: Redis, 24h on a hit / 1h on an empty result — one entry shared with the
+alternative-numbers endpoint (key `tecdoc:substitutes:{articleNumber}`), so
+opening either section warms the other.
+
+---
+
 ### Applicable Vehicles
 
 Two sibling endpoints disclosing the vehicles an article fits: the makes, then

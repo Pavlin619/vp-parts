@@ -5,9 +5,10 @@ import { ChevronRight } from "lucide-react";
 import type { OemNumberDto, TechnicalSpecDto } from "@vp-parts-shop/shared";
 import { cn } from "@/lib/utils";
 import { ArticleRowNumbers } from "./article-row-numbers";
+import { ArticleRowSubstitutes } from "./article-row-substitutes";
 import { ArticleRowVehicles } from "./article-row-vehicles";
 
-type DetailSectionId = "specs" | "numbers" | "vehicles";
+type DetailSectionId = "specs" | "substitutes" | "numbers" | "vehicles";
 
 interface ArticleRowDetailProps {
   /** TecDoc brand id; needed with the number to read this exact part. */
@@ -19,6 +20,7 @@ interface ArticleRowDetailProps {
 
 const SECTION_LABEL: Record<DetailSectionId, string> = {
   specs: "Технически характеристики",
+  substitutes: "Заменяеми",
   numbers: "Алтернативни номера",
   vehicles: "Приложими автомобили",
 };
@@ -26,10 +28,10 @@ const SECTION_LABEL: Record<DetailSectionId, string> = {
 /**
  * The expanded body of a catalog row — an accordion over the article's detail.
  *
- * Only the technical specs come free with the catalog response. Both other
- * sections read from TecDoc when opened — cross-reference numbers and vehicle
- * linkages are volumes no list response could carry per row — which is why
- * neither is ever the section that opens by itself.
+ * Only the technical specs come free with the catalog response. Every other
+ * section reads from TecDoc when opened — cross-references and vehicle linkages
+ * are volumes no list response could carry per row — which is why none of them
+ * is ever the section that opens by itself.
  */
 export function ArticleRowDetail({
   brandId,
@@ -75,6 +77,9 @@ export function ArticleRowDetail({
         <div className="px-6 pb-[22px] pt-[18px]">
           {openSection === "specs" && (
             <TechnicalSpecTable technicalSpecs={technicalSpecs} />
+          )}
+          {openSection === "substitutes" && (
+            <ArticleRowSubstitutes articleNumber={articleNumber} />
           )}
           {openSection === "numbers" && (
             <ArticleRowNumbers
@@ -126,10 +131,14 @@ function TechnicalSpecTable({
 }
 
 /**
- * The sections worth offering, in display order. The two read-on-demand
- * sections are always offered: whether an article has cross-references or
- * applicable vehicles is only known once they are fetched, and fetching them
- * per row to decide is the cost those sections are designed to avoid.
+ * The sections worth offering, in display order. The read-on-demand sections
+ * are always offered: whether an article has cross-references or applicable
+ * vehicles is only known once they are fetched, and fetching them per row to
+ * decide is the cost those sections are designed to avoid.
+ *
+ * Substitutes lead them: they are the same cross-references as the alternative
+ * numbers below, but as parts a visitor can compare and buy, which is the more
+ * useful of the two answers.
  */
 function availableSections(
   technicalSpecs: TechnicalSpecDto[],
@@ -139,7 +148,7 @@ function availableSections(
   if (technicalSpecs.length > 0) {
     sections.push("specs");
   }
-  sections.push("numbers", "vehicles");
+  sections.push("substitutes", "numbers", "vehicles");
 
   return sections;
 }
