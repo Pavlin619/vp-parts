@@ -216,17 +216,17 @@ export const autocompleteQueryOptions = (query: string) =>
   });
 
 /**
- * How long an applicable-vehicles answer stays fresh, and how long it survives
- * with nothing subscribed to it.
+ * How long a read-on-demand catalog-row section's answer stays fresh, and how
+ * long it survives with nothing subscribed to it.
  *
  * Pure TecDoc catalog data with no inventory in it, so it ages far more slowly
  * than anything price-bearing. `gcTime` is set alongside `staleTime` rather
- * than left at the app-wide five minutes: this section unmounts the moment it
- * is collapsed, and a five-minute `gcTime` would drop the answer long before it
- * went stale, so closing and reopening a make would refetch.
+ * than left at the app-wide five minutes: these sections unmount the moment
+ * they are collapsed, and a five-minute `gcTime` would drop the answer long
+ * before it went stale, so closing and reopening one would refetch.
  */
-const LINKED_VEHICLES_STALE_TIME = 60 * 60 * 1000;
-const LINKED_VEHICLES_GC_TIME = LINKED_VEHICLES_STALE_TIME;
+const ROW_SECTION_STALE_TIME = 60 * 60 * 1000;
+const ROW_SECTION_GC_TIME = ROW_SECTION_STALE_TIME;
 
 export const linkedManufacturersQueryOptions = (
   brandId: string,
@@ -235,8 +235,8 @@ export const linkedManufacturersQueryOptions = (
   queryOptions({
     queryKey: ["catalog", "linked-manufacturers", brandId, articleNumber],
     queryFn: () => getLinkedManufacturers(brandId, articleNumber),
-    staleTime: LINKED_VEHICLES_STALE_TIME,
-    gcTime: LINKED_VEHICLES_GC_TIME,
+    staleTime: ROW_SECTION_STALE_TIME,
+    gcTime: ROW_SECTION_GC_TIME,
   });
 
 export const linkedVehiclesByMakeQueryOptions = (
@@ -254,19 +254,29 @@ export const linkedVehiclesByMakeQueryOptions = (
     ],
     queryFn: () =>
       getLinkedVehiclesByManufacturer(brandId, articleNumber, manufacturerId),
-    staleTime: LINKED_VEHICLES_STALE_TIME,
-    gcTime: LINKED_VEHICLES_GC_TIME,
+    staleTime: ROW_SECTION_STALE_TIME,
+    gcTime: ROW_SECTION_GC_TIME,
   });
 
-/**
- * Cross-reference numbers for one article. Pure TecDoc catalog data with no
- * inventory in it, so it stays fresh as long as the linkages above — long
- * enough that reopening the section, or opening it on another row for the same
- * part, never refetches.
- */
+/** Cross-reference numbers for one article, as chips. */
 export const alternativeNumbersQueryOptions = (articleNumber: string) =>
   queryOptions({
     queryKey: ["catalog", "alternative-numbers", articleNumber],
     queryFn: () => getAlternativeNumbers(articleNumber),
-    staleTime: 60 * 60 * 1000,
+    staleTime: ROW_SECTION_STALE_TIME,
+    gcTime: ROW_SECTION_GC_TIME,
+  });
+
+/**
+ * The same cross-references as {@link alternativeNumbersQueryOptions}, as whole
+ * catalog rows rather than numbers. Keyed on the number alone, like the read
+ * behind it — a comparable-number search takes the number as its query, not as
+ * an identity, so there is no brand to key by.
+ */
+export const substitutesQueryOptions = (articleNumber: string) =>
+  queryOptions({
+    queryKey: ["catalog", "substitutes", articleNumber],
+    queryFn: () => getSubstitutes(articleNumber),
+    staleTime: ROW_SECTION_STALE_TIME,
+    gcTime: ROW_SECTION_GC_TIME,
   });

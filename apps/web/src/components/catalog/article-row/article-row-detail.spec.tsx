@@ -4,12 +4,18 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ArticleRowDetail } from './article-row-detail'
 
-// Both read-on-demand sections are stubbed: this spec is about which section is
+// Every read-on-demand section is stubbed: this spec is about which section is
 // open, not what any of them renders. Their own specs cover that — and mounting
 // the real ones here would need a query client to no purpose.
 jest.mock('./article-row-numbers', () => ({
   ArticleRowNumbers: ({ articleNumber }: { articleNumber: string }) => (
     <div data-testid="numbers-section">{articleNumber}</div>
+  ),
+}))
+
+jest.mock('./article-row-substitutes', () => ({
+  ArticleRowSubstitutes: ({ articleNumber }: { articleNumber: string }) => (
+    <div data-testid="substitutes-section">{articleNumber}</div>
   ),
 }))
 
@@ -81,6 +87,25 @@ describe('ArticleRowDetail', () => {
     expect(screen.queryByText('79 mm')).not.toBeInTheDocument()
   })
 
+  // Substitutes are read by number, not by brand — the section takes the number
+  // alone, unlike the vehicles section beside it.
+  it('switches to the substitutes section', async () => {
+    const user = userEvent.setup()
+    render(
+      <ArticleRowDetail
+        brandId="268"
+        articleNumber="WL6340"
+        technicalSpecs={specs}
+        oemNumbers={oemNumbers}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Заменяеми/ }))
+
+    expect(screen.getByTestId('substitutes-section')).toHaveTextContent('WL6340')
+    expect(screen.queryByText('79 mm')).not.toBeInTheDocument()
+  })
+
   it('collapses the open section when its tab is clicked again', async () => {
     const user = userEvent.setup()
     render(
@@ -133,10 +158,10 @@ describe('ArticleRowDetail', () => {
     ).not.toBeInTheDocument()
   })
 
-  // Whether an article has cross-reference numbers or applicable vehicles is
-  // only known once they are fetched, so both sections are offered
-  // unconditionally — including on a row the catalog response left bare.
-  it('always offers the two read-on-demand sections', () => {
+  // Whether an article has cross-reference numbers, substitutes or applicable
+  // vehicles is only known once they are fetched, so all three sections are
+  // offered unconditionally — including on a row the catalog response left bare.
+  it('always offers the read-on-demand sections', () => {
     render(
       <ArticleRowDetail
         brandId="268"
@@ -150,11 +175,35 @@ describe('ArticleRowDetail', () => {
       screen.getByRole('button', { name: /Алтернативни номера/ }),
     ).toBeInTheDocument()
     expect(
+      screen.getByRole('button', { name: /Заменяеми/ }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('button', { name: /Приложими автомобили/ }),
     ).toBeInTheDocument()
   })
 
-  // Both sit behind a TecDoc read, so neither may open by itself — that would
+  // Substitutes lead the read-on-demand sections: they are the same
+  // cross-references as the alternative numbers, but as parts a visitor can
+  // compare and buy.
+  it('offers the sections in display order', () => {
+    render(
+      <ArticleRowDetail
+        brandId="268"
+        articleNumber="WL6340"
+        technicalSpecs={specs}
+        oemNumbers={oemNumbers}
+      />,
+    )
+
+    expect(screen.getAllByRole('button').map((tab) => tab.textContent)).toEqual([
+      'Технически характеристики',
+      'Заменяеми',
+      'Алтернативни номера',
+      'Приложими автомобили',
+    ])
+  })
+
+  // All three sit behind a TecDoc read, so none may open by itself — that would
   // fetch for every row a visitor expands.
   it('leaves the read-on-demand sections closed until one is asked for', () => {
     render(
@@ -169,6 +218,10 @@ describe('ArticleRowDetail', () => {
     expect(
       screen.getByRole('button', { name: /Алтернативни номера/ }),
     ).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /Заменяеми/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
     expect(
       screen.getByRole('button', { name: /Приложими автомобили/ }),
     ).toHaveAttribute('aria-expanded', 'false')
@@ -187,6 +240,7 @@ describe('ArticleRowDetail', () => {
     )
 
     expect(screen.queryByTestId('numbers-section')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('substitutes-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('vehicles-section')).not.toBeInTheDocument()
   })
 })

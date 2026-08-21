@@ -42,14 +42,14 @@ const NO_WAREHOUSES: WarehouseAvailabilityDto[] = [];
 /**
  * One article as a wide catalog row: identity, brand, delivery promise, stock
  * and the buy action, with an expander for the technical detail. Built to back
- * every list surface, but only search renders it so far — the listing grid and
- * substitutes still use `ArticleCard`.
+ * every list surface — search hits, and the substitutes a row expands into —
+ * though the listing grid still uses `ArticleCard`.
  *
  * The collapsed row renders from catalog metadata alone. Live price/stock
  * arrives on its own schedule via `availability`, which lets a cacheable catalog
  * response paint immediately instead of blocking the whole list on the
- * inventory read; the expander's applicable-vehicles section is the only other
- * read, and it waits until a visitor opens it.
+ * inventory read; the expander's sections are the only other reads, and each
+ * waits until a visitor opens it.
  *
  * Deliberately shows no vehicle-fit verdict even though `ArticleSummaryDto`
  * carries one: list surfaces are vehicle-agnostic, and resolving fit per row
