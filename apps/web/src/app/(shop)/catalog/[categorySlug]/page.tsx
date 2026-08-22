@@ -44,7 +44,7 @@ export default async function CategoryPage({
 
   if (!vehicleId) {
     return (
-      <div className="max-w-[1360px] mx-auto px-6 py-12 text-center">
+      <div className="page-container py-12 text-center">
         <p className="text-muted">
           Изберете автомобил, за да видите съвместимите части.
         </p>
@@ -60,7 +60,7 @@ export default async function CategoryPage({
   );
 
   return (
-    <div className="max-w-[1360px] mx-auto px-6 py-8">
+    <div className="page-container py-8">
       <CatalogBreadcrumbs />
       <ArticleGridAvailability metadata={metadata} />
       <CatalogPagination

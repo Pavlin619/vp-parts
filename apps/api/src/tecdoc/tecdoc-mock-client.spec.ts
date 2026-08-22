@@ -156,6 +156,26 @@ describe('TecDocMockClient', () => {
       ]);
     });
 
+    it('names the ancestors of the selected node, outermost first', async () => {
+      const { categoryNavigation } = await drill({
+        categoryNodeId: OIL_FILTER_LEAF,
+        categoryHasChildren: false,
+      });
+
+      expect(
+        categoryNavigation.ancestors.map((ancestor) => ancestor.label),
+      ).toEqual(['Филтри']);
+    });
+
+    it('leaves the ancestors empty at a root', async () => {
+      const { categoryNavigation } = await drill({
+        categoryNodeId: FILTERS_ROOT,
+        categoryHasChildren: true,
+      });
+
+      expect(categoryNavigation.ancestors).toEqual([]);
+    });
+
     // Selecting a branch must not empty the results: the articles hang off its
     // leaves, never off the branch itself.
     it('keeps the whole subtree when a branch is selected', async () => {

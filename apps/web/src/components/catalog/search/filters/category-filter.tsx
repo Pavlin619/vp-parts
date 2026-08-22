@@ -37,8 +37,9 @@ interface DrillRow {
  * assembly group stops being one kind of part. Both levels are a descent
  * rather than a filter, so they share one block and one "up" trail.
  *
- * The API returns a single level at a time and no breadcrumb, so the path back
- * up lives in the URL (see `categoryPath`) and is walked one step at a time.
+ * The API returns a single level at a time, so this block steps back up one
+ * level at a time too, following the URL's own `categoryPath`. Jumping several
+ * levels at once is the breadcrumb's job.
  */
 export function CategoryFilter({
   state,

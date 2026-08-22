@@ -53,8 +53,12 @@ export interface SearchUrlState {
   /**
    * The category drill path, outermost first, of which only the last entry is
    * an actual filter. The ancestors are carried so the sidebar can offer "one
-   * level up" — the API's category navigation is single-level and returns no
-   * breadcrumb, so the trail can only live here.
+   * level up" without a lookup.
+   *
+   * This is the path that was *clicked*, which is not always the path through
+   * the tree: a category suggestion in the autocomplete lands on a deep leaf in
+   * one step. The breadcrumb therefore takes its trail from the API's
+   * `ancestors` instead — see `search-breadcrumbs`.
    */
   categoryPath: string[];
   /**
@@ -340,14 +344,21 @@ export function drillIntoCategory(
 }
 
 /**
- * Steps one level back up. The node being returned to is by definition a
- * branch — we drilled through it to get here — so `hasChildren` is `true`
- * without another lookup, which correctly stops the API computing dimensions
- * for a mid-level subtree.
+ * Moves to the node a whole path stands for, outermost first. This is what the
+ * breadcrumb navigates with, and it takes a path rather than a number of steps
+ * because a crumb can sit several levels above the current node — and because
+ * the trail it comes from is the catalogue's tree, which is not always the
+ * steps that were clicked: entering from a category suggestion records one
+ * step for a node several levels down.
+ *
+ * Every node with something selected below it is by definition a branch, so
+ * `hasChildren` is `true` without another lookup, which correctly stops the API
+ * computing dimensions for a mid-level subtree.
  */
-export function categoryUp(state: SearchUrlState): SearchUrlState {
-  const categoryPath = state.categoryPath.slice(0, -1);
-
+export function selectCategoryPath(
+  state: SearchUrlState,
+  categoryPath: string[],
+): SearchUrlState {
   return {
     ...state,
     categoryPath,
@@ -358,15 +369,13 @@ export function categoryUp(state: SearchUrlState): SearchUrlState {
   };
 }
 
+/** Steps one level back up the path that was clicked to get here. */
+export function categoryUp(state: SearchUrlState): SearchUrlState {
+  return selectCategoryPath(state, state.categoryPath.slice(0, -1));
+}
+
 export function clearCategory(state: SearchUrlState): SearchUrlState {
-  return {
-    ...state,
-    categoryPath: [],
-    categoryHasChildren: undefined,
-    productTypeId: undefined,
-    attributes: [],
-    page: FIRST_PAGE,
-  };
+  return selectCategoryPath(state, []);
 }
 
 export function toggleAttribute(

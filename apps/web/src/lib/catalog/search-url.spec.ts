@@ -15,6 +15,7 @@ import {
   isPageOutOfRange,
   newSearch,
   parseSearchUrl,
+  selectCategoryPath,
   selectedCategoryId,
   selectProductType,
   toSearchRequest,
@@ -488,6 +489,49 @@ describe('mutations', () => {
       expect(cleared.categoryPath).toEqual([])
       expect(cleared.categoryHasChildren).toBeUndefined()
       expect(cleared.attributes).toEqual([])
+    })
+  })
+
+  describe('selectCategoryPath', () => {
+    // The breadcrumb jumps straight to a crumb rather than stepping, and the
+    // path it carries is the tree's, which may not be the one that was clicked.
+    it('replaces the path outright instead of stepping', () => {
+      const drilled = state({
+        categoryPath: ['100256'],
+        categoryHasChildren: false,
+      })
+
+      expect(
+        selectCategoryPath(drilled, ['100', '100200']).categoryPath,
+      ).toEqual(['100', '100200'])
+    })
+
+    it('marks the node selected as having children', () => {
+      expect(
+        selectCategoryPath(state(), ['100']).categoryHasChildren,
+      ).toBe(true)
+    })
+
+    it('clears the hint when the path is empty', () => {
+      const drilled = state({ categoryPath: ['100'], categoryHasChildren: true })
+
+      expect(
+        selectCategoryPath(drilled, []).categoryHasChildren,
+      ).toBeUndefined()
+    })
+
+    it('drops the narrowings that belong to the node being left', () => {
+      const drilled = state({
+        categoryPath: ['100', '100200'],
+        productTypeId: '7',
+        attributes: [{ criteriaId: '20', value: '106.4' }],
+        page: 4,
+      })
+      const moved = selectCategoryPath(drilled, ['100'])
+
+      expect(moved.productTypeId).toBeUndefined()
+      expect(moved.attributes).toEqual([])
+      expect(moved.page).toBe(1)
     })
   })
 

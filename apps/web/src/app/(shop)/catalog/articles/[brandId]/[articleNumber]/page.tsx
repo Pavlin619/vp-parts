@@ -63,7 +63,7 @@ export default async function ArticleDetailPage({
   }
 
   return (
-    <div className="mx-auto max-w-[1360px] px-6 py-8">
+    <div className="page-container py-8">
       <CatalogBreadcrumbs />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)_340px]">

@@ -625,9 +625,8 @@ zero-result response:
   time (like InterCars): a broad search returns only the top-level roots, the
   user clicks one, the search is re-issued with that `categoryNodeId`, and the
   next level comes back re-scoped — so the whole subtree is never shipped and
-  deep counts are always computed against the current scope. There is **no
-  breadcrumb**: each drill level is a distinct search URL, so the browser back
-  button handles "go up". Two fields:
+  deep counts are always computed against the current scope. Only the one path
+  back out travels with it. Three fields:
   - **`options`** — the level to choose from: the top-level roots when no
     `categoryNodeId` is selected, otherwise the selected node's immediate
     children (empty once at a leaf). Each is `{ id` (sent back as
@@ -638,6 +637,14 @@ zero-result response:
     `attributes`; its `label`/`count` feed the results heading. `[VERIFY-TC]`
     whether the match-scoped facet returns the selected node so `current` can be
     resolved for a deep selection.
+  - **`ancestors`** — the selected node's ancestors, outermost first and
+    excluding `current`, which is what the client renders the breadcrumb from.
+    It is the **tree's** path, not the path that was clicked: a category
+    suggestion in the autocomplete jumps straight to a deep leaf, so the search
+    URL alone cannot say what sits above it. Best-effort for the same reason as
+    `current` — the facet is match-scoped, so an ancestor TecDoc omits cannot be
+    named and the trail simply comes back shorter. `[VERIFY-TC]` whether
+    `includeCompleteTree: false` keeps the ancestors of a filtered node.
 
   The whole-catalogue tree is `GET /catalog/assembly-groups`'s job; this block is
   strictly match-scoped.

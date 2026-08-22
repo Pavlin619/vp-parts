@@ -42,7 +42,7 @@ const pageOf = (
   items,
   facets: [],
   attributes: [],
-  categoryNavigation: { current: null, options: [] },
+  categoryNavigation: { current: null, ancestors: [], options: [] },
   ...overrides,
 });
 
@@ -321,6 +321,9 @@ describe('SearchController (e2e)', () => {
           count: 2,
           hasChildren: true,
         },
+        ancestors: [
+          { id: '100', label: 'Спирачна система', count: 2, hasChildren: true },
+        ],
         options: [
           { id: '300', label: 'Накладки', count: 2, hasChildren: false },
         ],

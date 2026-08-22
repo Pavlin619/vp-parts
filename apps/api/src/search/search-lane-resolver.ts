@@ -191,7 +191,7 @@ export class SearchLaneResolver {
       items: [],
       facets: [],
       attributes: [],
-      categoryNavigation: { current: null, options: [] },
+      categoryNavigation: { current: null, ancestors: [], options: [] },
     };
   }
 }

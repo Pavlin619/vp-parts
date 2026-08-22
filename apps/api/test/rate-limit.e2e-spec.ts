@@ -34,7 +34,7 @@ const ONE_HIT: PaginatedSearchArticlesDto = {
   items: [ARTICLE],
   facets: [],
   attributes: [],
-  categoryNavigation: { current: null, options: [] },
+  categoryNavigation: { current: null, ancestors: [], options: [] },
 };
 
 const mockTecDocClient = {

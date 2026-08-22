@@ -1,6 +1,8 @@
 export default function SearchLoading() {
   return (
-    <div className="mx-auto max-w-[1360px] px-6 py-8">
+    <div className="page-container py-8">
+      <div className="mb-6 h-4 w-72 animate-pulse rounded bg-bg-sunken" />
+
       <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
         <div className="flex flex-col gap-2">
           {[180, 260, 200].map((height) => (
