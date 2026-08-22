@@ -14,7 +14,6 @@ import { SearchBreadcrumbs } from "@/components/catalog/search/search-breadcrumb
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
 import { SearchNoMatches } from "@/components/catalog/search/search-no-matches";
 import {
-  ActiveFilters,
   SearchFiltersSidebar,
   SearchPagination,
 } from "@/components/catalog/search/filters";
@@ -77,13 +76,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         />
 
         <main className="min-w-0">
-          <ActiveFilters
-            state={state}
-            facets={response.facets}
-            attributes={response.attributes}
-            categoryNavigation={response.categoryNavigation}
-          />
-
           {response.results.length > 0 ? (
             <SearchResultsAvailability
               query={state.query}
