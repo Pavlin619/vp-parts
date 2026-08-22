@@ -30,6 +30,7 @@ const ONE_HIT: PaginatedSearchArticlesDto = {
   total: 1,
   page: 1,
   pageSize: 20,
+  maxPage: 1,
   items: [ARTICLE],
   facets: [],
   attributes: [],

@@ -5,6 +5,13 @@ import {
 import { TecDocMockClient } from './tecdoc-mock-client';
 import { TecDocSearchType } from '../search/search-types';
 
+// The fixture's own node ids. They are written out in the mock rather than
+// minted, so a test may name them directly — see the drill's stability test.
+const FILTERS_ROOT = 100;
+const OIL_FILTER_LEAF = 100100;
+const BRAKE_PAD_LEAF = 200200;
+const OIL_FILTER_HOUSING = 9;
+
 describe('TecDocMockClient', () => {
   let mock: TecDocMockClient;
 
@@ -49,8 +56,6 @@ describe('TecDocMockClient', () => {
       const broad = await mock.searchArticles('Brake Pad');
       expect(broad.attributes).toEqual([]);
 
-      const categoryNodeId = await brakePadCategoryNodeId();
-
       const scoped = await mock.searchArticles('Brake Pad', undefined, {
         type: TecDocSearchType.FreeText,
         matchType: undefined,
@@ -63,7 +68,7 @@ describe('TecDocMockClient', () => {
         { type: TecDocSearchType.FreeText },
         1,
         50,
-        { categoryNodeId },
+        { categoryNodeId: BRAKE_PAD_LEAF },
       );
 
       const leaf = await mock.searchArticles(
@@ -72,7 +77,7 @@ describe('TecDocMockClient', () => {
         { type: TecDocSearchType.FreeText },
         1,
         50,
-        { categoryNodeId, categoryHasChildren: false },
+        { categoryNodeId: BRAKE_PAD_LEAF, categoryHasChildren: false },
       );
 
       expect(scoped.attributes).toEqual([]);
@@ -111,23 +116,158 @@ describe('TecDocMockClient', () => {
     });
   });
 
-  // Facet ids travel to the client as strings (the DTO contract) and come back
-  // as numbers (parsed at the query boundary), so the round-trip goes through
-  // Number here exactly as it does in SearchQueryDto.
-  async function brakePadCategoryNodeId(): Promise<number> {
-    const unfiltered = await mock.searchArticles('Brake Pad', undefined, {
-      type: TecDocSearchType.FreeText,
-    });
-    const option = unfiltered.categoryNavigation.options.find(
-      (candidate) => candidate.label === 'Brake Pad Set, disc brake',
-    );
+  describe('category drill', () => {
+    /** Every match under the oil-filter leaf, whatever its generic article. */
+    const OIL_FILTER_QUERY = 'OF-';
 
-    if (!option) {
-      throw new Error('Fixture no longer exposes the brake pad category');
+    function drill(filters: {
+      categoryNodeId?: number;
+      categoryHasChildren?: boolean;
+      productTypeIds?: number[];
+    }) {
+      return mock.searchArticles(
+        OIL_FILTER_QUERY,
+        undefined,
+        { type: TecDocSearchType.AnyNumber },
+        1,
+        50,
+        filters,
+      );
     }
 
-    return Number(option.id);
-  }
+    it('opens on the root groups, each counting its whole subtree', async () => {
+      const { categoryNavigation, total } = await drill({});
+
+      expect(categoryNavigation.current).toBeNull();
+      expect(categoryNavigation.options).toEqual([
+        { id: '100', label: 'Филтри', count: total, hasChildren: true },
+      ]);
+    });
+
+    it('offers the children of the selected branch', async () => {
+      const { categoryNavigation } = await drill({
+        categoryNodeId: FILTERS_ROOT,
+        categoryHasChildren: true,
+      });
+
+      expect(categoryNavigation.current?.label).toBe('Филтри');
+      expect(categoryNavigation.options.map((option) => option.label)).toEqual([
+        'Маслен филтър / корпус / уплътнител',
+      ]);
+    });
+
+    // Selecting a branch must not empty the results: the articles hang off its
+    // leaves, never off the branch itself.
+    it('keeps the whole subtree when a branch is selected', async () => {
+      const [broad, branch] = await Promise.all([
+        drill({}),
+        drill({ categoryNodeId: FILTERS_ROOT, categoryHasChildren: true }),
+      ]);
+
+      expect(branch.total).toBe(broad.total);
+      expect(branch.total).toBeGreaterThan(0);
+    });
+
+    // The case the generic-article level exists for, and the one InterCars
+    // shows: one leaf assembly group holding four different kinds of part.
+    it('hands the leaf over to its generic articles', async () => {
+      const { categoryNavigation, facets } = await drill({
+        categoryNodeId: OIL_FILTER_LEAF,
+        categoryHasChildren: false,
+      });
+      const productTypes = facets.find((facet) => facet.id === 'productTypes');
+
+      expect(categoryNavigation.current?.hasChildren).toBe(false);
+      expect(categoryNavigation.options).toEqual([]);
+      expect(productTypes?.values.map((value) => value.label)).toEqual([
+        'Маслен филтър',
+        'Корпус, маслен филтър',
+        'Капак, кутия на масления филтър',
+        'Комплект за преоборудване, резервен филтър',
+      ]);
+    });
+
+    it('narrows the results and the dimensions to one generic article', async () => {
+      const leaf = await drill({
+        categoryNodeId: OIL_FILTER_LEAF,
+        categoryHasChildren: false,
+      });
+      const housings = await drill({
+        categoryNodeId: OIL_FILTER_LEAF,
+        categoryHasChildren: false,
+        productTypeIds: [OIL_FILTER_HOUSING],
+      });
+
+      expect(housings.total).toBeLessThan(leaf.total);
+      expect(
+        housings.items.every((item) => item.description.includes('Housing')),
+      ).toBe(true);
+      // A leaf's criteria are the union of four unrelated parts'; one generic
+      // article's are coherent, which is the whole reason for the level.
+      expect(housings.attributes.length).toBeLessThan(leaf.attributes.length);
+    });
+
+    // The ids reach the browser inside a URL and are cached in Redis beyond the
+    // life of the process that served them. Minting them per run made a link
+    // resolve to a different node — or to none, emptying a result set whose
+    // facet count still promised matches. Asserting the literals is what stops
+    // a lazily-numbered registry coming back.
+    it('identifies categories and generic articles by written-out ids', async () => {
+      const { categoryNavigation, facets } = await drill({
+        categoryNodeId: OIL_FILTER_LEAF,
+        categoryHasChildren: false,
+      });
+      const productTypes = facets.find((facet) => facet.id === 'productTypes');
+
+      expect(categoryNavigation.current?.id).toBe('100100');
+      expect(productTypes?.values.map((value) => value.id)).toEqual([
+        '7',
+        '9',
+        '11',
+        '13',
+      ]);
+    });
+  });
+
+  // The sidebar sorts, collapses and offers a search box only past ten brands,
+  // and opens only the first three criteria. A fixture below either threshold
+  // leaves the state nearly every visitor sees unreachable in dev.
+  describe('sidebar breadth at the oil-filter leaf', () => {
+    function atLeaf() {
+      return mock.searchArticles(
+        'filter',
+        undefined,
+        { type: TecDocSearchType.FreeText },
+        1,
+        50,
+        { categoryNodeId: OIL_FILTER_LEAF, categoryHasChildren: false },
+      );
+    }
+
+    it('returns enough brands for the list to collapse', async () => {
+      const { facets } = await atLeaf();
+      const brands = facets.find((facet) => facet.id === 'brands');
+
+      expect(brands?.values.length).toBeGreaterThan(10);
+    });
+
+    it('returns enough criteria for most to stay closed', async () => {
+      const { attributes } = await atLeaf();
+
+      expect(attributes.length).toBeGreaterThan(3);
+    });
+
+    // Without a mandatory criterion holding more than one value, nothing would
+    // open on arrival and the ranking would go untested in dev.
+    it('offers mandatory criteria that can actually narrow', async () => {
+      const { attributes } = await atLeaf();
+      const leading = attributes.filter(
+        (facet) => facet.isMandatory && facet.values.length > 1,
+      );
+
+      expect(leading.length).toBeGreaterThanOrEqual(3);
+    });
+  });
 
   describe('getAutocompleteArticles', () => {
     function articlesOf(
@@ -181,14 +321,22 @@ describe('TecDocMockClient', () => {
       expect(partial).toEqual([]);
     });
 
+    // Ferodo files both a disc and a pad under "DF", so the one query lands in
+    // two leaves — the only shape that earns a category suggestion.
     it('appends category suggestions when the matches span multiple categories', async () => {
-      const result = await mock.getAutocompleteArticles('O');
+      const result = await mock.getAutocompleteArticles('DF');
 
       const categories = result.filter((item) => item.kind === 'category');
-      expect(categories.length).toBeGreaterThan(0);
+      expect(categories.length).toBeGreaterThan(1);
       expect(categories.length).toBeLessThanOrEqual(5);
-      expect(categories[0]).toMatchObject({ kind: 'category', term: 'O' });
+      expect(categories[0]).toMatchObject({ kind: 'category', term: 'DF' });
       expect(categories[0]).toHaveProperty('categoryNodeId');
+    });
+
+    it('omits them when every match falls in one category', async () => {
+      const result = await mock.getAutocompleteArticles('OF-');
+
+      expect(result.every((item) => item.kind === 'article')).toBe(true);
     });
 
     it('omits category suggestions for an exact single-category match', async () => {

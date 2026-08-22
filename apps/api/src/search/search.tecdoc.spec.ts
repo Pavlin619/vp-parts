@@ -76,6 +76,77 @@ describe('SearchTecDoc', () => {
       expect(result.items).toEqual([]);
     });
 
+    // TecDoc serves only the first ~10,000 results of a match set, so a broad
+    // query's page count is its `maxAllowedPage` and not `total / pageSize`.
+    describe('maxPage', () => {
+      it("takes TecDoc's cap when it is below the match count", async () => {
+        call.mockResolvedValueOnce({
+          totalMatchingArticles: 50_000,
+          maxAllowedPage: 500,
+          articles: [record('WL6340')],
+        });
+
+        const result = await tecdoc.searchArticles(
+          'филтър',
+          undefined,
+          { type: 99 },
+          1,
+          20,
+        );
+
+        expect(result.maxPage).toBe(500);
+      });
+
+      it('takes the match count when it is below the cap', async () => {
+        call.mockResolvedValueOnce({
+          totalMatchingArticles: 87,
+          maxAllowedPage: 500,
+          articles: [record('WL6340')],
+        });
+
+        const result = await tecdoc.searchArticles(
+          'филтър',
+          undefined,
+          { type: 99 },
+          1,
+          20,
+        );
+
+        expect(result.maxPage).toBe(5);
+      });
+
+      it('falls back to the match count when TecDoc omits the cap', async () => {
+        call.mockResolvedValueOnce({
+          totalMatchingArticles: 87,
+          articles: [record('WL6340')],
+        });
+
+        const result = await tecdoc.searchArticles(
+          'филтър',
+          undefined,
+          { type: 99 },
+          1,
+          20,
+        );
+
+        expect(result.maxPage).toBe(5);
+      });
+
+      it('reports no pages at all for an empty match set', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        const result = await tecdoc.searchArticles(
+          'филтър',
+          undefined,
+          { type: 99 },
+          1,
+          20,
+        );
+
+        expect(result.maxPage).toBe(0);
+      });
+    });
+
     it('omits the match type for a free-text search', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 0,
@@ -119,6 +190,187 @@ describe('SearchTecDoc', () => {
       });
     });
 
+    // TecDoc files universal parts — oils, wipers, workshop consumables — in
+    // their own assembly group tree, and concatenating the codes is how one
+    // call spans both.
+    describe('the tree the category facet spans', () => {
+      it('covers the universal tree too when the search is catalogue-wide', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('масло', undefined, { type: 99 });
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          assemblyGroupFacetOptions: {
+            enabled: true,
+            assemblyGroupType: 'PU',
+            includeCompleteTree: false,
+          },
+        });
+      });
+
+      // Naming a tree under a linkage would mean re-deriving TecDoc's own
+      // mapping by hand, and the two vocabularies do not line up: linkage 'P'
+      // covers motorcycles where tree 'P' excludes them, so the obvious pairing
+      // silently drops the linkage's motorcycle groups.
+      it('leaves the tree to TecDoc when the search is scoped to a vehicle', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('масло', 20154, { type: 99 });
+
+        const payload = call.mock.calls[0][1] as {
+          assemblyGroupFacetOptions: Record<string, unknown>;
+        };
+
+        expect(payload).toMatchObject({ linkageTargetId: 20154 });
+        expect(payload.assemblyGroupFacetOptions).toEqual({
+          enabled: true,
+          includeCompleteTree: false,
+        });
+      });
+    });
+
+    // TecDoc's generic article is what the part *is* ("Oil Filter"), the axis
+    // it defines every technical criterion against.
+    describe('the product-type facet', () => {
+      it('is always requested and mapped alongside the brand group', async () => {
+        call.mockResolvedValueOnce({
+          totalMatchingArticles: 1,
+          articles: [record('WL6340')],
+          dataSupplierFacets: {
+            counts: [{ dataSupplierId: 4, mfrName: 'WIX', count: 1 }],
+          },
+          genericArticleFacets: {
+            counts: [
+              {
+                genericArticleId: 7,
+                genericArticleDescription: 'Маслен филтър',
+                count: 1,
+              },
+            ],
+          },
+        });
+
+        const result = await tecdoc.searchArticles('филтър', undefined, {
+          type: 99,
+        });
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          includeGenericArticleFacets: true,
+        });
+        expect(result.facets.map((facet) => facet.id)).toEqual([
+          'brands',
+          'productTypes',
+        ]);
+        expect(result.facets[1].values).toEqual([
+          { id: '7', label: 'Маслен филтър', count: 1 },
+        ]);
+      });
+
+      it('forwards a selection as genericArticleIds', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
+          productTypeIds: [7, 9],
+        });
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          genericArticleIds: [7, 9],
+        });
+      });
+
+      // The point of the whole facet: one product type is a homogeneous set, so
+      // dimensions become available without drilling the category tree at all.
+      it('opens the criteria gate on its own when exactly one is selected', async () => {
+        call.mockResolvedValueOnce({
+          totalMatchingArticles: 1,
+          articles: [record('WL6340')],
+          criteriaFacets: {
+            counts: [
+              {
+                criteria: {
+                  criteriaId: 20,
+                  criteriaDescription: 'Width',
+                  criteriaType: 'N',
+                  isInterval: false,
+                },
+                criteriaValueCounts: [
+                  { rawValue: '106.4', formattedValue: '106.4 mm', count: 1 },
+                ],
+              },
+            ],
+          },
+        });
+
+        const result = await tecdoc.searchArticles(
+          'филтър',
+          undefined,
+          { type: 99 },
+          1,
+          50,
+          { productTypeIds: [7] },
+        );
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          includeCriteriaFacets: true,
+        });
+        expect(result.attributes).toHaveLength(1);
+        expect(result.attributes[0]).toMatchObject({ id: '20' });
+      });
+
+      // Two types are a union of two criteria sets, which is not a dimension
+      // list anyone can filter on.
+      it('leaves the criteria gate shut when several are selected', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
+          productTypeIds: [7, 9],
+        });
+
+        expect(call.mock.calls[0][1]).not.toHaveProperty(
+          'includeCriteriaFacets',
+        );
+      });
+
+      // DQM is what stops the dimension list offering values that cannot
+      // apply to the selected product type and so lead nowhere.
+      it('asks TecDoc to drop impermissible criteria values', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
+          productTypeIds: [7],
+        });
+
+        expect(call.mock.calls[0][1]).toMatchObject({ applyDqmRules: true });
+      });
+
+      // The schema gates DQM on exactly one genericArticleId, so anything
+      // broader has to go without it.
+      it('withholds the DQM rules when several types are selected', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
+          productTypeIds: [7, 9],
+        });
+
+        expect(call.mock.calls[0][1]).not.toHaveProperty('applyDqmRules');
+      });
+    });
+
+    // A leaf category opens the dimension list without narrowing to one
+    // generic article, so it does not meet the DQM precondition.
+    it('withholds the DQM rules for a leaf category alone', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+      await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
+        categoryNodeId: 100,
+        categoryHasChildren: false,
+      });
+
+      const params = call.mock.calls[0][1];
+      expect(params).toMatchObject({ includeCriteriaFacets: true });
+      expect(params).not.toHaveProperty('applyDqmRules');
+    });
+
     it('does not request criteria facets for a category with no leaf hint', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 0,
@@ -141,9 +393,14 @@ describe('SearchTecDoc', () => {
         criteriaFacets: {
           counts: [
             {
-              criteriaId: 20,
-              criteriaDescription: 'Width',
-              criteriaValues: [
+              criteria: {
+                criteriaId: 20,
+                criteriaDescription: 'Width',
+                criteriaUnitDescription: 'mm',
+                criteriaType: 'N',
+                isInterval: false,
+              },
+              criteriaValueCounts: [
                 { rawValue: '106.4', formattedValue: '106.4 mm', count: 1 },
               ],
             },
@@ -198,9 +455,13 @@ describe('SearchTecDoc', () => {
         criteriaFacets: {
           counts: [
             {
-              criteriaId: 20,
-              criteriaDescription: 'Width',
-              criteriaValues: [
+              criteria: {
+                criteriaId: 20,
+                criteriaDescription: 'Width',
+                criteriaType: 'N',
+                isInterval: false,
+              },
+              criteriaValueCounts: [
                 { rawValue: '106.4', formattedValue: '106.4 mm', count: 1 },
               ],
             },
@@ -212,7 +473,7 @@ describe('SearchTecDoc', () => {
               assemblyGroupNodeId: 100,
               assemblyGroupName: 'Brakes',
               parentNodeId: null,
-              childCount: 3,
+              children: 3,
             },
           ],
         },
@@ -268,7 +529,7 @@ describe('SearchTecDoc', () => {
               assemblyGroupNodeId: 1,
               assemblyGroupName: 'Brakes',
               parentNodeId: null,
-              childCount: 2,
+              children: 2,
             },
             {
               assemblyGroupNodeId: 2,
@@ -304,12 +565,54 @@ describe('SearchTecDoc', () => {
       assemblyGroupName: string,
       extra: {
         parentNodeId?: number | null;
-        childCount?: number;
+        children?: number;
         count?: number;
       } = {},
     ) {
       return { assemblyGroupNodeId, assemblyGroupName, ...extra };
     }
+
+    // The description comes from `genericArticles`, which TecDoc only sends
+    // when asked: the schema defaults `includeGenericArticles` to false and
+    // marks the array optional. Without the flag every suggestion would come
+    // back nameless.
+    it('asks for the generic-article data the description is read from', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [articleRecord('WL6340')],
+      });
+
+      await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(call).toHaveBeenCalledWith(
+        'getArticles',
+        expect.objectContaining({ includeGenericArticles: true }),
+      );
+    });
+
+    // A part TecDoc files no generic article against still has a number and a
+    // brand worth suggesting, so an absent array is a blank description — not
+    // a thrown request that takes the whole dropdown down with it.
+    it('survives a record with no generic articles at all', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [
+          { articleNumber: 'WL6340', dataSupplierId: 268, mfrName: 'WIX' },
+        ],
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(result).toEqual([
+        {
+          kind: 'article',
+          articleNumber: 'WL6340',
+          brandId: '268',
+          brandName: 'WIX',
+          description: '',
+        },
+      ]);
+    });
 
     it('runs a prefix number search capped at 8, requesting the category facet, and maps to article suggestions', async () => {
       call.mockResolvedValueOnce({
@@ -325,9 +628,11 @@ describe('SearchTecDoc', () => {
           searchType: 10,
           searchMatchType: 'prefix',
           perPage: 8,
+          // Never vehicle-scoped, so the dropdown can suggest a universal
+          // category ("Двигателно масло") as readily as a passenger-car one.
           assemblyGroupFacetOptions: {
             enabled: true,
-            assemblyGroupType: 'P',
+            assemblyGroupType: 'PU',
             includeCompleteTree: false,
           },
         }),
@@ -366,7 +671,7 @@ describe('SearchTecDoc', () => {
         assemblyGroupFacets: {
           counts: [
             // Parent node: has children → dropped from the suggestions.
-            facet(100006, 'Спирачна система', { childCount: 2, count: 59 }),
+            facet(100006, 'Спирачна система', { children: 2, count: 59 }),
             facet(100256, 'Спирачна тръбичка', {
               parentNodeId: 100006,
               count: 41,
@@ -440,24 +745,42 @@ describe('SearchTecDoc', () => {
   });
 
   describe('getAutocompleteTerms', () => {
-    it('calls getAutoCompleteSuggestions and maps descriptions to term suggestions', async () => {
+    it('maps the plain suggestion strings to term suggestions', async () => {
       call.mockResolvedValueOnce({
-        suggestions: [
-          { description: 'Oil Filter' },
-          { description: 'Oil Filter Housing' },
-        ],
+        suggestions: ['Oil Filter', 'Oil Filter Housing'],
       });
 
       const result = await tecdoc.getAutocompleteTerms('oil');
 
-      expect(call).toHaveBeenCalledWith(
-        'getAutoCompleteSuggestions',
-        expect.objectContaining({ searchQuery: 'oil', perPage: 8 }),
-      );
       expect(result).toEqual([
         { kind: 'term', term: 'Oil Filter' },
         { kind: 'term', term: 'Oil Filter Housing' },
       ]);
+    });
+
+    // The function's whole request is provider + lang + searchQuery; sending
+    // getArticles' country and paging params would be inventing a contract.
+    it('sends only the params the function accepts', async () => {
+      call.mockResolvedValueOnce({ suggestions: [] });
+
+      await tecdoc.getAutocompleteTerms('oil');
+
+      expect(call).toHaveBeenCalledWith('getAutoCompleteSuggestions', {
+        lang: 'bg',
+        searchQuery: 'oil',
+      });
+    });
+
+    // TecDoc has no paging on this function, so the dropdown's cap can only be
+    // applied to what it sends back.
+    it('caps the suggestions locally', async () => {
+      call.mockResolvedValueOnce({
+        suggestions: Array.from({ length: 12 }, (_, i) => `Term ${i}`),
+      });
+
+      const result = await tecdoc.getAutocompleteTerms('oil');
+
+      expect(result).toHaveLength(8);
     });
 
     it('tolerates a missing suggestions array', async () => {

@@ -37,6 +37,7 @@ export class SearchController {
       dto.pageSize,
       {
         brandIds: dto.brandIds,
+        productTypeIds: dto.productTypeIds,
         categoryNodeId: dto.categoryNodeId,
         categoryHasChildren: dto.categoryHasChildren,
         criteria: parseCriteriaFilters(dto.attr),

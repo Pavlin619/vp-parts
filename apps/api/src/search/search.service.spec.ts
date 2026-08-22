@@ -93,6 +93,7 @@ function pageOf(
     total: items.length,
     page: 1,
     pageSize: 20,
+    maxPage: Math.ceil(items.length / 20),
     items,
     facets: [],
     attributes: [],
@@ -794,7 +795,6 @@ describe('SearchService', () => {
     const facets: SearchFacetDto[] = [
       {
         id: 'brands',
-        label: 'Производител',
         values: [{ id: '4', label: 'WIX', count: 2, imageUrl: null }],
       },
     ];
@@ -806,6 +806,7 @@ describe('SearchService', () => {
         unit: 'мм',
         type: 'N',
         isInterval: false,
+        isMandatory: true,
         values: [{ value: '106.4', label: '106.4', count: 2 }],
       },
     ];

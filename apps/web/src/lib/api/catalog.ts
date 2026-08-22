@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { DEFAULT_SEARCH_MODE, type SearchMode } from "@vp-parts-shop/shared";
 import type {
   ManufacturerDto,
   ModelSeriesDto,
@@ -162,11 +163,24 @@ export function getLinkedVehiclesByManufacturer(
   );
 }
 
-/** Search itself lives in `./search`; only autocomplete is browser-side. */
-export function getAutocomplete(query: string): Promise<AutocompleteItemDto[]> {
-  return apiFetch<AutocompleteItemDto[]>(
-    `/search/autocomplete?${new URLSearchParams({ q: query })}`,
-  );
+/**
+ * Search itself lives in `./search`; only autocomplete is browser-side.
+ *
+ * The mode picks the suggestion source, so it must match the mode the search
+ * will run in: `generic` yields free-text terms, the part-number modes yield
+ * articles and the categories they fall into.
+ */
+export function getAutocomplete(
+  query: string,
+  mode: SearchMode = DEFAULT_SEARCH_MODE,
+): Promise<AutocompleteItemDto[]> {
+  const params = new URLSearchParams({ q: query });
+
+  if (mode !== DEFAULT_SEARCH_MODE) {
+    params.set("searchMode", mode);
+  }
+
+  return apiFetch<AutocompleteItemDto[]>(`/search/autocomplete?${params}`);
 }
 
 // ── TanStack Query option factories ──────────────────────────────────────────
@@ -209,10 +223,16 @@ export const availabilityQueryOptions = (articleNumbers: string[]) =>
     staleTime: 30_000,
   });
 
-export const autocompleteQueryOptions = (query: string) =>
+export const autocompleteQueryOptions = (
+  query: string,
+  mode: SearchMode = DEFAULT_SEARCH_MODE,
+) =>
   queryOptions({
-    queryKey: ["catalog", "autocomplete", query],
-    queryFn: () => getAutocomplete(query),
+    // The mode is part of the key: the same term yields different suggestions
+    // per mode, so sharing one entry would serve article rows to a free-text
+    // search and vice versa.
+    queryKey: ["catalog", "autocomplete", mode, query],
+    queryFn: () => getAutocomplete(query, mode),
   });
 
 /**

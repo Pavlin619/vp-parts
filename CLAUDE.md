@@ -121,11 +121,14 @@ POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
 | `getArticleLinkedAllLinkingTarget4` | Compatible vehicles for an article (future, doc section 8.4) |
 
 **Where to verify the contract before implementing any TecDoc call:**
+- **Authoritative schema (no credentials needed):** `https://webservice.tecalliance.services/pegasus-3-0/services/TecdocToCatDLB?xsd=1` — every request and response type with its documented field semantics. This is the source of truth; check it first.
 - Interactive docs + test client: `https://webservice.tecalliance.services/pegasus-3-0/info/`
 - Service Index tab: every function with full request/response parameter documentation
-- Use the Test Client tab to verify actual response shapes before writing mapping code
+- Use the Test Client tab (needs a provider key) to verify actual response shapes before writing mapping code
 
-**Never assume a field name or endpoint path.** Always check the Service Index or the onboarding guide (`specs/002-autoparts-shop-spec/TecDoc Pegasus 3.0 API - Onboarding Guide 3.0.pdf`) before adding a new TecDoc call.
+**Never assume a field name or endpoint path.** Always check the XSD or the Service Index before adding a new TecDoc call.
+
+**Mark what the schema cannot settle.** Some behaviour is not in the XSD — how repeated filters combine, whether an id is unique across trees, what a sentinel default means. Where the code had to assume, leave a `[VERIFY-TC]` comment stating the assumption and what breaks if it is wrong, so the next person with Test Client access can close it. Grep for `[VERIFY-TC]` to find the open ones.
 
 #### Article identity: an article number is not unique
 

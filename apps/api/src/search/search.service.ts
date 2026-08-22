@@ -63,6 +63,7 @@ export class SearchService {
       total: result.total,
       page: result.page,
       pageSize: result.pageSize,
+      maxPage: result.maxPage,
       ...(result.facets.length > 0 && { facets: result.facets }),
       ...(result.attributes.length > 0 && { attributes: result.attributes }),
       ...(this.hasCategoryNavigation(result.categoryNavigation) && {

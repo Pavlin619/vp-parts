@@ -71,9 +71,9 @@ export class BrandsService {
   /**
    * Joins logos onto a search result's article rows AND its brand facet values
    * from a single (cached) getBrands read. A fully empty result skips the read
-   * so a hopeless search never fetches the brand list. The search facet group
-   * is brand-only (categories ride on the category navigation, technical
-   * attributes on their own facets — neither carries a logo).
+   * so a hopeless search never fetches the brand list. Brands are the only
+   * facet with a logo — product types have none, categories ride on the
+   * category navigation and technical attributes on their own facets.
    */
   async applyLogosToSearchResults(
     results: PaginatedSearchArticlesDto,
@@ -99,17 +99,26 @@ export class BrandsService {
     return { ...results, items, facets };
   }
 
-  /** Facet value ids are `dataSupplierId`s, so they key the logo map directly. */
+  /**
+   * Only the brand group is touched. Its value ids are `dataSupplierId`s, so
+   * they key the logo map directly — but ids are only unique within a facet,
+   * and a product type whose `genericArticleId` happens to equal some
+   * `dataSupplierId` would otherwise be given that brand's logo.
+   */
   private attachFacetLogos(
     facets: SearchFacetDto[],
     logoByBrand: Map<string, string | null>,
   ): SearchFacetDto[] {
-    return facets.map((facet) => ({
-      ...facet,
-      values: facet.values.map((value) => ({
-        ...value,
-        imageUrl: logoByBrand.get(value.id) ?? null,
-      })),
-    }));
+    return facets.map((facet) =>
+      facet.id === 'brands'
+        ? {
+            ...facet,
+            values: facet.values.map((value) => ({
+              ...value,
+              imageUrl: logoByBrand.get(value.id) ?? null,
+            })),
+          }
+        : facet,
+    );
   }
 }

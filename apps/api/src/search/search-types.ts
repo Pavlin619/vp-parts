@@ -1,4 +1,8 @@
-import { AttributeFacetRole } from '@vp-parts-shop/shared';
+import {
+  AttributeFacetRole,
+  DimensionScope,
+  hasCoherentDimensions,
+} from '@vp-parts-shop/shared';
 
 export type SearchMatchType =
   | 'exact'
@@ -72,31 +76,24 @@ export const EXACT_AUTOCOMPLETE_EXECUTION: SearchExecution = {
 };
 
 /**
- * The search intent the client selects up front, mapped 1:1 from the FE
- * controls so illegal combinations (e.g. "generic + exact") cannot be
- * expressed. Each mode resolves to a distinct TecDoc call plan in
- * `buildSearchPlan`:
- * - `part_number` (default) — `searchType 10` / `prefix_or_suffix` over the
- *   brand-stripped query, then the raw query if it differs. No free-text
- *   fallback: a descriptive query belongs in `generic`.
- * - `part_number_exact` — `searchType 10` / `exact` over the raw query only.
- *   No brand stripping, no fallback: an exact request is a precise lookup.
- * - `generic` — a single `searchType 99` free-text call over the raw query.
- *   No brand stripping, no number lane.
+ * The client-selected search intent. Defined in `@vp-parts-shop/shared` because
+ * it is the wire contract — the web app puts it in the `/search` URL — and
+ * re-exported here so the search module's own files keep importing it from one
+ * place. Each mode maps to a distinct call plan in `buildSearchPlan`.
  */
-export const SearchMode = {
-  PartNumber: 'part_number',
-  PartNumberExact: 'part_number_exact',
-  Generic: 'generic',
-} as const;
-
-export type SearchMode = (typeof SearchMode)[keyof typeof SearchMode];
-
-export const DEFAULT_SEARCH_MODE: SearchMode = SearchMode.PartNumber;
+export { DEFAULT_SEARCH_MODE, SearchMode } from '@vp-parts-shop/shared';
 
 /**
  * A single technical-attribute (criteria) narrowing: the TecDoc `criteriaId`
  * plus the machine `rawValue` echoed back from an `AttributeFacetValueDto`.
+ *
+ * [VERIFY-TC] How TecDoc combines two entries carrying the **same**
+ * `criteriaId` is undocumented — the schema gives the pair and no semantics.
+ * The web app offers the values of one criterion as a multi-select, which only
+ * works if they are OR-combined; if they are AND-combined instead, picking two
+ * values of one criterion returns nothing every time. Confirm on the Test
+ * Client before trusting the multi-select, and make the control single-select
+ * if it turns out to be AND.
  */
 export interface CriteriaFilter {
   criteriaId: number;
@@ -107,6 +104,8 @@ export interface CriteriaFilter {
  * Optional narrowing a caller applies to a search, selected from the facet
  * values returned on a previous search:
  * - `brandIds` — TecDoc dataSupplierIds (brand facet value ids); multi-select.
+ * - `productTypeIds` — TecDoc genericArticleIds (product-type facet value ids);
+ *   multi-select. Sent as `genericArticleIds`.
  * - `categoryNodeId` — a single TecDoc assemblyGroupNodeId. Category navigation
  *   is a single-path drill-down (one node at a time, deeper until a leaf), so it
  *   is a scalar, not an array — unlike the multi-select brand/criteria filters.
@@ -118,6 +117,7 @@ export interface CriteriaFilter {
  */
 export interface SearchFilters {
   brandIds?: number[];
+  productTypeIds?: number[];
   categoryNodeId?: number;
   categoryHasChildren?: boolean;
   criteria?: CriteriaFilter[];
@@ -135,6 +135,7 @@ export function hasActiveFilters(filters: SearchFilters | undefined): boolean {
 
   return (
     (filters.brandIds?.length ?? 0) > 0 ||
+    (filters.productTypeIds?.length ?? 0) > 0 ||
     filters.categoryNodeId !== undefined ||
     (filters.criteria?.length ?? 0) > 0
   );
@@ -149,43 +150,53 @@ export function hasActiveFilters(filters: SearchFilters | undefined): boolean {
 export const SEARCH_FACET_PAGE = 1;
 
 /**
+ * Whether exactly one product type is selected — which is what TecDoc requires
+ * before it will rule on key-table criteria values (`applyDqmRules`), and one
+ * of the two narrowings {@link hasCoherentDimensions} accepts.
+ */
+export function hasSingleProductType(
+  filters: SearchFilters | undefined,
+): boolean {
+  return filters?.productTypeIds?.length === 1;
+}
+
+/**
+ * Restates a caller's filters as the narrowing facts the shared dimension rule
+ * is defined over.
+ *
+ * `categoryHasChildren` is a hint, not a fact we verified: leafness comes from
+ * the `assemblyGroupFacets` of the very response being requested, so the client
+ * echoes back the `hasChildren` it already holds for every category it renders.
+ * It is never trusted for correctness — the response-side gate in
+ * `SearchTecDoc` still decides whether the mapped attributes are returned.
+ */
+function dimensionScopeOf(filters: SearchFilters | undefined): DimensionScope {
+  return {
+    productTypeCount: filters?.productTypeIds?.length ?? 0,
+    hasCategory: filters?.categoryNodeId !== undefined,
+    categoryHasChildren: filters?.categoryHasChildren,
+  };
+}
+
+/**
  * Whether a search should ask TecDoc for the technical-attribute (`criteria`)
  * facets that become the response's `attributes` — the single place that
  * decides, so the TecDoc request and the Redis cache key never disagree.
  *
- * Attribute facets are only meaningful on a leaf category: a mid-level node
- * spans unrelated product types, so TecDoc would compute and ship a large,
- * incoherent criteria block that the leaf gate in `SearchTecDoc.searchArticles`
- * then discards. We therefore skip requesting them unless all of the following
- * hold:
- *
- * - **A category is selected.** A broad search has no coherent criteria at all.
- * - **The client explicitly reported that category as a leaf.** Dimensions are
- *   strictly opt-in: only `categoryHasChildren === false` asks for them. Leafness
- *   is not derivable before the call — it comes from the `assemblyGroupFacets` of
- *   this very response — so the client supplies it from the `hasChildren` it
- *   already holds for every category it renders (the previous response's
- *   `categoryNavigation`, or the leaf-only category rows in autocomplete). An
- *   **absent** hint therefore means "do not fetch": a caller that never asked is
- *   never charged for the criteria block. The hint is never trusted for
- *   correctness either — the leaf gate on the response still decides whether the
- *   mapped attributes are actually returned.
- * - **It is the first page.** Facets are computed over the whole match set, so
- *   every later page would recompute and re-ship a block identical to page 1's.
+ * Which narrowings qualify is {@link hasCoherentDimensions}, shared with the web
+ * app so the two cannot drift. Added on top of it is the **first page**, because
+ * facets are computed over the whole match set and every later page would
+ * re-ship a block identical to page 1's.
  */
 export function shouldRequestCriteriaFacets(
   filters: SearchFilters | undefined,
   page: number,
 ): boolean {
-  if (filters?.categoryNodeId === undefined) {
+  if (page !== SEARCH_FACET_PAGE) {
     return false;
   }
 
-  if (filters.categoryHasChildren !== false) {
-    return false;
-  }
-
-  return page === SEARCH_FACET_PAGE;
+  return hasCoherentDimensions(dimensionScopeOf(filters));
 }
 
 /**

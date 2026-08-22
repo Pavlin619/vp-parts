@@ -3,6 +3,7 @@ import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { SearchTecDoc } from '../src/search';
+import { SEARCH_MAX_PAGE } from '../src/search/search.dto';
 import { BrandsTecDoc } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
 import {
@@ -37,6 +38,7 @@ const pageOf = (
   total: items.length,
   page: 1,
   pageSize: 20,
+  maxPage: Math.ceil(items.length / 20),
   items,
   facets: [],
   attributes: [],
@@ -45,10 +47,11 @@ const pageOf = (
 });
 
 // The controller always forwards a filters object; with no brandIds/
-// categoryNodeId/attr query params brandIds and categoryNodeId are undefined
+// productTypeIds/categoryNodeId/attr query params the selections are undefined
 // and criteria is an empty array, which the mock is called with.
 const NO_FILTERS = {
   brandIds: undefined,
+  productTypeIds: undefined,
   categoryNodeId: undefined,
   criteria: [],
 };
@@ -253,6 +256,21 @@ describe('SearchController (e2e)', () => {
       );
     });
 
+    // The client sizes its pager from this, and it is not derivable from the
+    // total: TecDoc stops serving pages well before a broad match set runs out.
+    it('reports how far the results can be paged', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')], { total: 50_000, maxPage: 500 }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=филтър&searchMode=generic')
+        .expect(200);
+
+      expect(res.body.total).toBe(50_000);
+      expect(res.body.maxPage).toBe(500);
+    });
+
     it('scopes the search to the vehicle when a vehicleId is supplied', async () => {
       mockTecDocClient.searchArticles.mockResolvedValueOnce(
         pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
@@ -281,7 +299,6 @@ describe('SearchController (e2e)', () => {
       const facets: SearchFacetDto[] = [
         {
           id: 'brands',
-          label: 'Производител',
           // The facet value id is the brand id, which is what the logo joins on.
           values: [{ id: '268', label: 'WIX', count: 2, imageUrl: null }],
         },
@@ -293,6 +310,7 @@ describe('SearchController (e2e)', () => {
           unit: 'мм',
           type: 'N',
           isInterval: false,
+          isMandatory: true,
           values: [{ value: '106.4', label: '106.4', count: 2 }],
         },
       ];
@@ -325,7 +343,6 @@ describe('SearchController (e2e)', () => {
       expect(res.body.facets).toEqual([
         {
           id: 'brands',
-          label: 'Производител',
           values: [
             {
               id: '268',
@@ -363,6 +380,54 @@ describe('SearchController (e2e)', () => {
           criteria: [{ criteriaId: 20, rawValue: '106.4' }],
         },
       );
+    });
+
+    it('forwards productTypeIds as a filter', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?q=филтър&productTypeIds=7&productTypeIds=9')
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+        'филтър',
+        undefined,
+        PART,
+        1,
+        20,
+        expect.objectContaining({ productTypeIds: [7, 9] }),
+      );
+    });
+
+    // Product types have no logo, so the brand join must leave them alone —
+    // even though their ids live in the same `facets` array.
+    it('returns the product-type facet without stamping a brand logo on it', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValueOnce(
+        pageOf([makeArticle('WL6340')], {
+          facets: [
+            {
+              id: 'productTypes',
+              values: [{ id: '268', label: 'Маслен филтър', count: 1 }],
+            },
+          ],
+        }),
+      );
+      mockTecDocClient.getBrands.mockResolvedValue([
+        { brandId: '268', brandName: 'WIX', logoUrl: 'https://logos/wix.png' },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=филтър')
+        .expect(200);
+
+      expect(res.body.facets).toEqual([
+        {
+          id: 'productTypes',
+          values: [{ id: '268', label: 'Маслен филтър', count: 1 }],
+        },
+      ]);
     });
 
     it('forwards the categoryHasChildren leaf hint as a filter', async () => {
@@ -427,7 +492,6 @@ describe('SearchController (e2e)', () => {
           facets: [
             {
               id: 'brands',
-              label: 'Производител',
               values: [
                 {
                   id: '4',
@@ -506,6 +570,37 @@ describe('SearchController (e2e)', () => {
       await request(app.getHttpServer()).get(url).expect(400);
 
       expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+    });
+
+    // Past TecDoc's own ~10,000-result paging ceiling the call can only come
+    // back a rejection, which the transport raises as a 5xx. Refusing it here
+    // keeps a URL-edited page number from costing an upstream call and a Redis
+    // key per attempt.
+    it.each([
+      ['just past the ceiling', SEARCH_MAX_PAGE + 1],
+      ['absurd', 9_999_999],
+    ])('returns 400 for a page %s', async (_case, page) => {
+      await request(app.getHttpServer())
+        .get(`/search?q=WL634&page=${page}`)
+        .expect(400);
+
+      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+    });
+
+    it('accepts the highest page TecDoc can serve', async () => {
+      mockTecDocClient.searchArticles.mockResolvedValue(
+        pageOf([makeArticle('WL6340')], {
+          total: 1,
+          page: SEARCH_MAX_PAGE,
+          maxPage: SEARCH_MAX_PAGE,
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .get(`/search?q=WL634&page=${SEARCH_MAX_PAGE}`)
+        .expect(200);
+
+      expect(mockTecDocClient.searchArticles).toHaveBeenCalled();
     });
   });
 

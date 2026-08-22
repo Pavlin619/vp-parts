@@ -56,6 +56,18 @@ describe('searchCacheKey', () => {
     );
   });
 
+  it('ignores the order product type ids were selected in', () => {
+    expect(
+      searchCacheKey(request({ filters: { productTypeIds: [30, 4] } })),
+    ).toBe(searchCacheKey(request({ filters: { productTypeIds: [4, 30] } })));
+  });
+
+  it('separates two searches narrowed to different product types', () => {
+    expect(
+      searchCacheKey(request({ filters: { productTypeIds: [7] } })),
+    ).not.toBe(searchCacheKey(request({ filters: { productTypeIds: [9] } })));
+  });
+
   it('ignores the order criteria selections were made in', () => {
     const first: SearchFilters = {
       criteria: [

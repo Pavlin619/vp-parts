@@ -33,6 +33,7 @@ import {
   AUTOCOMPLETE_SUGGESTIONS_LIMIT,
   CATEGORY_AUTOCOMPLETE_LIMIT,
   attributeRoleFor,
+  hasSingleProductType,
   shouldRequestCriteriaFacets,
 } from '../search/search-types';
 
@@ -50,6 +51,34 @@ type MockArticleBase = Pick<
 >;
 
 /**
+ * A catalogued row: an article plus where it sits in the tree. The generic
+ * article is carried per row rather than derived from the description, because
+ * the two are genuinely different axes — a housing and the filter it holds
+ * share a leaf assembly group but not a product type.
+ */
+type MockCatalogEntry = MockArticleBase & { productTypeId: string };
+
+/**
+ * Further oil-filter suppliers, each with one part. A real filter search
+ * returns dozens of brands, and the sidebar only sorts, collapses and offers a
+ * search box past ten of them — with the six hand-written brands alone, dev
+ * never reaches the state nearly every visitor will see. Their heights and
+ * filter types vary so they feed the dimension facets too.
+ */
+const BREADTH_FILTER_BRANDS = [
+  { name: 'BLUE PRINT', id: '2246', number: 'ADV182120', height: '141 mm' },
+  { name: 'CHAMPION', id: '620', number: 'COF100525S', height: '85 mm' },
+  { name: 'DENCKERMANN', id: '3269', number: 'A210026', height: '90 mm' },
+  { name: 'FEBI BILSTEIN', id: '4', number: '108351', height: '141 mm' },
+  { name: 'FILTRON', id: '1394', number: 'OE 682/1', height: '86.5 mm' },
+  { name: 'HENGST FILTER', id: '46', number: 'E916H D290', height: '86.5 mm' },
+  { name: 'MAHLE', id: '2', number: 'OX 983D', height: '86.5 mm' },
+  { name: 'MEYLE', id: '96', number: '014 322 0003', height: '79 mm' },
+  { name: 'PURFLUX', id: '183', number: 'L1076', height: '90 mm' },
+  { name: 'UFI', id: '82', number: '25.145.00', height: '85 mm' },
+] as const;
+
+/**
  * Stand-in TecDoc `dataSupplierId`s, one per mock brand. Arbitrary but stable:
  * what matters is that the mock can key an article on brand + number the way
  * the real catalogue does, so mock mode exercises the same identity as
@@ -63,6 +92,9 @@ const BRAND_ID_BY_NAME: Record<string, string> = {
   'WIX Filters': '268',
   Monroe: '4346',
   MockBrand: '99001',
+  ...Object.fromEntries(
+    BREADTH_FILTER_BRANDS.map((brand) => [brand.name, brand.id]),
+  ),
 };
 
 function brandIdFor(brandName: string): string {
@@ -156,50 +188,79 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
 };
 
 /**
- * Stable numeric ids for the labels the mock builds its facets from — brand
- * names, technical-spec keys and article descriptions.
+ * The assembly-group tree, shaped and named like the one a real catalogue
+ * exposes: a branch of broad groups over leaves that mix several kinds of part.
+ * "Маслен филтър / корпус / уплътнител" is the important one — it holds the
+ * filter, its housing and its cover, which is why a leaf is not yet one product
+ * and why the drill has a generic-article level below it.
  *
- * Real TecDoc facets are keyed by numbers (`dataSupplierId`, `criteriaId`,
- * `assemblyGroupNodeId`) and the API validates them as such at its boundary, so
- * the mock has to mint numbers too. Using the label as its own id made the mock
- * the one place where an id was not numeric — a facet selection round-tripped
- * here but would be rejected against the real service.
- *
- * Ids are assigned on first sight and remembered for the life of the process, so
- * a selection round-trips through {@link mockFacetLabel}. They are not stable
- * across restarts, which is fine for a fixture: the client always reads a facet
- * block before selecting from it.
+ * Ids are written out rather than minted. They travel to the client inside a
+ * URL and are cached in Redis across restarts, so a registry that renumbered on
+ * each boot would resolve yesterday's link to a different node — or, once the
+ * numbering had shifted, to none at all, emptying a result set whose facet
+ * count still said otherwise.
  */
-const mockIdByLabel = new Map<string, string>();
-const mockLabelById = new Map<string, string>();
+const CATEGORY_TREE: AssemblyGroupDto[] = [
+  { id: '100', name: 'Филтри', parentId: null },
+  {
+    id: '100100',
+    name: 'Маслен филтър / корпус / уплътнител',
+    parentId: '100',
+  },
+  {
+    id: '100200',
+    name: 'Горивен филтър / корпус / уплътнител',
+    parentId: '100',
+  },
+  {
+    id: '100300',
+    name: 'Въздушен филтър / корпус / уплътнител',
+    parentId: '100',
+  },
+  { id: '200', name: 'Спирачна система', parentId: null },
+  { id: '200100', name: 'Спирачен диск', parentId: '200' },
+  { id: '200200', name: 'Накладки за спирачки', parentId: '200' },
+  { id: '300', name: 'Окачване', parentId: null },
+  { id: '300100', name: 'Амортисьор', parentId: '300' },
+];
 
-function mockFacetId(label: string): string {
-  const existing = mockIdByLabel.get(label);
-  if (existing) {
-    return existing;
+const CATEGORY_BY_ID = new Map(CATEGORY_TREE.map((node) => [node.id, node]));
+
+/** A node's own id followed by its ancestors, so a parent matches its leaves. */
+function categoryAncestry(nodeId: string): string[] {
+  const ancestry: string[] = [];
+
+  for (
+    let node = CATEGORY_BY_ID.get(nodeId);
+    node !== undefined;
+    node = node.parentId ? CATEGORY_BY_ID.get(node.parentId) : undefined
+  ) {
+    ancestry.push(node.id);
   }
 
-  const id = String(90001 + mockIdByLabel.size);
-  mockIdByLabel.set(label, id);
-  mockLabelById.set(id, label);
-
-  return id;
+  return ancestry;
 }
 
-function mockFacetLabel(id: string): string | undefined {
-  return mockLabelById.get(id);
+function hasChildCategories(nodeId: string): boolean {
+  return CATEGORY_TREE.some((node) => node.parentId === nodeId);
 }
 
-const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
-  { id: '100001', name: 'Brake System', parentId: null },
-  { id: '100002', name: 'Brake Discs', parentId: '100001' },
-  { id: '100003', name: 'Brake Pads', parentId: '100001' },
-  { id: '200001', name: 'Engine', parentId: null },
-  { id: '200002', name: 'Oil Filters', parentId: '200001' },
-  { id: '200003', name: 'Air Filters', parentId: '200001' },
-  { id: '300001', name: 'Suspension', parentId: null },
-  { id: '300002', name: 'Shock Absorbers', parentId: '300001' },
-];
+/**
+ * TecDoc generic articles — what a part *is*, one level below the assembly
+ * group that holds it. Four of them sit under the oil-filter leaf, so the mock
+ * reproduces the case the level exists for.
+ */
+const PRODUCT_TYPE_BY_ID: Record<string, string> = {
+  '7': 'Маслен филтър',
+  '9': 'Корпус, маслен филтър',
+  '11': 'Капак, кутия на масления филтър',
+  '13': 'Комплект за преоборудване, резервен филтър',
+  '15': 'Горивен филтър',
+  '17': 'Въздушен филтър',
+  '19': 'Спирачен диск',
+  '21': 'Комплект накладки за спирачки, дискови спирачки',
+  '23': 'Амортисьор',
+};
 
 // Mock brand logos so the FE can render the brand mark before the real TecDoc
 // getBrands integration is enabled. Brand names match the parts above exactly;
@@ -236,14 +297,20 @@ const BRANDS: BrandDto[] = [
     brandName: 'Monroe',
     logoUrl: 'https://placehold.co/240x80/f8fafc/0f172a.png?text=Monroe',
   },
+  ...BREADTH_FILTER_BRANDS.map((brand) => ({
+    brandId: brand.id,
+    brandName: brand.name,
+    logoUrl: `https://placehold.co/240x80/f1f5f9/0f172a.png?text=${brand.name.replace(/ /g, '+')}`,
+  })),
 ];
 
-const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
-  '100002': [
+const ARTICLES_BY_CATEGORY: Record<string, MockCatalogEntry[]> = {
+  '200100': [
     {
       articleNumber: 'BD-0986478451',
       brandName: 'Bosch',
       description: 'Brake Disc',
+      productTypeId: '19',
       thumbnailUrl:
         'https://digitalassets.tecalliance.services/images/800/mock-brake-disc.jpg',
     },
@@ -251,14 +318,16 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'BD-DF4074',
       brandName: 'Ferodo',
       description: 'Brake Disc',
+      productTypeId: '19',
       thumbnailUrl: null,
     },
   ],
-  '100003': [
+  '200200': [
     {
       articleNumber: 'BP-0986494061',
       brandName: 'Bosch',
       description: 'Brake Pad Set, disc brake',
+      productTypeId: '21',
       thumbnailUrl: null,
     },
     // Rear-axle counterpart so the "Позиция на монтаж" (fitting position) facet
@@ -268,14 +337,16 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'BP-DF4145',
       brandName: 'Ferodo',
       description: 'Brake Pad Set, disc brake',
+      productTypeId: '21',
       thumbnailUrl: null,
     },
   ],
-  '200002': [
+  '100100': [
     {
       articleNumber: 'OF-OC115',
       brandName: 'MANN-FILTER',
       description: 'Oil Filter',
+      productTypeId: '7',
       thumbnailUrl:
         'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
     },
@@ -283,12 +354,14 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'OF-WL7090',
       brandName: 'WIX Filters',
       description: 'Oil Filter',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'OX 982D',
       brandName: 'KNECHT',
       description: 'Oil Filter',
+      productTypeId: '7',
       thumbnailUrl:
         'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
     },
@@ -300,6 +373,7 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'OX 982D',
       brandName: 'Bosch',
       description: 'Oil Filter',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     // Catalog-only part: full TecDoc details but intentionally NO row in
@@ -309,8 +383,34 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'OF-HU816X',
       brandName: 'MANN-FILTER',
       description: 'Oil Filter',
+      productTypeId: '7',
       thumbnailUrl:
         'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
+    },
+    // The three parts that make this leaf worth drilling past: a housing, its
+    // cover and a retrofit kit sit in the same assembly group as the filter and
+    // share almost none of its criteria. Without them the generic-article level
+    // would only ever offer one option in dev.
+    {
+      articleNumber: 'OF-KH240',
+      brandName: 'Bosch',
+      description: 'Oil Filter Housing',
+      productTypeId: '9',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'OF-KD310',
+      brandName: 'MANN-FILTER',
+      description: 'Oil Filter Housing Cover',
+      productTypeId: '11',
+      thumbnailUrl: null,
+    },
+    {
+      articleNumber: 'OF-KIT455',
+      brandName: 'KNECHT',
+      description: 'Retrofit Kit, spare filter',
+      productTypeId: '13',
+      thumbnailUrl: null,
     },
     // Synthetic availability test parts. These are listed here only so they are
     // searchable/browsable; their price & stock come from the mock seed in
@@ -319,42 +419,49 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'TEST-QTY-1',
       brandName: 'MockBrand',
       description: 'ТЕСТ · единична бройка (лимит 1)',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'TEST-QTY-SPLIT',
       brandName: 'MockBrand',
       description: 'ТЕСТ · тънка наличност в 3 склада',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'TEST-QTY-ZERO-FAST',
       brandName: 'MockBrand',
       description: 'ТЕСТ · празен бърз склад',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'TEST-OOS',
       brandName: 'MockBrand',
       description: 'ТЕСТ · изчерпан (доставчик с 0)',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'TEST-BAD-WAREHOUSE',
       brandName: 'MockBrand',
       description: 'ТЕСТ · неизвестен склад',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'TEST-OWN-ZERO',
       brandName: 'MockBrand',
       description: 'ТЕСТ · собствена наличност 0',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     {
       articleNumber: 'TEST-OWN-PREMIUM',
       brandName: 'MockBrand',
       description: 'ТЕСТ · собствена по-висока цена',
+      productTypeId: '7',
       thumbnailUrl: null,
     },
     // Its applicable-vehicles fixture spans a dozen makes, so the section can be
@@ -363,26 +470,69 @@ const ARTICLES_BY_CATEGORY: Record<string, MockArticleBase[]> = {
       articleNumber: 'TEST-MANY-VEHICLES',
       brandName: 'MockBrand',
       description: 'ТЕСТ · много приложими автомобили',
+      productTypeId: '7',
+      thumbnailUrl: null,
+    },
+    ...BREADTH_FILTER_BRANDS.map((brand) => ({
+      articleNumber: brand.number,
+      brandName: brand.name,
+      description: 'Oil Filter',
+      productTypeId: '7',
+      thumbnailUrl: null,
+    })),
+  ],
+  '100200': [
+    {
+      articleNumber: 'FF-WK8201',
+      brandName: 'MANN-FILTER',
+      description: 'Fuel Filter',
+      productTypeId: '15',
       thumbnailUrl: null,
     },
   ],
-  '200003': [
+  '100300': [
     {
       articleNumber: 'AF-C2585',
       brandName: 'MANN-FILTER',
       description: 'Air Filter',
+      productTypeId: '17',
       thumbnailUrl: null,
     },
   ],
-  '300002': [
+  '300100': [
     {
       articleNumber: 'SA-343347',
       brandName: 'Monroe',
       description: 'Shock Absorber',
+      productTypeId: '23',
       thumbnailUrl: null,
     },
   ],
 };
+
+/**
+ * Where each catalogued article sits in the tree, keyed the way TecDoc
+ * identifies a part. Built from {@link ARTICLES_BY_CATEGORY} so the two can
+ * never drift, and looked up by the facet builders, which only ever see the
+ * summary a row was mapped into.
+ */
+interface MockTaxonomy {
+  categoryNodeId: string;
+  productTypeId: string;
+}
+
+const TAXONOMY_BY_ARTICLE = new Map<string, MockTaxonomy>(
+  Object.entries(ARTICLES_BY_CATEGORY).flatMap(([categoryNodeId, entries]) =>
+    entries.map((entry): [string, MockTaxonomy] => [
+      articleKeyForBrandName(entry.brandName, entry.articleNumber),
+      { categoryNodeId, productTypeId: entry.productTypeId },
+    ]),
+  ),
+);
+
+function taxonomyOf(item: ArticleSummaryDto): MockTaxonomy | undefined {
+  return TAXONOMY_BY_ARTICLE.get(articleKey(item.brandId, item.articleNumber));
+}
 
 // Comparable (cross-reference) parts keyed by the article being viewed — the
 // mock stand-in for TecDoc getArticles searchType 3. Backs two surfaces: the
@@ -879,6 +1029,68 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
     oemNumbers: [oem('06J 115 403 Q', 'VW')],
     fitsVehicle: null,
   },
+  // The housing, its cover and the retrofit kit. Their specs deliberately
+  // barely overlap the filter's: this is what a leaf assembly group's criteria
+  // look like before the generic article narrows them, and why the dimensions
+  // are only coherent one product type at a time.
+  {
+    articleNumber: 'OF-KH240',
+    brandName: 'Bosch',
+    brandLogoUrl: null,
+    description: 'Oil Filter Housing',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Material', value: 'Aluminium' },
+      { key: 'Thread Size', value: 'M 20 X 1.5' },
+      { key: 'with oil cooler', value: 'Yes' },
+    ],
+    oemNumbers: [oem('03N 115 389 B', 'VW')],
+    fitsVehicle: null,
+  },
+  {
+    articleNumber: 'OF-KD310',
+    brandName: 'MANN-FILTER',
+    brandLogoUrl: null,
+    description: 'Oil Filter Housing Cover',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Material', value: 'Plastic' },
+      { key: 'Spanner Size', value: '32 mm' },
+      { key: 'Supplementary Info', value: 'with gaskets/seals' },
+    ],
+    oemNumbers: [oem('03C 115 433 A', 'VW')],
+    fitsVehicle: null,
+  },
+  {
+    articleNumber: 'OF-KIT455',
+    brandName: 'KNECHT',
+    brandLogoUrl: null,
+    description: 'Retrofit Kit, spare filter',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Quantity', value: '3' },
+      { key: 'Supplementary Info', value: 'with gaskets/seals' },
+    ],
+    oemNumbers: [],
+    fitsVehicle: null,
+  },
+  {
+    articleNumber: 'FF-WK8201',
+    brandName: 'MANN-FILTER',
+    brandLogoUrl: null,
+    description: 'Fuel Filter',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Height', value: '148 mm' },
+      { key: 'Outer Diameter', value: '80 mm' },
+    ],
+    oemNumbers: [oem('3C0 127 434', 'VW')],
+    fitsVehicle: null,
+  },
   // Rich TecDoc details with NO stock/price data in the DB — the buy box shows
   // no price ("—") and the "Не е наличен" notice, while the page chrome (images,
   // specs, OEMs) still renders fully.
@@ -898,6 +1110,66 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
     oemNumbers: [oem('11427508969', 'BMW'), oem('11427541827', 'BMW')],
     fitsVehicle: null,
   },
+  // The breadth brands. They share one OE number, which is what makes them
+  // genuinely comparable options for the same job — and gives the brand facet
+  // a realistic spread to sort, collapse and search over.
+  ...BREADTH_FILTER_BRANDS.map((brand) => ({
+    articleNumber: brand.number,
+    brandName: brand.name,
+    brandLogoUrl: null,
+    description: 'Oil Filter',
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Filter type', value: 'Filter Insert' },
+      { key: 'Height', value: brand.height },
+    ],
+    oemNumbers: [oem('06J 115 403 Q', 'VW')],
+    fitsVehicle: null,
+  })),
+]);
+
+/**
+ * Numeric ids for the technical-spec keys the criteria facets are built from.
+ *
+ * Assigned in one sorted pass over every fixture spec, so an id is a property
+ * of the fixture rather than of whichever search happened to mint it first.
+ * Same reason as the written-out category ids: a criteria id reaches the client
+ * in a URL and outlives the process that produced it.
+ */
+const CRITERIA_KEYS = [
+  ...new Set(
+    Object.values(ARTICLE_DETAILS).flatMap((detail) =>
+      detail.technicalSpecs.map((spec) => spec.key),
+    ),
+  ),
+].sort();
+
+const CRITERIA_ID_BY_KEY = new Map(
+  CRITERIA_KEYS.map((key, index) => [key, String(90001 + index)]),
+);
+
+const CRITERIA_KEY_BY_ID = new Map(
+  [...CRITERIA_ID_BY_KEY].map(([key, id]) => [id, key]),
+);
+
+/**
+ * Stand-in for TecDoc's `CriteriaInfo.isMandatory` — the criteria a supplier
+ * must file against the generic article, as opposed to those merely allowed.
+ * These are the dimensions that identify a part; the rest ("Material",
+ * "Supplementary Info", "Quantity") only describe one already identified, which
+ * is why the client ranks them below.
+ */
+const MANDATORY_CRITERIA_KEYS = new Set([
+  'Brake Disc Type',
+  'Diameter',
+  'Filter type',
+  'Height',
+  'Outer Diameter',
+  'Outer Diameter 1',
+  'Thread Size',
+  'Width',
+  'Позиция на монтаж',
 ]);
 
 const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
@@ -927,7 +1199,7 @@ export class TecDocMockClient {
   }
 
   getAssemblyGroupTree(_vehicleId: number): Promise<AssemblyGroupDto[]> {
-    return Promise.resolve(ASSEMBLY_GROUPS);
+    return Promise.resolve(CATEGORY_TREE);
   }
 
   getBrands(): Promise<BrandDto[]> {
@@ -985,19 +1257,20 @@ export class TecDocMockClient {
     const facets = this.buildFacets(matches);
     const categoryNavigation = this.buildCategoryNavigation(matches, filters);
 
-    // Attribute facets only make sense once the search has landed on a leaf
-    // category — mirror the real client's gates. The request-side gate stands in
-    // for "did we ask TecDoc for criteria at all"; the leaf gate then decides
-    // whether to surface them (mock nodes are all leaves, so a selected node has
-    // hasChildren=false).
+    // Attribute facets only make sense once the search has narrowed to one
+    // product type or one leaf category — mirror the real client's gates. The
+    // request-side gate stands in for "did we ask TecDoc for criteria at all";
+    // the gate below then decides whether to surface them (mock nodes are all
+    // leaves, so a selected node has hasChildren=false).
     const categorySelected = filters?.categoryNodeId !== undefined;
     const atLeaf =
       categorySelected &&
       (categoryNavigation.current
         ? categoryNavigation.current.hasChildren === false
         : categoryNavigation.options.length === 0);
+    const isHomogeneous = hasSingleProductType(filters) || atLeaf;
     const attributes =
-      atLeaf && shouldRequestCriteriaFacets(filters, page)
+      isHomogeneous && shouldRequestCriteriaFacets(filters, page)
         ? this.buildAttributeFacets(matches)
         : [];
 
@@ -1008,6 +1281,9 @@ export class TecDocMockClient {
       total: matches.length,
       page,
       pageSize,
+      // The real cap is TecDoc's ~10,000-result paging limit, which a dataset
+      // this small can never reach, so the honest mock value is the page count.
+      maxPage: Math.ceil(matches.length / pageSize),
       items,
       facets,
       attributes,
@@ -1058,36 +1334,41 @@ export class TecDocMockClient {
 
   /**
    * Mirrors the real client's category suggestions (from `assemblyGroupFacets`):
-   * the distinct categories the matches fall into — the mock keys categories on
-   * the description (id = label), like {@link buildCategoryNavigation} — emitted
-   * only when the matches span more than one category, ordered by count and
-   * capped at {@link CATEGORY_AUTOCOMPLETE_LIMIT}.
+   * the distinct leaf categories the matches fall into, emitted only when the
+   * matches span more than one, ordered by count and capped at
+   * {@link CATEGORY_AUTOCOMPLETE_LIMIT}.
    */
   private buildAutocompleteCategorySuggestions(
     query: string,
     matches: MockArticleBase[],
   ): CategoryAutocompleteItemDto[] {
-    const countByLabel = new Map<string, number>();
+    const countByNode = new Map<string, number>();
 
     for (const article of matches) {
-      countByLabel.set(
-        article.description,
-        (countByLabel.get(article.description) ?? 0) + 1,
+      const taxonomy = TAXONOMY_BY_ARTICLE.get(
+        articleKeyForBrandName(article.brandName, article.articleNumber),
       );
+
+      if (taxonomy !== undefined) {
+        countByNode.set(
+          taxonomy.categoryNodeId,
+          (countByNode.get(taxonomy.categoryNodeId) ?? 0) + 1,
+        );
+      }
     }
 
-    if (countByLabel.size <= 1) {
+    if (countByNode.size <= 1) {
       return [];
     }
 
-    return [...countByLabel.entries()]
+    return [...countByNode.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, CATEGORY_AUTOCOMPLETE_LIMIT)
-      .map(([label, count]) => ({
+      .map(([nodeId, count]) => ({
         kind: 'category' as const,
         term: query,
-        categoryNodeId: mockFacetId(label),
-        label,
+        categoryNodeId: nodeId,
+        label: CATEGORY_BY_ID.get(nodeId)?.name ?? nodeId,
         count,
       }));
   }
@@ -1303,32 +1584,46 @@ export class TecDocMockClient {
     article: ArticleSummaryDto,
     filters?: SearchFilters,
   ): boolean {
+    const taxonomy = taxonomyOf(article);
+
     const brandOk =
       !filters?.brandIds?.length ||
       filters.brandIds.some((brandId) => String(brandId) === article.brandId);
 
+    // A branch node matches everything beneath it, so selecting "Филтри" keeps
+    // the oil, fuel and air leaves rather than emptying the results.
     const categoryOk =
       filters?.categoryNodeId === undefined ||
-      mockFacetLabel(String(filters.categoryNodeId)) === article.description;
+      (taxonomy !== undefined &&
+        categoryAncestry(taxonomy.categoryNodeId).includes(
+          String(filters.categoryNodeId),
+        ));
+
+    const productTypeOk =
+      !filters?.productTypeIds?.length ||
+      filters.productTypeIds.some(
+        (id) => String(id) === taxonomy?.productTypeId,
+      );
 
     const criteriaOk =
       !filters?.criteria?.length ||
       filters.criteria.every((selected) =>
         article.technicalSpecs.some(
           (spec) =>
-            spec.key === mockFacetLabel(String(selected.criteriaId)) &&
+            spec.key === CRITERIA_KEY_BY_ID.get(String(selected.criteriaId)) &&
             spec.value === selected.rawValue,
         ),
       );
 
-    return brandOk && categoryOk && criteriaOk;
+    return brandOk && categoryOk && productTypeOk && criteriaOk;
   }
 
   /**
-   * Builds the brand facet counts over the matched set, mirroring the real
-   * client's `dataSupplierFacets`: the value id is the brand id, so a selection
-   * round-trips through {@link matchesFilters} and the catalog layer can join
-   * the logo onto it. Logos stay null here for that layer to fill.
+   * Builds the facet counts over the matched set, mirroring the real client's
+   * `dataSupplierFacets` and `genericArticleFacets`. Both carry ids a selection
+   * round-trips through {@link matchesFilters}: the brand id directly (which
+   * also lets the catalog layer join the logo onto it, so logos stay null here
+   * for that layer to fill) and the article's own generic-article id.
    */
   private buildFacets(items: ArticleSummaryDto[]): SearchFacetDto[] {
     const brandValues = this.countBy(
@@ -1342,9 +1637,31 @@ export class TecDocMockClient {
       }),
     );
 
-    return brandValues.length > 0
-      ? [{ id: 'brands', label: 'Производител', values: brandValues }]
-      : [];
+    const typed = items.filter((item) => taxonomyOf(item) !== undefined);
+    const productTypeValues = this.countBy(
+      typed,
+      (item) => taxonomyOf(item)!.productTypeId,
+      (item) => {
+        const { productTypeId } = taxonomyOf(item)!;
+
+        return {
+          id: productTypeId,
+          label: PRODUCT_TYPE_BY_ID[productTypeId] ?? item.description,
+          count: 0,
+        };
+      },
+    );
+
+    return [
+      ...(brandValues.length > 0
+        ? ([{ id: 'brands', values: brandValues }] satisfies SearchFacetDto[])
+        : []),
+      ...(productTypeValues.length > 0
+        ? ([
+            { id: 'productTypes', values: productTypeValues },
+          ] satisfies SearchFacetDto[])
+        : []),
+    ];
   }
 
   /**
@@ -1375,55 +1692,84 @@ export class TecDocMockClient {
     }
 
     return [...byKey.entries()].map(([key, valuesByRaw]) => ({
-      id: mockFacetId(key),
+      id: CRITERIA_ID_BY_KEY.get(key) ?? key,
       label: key,
       unit: null,
       type: 'A',
       isInterval: false,
+      isMandatory: MANDATORY_CRITERIA_KEYS.has(key),
       role: attributeRoleFor(key),
       values: [...valuesByRaw.values()],
     }));
   }
 
   /**
-   * Builds single-level category navigation from the matched set's descriptions,
-   * mirroring the real client. Mock categories are a flat single level (each
-   * distinct description is a root leaf under a minted numeric node id): a broad
-   * search exposes them all as `options`; selecting one narrows the match set to
-   * that description, so it becomes `current` with no further `options` (a leaf).
+   * Builds one level of category navigation over the real tree, mirroring the
+   * real client: the roots when nothing is selected, otherwise the selected
+   * node's children. A node's count is its whole subtree, so a root reports
+   * every match beneath it rather than only the articles filed directly on it.
+   *
+   * A leaf answers with no options at all, which is what hands the drill over
+   * to the generic-article level below it.
    */
   private buildCategoryNavigation(
     items: ArticleSummaryDto[],
     filters?: SearchFilters,
   ): CategoryNavigationDto {
+    const countByNode = this.countCategorySubtrees(items);
     const selectedNodeId =
       filters?.categoryNodeId !== undefined
         ? String(filters.categoryNodeId)
         : undefined;
-    const countByLabel = new Map<string, number>();
+
+    const optionsOf = (parentId: string | null): CategoryOptionDto[] =>
+      CATEGORY_TREE.filter(
+        (node) => node.parentId === parentId && countByNode.has(node.id),
+      ).map((node) => ({
+        id: node.id,
+        label: node.name,
+        count: countByNode.get(node.id) ?? 0,
+        hasChildren: hasChildCategories(node.id),
+      }));
+
+    if (selectedNodeId === undefined) {
+      return { current: null, options: optionsOf(null) };
+    }
+
+    const selected = CATEGORY_BY_ID.get(selectedNodeId);
+
+    return {
+      current: selected
+        ? {
+            id: selected.id,
+            label: selected.name,
+            count: countByNode.get(selected.id) ?? 0,
+            hasChildren: hasChildCategories(selected.id),
+          }
+        : null,
+      options: optionsOf(selectedNodeId),
+    };
+  }
+
+  /** Counts each match against its own node and every ancestor of it. */
+  private countCategorySubtrees(
+    items: ArticleSummaryDto[],
+  ): Map<string, number> {
+    const countByNode = new Map<string, number>();
 
     for (const item of items) {
-      countByLabel.set(
-        item.description,
-        (countByLabel.get(item.description) ?? 0) + 1,
-      );
+      const taxonomy = taxonomyOf(item);
+
+      if (taxonomy === undefined) {
+        continue;
+      }
+
+      for (const nodeId of categoryAncestry(taxonomy.categoryNodeId)) {
+        countByNode.set(nodeId, (countByNode.get(nodeId) ?? 0) + 1);
+      }
     }
 
-    const nodes: CategoryOptionDto[] = [...countByLabel.entries()].map(
-      ([label, count]) => ({
-        id: mockFacetId(label),
-        label,
-        count,
-        hasChildren: false,
-      }),
-    );
-
-    if (selectedNodeId) {
-      const current = nodes.find((node) => node.id === selectedNodeId) ?? null;
-      return { current, options: [] };
-    }
-
-    return { current: null, options: nodes };
+    return countByNode;
   }
 
   private countBy(

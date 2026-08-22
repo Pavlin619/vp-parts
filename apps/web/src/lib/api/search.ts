@@ -1,11 +1,35 @@
 import "server-only";
 import { headers } from "next/headers";
 import {
+  DEFAULT_SEARCH_MODE,
   FORWARDED_FOR_HEADER,
   WEB_ORIGIN_TOKEN_HEADER,
+  type AttributeSelectionDto,
+  type SearchMode,
   type SearchResponseDto,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
+
+export interface SearchArticlesParams {
+  query: string;
+  vehicleId?: string;
+  page?: number;
+  pageSize?: number;
+  mode?: SearchMode;
+  /** TecDoc dataSupplierIds echoed back from the brand facet. */
+  brandIds?: string[];
+  /** TecDoc genericArticleIds echoed back from the product-type facet. */
+  productTypeIds?: string[];
+  /** The single selected assemblyGroupNodeId — category drill-down is one path. */
+  categoryNodeId?: string;
+  /**
+   * `hasChildren` of {@link SearchArticlesParams.categoryNodeId}. The API only
+   * computes the technical-attribute facets when this is explicitly `false`, so
+   * leaving it out is how a caller declines to be charged for them.
+   */
+  categoryHasChildren?: boolean;
+  attributes?: AttributeSelectionDto[];
+}
 
 /**
  * Kept out of `catalog.ts` because it is the one catalog read the browser never
@@ -13,19 +37,62 @@ import { apiFetch } from "./index";
  * the visitor, so it needs request context — and therefore a secret and
  * `next/headers`, neither of which may follow it into a client bundle.
  */
-export async function searchByPartNumber(
-  query: string,
-  vehicleId?: string,
+export async function searchArticles(
+  params: SearchArticlesParams,
 ): Promise<SearchResponseDto> {
-  const params = new URLSearchParams({ q: query });
-
-  if (vehicleId) {
-    params.set("vehicleId", vehicleId);
-  }
-
-  return apiFetch<SearchResponseDto>(`/search?${params}`, {
+  return apiFetch<SearchResponseDto>(`/search?${searchQueryString(params)}`, {
     headers: await clientAttributionHeaders(),
   });
+}
+
+/**
+ * Builds the `/search` query string. The repeatable params are appended once
+ * per value rather than comma-joined, which is the shape the API's DTO
+ * transforms expect. Defaults are left off so two equivalent searches produce
+ * one URL — and therefore one Redis entry — instead of several.
+ */
+function searchQueryString(params: SearchArticlesParams): URLSearchParams {
+  const query = new URLSearchParams({ q: params.query });
+
+  if (params.vehicleId) {
+    query.set("vehicleId", params.vehicleId);
+  }
+
+  if (params.page !== undefined && params.page > 1) {
+    query.set("page", String(params.page));
+  }
+
+  if (params.pageSize !== undefined) {
+    query.set("pageSize", String(params.pageSize));
+  }
+
+  if (params.mode !== undefined && params.mode !== DEFAULT_SEARCH_MODE) {
+    query.set("searchMode", params.mode);
+  }
+
+  for (const brandId of params.brandIds ?? []) {
+    query.append("brandIds", brandId);
+  }
+
+  for (const productTypeId of params.productTypeIds ?? []) {
+    query.append("productTypeIds", productTypeId);
+  }
+
+  if (params.categoryNodeId !== undefined) {
+    query.set("categoryNodeId", params.categoryNodeId);
+
+    // Only meaningful alongside a category: on its own it describes nothing,
+    // and an absent hint is how the API is told to skip the attribute facets.
+    if (params.categoryHasChildren !== undefined) {
+      query.set("categoryHasChildren", String(params.categoryHasChildren));
+    }
+  }
+
+  for (const attribute of params.attributes ?? []) {
+    query.append("attr", `${attribute.criteriaId}:${attribute.value}`);
+  }
+
+  return query;
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   attributeRoleFor,
   FITTING_POSITION_CRITERIA_ID,
   hasActiveFilters,
+  hasSingleProductType,
   shouldRequestCriteriaFacets,
   TecDocSearchType,
 } from './search-types';
@@ -71,6 +72,54 @@ describe('shouldRequestCriteriaFacets', () => {
       ),
     ).toBe(false);
   });
+
+  // TecDoc defines criteria per generic article, so one selected product type
+  // is a homogeneous set on its own — no category needed.
+  it('is true for a single product type with no category selected', () => {
+    expect(
+      shouldRequestCriteriaFacets({ productTypeIds: [42] }, FIRST_PAGE),
+    ).toBe(true);
+  });
+
+  it('is false for two product types, whose criteria sets are a union', () => {
+    expect(
+      shouldRequestCriteriaFacets({ productTypeIds: [42, 43] }, FIRST_PAGE),
+    ).toBe(false);
+  });
+
+  it('is false for a single product type beyond the first page', () => {
+    expect(shouldRequestCriteriaFacets({ productTypeIds: [42] }, 2)).toBe(
+      false,
+    );
+  });
+
+  // The two qualifying signals are independent: a product type still opens the
+  // gate under a mid-level category the leaf hint would refuse.
+  it('is true for a single product type under a branch category', () => {
+    expect(
+      shouldRequestCriteriaFacets(
+        {
+          productTypeIds: [42],
+          categoryNodeId: 100,
+          categoryHasChildren: true,
+        },
+        FIRST_PAGE,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('hasSingleProductType', () => {
+  it('is true for exactly one selected product type', () => {
+    expect(hasSingleProductType({ productTypeIds: [42] })).toBe(true);
+  });
+
+  it('is false for none, several, or no filters at all', () => {
+    expect(hasSingleProductType({ productTypeIds: [] })).toBe(false);
+    expect(hasSingleProductType({ productTypeIds: [42, 43] })).toBe(false);
+    expect(hasSingleProductType({})).toBe(false);
+    expect(hasSingleProductType(undefined)).toBe(false);
+  });
 });
 
 describe('hasActiveFilters', () => {
@@ -89,6 +138,10 @@ describe('hasActiveFilters', () => {
 
   it('is true when a category is selected', () => {
     expect(hasActiveFilters({ categoryNodeId: 100 })).toBe(true);
+  });
+
+  it('is true when a product type is selected', () => {
+    expect(hasActiveFilters({ productTypeIds: [42] })).toBe(true);
   });
 
   it('is true when a technical attribute is selected', () => {
