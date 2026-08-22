@@ -37,6 +37,7 @@ export function searchCacheKey(request: SearchRequest): string {
     // Numeric comparator: the default sort is lexicographic, which would order
     // [4, 30] as [30, 4] and make the key needlessly hard to reason about.
     brandIds: [...(filters.brandIds ?? [])].sort((a, b) => a - b),
+    productTypeIds: [...(filters.productTypeIds ?? [])].sort((a, b) => a - b),
     categoryNodeId: filters.categoryNodeId ?? null,
     // The decision, not the raw `categoryHasChildren` hint: it is what
     // actually changes the TecDoc payload, so hints that resolve the same way

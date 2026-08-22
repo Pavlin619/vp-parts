@@ -591,9 +591,11 @@ Query params:
 Every response with results carries three narrowing blocks, all computed by
 TecDoc over the whole match set (not just the current page) and absent on a
 zero-result response:
-- **`facets`** — the brand group only. Each value has an `id` (sent back as
-  `brandIds`), a `label`, a `count`, and an `imageUrl` logo joined from
-  `getBrands()`.
+- **`facets`** — the `brands` group (each value an `id` sent back as `brandIds`,
+  a `label`, a `count`, and an `imageUrl` logo joined from `getBrands()`) and the
+  `productTypes` group (TecDoc generic articles, sent back as `productTypeId`;
+  no `imageUrl`). A group carries no heading of its own — `id` names the axis and
+  the client supplies the wording in its own locale.
 - **`attributes`** — technical-attribute (criteria) groups (width, mounting
   position, brake system…). Each group has a `criteriaId` `id`, `label`, `unit`,
   `type` (`N` numeric, `A` alphanumeric, `K` key/lookup), `isInterval`,
@@ -602,13 +604,15 @@ zero-result response:
   assigned on the backend from a known criteriaId map (`[VERIFY-TC]` for the
   exact ids) so the client can render a bespoke control (e.g. a front/rear car
   diagram) instead of a plain value list; `null`/absent means "render normally".
-  **Only present once the search has landed on a leaf category** (the single
-  `categoryNodeId` node has no children) **and the client asked for them** via
-  `categoryHasChildren=false`: criteria are defined per product type, so a broad,
-  multi-category result omits them; the client drills the category navigation to a
-  leaf first, then the dimension filters appear. Both conditions must hold — the
-  request is never made without the opt-in, and the block is never returned when
-  TecDoc reports the node has children.
+  **Only present once the search has narrowed to one product type or one leaf
+  category.** Criteria are defined per product type, so a broad result spanning
+  unrelated types would return an incoherent union of every criteria set. Either
+  narrowing opens the block: a single `productTypeId`, or a `categoryNodeId`
+  whose node has no children — the latter requiring the client to opt in with
+  `categoryHasChildren=false`, since only the client knows the leafness it
+  navigated to. The rule is shared code, not prose:
+  `hasCoherentDimensions()` in `packages/shared` is the single definition both
+  the API's request gate and the sidebar's render gate call.
   **Only sent on page 1.** Unlike `facets` and `categoryNavigation`, this block
   is not re-requested from TecDoc while paginating — it describes the whole match
   set, so every later page would carry an identical copy. The client keeps the
@@ -666,7 +670,6 @@ Response `200` — matches, scoped to a leaf category (e.g.
   "facets": [
     {
       "id": "brands",
-      "label": "Производител",
       "values": [
         { "id": "4", "label": "BOSCH", "count": 18, "imageUrl": "https://.../bosch.png" },
         { "id": "30", "label": "ABE", "count": 12, "imageUrl": "https://.../abe.png" }

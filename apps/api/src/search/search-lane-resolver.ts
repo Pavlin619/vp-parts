@@ -187,6 +187,7 @@ export class SearchLaneResolver {
       total: 0,
       page: LANE_PROBE_PAGE,
       pageSize: LANE_PROBE_PAGE_SIZE,
+      maxPage: 0,
       items: [],
       facets: [],
       attributes: [],

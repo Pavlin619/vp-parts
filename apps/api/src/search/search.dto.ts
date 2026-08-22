@@ -20,6 +20,20 @@ export const SEARCH_MAX_PAGE_SIZE = 50;
 export const SEARCH_MAX_FILTER_VALUES = 50;
 
 /**
+ * The highest page any search can ask for, from TecDoc's own paging ceiling:
+ * "You can only page through the first ~10,000 … results using this method."
+ * At the smallest page size that is 10,000 pages; every larger page size caps
+ * lower still, which the response's `maxAllowedPage` reports per query.
+ *
+ * A ceiling here is not about that per-query number — it is about refusing an
+ * absurd one outright. Without it `?page=9999999` reaches TecDoc, comes back a
+ * rejection, and surfaces as a 5xx; it also mints a Redis key and spends an
+ * upstream call per attempt, which makes page number a free cache-cardinality
+ * lever for anyone who wants one.
+ */
+export const SEARCH_MAX_PAGE = 10_000;
+
+/**
  * Normalises a repeatable query param into a clean `string[]`. A single
  * `?brandIds=x` arrives as a string, `?brandIds=x&brandIds=y` as an array, and
  * an absent param as `undefined`; blanks are dropped so an empty filter never
@@ -90,6 +104,7 @@ export class SearchQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(SEARCH_MAX_PAGE)
   page?: number;
 
   @IsOptional()
@@ -107,6 +122,15 @@ export class SearchQueryDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   brandIds?: number[];
+
+  /** Selected product types (TecDoc genericArticleIds). */
+  @IsOptional()
+  @Transform(toNumberArray)
+  @IsArray()
+  @ArrayMaxSize(SEARCH_MAX_FILTER_VALUES)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  productTypeIds?: number[];
 
   /**
    * The single selected category-tree node (TecDoc assemblyGroupNodeId).

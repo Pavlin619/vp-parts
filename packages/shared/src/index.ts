@@ -14,6 +14,8 @@ export * from './dto/catalog/articles.dto';
 export * from './dto/catalog/brands.dto';
 export * from './dto/catalog/vehicles.dto';
 export * from './dto/search/autocomplete.dto';
+export * from './dto/search/dimension-scope';
+export * from './dto/search/search-mode';
 export * from './dto/search/search.dto';
 export * from './dto/inventory.dto';
 export * from './dto/cart.dto';

@@ -44,12 +44,9 @@ export function SearchResults({
       <h1 className="mb-1 text-xl font-semibold text-ink">
         Резултати за „{query}“
       </h1>
-      {/* Until search grows a pager, say plainly that the list is only the
-          first page — a bare match count would read as the whole result set. */}
-      <p className="mb-6 text-sm text-muted">
-        {total} намерени части
-        {total > results.length && ` · показани първите ${results.length}`}
-      </p>
+      {/* The match count only; which slice of it is on screen is the pager's
+          line, so the two never disagree. */}
+      <p className="mb-6 text-sm text-muted">{total} намерени части</p>
 
       <ul className="flex flex-col gap-2" aria-busy={availability === undefined}>
         {results.map((result) => (

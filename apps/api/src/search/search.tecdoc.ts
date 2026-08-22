@@ -18,6 +18,7 @@ import {
   DEFAULT_SEARCH_EXECUTION,
   DEFAULT_AUTOCOMPLETE_EXECUTION,
   AUTOCOMPLETE_SUGGESTIONS_LIMIT,
+  hasSingleProductType,
   shouldRequestCriteriaFacets,
 } from './search-types';
 import {
@@ -25,10 +26,51 @@ import {
   buildCategorySuggestions,
   mapAttributeFacets,
   mapBrandFacets,
+  mapProductTypeFacets,
   TecDocAssemblyGroupFacetCount,
   TecDocBrandFacetCount,
   TecDocCriteriaFacetCount,
+  TecDocGenericArticleFacetCount,
 } from './search-facet-mappers';
+
+/**
+ * The passenger-car and universal assembly-group trees in one request. TecDoc
+ * concatenates the codes (see {@link AssemblyGroupType}), and both are needed
+ * for a catalogue-wide search: oils, wipers and workshop consumables are filed
+ * under Universal, so asking for the passenger-car tree alone returns those
+ * articles as results while offering no category to narrow them by.
+ */
+const CATALOGUE_WIDE_TREES = `${AssemblyGroupType.PassengerCar}${AssemblyGroupType.Universal}`;
+
+/**
+ * The match-scoped category facet: only the assembly groups present in the
+ * result set, with article counts — NOT the whole catalogue tree (that is
+ * `getAssemblyGroupTree`'s job).
+ *
+ * `assemblyGroupType` is named only for a catalogue-wide search, where there is
+ * no linkage for TecDoc to infer a tree from. Under a vehicle it is left unset
+ * on purpose: the schema says the field "will automatically default to the
+ * matching assemblyGroupType" when a `linkageTargetType` is given, and TecDoc's
+ * own match is the one to trust — the two vocabularies do not line up (linkage
+ * `'P'` covers motorcycles, tree `'P'` excludes them), so naming a tree here
+ * would quietly drop part of the linkage's own catalogue.
+ *
+ * [VERIFY-TC] `maxDepth` is left unset. The navigation is single-level, so one
+ * level below the current node is all we read, but the schema documents the
+ * field as "a limit to the number of edges … Defaults to 1 (no limit, full
+ * tree)" — under which 1 is a sentinel for unlimited and no documented value
+ * asks for one level. Confirm against the Test Client before setting it:
+ * guessing risks an empty category facet.
+ */
+function assemblyGroupFacetOptionsFor(
+  vehicleId: number | undefined,
+): Record<string, unknown> {
+  return {
+    enabled: true,
+    includeCompleteTree: false,
+    ...(vehicleId == null && { assemblyGroupType: CATALOGUE_WIDE_TREES }),
+  };
+}
 
 /**
  * TecDoc source for the search surfaces: number/free-text article search (with
@@ -43,17 +85,18 @@ export class SearchTecDoc {
 
   /**
    * Free-text/number search (searchType 10 — "any number"). Always asks TecDoc
-   * for the brand (`dataSupplier`) facet and the hierarchical category
-   * (`assemblyGroup`) tree over the whole match set, and forwards any active
-   * selections as `dataSupplierIds` / `assemblyGroupNodeIds` / `criteriaFilters`.
+   * for the brand (`dataSupplier`) and product-type (`genericArticle`) facets
+   * and the hierarchical category (`assemblyGroup`) tree over the whole match
+   * set, and forwards any active selections as `dataSupplierIds` /
+   * `genericArticleIds` / `assemblyGroupNodeIds` / `criteriaFilters`.
    *
-   * Technical-attribute (`criteria`) facets are **gated on landing at a leaf
-   * category**, on both sides of the call: the request asks for them only when
+   * Technical-attribute (`criteria`) facets are **gated on a homogeneous result
+   * set**, on both sides of the call: the request asks for them only when
    * `shouldRequestCriteriaFacets` says they are worth computing, and the
-   * response surfaces them only when the selected node turns out to be a leaf
-   * (`current.hasChildren === false`). The request gate is the optimisation —
-   * it keeps TecDoc from building a large criteria block for a mid-level
-   * subtree — while the response gate is the correctness backstop.
+   * response surfaces them only when the narrowing actually held. The request
+   * gate is the optimisation — it keeps TecDoc from building a large criteria
+   * block spanning unrelated product types — while the response gate is the
+   * correctness backstop.
    *
    * Results keep TecDoc's native article order — no client-side ranking.
    */
@@ -69,8 +112,10 @@ export class SearchTecDoc {
       // Optional like the collections below: TecDoc omits a field rather than
       // sending a zero or an empty one.
       totalMatchingArticles?: number;
+      maxAllowedPage?: number;
       articles?: TecDocArticleRecord[];
       dataSupplierFacets?: { counts: TecDocBrandFacetCount[] };
+      genericArticleFacets?: { counts: TecDocGenericArticleFacetCount[] };
       criteriaFacets?: { counts: TecDocCriteriaFacetCount[] };
       assemblyGroupFacets?: { counts: TecDocAssemblyGroupFacetCount[] };
     }>(
@@ -83,21 +128,29 @@ export class SearchTecDoc {
       filters?.categoryNodeId,
     );
 
-    const atLeaf = this.isAtLeafCategory(categoryNavigation, filters);
+    const isHomogeneous = this.hasCoherentCriteria(categoryNavigation, filters);
     const items = (data.articles ?? []).map((article) =>
       mapArticleSummary(article),
     );
 
+    // The lane resolver reads `total > 0` to decide a lane matched, so an
+    // absent total must not read as "no matches" for a page that did return
+    // articles. Falling back to the page keeps the two consistent.
+    const total = data.totalMatchingArticles ?? items.length;
+
     return {
-      // The lane resolver reads `total > 0` to decide a lane matched, so an
-      // absent total must not read as "no matches" for a page that did return
-      // articles. Falling back to the page keeps the two consistent.
-      total: data.totalMatchingArticles ?? items.length,
+      total,
       page,
       pageSize,
+      maxPage: this.resolveMaxPage(data.maxAllowedPage, total, pageSize),
       items,
-      facets: mapBrandFacets(data.dataSupplierFacets?.counts),
-      attributes: atLeaf ? mapAttributeFacets(data.criteriaFacets?.counts) : [],
+      facets: [
+        ...mapBrandFacets(data.dataSupplierFacets?.counts),
+        ...mapProductTypeFacets(data.genericArticleFacets?.counts),
+      ],
+      attributes: isHomogeneous
+        ? mapAttributeFacets(data.criteriaFacets?.counts)
+        : [],
       categoryNavigation,
     };
   }
@@ -126,7 +179,10 @@ export class SearchTecDoc {
         articleNumber: string;
         dataSupplierId: number;
         mfrName: string;
-        genericArticles: Array<{ genericArticleDescription: string }>;
+        // Optional on both counts: TecDoc omits the array unless
+        // `includeGenericArticles` asks for it, and a part it files no generic
+        // article against carries none even then.
+        genericArticles?: Array<{ genericArticleDescription?: string }>;
       }>;
       assemblyGroupFacets?: { counts: TecDocAssemblyGroupFacetCount[] };
     }>('getArticles', {
@@ -139,14 +195,14 @@ export class SearchTecDoc {
       }),
       perPage: AUTOCOMPLETE_SUGGESTIONS_LIMIT,
       page: 1,
-      // Match-scoped category facet: the assembly groups present across the
-      // whole result set (not only the shown page), with article counts — the
-      // source for the `category` suggestions below.
-      assemblyGroupFacetOptions: {
-        enabled: true,
-        assemblyGroupType: AssemblyGroupType.PassengerCar,
-        includeCompleteTree: false,
-      },
+      // What each suggestion is called ("Маслен филтър"). Requested on its own
+      // rather than via `includeAll`, which would pull images, PDFs, OE and
+      // trade numbers for every row of a dropdown that shows none of them.
+      includeGenericArticles: true,
+      // The assembly groups present across the whole result set (not only the
+      // shown page) — the source for the `category` suggestions below.
+      // Autocomplete is never vehicle-scoped, so it always spans both trees.
+      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(undefined),
     });
 
     const articles: ArticleAutocompleteItemDto[] = (data.articles ?? []).map(
@@ -158,7 +214,7 @@ export class SearchTecDoc {
         brandId: String(article.dataSupplierId),
         brandName: article.mfrName,
         description:
-          article.genericArticles[0]?.genericArticleDescription ?? '',
+          article.genericArticles?.[0]?.genericArticleDescription ?? '',
       }),
     );
 
@@ -177,28 +233,23 @@ export class SearchTecDoc {
    * back as a `searchType 99` query — so a selected term re-runs a generic
    * search rather than deep-linking to one article.
    *
-   * [VERIFY-TC] The request param (`searchQuery`) and response shape
-   * (`suggestions[].description`) are best-effort: the onboarding guide (§5.3)
-   * documents the function's purpose but defers the field names to the Pegasus
-   * 3.0 Test Client. Confirm both against the Service Index before relying on
-   * live data; the mapping tolerates a missing array but not a renamed field.
+   * Unlike `getArticles`, this function takes no `articleCountry` and no paging
+   * params — `provider`, `lang` and `searchQuery` are its whole request — so
+   * the dropdown's cap is applied here rather than asked of TecDoc.
    */
   async getAutocompleteTerms(
     query: string,
   ): Promise<TermAutocompleteItemDto[]> {
     const data = await this.transport.call<{
-      suggestions?: Array<{ description: string }>;
+      suggestions?: string[];
     }>('getAutoCompleteSuggestions', {
-      articleCountry: 'BG',
       lang: 'bg',
       searchQuery: query,
-      perPage: AUTOCOMPLETE_SUGGESTIONS_LIMIT,
-      page: 1,
     });
 
     return (data.suggestions ?? [])
-      .map((suggestion) => suggestion.description)
-      .filter((term): term is string => Boolean(term))
+      .filter((term) => Boolean(term))
+      .slice(0, AUTOCOMPLETE_SUGGESTIONS_LIMIT)
       .map((term) => ({ kind: 'term', term }));
   }
 
@@ -228,6 +279,7 @@ export class SearchTecDoc {
       page,
       includeAll: true,
       includeDataSupplierFacets: true,
+      includeGenericArticleFacets: true,
       // TODO(search-ux): auto-surface dimensions when a precise query (e.g. a
       // full part number) collapses to a single leaf category, so the user need
       // not click to reveal them. Preferred approach: keep this broad call cheap
@@ -236,21 +288,22 @@ export class SearchTecDoc {
       ...(shouldRequestCriteriaFacets(filters, page) && {
         includeCriteriaFacets: true,
       }),
-      // Match-scoped category facet: only the assembly groups present in the
-      // result set, with article counts — NOT the whole catalogue tree
-      // (that is getAssemblyGroupTree's job). `assemblyGroupType` scopes to
-      // passenger cars, matching getAssemblyGroupTree.
-      assemblyGroupFacetOptions: {
-        enabled: true,
-        assemblyGroupType: AssemblyGroupType.PassengerCar,
-        includeCompleteTree: false,
-      },
+      // Makes TecDoc rule on whether each key-table criteria value is
+      // permissible for the selected product type. It marks rather than
+      // filters: the verdict lands on each value's `permittedKeyValue`, which
+      // `mapAttributeFacets` is what actually drops. Gated on exactly one
+      // genericArticleId, as the schema requires for the flag to be populated.
+      ...(hasSingleProductType(filters) && { applyDqmRules: true }),
+      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(vehicleId),
       ...(vehicleId != null && {
         linkageTargetType: LinkageTargetType.Vehicle,
         linkageTargetId: vehicleId,
       }),
       ...(filters?.brandIds?.length && {
         dataSupplierIds: filters.brandIds,
+      }),
+      ...(filters?.productTypeIds?.length && {
+        genericArticleIds: filters.productTypeIds,
       }),
       ...(filters?.categoryNodeId !== undefined && {
         assemblyGroupNodeIds: [filters.categoryNodeId],
@@ -262,13 +315,60 @@ export class SearchTecDoc {
   }
 
   /**
-   * Whether the search landed on a leaf category, which is what makes the
-   * attribute facets coherent enough to surface.
+   * The highest page this query can actually be paged to.
+   *
+   * TecDoc serves only the first ~10,000 results of any match set and reports
+   * the resulting bound as `maxAllowedPage`, which shrinks as `perPage` grows.
+   * A broad free-text query can therefore report millions of matches while
+   * refusing anything past page 500, so `total / pageSize` would size a pager
+   * out of pages TecDoc will not serve.
+   *
+   * Taking the lower of the two is belt and braces: TecDoc already factors the
+   * result count into its cap, so the minimum only guards against it not doing
+   * so. The fallback covers the field being absent, which the schema says
+   * cannot happen but the untyped JSON transport cannot promise.
+   */
+  private resolveMaxPage(
+    maxAllowedPage: number | undefined,
+    total: number,
+    pageSize: number,
+  ): number {
+    const pageCount = Math.ceil(total / pageSize);
+
+    return maxAllowedPage === undefined
+      ? pageCount
+      : Math.min(maxAllowedPage, pageCount);
+  }
+
+  /**
+   * Whether the result set is narrow enough for the attribute facets to mean
+   * something — the response-side half of the gate that
+   * {@link shouldRequestCriteriaFacets} opens on the request.
+   *
+   * A single product type needs no confirming: it is a selection we hold, not a
+   * property of the response. A category's leafness does, which is what
+   * {@link isAtLeafCategory} reads back off the navigation.
+   */
+  private hasCoherentCriteria(
+    navigation: {
+      current: { hasChildren: boolean } | null;
+      options: unknown[];
+    },
+    filters: SearchFilters | undefined,
+  ): boolean {
+    return (
+      hasSingleProductType(filters) ||
+      this.isAtLeafCategory(navigation, filters)
+    );
+  }
+
+  /**
+   * Whether the search landed on a leaf category.
    *
    * Prefers the current node's own `hasChildren` (which also honours TecDoc's
-   * childCount, so a node whose children were not returned is still treated as
-   * a non-leaf); falls back to "no options" only when TecDoc omitted the
-   * selected node from the scoped facet entirely.
+   * `children` count, so a node whose children were not returned is still
+   * treated as a non-leaf); falls back to "no options" only when TecDoc omitted
+   * the selected node from the scoped facet entirely.
    */
   private isAtLeafCategory(
     navigation: {

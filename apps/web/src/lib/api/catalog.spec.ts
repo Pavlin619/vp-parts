@@ -1,3 +1,4 @@
+import { SearchMode } from '@vp-parts-shop/shared'
 import {
   getManufacturers,
   getModelSeries,
@@ -347,6 +348,7 @@ describe('autocompleteQueryOptions', () => {
     expect(autocompleteQueryOptions('WL6').queryKey).toEqual([
       'catalog',
       'autocomplete',
+      'part_number',
       'WL6',
     ])
   })
@@ -355,6 +357,15 @@ describe('autocompleteQueryOptions', () => {
     expect(autocompleteQueryOptions('WL63').queryKey).not.toEqual(
       autocompleteQueryOptions('WL6').queryKey,
     )
+  })
+
+  // The same term yields different suggestions per mode — articles for a
+  // number search, free-text terms for a generic one — so one shared entry
+  // would serve article rows to a descriptive search and vice versa.
+  it('keys each search mode separately', () => {
+    expect(
+      autocompleteQueryOptions('WL6', SearchMode.Generic).queryKey,
+    ).not.toEqual(autocompleteQueryOptions('WL6', SearchMode.PartNumber).queryKey)
   })
 })
 

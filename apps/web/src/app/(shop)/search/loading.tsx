@@ -1,15 +1,29 @@
 export default function SearchLoading() {
   return (
-    <div className="max-w-[1360px] mx-auto px-6 py-8">
-      <div className="h-7 w-64 bg-bg-sunken rounded animate-pulse mb-2" />
-      <div className="h-4 w-32 bg-bg-sunken rounded animate-pulse mb-6" />
-      <div className="flex flex-col gap-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-20 bg-bg-sunken rounded-[12px] animate-pulse"
-          />
-        ))}
+    <div className="mx-auto max-w-[1360px] px-6 py-8">
+      <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
+        <div className="flex flex-col gap-2">
+          {[180, 260, 200].map((height) => (
+            <div
+              key={height}
+              className="animate-pulse rounded-md bg-bg-sunken"
+              style={{ height }}
+            />
+          ))}
+        </div>
+
+        <div>
+          <div className="mb-2 h-7 w-64 animate-pulse rounded bg-bg-sunken" />
+          <div className="mb-6 h-4 w-32 animate-pulse rounded bg-bg-sunken" />
+          <div className="flex flex-col gap-3">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-20 animate-pulse rounded-[12px] bg-bg-sunken"
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

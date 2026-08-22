@@ -82,6 +82,7 @@ describe('BrandsService', () => {
       total: 0,
       page: 1,
       pageSize: 20,
+      maxPage: 0,
       items: [],
       facets: [],
       attributes: [],
@@ -103,7 +104,6 @@ describe('BrandsService', () => {
         facets: [
           {
             id: 'brands',
-            label: 'Производител',
             values: [
               { id: BOSCH, label: 'Bosch', count: 1, imageUrl: null },
               { id: FERODO, label: 'Ferodo', count: 1, imageUrl: null },
@@ -119,6 +119,27 @@ describe('BrandsService', () => {
         'https://logo/bosch.png',
       );
       expect(result.facets[0].values[1].imageUrl).toBeNull();
+    });
+
+    // Facet value ids are only unique within their own facet, so a product type
+    // whose genericArticleId equals some dataSupplierId must not inherit that
+    // brand's logo.
+    it('leaves a non-brand facet untouched even when its ids collide with brand ids', async () => {
+      const productTypes: PaginatedSearchArticlesDto = {
+        ...emptyResults,
+        total: 1,
+        items: [articleItem({ brandId: BOSCH })],
+        facets: [
+          {
+            id: 'productTypes',
+            values: [{ id: BOSCH, label: 'Маслен филтър', count: 1 }],
+          },
+        ],
+      };
+
+      const result = await service.applyLogosToSearchResults(productTypes);
+
+      expect(result.facets[0].values[0]).not.toHaveProperty('imageUrl');
     });
   });
 });

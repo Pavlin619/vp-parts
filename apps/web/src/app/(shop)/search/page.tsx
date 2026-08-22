@@ -1,36 +1,100 @@
-import { searchByPartNumber } from "@/lib/api/search";
+import { redirect } from "next/navigation";
+import { searchArticles } from "@/lib/api/search";
+import {
+  buildSearchUrl,
+  hasActiveFilters,
+  isPageOutOfRange,
+  parseSearchUrl,
+  SEARCH_PAGE_SIZE,
+  toSearchRequest,
+  withPage,
+} from "@/lib/catalog/search-url";
 import { SearchResultsAvailability } from "@/components/catalog/search/search-results-availability";
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
+import { SearchNoMatches } from "@/components/catalog/search/search-no-matches";
+import {
+  ActiveFilters,
+  SearchFiltersSidebar,
+  SearchPagination,
+} from "@/components/catalog/search/filters";
 
 interface SearchPageProps {
-  searchParams: Promise<{ q?: string; vehicleId?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
+/**
+ * Filters are URL state and the search is server-rendered, so every selection
+ * is a navigation that re-runs the search. That is what keeps the sidebar's
+ * counts describing the results actually on screen — filtering a list already
+ * fetched would leave them describing the unfiltered set.
+ */
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const { q, vehicleId } = await searchParams;
-  const query = q?.trim();
+  const state = parseSearchUrl(await searchParams);
 
-  if (!query) {
+  if (!state.query) {
     return (
-      <div className="max-w-[1360px] mx-auto px-6 py-8">
-        <SearchEmptyState query="" />
+      <div className="mx-auto max-w-[1360px] px-6 py-8">
+        <SearchEmptyState state={state} />
       </div>
     );
   }
 
-  const response = await searchByPartNumber(query, vehicleId);
+  const response = await searchArticles(toSearchRequest(state));
+
+  // A query that matches nothing at all is a dead end worth its own recovery
+  // page. A query emptied by the filters is not — that one keeps the sidebar,
+  // because the way out is to drop a narrowing rather than retype.
+  if (response.total === 0 && !hasActiveFilters(state)) {
+    return (
+      <div className="mx-auto max-w-[1360px] px-6 py-8">
+        <SearchEmptyState state={state} suggestions={response.suggestions} />
+      </div>
+    );
+  }
+
+  // `maxPage` is only knowable from a response, so an out-of-range page has to
+  // be spent to learn it — but it is spent once, and the visitor lands on a
+  // page that exists rather than on empty results blamed on their filters.
+  if (isPageOutOfRange(state, response.maxPage)) {
+    redirect(buildSearchUrl(withPage(state, response.maxPage)));
+  }
 
   return (
-    <div className="max-w-[1360px] mx-auto px-6 py-8">
-      {response.results.length > 0 ? (
-        <SearchResultsAvailability
-          query={query}
-          results={response.results}
-          total={response.total}
+    <div className="mx-auto max-w-[1360px] px-6 py-8">
+      <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
+        <SearchFiltersSidebar
+          state={state}
+          facets={response.facets}
+          attributes={response.attributes}
+          categoryNavigation={response.categoryNavigation}
         />
-      ) : (
-        <SearchEmptyState query={query} suggestions={response.suggestions} />
-      )}
+
+        <main className="min-w-0">
+          <ActiveFilters
+            state={state}
+            facets={response.facets}
+            attributes={response.attributes}
+            categoryNavigation={response.categoryNavigation}
+          />
+
+          {response.results.length > 0 ? (
+            <SearchResultsAvailability
+              query={state.query}
+              results={response.results}
+              total={response.total}
+            />
+          ) : (
+            <SearchNoMatches state={state} />
+          )}
+
+          <SearchPagination
+            state={state}
+            total={response.total}
+            pageSize={response.pageSize || SEARCH_PAGE_SIZE}
+            maxPage={response.maxPage}
+          />
+        </main>
+      </div>
     </div>
   );
 }

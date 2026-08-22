@@ -10,36 +10,72 @@ import {
 import { attributeRoleFor, CATEGORY_AUTOCOMPLETE_LIMIT } from './search-types';
 
 /**
- * One technical-attribute (criteria) facet block from a `getArticles`
- * `includeCriteriaFacets` response: the criterion metadata plus the value
- * counts over the match set. [VERIFY-TC] exact field names.
+ * TecDoc `CriteriaInfo`: the criterion a criteria facet block describes.
+ * `criteriaUnitDescription` is the only part of it we read that the schema
+ * marks optional; `isMandatory` and `isInterval` are both required.
  */
-export interface TecDocCriteriaFacetCount {
+export interface TecDocCriteriaInfo {
   criteriaId: number;
   criteriaDescription: string;
-  criteriaUnitDescription?: string | null;
-  criteriaType?: string | null;
-  isInterval?: boolean;
-  criteriaValues: Array<{
-    rawValue: string;
-    formattedValue: string;
-    count: number;
-  }>;
+  criteriaUnitDescription?: string;
+  criteriaType: string;
+  isMandatory: boolean;
+  isInterval: boolean;
 }
 
 /**
- * One node of a `getArticles` `assemblyGroupFacets` tree: the same shape
- * `getAssemblyGroupTree` consumes, extended with the (optional) article `count`
- * and the number of child nodes TecDoc reports for a vehicle-linkage search.
- * `childCount` is our name for that count — [VERIFY-TC] confirm the raw field
- * name/shape against the Test Client (it is a count, distinct from the child
- * `options` the navigation builder derives).
+ * TecDoc `CriteriaValueCounts`: one selectable value of a criterion, with the
+ * machine `rawValue` a `criteriaFilters` selection echoes back and the display
+ * `formattedValue`.
+ *
+ * `permittedKeyValue` is TecDoc's DQM verdict on the value: "for criteriaType
+ * 'K', defines whether this value is permitted for a given genericArticle and
+ * criteria. Available when filtering by a single genericArticleId and
+ * 'applyDqmRules' … is set to true." So the request flag does not drop the
+ * impermissible values — it only marks them, and the caller does the dropping.
+ * Absent for every criterion that is not a key table, and whenever the flag was
+ * not sent.
+ */
+export interface TecDocCriteriaValueCount {
+  rawValue: string;
+  formattedValue: string;
+  permittedKeyValue?: boolean;
+  count: number;
+}
+
+/**
+ * One technical-attribute facet block from a `getArticles`
+ * `includeCriteriaFacets` response (TecDoc `CriteriaFacetCount`): the criterion
+ * nested under `criteria`, its values under `criteriaValueCounts`.
+ */
+export interface TecDocCriteriaFacetCount {
+  criteria: TecDocCriteriaInfo;
+  criteriaValueCounts?: TecDocCriteriaValueCount[];
+}
+
+/**
+ * One node of a `getArticles` `assemblyGroupFacets` tree (TecDoc
+ * `AssemblyGroupFacetCount`). `children` is TecDoc's count of the node's child
+ * assembly groups — distinct from the child `options` the navigation builder
+ * derives, and the authoritative leafness signal because the facet is scoped to
+ * the match set and may omit children the node really has. `count` is optional:
+ * under a linkage filter TecDoc populates it only for that linkage's assembly
+ * group type.
+ *
+ * [VERIFY-TC] The schema's own `assemblyGroupType` is deliberately not read,
+ * which assumes `assemblyGroupNodeId` is unique across trees. A catalogue-wide
+ * search asks for the passenger-car and universal trees together, and
+ * {@link buildCategoryNavigation} keys its node map on the id alone — so if the
+ * two trees can reuse a number, one node silently overwrites the other.
+ * Confirm on the Test Client; if ids do collide, the map key has to become
+ * `(assemblyGroupType, assemblyGroupNodeId)` and the pair has to travel to the
+ * client in place of the bare id.
  */
 export interface TecDocAssemblyGroupFacetCount {
   assemblyGroupNodeId: number;
   assemblyGroupName: string;
   parentNodeId?: number | null;
-  childCount?: number;
+  children?: number;
   count?: number;
 }
 
@@ -69,43 +105,82 @@ export function mapBrandFacets(
     imageUrl: null,
   }));
 
-  return brandValues.length > 0
-    ? [{ id: 'brands', label: 'Производител', values: brandValues }]
-    : [];
+  return brandValues.length > 0 ? [{ id: 'brands', values: brandValues }] : [];
+}
+
+/**
+ * One generic-article facet count from a `getArticles`
+ * `includeGenericArticleFacets` response — TecDoc's own answer to "what kinds
+ * of part are in this result set".
+ */
+export interface TecDocGenericArticleFacetCount {
+  genericArticleId: number;
+  genericArticleDescription: string;
+  count: number;
+}
+
+/**
+ * Turns the raw TecDoc generic-article counts into the shared product-type
+ * facet group. Unlike the brand values these carry no `imageUrl` at all: a
+ * product type has no logo to join, and an explicit `null` would invite the
+ * brands layer to fill one in.
+ */
+export function mapProductTypeFacets(
+  genericArticleCounts: TecDocGenericArticleFacetCount[] = [],
+): SearchFacetDto[] {
+  const values: FacetValueDto[] = genericArticleCounts.map((c) => ({
+    id: String(c.genericArticleId),
+    label: c.genericArticleDescription,
+    count: c.count,
+  }));
+
+  return values.length > 0 ? [{ id: 'productTypes', values }] : [];
 }
 
 /**
  * Turns the raw TecDoc `criteriaFacets` blocks into the shared attribute facet
  * groups. Each criterion becomes one group keyed by its `criteriaId`, carrying
  * the unit and type so the UI can render numeric attributes (with intervals)
- * differently from enum ones. Groups with no values are dropped.
+ * differently from enum ones. Values DQM ruled out are dropped, and groups left
+ * with none go with them.
  */
 export function mapAttributeFacets(
   criteriaCounts: TecDocCriteriaFacetCount[] = [],
 ): AttributeFacetDto[] {
   return criteriaCounts
-    .map((criterion): AttributeFacetDto => {
-      const values: AttributeFacetValueDto[] = (
-        criterion.criteriaValues ?? []
-      ).map((v) => ({
-        value: v.rawValue,
-        label: v.formattedValue,
-        count: v.count,
-      }));
+    .map(({ criteria, criteriaValueCounts }): AttributeFacetDto => {
+      const values: AttributeFacetValueDto[] = (criteriaValueCounts ?? [])
+        .filter(isPermittedValue)
+        .map((value) => ({
+          value: value.rawValue,
+          label: value.formattedValue,
+          count: value.count,
+        }));
 
-      const id = String(criterion.criteriaId);
+      const id = String(criteria.criteriaId);
 
       return {
         id,
-        label: criterion.criteriaDescription,
-        unit: criterion.criteriaUnitDescription ?? null,
-        type: criterion.criteriaType ?? 'A',
-        isInterval: criterion.isInterval ?? false,
+        label: criteria.criteriaDescription,
+        unit: criteria.criteriaUnitDescription ?? null,
+        type: criteria.criteriaType,
+        isInterval: criteria.isInterval,
+        isMandatory: criteria.isMandatory,
         role: attributeRoleFor(id),
         values,
       };
     })
     .filter((facet) => facet.values.length > 0);
+}
+
+/**
+ * Only an explicit `false` is a rejection. TecDoc omits the flag for every
+ * criterion that is not a key table and whenever `applyDqmRules` was not sent,
+ * so treating absence as "not permitted" would empty the dimension list for
+ * every search that does not narrow to one product type.
+ */
+function isPermittedValue(value: TecDocCriteriaValueCount): boolean {
+  return value.permittedKeyValue !== false;
 }
 
 /**
@@ -149,7 +224,7 @@ export function buildCategoryNavigation(
       id,
       label: raw.assemblyGroupName,
       count: raw.count ?? null,
-      hasChildren: childList.length > 0 || (raw.childCount ?? 0) > 0,
+      hasChildren: childList.length > 0 || (raw.children ?? 0) > 0,
     };
   };
 
@@ -194,7 +269,7 @@ export function buildCategorySuggestions(
 
   const leaves = counts.filter(
     (raw) =>
-      (raw.childCount ?? 0) === 0 &&
+      (raw.children ?? 0) === 0 &&
       !parentIds.has(String(raw.assemblyGroupNodeId)),
   );
 

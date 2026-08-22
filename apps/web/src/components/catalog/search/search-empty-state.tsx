@@ -1,20 +1,41 @@
 import Link from "next/link";
 import { SearchX } from "lucide-react";
-import type { AutocompleteItemDto } from "@vp-parts-shop/shared";
+import { SearchMode, type AutocompleteItemDto } from "@vp-parts-shop/shared";
 import { articleDetailHref } from "@/lib/catalog/article-href";
+import {
+  buildSearchUrl,
+  withMode,
+  type SearchUrlState,
+} from "@/lib/catalog/search-url";
+
+const PRIMARY_ACTION =
+  "h-10 px-4 inline-flex items-center bg-ink text-white rounded-lg text-sm font-medium hover:bg-ink/90 transition-colors";
+const SECONDARY_ACTION =
+  "h-10 px-4 inline-flex items-center border border-line text-ink rounded-lg text-sm font-medium hover:bg-bg-sunken transition-colors";
 
 interface SearchEmptyStateProps {
-  query: string;
+  state: SearchUrlState;
   suggestions?: AutocompleteItemDto[];
 }
 
-export function SearchEmptyState({ query, suggestions }: SearchEmptyStateProps) {
+export function SearchEmptyState({ state, suggestions }: SearchEmptyStateProps) {
+  const { query } = state;
+
   // "Did you mean" recovery links each suggestion to an article detail page, so
   // only article suggestions are rendered here (the API's zero-result recovery
   // always returns the article kind).
   const articleSuggestions = (suggestions ?? []).filter(
     (suggestion) => suggestion.kind === "article",
   );
+
+  // The number lane is the default, so the likeliest reason for nothing at all
+  // is a description typed into it — a lane that cannot match prose rather than
+  // matching it poorly. Re-running the same words as free text is the one-click
+  // way out, and the most probable fix, so it leads.
+  const descriptionHref =
+    query && state.mode !== SearchMode.Generic
+      ? buildSearchUrl(withMode(state, SearchMode.Generic))
+      : null;
 
   return (
     <section
@@ -66,16 +87,18 @@ export function SearchEmptyState({ query, suggestions }: SearchEmptyStateProps) 
       )}
 
       <div className="flex flex-wrap justify-center gap-3 mb-8">
+        {descriptionHref && (
+          <Link href={descriptionHref} className={PRIMARY_ACTION}>
+            Търси по описание
+          </Link>
+        )}
         <Link
           href="/vehicles"
-          className="h-10 px-4 inline-flex items-center bg-ink text-white rounded-lg text-sm font-medium hover:bg-ink/90 transition-colors"
+          className={descriptionHref ? SECONDARY_ACTION : PRIMARY_ACTION}
         >
           Търси по автомобил
         </Link>
-        <Link
-          href="/"
-          className="h-10 px-4 inline-flex items-center border border-line text-ink rounded-lg text-sm font-medium hover:bg-bg-sunken transition-colors"
-        >
+        <Link href="/" className={SECONDARY_ACTION}>
           Разгледай категориите
         </Link>
       </div>

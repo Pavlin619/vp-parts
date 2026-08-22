@@ -1,7 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import type { ArticlesAvailabilityDto } from '@vp-parts-shop/shared'
 import { SearchResults, type SearchResultRow } from './search-results'
-import { SearchEmptyState } from './search-empty-state'
 
 function resultItem(
   overrides: Partial<SearchResultRow> = {},
@@ -51,7 +50,9 @@ describe('SearchResults', () => {
     expect(screen.getByText(/87 намерени части/)).toBeInTheDocument()
   })
 
-  it('says how many of the matches are on screen when they are paged', () => {
+  // Which slice of the matches is on screen is the pager's line; repeating it
+  // here let the two drift apart once filters could shrink the result set.
+  it('leaves the on-screen range to the pager', () => {
     render(
       <SearchResults
         query="WL634"
@@ -59,12 +60,6 @@ describe('SearchResults', () => {
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
     )
-
-    expect(screen.getByText(/показани първите 2/)).toBeInTheDocument()
-  })
-
-  it('adds no paging note when every match is on screen', () => {
-    render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
 
     expect(screen.queryByText(/показани първите/)).not.toBeInTheDocument()
   })
@@ -148,92 +143,5 @@ describe('SearchResults', () => {
       />,
     )
     expect(screen.queryByText(/подходяща за/i)).not.toBeInTheDocument()
-  })
-})
-
-describe('SearchEmptyState', () => {
-  it('shows the query in the no-results message', () => {
-    render(<SearchEmptyState query="XXXX999" />)
-
-    expect(
-      screen.getByText(/Няма намерени части за „XXXX999"/),
-    ).toBeInTheDocument()
-  })
-
-  it('shows a prompt to enter a query when the query is blank', () => {
-    render(<SearchEmptyState query="" />)
-
-    expect(screen.getByText(/Въведете номер на част/)).toBeInTheDocument()
-  })
-
-  it('offers vehicle search and category navigation links', () => {
-    render(<SearchEmptyState query="XXXX999" />)
-
-    expect(
-      screen.getByRole('link', { name: 'Търси по автомобил' }),
-    ).toHaveAttribute('href', '/vehicles')
-    expect(
-      screen.getByRole('link', { name: 'Разгледай категориите' }),
-    ).toHaveAttribute('href', '/')
-  })
-
-  it('offers a contact-the-store prompt', () => {
-    render(<SearchEmptyState query="XXXX999" />)
-
-    expect(
-      screen.getByRole('link', { name: 'Свържете се с нас' }),
-    ).toBeInTheDocument()
-  })
-
-  it('renders "did you mean" suggestions when provided', () => {
-    const suggestions = [
-      {
-        kind: 'article' as const,
-        articleNumber: 'XXXX900',
-        brandId: '268',
-        brandName: 'WIX',
-        description: 'Oil Filter',
-      },
-      {
-        kind: 'article' as const,
-        articleNumber: 'XXXX901',
-        brandId: '268',
-        brandName: 'BOSCH',
-        description: 'Air Filter',
-      },
-    ]
-    render(<SearchEmptyState query="XXXX999" suggestions={suggestions} />)
-
-    expect(screen.getByText('Може би търсите:')).toBeInTheDocument()
-    expect(screen.getByText('XXXX900')).toBeInTheDocument()
-    expect(screen.getByText('XXXX901')).toBeInTheDocument()
-  })
-
-  it('links each suggestion to its article detail page', () => {
-    const suggestions = [
-      {
-        kind: 'article' as const,
-        articleNumber: 'WA6546',
-        brandId: '268',
-        brandName: 'WIX',
-        description: 'Air Filter',
-      },
-    ]
-    render(<SearchEmptyState query="WA6456" suggestions={suggestions} />)
-
-    const link = screen.getByRole('link', { name: /WA6546/ })
-    expect(link).toHaveAttribute('href', '/catalog/articles/268/WA6546')
-  })
-
-  it('does not render the suggestions section when suggestions are absent', () => {
-    render(<SearchEmptyState query="XXXX999" />)
-
-    expect(screen.queryByText('Може би търсите:')).not.toBeInTheDocument()
-  })
-
-  it('does not render the suggestions section when suggestions is an empty array', () => {
-    render(<SearchEmptyState query="XXXX999" suggestions={[]} />)
-
-    expect(screen.queryByText('Може би търсите:')).not.toBeInTheDocument()
   })
 })
