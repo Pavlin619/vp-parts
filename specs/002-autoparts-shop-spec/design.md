@@ -15,7 +15,7 @@
 | Aesthetic | Light premium — off-white canvas, deep navy ink, sharp typography |
 | Accent | Orange (#FF5A1F) |
 | Density | Balanced — airy on landing, denser on listing/browse (mechanic-tool feel) |
-| Layout | 12-column grid, 8px base spacing unit, `max-width: 1360px`, `padding: 0 24px` |
+| Layout | 12-column grid, 8px base spacing unit, `max-width: 1600px`, `padding: 0 24px` — implemented as the `page-container` utility in `apps/web/src/app/globals.css`; every page, the header and the utility strip use it, so the width is changed in that one place |
 | Novelty | Conservative — proven patterns done excellently |
 | Mobile | Full mobile-first support, tested at ≥ 360px viewport width |
 | Language | Bulgarian Cyrillic at launch |
@@ -204,7 +204,7 @@ Dark navy bar above header. Left side: shipping threshold info, phone number, st
 
 ### Header
 
-Three-column layout inside `.container`:
+Three-column layout inside `.page-container`:
 
 **Left**: Logo + horizontal nav links (Каталог / Марки / Промоции / Сервиз)
 

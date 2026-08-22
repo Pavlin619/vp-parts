@@ -10,6 +10,7 @@ import {
   withPage,
 } from "@/lib/catalog/search-url";
 import { SearchResultsAvailability } from "@/components/catalog/search/search-results-availability";
+import { SearchBreadcrumbs } from "@/components/catalog/search/search-breadcrumbs";
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
 import { SearchNoMatches } from "@/components/catalog/search/search-no-matches";
 import {
@@ -33,7 +34,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   if (!state.query) {
     return (
-      <div className="mx-auto max-w-[1360px] px-6 py-8">
+      <div className="page-container py-8">
         <SearchEmptyState state={state} />
       </div>
     );
@@ -46,7 +47,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   // because the way out is to drop a narrowing rather than retype.
   if (response.total === 0 && !hasActiveFilters(state)) {
     return (
-      <div className="mx-auto max-w-[1360px] px-6 py-8">
+      <div className="page-container py-8">
         <SearchEmptyState state={state} suggestions={response.suggestions} />
       </div>
     );
@@ -60,7 +61,13 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   }
 
   return (
-    <div className="mx-auto max-w-[1360px] px-6 py-8">
+    <div className="page-container py-8">
+      <SearchBreadcrumbs
+        state={state}
+        facets={response.facets}
+        categoryNavigation={response.categoryNavigation}
+      />
+
       <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
         <SearchFiltersSidebar
           state={state}

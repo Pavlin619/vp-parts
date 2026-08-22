@@ -82,6 +82,21 @@ export interface CategoryOptionDto {
  */
 export interface CategoryNavigationDto {
   current: CategoryOptionDto | null;
+  /**
+   * The selected node's ancestors, outermost first and excluding `current`, so
+   * a client can render the drill as a breadcrumb.
+   *
+   * It is the tree's own path, which is not the path the visitor clicked: a
+   * category suggestion in the autocomplete jumps straight to a deep leaf, and
+   * the URL then records one step for a node several levels down. Only the
+   * catalogue knows what sits above it.
+   *
+   * Best-effort for the same reason as `current` — the facet is scoped to the
+   * match set, so an ancestor TecDoc omits cannot be named. A short trail is
+   * therefore normal and means the ancestors ran out, never that the node is
+   * shallow.
+   */
+  ancestors: CategoryOptionDto[];
   options: CategoryOptionDto[];
 }
 

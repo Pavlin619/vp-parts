@@ -1,6 +1,6 @@
 export default function ArticleDetailLoading() {
   return (
-    <div className="mx-auto max-w-[1360px] px-6 py-8">
+    <div className="page-container py-8">
       <div className="mb-6 h-5 w-48 animate-pulse rounded bg-bg-sunken" />
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)_340px]">
         <div className="aspect-square w-full animate-pulse rounded-[12px] bg-bg-sunken" />

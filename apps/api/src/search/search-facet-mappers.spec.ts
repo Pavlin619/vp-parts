@@ -252,7 +252,11 @@ describe('mapAttributeFacets', () => {
 
 describe('buildCategoryNavigation', () => {
   it('returns empty navigation when TecDoc sent no facet block', () => {
-    expect(buildCategoryNavigation()).toEqual({ current: null, options: [] });
+    expect(buildCategoryNavigation()).toEqual({
+      current: null,
+      ancestors: [],
+      options: [],
+    });
   });
 
   it('lists the selected node\u2019s children as the options and resolves current', () => {
@@ -269,6 +273,7 @@ describe('buildCategoryNavigation', () => {
         count: null,
         hasChildren: true,
       },
+      ancestors: [],
       options: [
         { id: '101', label: 'Group 101', count: 5, hasChildren: false },
         { id: '102', label: 'Group 102', count: 3, hasChildren: false },
@@ -300,7 +305,59 @@ describe('buildCategoryNavigation', () => {
     const navigation = buildCategoryNavigation([node(101)], 555);
 
     expect(navigation.current).toBeNull();
+    expect(navigation.ancestors).toEqual([]);
     expect(navigation.options).toEqual([]);
+  });
+
+  describe('ancestors', () => {
+    it('walks the parent links outwards, outermost first', () => {
+      const counts = [
+        node(100, { children: 1 }),
+        node(200, { parentNodeId: 100, children: 1 }),
+        node(300, { parentNodeId: 200 }),
+      ];
+
+      expect(buildCategoryNavigation(counts, 300).ancestors).toEqual([
+        { id: '100', label: 'Group 100', count: null, hasChildren: true },
+        { id: '200', label: 'Group 200', count: null, hasChildren: true },
+      ]);
+    });
+
+    it('excludes the selected node itself', () => {
+      const counts = [
+        node(100, { children: 1 }),
+        node(200, { parentNodeId: 100 }),
+      ];
+
+      const { ancestors } = buildCategoryNavigation(counts, 200);
+
+      expect(ancestors.map((ancestor) => ancestor.id)).toEqual(['100']);
+    });
+
+    // The facet is scoped to the match set, so the chain can run out before it
+    // reaches a root. A partial trail is the honest answer.
+    it('stops where the facet stops rather than inventing the missing ancestor', () => {
+      const counts = [node(300, { parentNodeId: 200 })];
+
+      expect(buildCategoryNavigation(counts, 300).ancestors).toEqual([]);
+    });
+
+    it('is empty when nothing is selected', () => {
+      expect(buildCategoryNavigation([node(100)]).ancestors).toEqual([]);
+    });
+
+    // A parent link that cycles is malformed data, but it reaches us over an
+    // untyped JSON transport, so it must not hang the request.
+    it('terminates on a cyclic parent link', () => {
+      const counts = [
+        node(100, { parentNodeId: 200 }),
+        node(200, { parentNodeId: 100 }),
+      ];
+
+      expect(
+        buildCategoryNavigation(counts, 100).ancestors.map((a) => a.id),
+      ).toEqual(['200']);
+    });
   });
 });
 

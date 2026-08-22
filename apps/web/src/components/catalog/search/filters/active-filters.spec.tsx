@@ -54,12 +54,14 @@ const ATTRIBUTE_FACETS: AttributeFacetDto[] = [
 
 const NAVIGATION: CategoryNavigationDto = {
   current: { id: '1052', label: 'Маслен филтър', count: 12, hasChildren: false },
+  ancestors: [],
   options: [],
 }
 
 /** A category named apart from the product type, so one chip can be singled out. */
 const FILTERS_NAVIGATION: CategoryNavigationDto = {
   current: { id: '1052', label: 'Филтри', count: 12, hasChildren: false },
+  ancestors: [],
   options: [],
 }
 

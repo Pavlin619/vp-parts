@@ -15,7 +15,7 @@ export function ShopHeader() {
   return (
     <>
       <header className="bg-bg-card border-b border-line sticky top-0 z-40">
-        <div className="max-w-[1360px] mx-auto px-6 py-3 flex items-center gap-4">
+        <div className="page-container py-3 flex items-center gap-4">
           <SiteLogo />
 
           <MainNav />

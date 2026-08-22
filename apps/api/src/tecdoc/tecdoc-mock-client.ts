@@ -1722,33 +1722,40 @@ export class TecDocMockClient {
         ? String(filters.categoryNodeId)
         : undefined;
 
+    const toOption = (node: AssemblyGroupDto): CategoryOptionDto => ({
+      id: node.id,
+      label: node.name,
+      count: countByNode.get(node.id) ?? 0,
+      hasChildren: hasChildCategories(node.id),
+    });
+
     const optionsOf = (parentId: string | null): CategoryOptionDto[] =>
       CATEGORY_TREE.filter(
         (node) => node.parentId === parentId && countByNode.has(node.id),
-      ).map((node) => ({
-        id: node.id,
-        label: node.name,
-        count: countByNode.get(node.id) ?? 0,
-        hasChildren: hasChildCategories(node.id),
-      }));
+      ).map(toOption);
 
     if (selectedNodeId === undefined) {
-      return { current: null, options: optionsOf(null) };
+      return { current: null, ancestors: [], options: optionsOf(null) };
     }
 
     const selected = CATEGORY_BY_ID.get(selectedNodeId);
 
     return {
-      current: selected
-        ? {
-            id: selected.id,
-            label: selected.name,
-            count: countByNode.get(selected.id) ?? 0,
-            hasChildren: hasChildCategories(selected.id),
-          }
-        : null,
+      current: selected ? toOption(selected) : null,
+      ancestors: this.categoryAncestorsOf(selectedNodeId).map(toOption),
       options: optionsOf(selectedNodeId),
     };
+  }
+
+  /**
+   * The selected node's ancestors, outermost first — the mock's stand-in for
+   * walking the `parentNodeId` links of a real `assemblyGroupFacets` block.
+   */
+  private categoryAncestorsOf(nodeId: string): AssemblyGroupDto[] {
+    return categoryAncestry(nodeId)
+      .slice(1)
+      .reverse()
+      .flatMap((id) => CATEGORY_BY_ID.get(id) ?? []);
   }
 
   /** Counts each match against its own node and every ancestor of it. */

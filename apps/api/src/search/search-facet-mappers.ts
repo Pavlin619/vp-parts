@@ -186,11 +186,16 @@ function isPermittedValue(value: TecDocCriteriaValueCount): boolean {
 /**
  * Turns the flat TecDoc `assemblyGroupFacets` counts into **single-level**
  * navigation: the immediate `options` for the current position (roots when
- * nothing is selected, otherwise the selected node's children) plus the
- * `current` node. The UI drills one level at a time and re-issues the search
- * per click, so the whole subtree is never shipped and there is no breadcrumb
- * (each level is its own search URL). `current` is best-effort — resolvable
- * only when TecDoc returns the selected node in the scoped facet ([VERIFY-TC]).
+ * nothing is selected, otherwise the selected node's children), the `current`
+ * node, and the `ancestors` above it. The UI drills one level at a time and
+ * re-issues the search per click, so the whole subtree is never shipped — only
+ * the one path back out.
+ *
+ * `current` and `ancestors` are both best-effort: they are resolvable only for
+ * the nodes TecDoc returns in the match-scoped facet ([VERIFY-TC] — the search
+ * asks for `includeCompleteTree: false`, and whether that keeps the ancestors
+ * of a filtered node is unconfirmed. If it drops them, the breadcrumb shortens
+ * to the current category alone; nothing else changes).
  */
 export function buildCategoryNavigation(
   counts: TecDocAssemblyGroupFacetCount[] = [],
@@ -235,8 +240,46 @@ export function buildCategoryNavigation(
 
   const currentRaw = selectedKey ? nodeById.get(selectedKey) : undefined;
   const current = currentRaw ? toOption(currentRaw) : null;
+  const ancestors = ancestorsOf(currentRaw, nodeById).map(toOption);
 
-  return { current, options };
+  return { current, ancestors, options };
+}
+
+/**
+ * Walks the parent links from a node outwards, returning the chain outermost
+ * first and without the node itself.
+ *
+ * The `seen` set is not defensive coding: `parentNodeId` arrives over an
+ * untyped JSON transport, and a chain that loops back on itself would spin
+ * here forever rather than fail.
+ */
+function ancestorsOf(
+  node: TecDocAssemblyGroupFacetCount | undefined,
+  nodeById: Map<string, TecDocAssemblyGroupFacetCount>,
+): TecDocAssemblyGroupFacetCount[] {
+  if (!node) {
+    return [];
+  }
+
+  const ancestors: TecDocAssemblyGroupFacetCount[] = [];
+  const seen = new Set([String(node.assemblyGroupNodeId)]);
+
+  let current: TecDocAssemblyGroupFacetCount | undefined = node;
+
+  while (current?.parentNodeId != null) {
+    const parentKey = String(current.parentNodeId);
+    const parent = nodeById.get(parentKey);
+
+    if (!parent || seen.has(parentKey)) {
+      break;
+    }
+
+    seen.add(parentKey);
+    ancestors.unshift(parent);
+    current = parent;
+  }
+
+  return ancestors;
 }
 
 /**

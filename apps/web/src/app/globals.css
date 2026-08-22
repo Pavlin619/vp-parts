@@ -188,6 +188,22 @@
   --sidebar-ring: var(--ink);
 }
 
+/* ──────────────────────────────────────────────────────────────
+   Layout — the content column shared by the header, the utility
+   strip and every page. Change the width in one place here.
+   Source: specs/002-autoparts-shop-spec/design.md
+   ────────────────────────────────────────────────────────────── */
+@theme {
+  --container-page: 1600px;
+}
+
+@utility page-container {
+  width: 100%;
+  max-width: var(--container-page);
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

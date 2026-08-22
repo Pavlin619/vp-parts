@@ -97,7 +97,7 @@ function pageOf(
     items,
     facets: [],
     attributes: [],
-    categoryNavigation: { current: null, options: [] },
+    categoryNavigation: { current: null, ancestors: [], options: [] },
     ...overrides,
   };
 }
@@ -813,6 +813,7 @@ describe('SearchService', () => {
 
     const categoryNavigation: CategoryNavigationDto = {
       current: null,
+      ancestors: [],
       options: [
         {
           id: '100',

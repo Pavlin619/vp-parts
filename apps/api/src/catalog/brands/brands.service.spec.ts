@@ -86,7 +86,7 @@ describe('BrandsService', () => {
       items: [],
       facets: [],
       attributes: [],
-      categoryNavigation: { current: null, options: [] },
+      categoryNavigation: { current: null, ancestors: [], options: [] },
     };
 
     it('skips the getBrands read for a fully empty result', async () => {

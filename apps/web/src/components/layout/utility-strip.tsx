@@ -2,8 +2,8 @@ import Link from "next/link";
 
 export function UtilityStrip() {
   return (
-    <div className="bg-ink py-2 px-6">
-      <div className="max-w-[1360px] mx-auto flex items-center justify-between">
+    <div className="bg-ink py-2">
+      <div className="page-container flex items-center justify-between">
         <p className="text-white/70 text-xs">
           Безплатна доставка над €50 · 02 123 456 · София
         </p>

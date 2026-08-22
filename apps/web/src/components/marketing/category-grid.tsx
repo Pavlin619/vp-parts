@@ -13,7 +13,7 @@ export const CATEGORIES = [
 
 export function CategoryGrid() {
   return (
-    <section className="max-w-[1360px] mx-auto px-6 pb-16">
+    <section className="page-container pb-16">
       <h2 className="font-display font-semibold text-ink text-xl mb-6">
         Разгледай по категория
       </h2>

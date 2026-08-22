@@ -18,6 +18,7 @@ function state(overrides: Partial<SearchUrlState> = {}): SearchUrlState {
 
 const ROOT_LEVEL: CategoryNavigationDto = {
   current: null,
+  ancestors: [],
   options: [
     { id: '100', label: 'Филтри', count: 24, hasChildren: true },
     { id: '200', label: 'Спирачна система', count: 8, hasChildren: true },
@@ -26,6 +27,7 @@ const ROOT_LEVEL: CategoryNavigationDto = {
 
 const LEAF_LEVEL: CategoryNavigationDto = {
   current: { id: '100', label: 'Филтри', count: 24, hasChildren: true },
+  ancestors: [],
   options: [
     { id: '1052', label: 'Маслен филтър', count: 12, hasChildren: false },
   ],
@@ -39,6 +41,7 @@ const EXHAUSTED_TREE: CategoryNavigationDto = {
     count: 15,
     hasChildren: false,
   },
+  ancestors: [],
   options: [],
 }
 
@@ -89,7 +92,10 @@ describe('CategoryFilter', () => {
     // Nothing to render and nothing to clear — the block would be an empty card.
     it('renders nothing without options', () => {
       const { container } = render(
-        <CategoryFilter state={state()} navigation={{ current: null, options: [] }} />,
+        <CategoryFilter
+          state={state()}
+          navigation={{ current: null, ancestors: [], options: [] }}
+        />,
       )
 
       expect(container).toBeEmptyDOMElement()
@@ -117,8 +123,7 @@ describe('CategoryFilter', () => {
       expect(screen.getByText('Филтри')).toBeInTheDocument()
     })
 
-    // The API returns one level and no breadcrumb, so the trail back up can
-    // only come from the URL.
+    // This block steps rather than jumps, so the trail it walks is the URL's.
     it('steps back to the top from the first level', () => {
       render(<CategoryFilter state={drilled} navigation={LEAF_LEVEL} />)
 
@@ -149,7 +154,11 @@ describe('CategoryFilter', () => {
       render(
         <CategoryFilter
           state={drilled}
-          navigation={{ current: LEAF_LEVEL.current, options: [] }}
+          navigation={{
+            current: LEAF_LEVEL.current,
+            ancestors: [],
+            options: [],
+          }}
         />,
       )
 
@@ -224,7 +233,7 @@ describe('CategoryFilter', () => {
       render(
         <CategoryFilter
           state={state()}
-          navigation={{ current: null, options: [] }}
+          navigation={{ current: null, ancestors: [], options: [] }}
           productTypes={PRODUCT_TYPES}
         />,
       )
