@@ -282,7 +282,6 @@ Two-column layout: filters sidebar + article grid/list.
 - **Марка block**: checkboxes with brand name + count per brand.
 - **Ниво block**: OE / AM tier filter chips.
 - **Цена block**: range slider or min/max inputs.
-- Active filters: chip row at top of results ("Изчисти всички" link).
 
 **Results area**:
 - Header row: article count + vehicle context ("съвместими с BMW 320d"), sort dropdown, grid/list toggle buttons.

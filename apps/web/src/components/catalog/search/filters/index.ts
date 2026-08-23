@@ -1,4 +1,3 @@
-export { ActiveFilters } from "./active-filters";
 export { AttributeFilters } from "./attribute-filters";
 export { BrandFilter } from "./brand-filter";
 export { CategoryFilter } from "./category-filter";
