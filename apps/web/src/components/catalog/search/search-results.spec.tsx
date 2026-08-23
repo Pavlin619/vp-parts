@@ -64,6 +64,22 @@ describe('SearchResults', () => {
     expect(screen.queryByText(/показани първите/)).not.toBeInTheDocument()
   })
 
+  // The pager is built by the server page and handed down as a slot, which
+  // keeps URL building out of the client subtree this renders in.
+  it('renders the pager it was given beside the match count', () => {
+    render(
+      <SearchResults
+        query="WL634"
+        total={87}
+        results={[resultItem()]}
+        pager={<span>1/5</span>}
+      />,
+    )
+
+    expect(screen.getByText(/87 намерени части/)).toBeInTheDocument()
+    expect(screen.getByText('1/5')).toBeInTheDocument()
+  })
+
   it('links each result to its article detail page', () => {
     render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
 

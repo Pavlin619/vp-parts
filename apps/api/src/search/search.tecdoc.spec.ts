@@ -229,6 +229,51 @@ describe('SearchTecDoc', () => {
       });
     });
 
+    // The schema documents the flag as "Always return the complete tree back,
+    // even if other assemblyGroupsIds are being filtered", so without it a
+    // filtered facet is anchored on the selected node and cannot name what sits
+    // above it — which is the breadcrumb's whole trail.
+    describe('the tree depth the category facet is asked for', () => {
+      it('asks for the complete tree once a category narrows the search', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('масло', undefined, { type: 99 }, 1, 50, {
+          categoryNodeId: 100,
+        });
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          assemblyGroupFacetOptions: { includeCompleteTree: true },
+        });
+      });
+
+      // An unnarrowed search already gets the roots it needs, and the whole
+      // catalogue tree would be paid for on every broad query.
+      it('leaves it off while no category is selected', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('масло', undefined, { type: 99 });
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          assemblyGroupFacetOptions: { includeCompleteTree: false },
+        });
+      });
+
+      it('asks for it under a vehicle scope too', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.searchArticles('масло', 20154, { type: 99 }, 1, 50, {
+          categoryNodeId: 100,
+        });
+
+        expect(call.mock.calls[0][1]).toMatchObject({
+          assemblyGroupFacetOptions: {
+            enabled: true,
+            includeCompleteTree: true,
+          },
+        });
+      });
+    });
+
     // TecDoc's generic article is what the part *is* ("Oil Filter"), the axis
     // it defines every technical criterion against.
     describe('the product-type facet', () => {

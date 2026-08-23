@@ -6,6 +6,7 @@ import {
   type SearchUrlState,
 } from "@/lib/catalog/search-url";
 import { cn } from "@/lib/utils";
+import { SearchPageStep } from "./search-page-step";
 
 /** Numbered links shown at once; beyond this the window slides with the page. */
 const PAGE_WINDOW = 7;
@@ -107,34 +108,24 @@ function PageStep({
   icon: "left" | "right";
 }) {
   const Icon = icon === "left" ? ChevronLeft : ChevronRight;
-  const className =
-    "inline-flex h-8 items-center gap-1.5 rounded-full border border-line px-3 text-[12.5px] font-medium";
-
-  // A step that leads nowhere is rendered as inert text rather than a link, so
-  // it cannot be focused or followed by keyboard.
-  if (isDisabled) {
-    return (
-      <span aria-hidden="true" className={cn(className, "text-ink-3 opacity-35")}>
-        {icon === "left" && <Icon className="h-3.5 w-3.5" />}
-        {label}
-        {icon === "right" && <Icon className="h-3.5 w-3.5" />}
-      </span>
-    );
-  }
 
   return (
-    <Link
-      href={buildSearchUrl(withPage(state, page))}
-      prefetch={false}
+    <SearchPageStep
+      state={state}
+      page={page}
+      isDisabled={isDisabled}
+      label={label}
       className={cn(
-        className,
-        "bg-canvas text-ink-2 transition-colors hover:border-ink-3 hover:text-ink",
+        "inline-flex h-8 items-center gap-1.5 rounded-full border border-line px-3 text-[12.5px] font-medium",
+        isDisabled
+          ? "text-ink-3 opacity-35"
+          : "bg-canvas text-ink-2 transition-colors hover:border-ink-3 hover:text-ink",
       )}
     >
       {icon === "left" && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
       {label}
       {icon === "right" && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
-    </Link>
+    </SearchPageStep>
   );
 }
 

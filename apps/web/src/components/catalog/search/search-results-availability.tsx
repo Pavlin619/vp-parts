@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ArticleSummaryDto } from "@vp-parts-shop/shared";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
@@ -13,6 +13,8 @@ interface SearchResultsAvailabilityProps {
   results: ArticleSummaryDto[];
   /** Every match the API found, not just the hits on this page. */
   total: number;
+  /** Server-rendered compact pager, passed straight through to the results. */
+  pager?: ReactNode;
 }
 
 /**
@@ -32,6 +34,7 @@ export function SearchResultsAvailability({
   query,
   results,
   total,
+  pager,
 }: SearchResultsAvailabilityProps) {
   const numbers = useMemo(
     () => results.map((result) => result.articleNumber),
@@ -57,6 +60,7 @@ export function SearchResultsAvailability({
         query={query}
         results={results}
         total={total}
+        pager={pager}
         availability={data ?? (isError ? null : undefined)}
       />
     </>

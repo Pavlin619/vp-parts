@@ -55,6 +55,15 @@ const CATALOGUE_WIDE_TREES = `${AssemblyGroupType.PassengerCar}${AssemblyGroupTy
  * `'P'` covers motorcycles, tree `'P'` excludes them), so naming a tree here
  * would quietly drop part of the linkage's own catalogue.
  *
+ * `includeCompleteTree` is asked for **only once a category is selected**. The
+ * schema defines it as "Always return the complete tree back, even if other
+ * assemblyGroupsIds are being filtered", so under an `assemblyGroupNodeIds`
+ * filter the facet is otherwise anchored on the selected node and never names
+ * its ancestors — which is exactly the trail the breadcrumb walks. An
+ * unnarrowed search needs no such thing: it already receives the roots, and
+ * asking for the whole catalogue tree on every broad query would be paid for on
+ * the calls that can least afford it.
+ *
  * [VERIFY-TC] `maxDepth` is left unset. The navigation is single-level, so one
  * level below the current node is all we read, but the schema documents the
  * field as "a limit to the number of edges … Defaults to 1 (no limit, full
@@ -64,10 +73,11 @@ const CATALOGUE_WIDE_TREES = `${AssemblyGroupType.PassengerCar}${AssemblyGroupTy
  */
 function assemblyGroupFacetOptionsFor(
   vehicleId: number | undefined,
+  hasCategorySelection = false,
 ): Record<string, unknown> {
   return {
     enabled: true,
-    includeCompleteTree: false,
+    includeCompleteTree: hasCategorySelection,
     ...(vehicleId == null && { assemblyGroupType: CATALOGUE_WIDE_TREES }),
   };
 }
@@ -294,7 +304,10 @@ export class SearchTecDoc {
       // `mapAttributeFacets` is what actually drops. Gated on exactly one
       // genericArticleId, as the schema requires for the flag to be populated.
       ...(hasSingleProductType(filters) && { applyDqmRules: true }),
-      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(vehicleId),
+      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(
+        vehicleId,
+        filters?.categoryNodeId !== undefined,
+      ),
       ...(vehicleId != null && {
         linkageTargetType: LinkageTargetType.Vehicle,
         linkageTargetId: vehicleId,
