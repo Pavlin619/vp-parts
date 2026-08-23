@@ -16,6 +16,7 @@ import { SearchNoMatches } from "@/components/catalog/search/search-no-matches";
 import {
   SearchFiltersSidebar,
   SearchPagination,
+  SearchPaginationCompact,
 } from "@/components/catalog/search/filters";
 
 interface SearchPageProps {
@@ -81,6 +82,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               query={state.query}
               results={response.results}
               total={response.total}
+              pager={
+                <SearchPaginationCompact
+                  state={state}
+                  maxPage={response.maxPage}
+                />
+              }
             />
           ) : (
             <SearchNoMatches state={state} />

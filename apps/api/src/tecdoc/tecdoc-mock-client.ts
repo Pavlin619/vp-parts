@@ -79,6 +79,82 @@ const BREADTH_FILTER_BRANDS = [
 ] as const;
 
 /**
+ * The air-filter leaf, three parts per supplier.
+ *
+ * Sized to span three pages at the default page size of 20. The fixture used to
+ * hold a single air filter, and its largest match set of any kind was twenty —
+ * exactly one page — so both pagers hid themselves on every query and neither
+ * could be seen in dev at all. Three pages is the smallest fixture that also
+ * reaches a middle page, where "previous" and "next" are live at once.
+ *
+ * Brands are reused from the lists above so the brand facet stays keyed on ids
+ * that already exist, and the criteria are `Width` and `Height`, which the oil
+ * filters already file — a new criteria key would renumber
+ * {@link CRITERIA_ID_BY_KEY}, and those ids travel in URLs.
+ */
+const BREADTH_AIR_FILTERS = [
+  { brand: 'MANN-FILTER', number: 'C 30 130' },
+  { brand: 'MANN-FILTER', number: 'C 35 154' },
+  { brand: 'MANN-FILTER', number: 'C 26 168' },
+  { brand: 'MANN-FILTER', number: 'C 24 004' },
+  { brand: 'MAHLE', number: 'LX 1780' },
+  { brand: 'MAHLE', number: 'LX 2038' },
+  { brand: 'MAHLE', number: 'LX 4030' },
+  { brand: 'MAHLE', number: 'LX 3695' },
+  { brand: 'KNECHT', number: 'LX 1566' },
+  { brand: 'KNECHT', number: 'LX 2851' },
+  { brand: 'KNECHT', number: 'LX 947' },
+  { brand: 'Bosch', number: 'F 026 400 492' },
+  { brand: 'Bosch', number: 'F 026 400 149' },
+  { brand: 'Bosch', number: 'F 026 400 220' },
+  { brand: 'WIX Filters', number: 'WA9567' },
+  { brand: 'WIX Filters', number: 'WA9663' },
+  { brand: 'WIX Filters', number: 'WA6781' },
+  { brand: 'FILTRON', number: 'AP 182/1' },
+  { brand: 'FILTRON', number: 'AR 372' },
+  { brand: 'FILTRON', number: 'AP 074/2' },
+  { brand: 'HENGST FILTER', number: 'E1010L' },
+  { brand: 'HENGST FILTER', number: 'E491L' },
+  { brand: 'HENGST FILTER', number: 'E203L' },
+  { brand: 'PURFLUX', number: 'A1341' },
+  { brand: 'PURFLUX', number: 'A1274' },
+  { brand: 'PURFLUX', number: 'A1195' },
+  { brand: 'UFI', number: '30.463.00' },
+  { brand: 'UFI', number: '30.605.00' },
+  { brand: 'UFI', number: '30.129.00' },
+  { brand: 'BLUE PRINT', number: 'ADV182231' },
+  { brand: 'BLUE PRINT', number: 'ADV182204' },
+  { brand: 'BLUE PRINT', number: 'ADV182212' },
+  { brand: 'CHAMPION', number: 'CAF100604P' },
+  { brand: 'CHAMPION', number: 'CAF100728P' },
+  { brand: 'CHAMPION', number: 'CAF100819P' },
+  { brand: 'DENCKERMANN', number: 'A140316' },
+  { brand: 'DENCKERMANN', number: 'A141751' },
+  { brand: 'DENCKERMANN', number: 'A142283' },
+  { brand: 'FEBI BILSTEIN', number: '27013' },
+  { brand: 'FEBI BILSTEIN', number: '32247' },
+  { brand: 'FEBI BILSTEIN', number: '49264' },
+  { brand: 'MEYLE', number: '112 321 0006' },
+  { brand: 'MEYLE', number: '312 321 0011' },
+  { brand: 'MEYLE', number: '512 321 0004' },
+] as const;
+
+/**
+ * Panel dimensions, spread over the leaf so the two facets have something to
+ * narrow by. The counts are coprime on purpose: four widths against three
+ * heights cycle as twelve distinct pairs, where equal-length lists would make
+ * every width imply one height and the second facet would never narrow.
+ */
+const AIR_FILTER_WIDTHS = ['174 mm', '186 mm', '204 mm', '216 mm'];
+const AIR_FILTER_HEIGHTS = ['47 mm', '52 mm', '58 mm'];
+
+/** What TecDoc returns for an air filter under `lang: 'bg'`. */
+const AIR_FILTER_DESCRIPTION = 'Въздушен филтър';
+
+/** Shared across the leaf, so one OE number pulls up every brand's answer. */
+const AIR_FILTER_OE_NUMBER = '1K0 129 620 D';
+
+/**
  * Stand-in TecDoc `dataSupplierId`s, one per mock brand. Arbitrary but stable:
  * what matters is that the mock can key an article on brand + number the way
  * the real catalogue does, so mock mode exercises the same identity as
@@ -494,10 +570,17 @@ const ARTICLES_BY_CATEGORY: Record<string, MockCatalogEntry[]> = {
     {
       articleNumber: 'AF-C2585',
       brandName: 'MANN-FILTER',
-      description: 'Air Filter',
+      description: AIR_FILTER_DESCRIPTION,
       productTypeId: '17',
       thumbnailUrl: null,
     },
+    ...BREADTH_AIR_FILTERS.map((part) => ({
+      articleNumber: part.number,
+      brandName: part.brand,
+      description: AIR_FILTER_DESCRIPTION,
+      productTypeId: '17',
+      thumbnailUrl: null,
+    })),
   ],
   '300100': [
     {
@@ -1125,6 +1208,27 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
       { key: 'Height', value: brand.height },
     ],
     oemNumbers: [oem('06J 115 403 Q', 'VW')],
+    fitsVehicle: null,
+  })),
+  ...BREADTH_AIR_FILTERS.map((part, index) => ({
+    articleNumber: part.number,
+    brandName: part.brand,
+    brandLogoUrl: null,
+    description: AIR_FILTER_DESCRIPTION,
+    thumbnailUrl: null,
+    images: [],
+    technicalSpecs: [
+      { key: 'Filter type', value: 'Filter Insert' },
+      {
+        key: 'Width',
+        value: AIR_FILTER_WIDTHS[index % AIR_FILTER_WIDTHS.length],
+      },
+      {
+        key: 'Height',
+        value: AIR_FILTER_HEIGHTS[index % AIR_FILTER_HEIGHTS.length],
+      },
+    ],
+    oemNumbers: [oem(AIR_FILTER_OE_NUMBER, 'VW')],
     fitsVehicle: null,
   })),
 ]);

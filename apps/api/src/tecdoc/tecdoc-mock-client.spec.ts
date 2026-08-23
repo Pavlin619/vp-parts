@@ -289,6 +289,49 @@ describe('TecDocMockClient', () => {
     });
   });
 
+  // Every match set in the fixture used to fit on a single page at the default
+  // size, so both pagers hid themselves on every query and neither could be
+  // seen in dev at all, whatever you searched for.
+  describe('breadth for pagination', () => {
+    const DEFAULT_PAGE_SIZE = 20;
+
+    function airFilters(page = 1) {
+      return mock.searchArticles(
+        'въздушен филтър',
+        undefined,
+        { type: TecDocSearchType.FreeText },
+        page,
+        DEFAULT_PAGE_SIZE,
+      );
+    }
+
+    // Three pages is the smallest fixture that reaches a middle page, where
+    // "previous" and "next" are both live.
+    it('matches enough articles to reach a middle page', async () => {
+      const { total, maxPage } = await airFilters();
+
+      expect(total).toBeGreaterThan(2 * DEFAULT_PAGE_SIZE);
+      expect(maxPage).toBeGreaterThanOrEqual(3);
+    });
+
+    it('fills the first page and still answers the last', async () => {
+      const [first, last] = await Promise.all([airFilters(1), airFilters(3)]);
+
+      expect(first.items).toHaveLength(DEFAULT_PAGE_SIZE);
+      expect(last.items.length).toBeGreaterThan(0);
+    });
+
+    it('serves a different slice on each page', async () => {
+      const [first, second] = await Promise.all([airFilters(1), airFilters(2)]);
+      const firstNumbers = first.items.map((item) => item.articleNumber);
+      const secondNumbers = second.items.map((item) => item.articleNumber);
+
+      expect(
+        firstNumbers.filter((number) => secondNumbers.includes(number)),
+      ).toEqual([]);
+    });
+  });
+
   describe('getAutocompleteArticles', () => {
     function articlesOf(
       items: Awaited<ReturnType<TecDocMockClient['getAutocompleteArticles']>>,

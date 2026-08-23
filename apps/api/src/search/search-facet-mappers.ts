@@ -62,14 +62,18 @@ export interface TecDocCriteriaFacetCount {
  * under a linkage filter TecDoc populates it only for that linkage's assembly
  * group type.
  *
- * [VERIFY-TC] The schema's own `assemblyGroupType` is deliberately not read,
- * which assumes `assemblyGroupNodeId` is unique across trees. A catalogue-wide
- * search asks for the passenger-car and universal trees together, and
- * {@link buildCategoryNavigation} keys its node map on the id alone — so if the
- * two trees can reuse a number, one node silently overwrites the other.
- * Confirm on the Test Client; if ids do collide, the map key has to become
- * `(assemblyGroupType, assemblyGroupNodeId)` and the pair has to travel to the
- * client in place of the bare id.
+ * [VERIFY-TC] The schema's own `assemblyGroupType` — which it marks *required*
+ * on every count — is deliberately not read, which assumes `assemblyGroupNodeId`
+ * is unique across trees. A catalogue-wide search asks for the passenger-car and
+ * universal trees together (the schema: "Multiple tree types can be combined"),
+ * and {@link buildCategoryNavigation} keys its node map on the id alone — so if
+ * the two trees can reuse a number, one node silently overwrites the other. The
+ * schema does not say whether ids are unique per tree or globally, so this is
+ * still open. It now carries the breadcrumb as well as `current`: the ancestor
+ * walk follows the same map, so a collision could hang a node off a parent from
+ * the other tree. Confirm on the Test Client; if ids do collide, the map key has
+ * to become `(assemblyGroupType, assemblyGroupNodeId)` and the pair has to
+ * travel to the client in place of the bare id.
  */
 export interface TecDocAssemblyGroupFacetCount {
   assemblyGroupNodeId: number;
@@ -192,10 +196,18 @@ function isPermittedValue(value: TecDocCriteriaValueCount): boolean {
  * the one path back out.
  *
  * `current` and `ancestors` are both best-effort: they are resolvable only for
- * the nodes TecDoc returns in the match-scoped facet ([VERIFY-TC] — the search
- * asks for `includeCompleteTree: false`, and whether that keeps the ancestors
- * of a filtered node is unconfirmed. If it drops them, the breadcrumb shortens
- * to the current category alone; nothing else changes).
+ * the nodes TecDoc returns in the match-scoped facet.
+ *
+ * [VERIFY-TC] The search sends `includeCompleteTree: false`, which the schema
+ * documents as "Always return the complete tree back, even if other
+ * assemblyGroupsIds are being filtered. Default false" — so under a
+ * `assemblyGroupNodeIds` filter the response is anchored on the filtered node
+ * (`maxDepth` counts "edges from either a filtered 'assemblyGroupNodeIds' or
+ * assembly group root node") and probably omits its ancestors. If it does, this
+ * returns an empty chain and the breadcrumb shortens to the current category
+ * alone; nothing else changes. Confirm on the Test Client, and if the ancestors
+ * are indeed dropped, the fix is `includeCompleteTree: true` whenever a
+ * category is selected — at the cost of a larger facet payload.
  */
 export function buildCategoryNavigation(
   counts: TecDocAssemblyGroupFacetCount[] = [],

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
@@ -16,6 +17,12 @@ interface SearchResultsProps {
    * endpoint pages its hits.
    */
   total: number;
+  /**
+   * The compact pager shown beside the count. Passed in as a slot rather than
+   * built here so it renders on the server: this component's caller is a client
+   * boundary, and the pager needs nothing from it.
+   */
+  pager?: ReactNode;
   /**
    * Live price/stock keyed by article number. `undefined` while the separate
    * availability read is in flight (rows show skeletons in those columns) and
@@ -37,6 +44,7 @@ export function SearchResults({
   query,
   results,
   total,
+  pager,
   availability,
 }: SearchResultsProps) {
   return (
@@ -44,9 +52,13 @@ export function SearchResults({
       <h1 className="mb-1 text-xl font-semibold text-ink">
         Резултати за „{query}“
       </h1>
-      {/* The match count only; which slice of it is on screen is the pager's
-          line, so the two never disagree. */}
-      <p className="mb-6 text-sm text-muted">{total} намерени части</p>
+
+      <div className="mb-6 flex items-center justify-between gap-3">
+        {/* The match count only; which slice of it is on screen is the pager's
+            line, so the two never disagree. */}
+        <p className="text-sm text-muted">{total} намерени части</p>
+        {pager}
+      </div>
 
       <ul className="flex flex-col gap-2" aria-busy={availability === undefined}>
         {results.map((result) => (

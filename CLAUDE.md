@@ -120,8 +120,13 @@ POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
 | `getAutoCompleteSuggestions` | Search autocomplete (future) |
 | `getArticleLinkedAllLinkingTarget4` | Compatible vehicles for an article (future, doc section 8.4) |
 
-**Where to verify the contract before implementing any TecDoc call:**
-- **Authoritative schema (no credentials needed):** `https://webservice.tecalliance.services/pegasus-3-0/services/TecdocToCatDLB?xsd=1` — every request and response type with its documented field semantics. This is the source of truth; check it first.
+**Where to verify the contract before implementing any TecDoc call.** Two documents are authoritative, and they answer different questions:
+
+1. **The XSD** — `https://webservice.tecalliance.services/pegasus-3-0/services/TecdocToCatDLB.soapEndpoint?xsd=1` (no credentials needed). Every request and response type with its documented field semantics. Note the `.soapEndpoint` segment: the path without it returns 404. The JSON endpoint we actually call is the same contract, so this schema is authoritative for it too.
+2. **Onboarding Guide — TecDoc Web Service (TecDoc Pegasus 3.0 API), version 3.0, 25/01/2022.** Worked request/response pairs for the flows this project is built on — §8.2 vehicle drill, §8.3 assembly-group drill, §8.5 number search — plus behaviour the XSD has no way to express, such as what a response looks like when a parameter is left at a sentinel value.
+
+Use the XSD for *what a field is* and the guide for *what a call returns in practice*. **Where they disagree, the XSD wins**: it is served live, while the guide is a 2022 snapshot. Where the guide shows something the XSD does not mention, the guide stands — but say so at the point of use, because it is the weaker source.
+
 - Interactive docs + test client: `https://webservice.tecalliance.services/pegasus-3-0/info/`
 - Service Index tab: every function with full request/response parameter documentation
 - Use the Test Client tab (needs a provider key) to verify actual response shapes before writing mapping code
@@ -144,6 +149,17 @@ Rules when adding anything article-scoped:
 - **Every link to a part** goes through `articleDetailHref(brandId, articleNumber)` in `apps/web/src/lib/catalog/article-href.ts`.
 
 The same ambiguity exists in inventory (`public.autoparts` and `public.supplier_stock` are keyed by `tecdoc_number` alone) but those tables belong to the Spring Boot backoffice — see the TODO on `InventoryService.getAvailability`.
+
+#### Paging and sorting `getArticles`
+
+Settled from the two sources above, so none of it needs the Test Client.
+
+- **`perPage` defaults to 10** and the schema sets no ceiling; the guide's own examples use 100. We send 20 from `/search` and from the category listing.
+- **`page` reaches only the first ~10,000 results** — "exact limit subject to change". The schema offers no cursor, scroll or offset alternative, so this is a hard ceiling on any pager, not a tuning knob.
+- **`maxAllowedPage` in the response is the real bound.** It is derived from the match count *and* `perPage`, so raising `perPage` lowers it. Never size a pager on `ceil(total / perPage)`: a broad query reports millions of matches and still refuses page 501. `SearchTecDoc.resolveMaxPage` is the one place that decides this.
+- **`perPage: 0` returns counts and facets with no article rows** — guide §8.3 step 1 answers it with 6,943,670 matches and `articles: []`. That is the documented shape of a count-only or facet-only call.
+- **`sort` is a repeatable `{ field, direction }`.** `field` is one of `score`, `mfrName`, `articleNumber`, `articleCreatedOn`, `linkageCreatedOn`, `linkageSortNum`; `direction` is `asc` or `desc`. We send none today, so results arrive in TecDoc's own order.
+- **Nothing orderable or filterable in TecDoc knows what we can ship.** `includePrices` returns catalogue prices the data supplier filed with TecDoc (typed by `kindOfPriceKey`), not our sell price, and no sort field or facet touches stock. Sorting or filtering by price, availability or delivery time has to be answered from backoffice inventory, which we read per rendered page — see `InventoryService`.
 
 ### Path aliases
 - `apps/web`: `@/*` → `./src/*`

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -52,7 +53,7 @@ const WL6340_AVAILABILITY: ArticlesAvailabilityDto = {
   },
 }
 
-function renderResults() {
+function renderResults(pager?: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -62,6 +63,7 @@ function renderResults() {
         query="WL634"
         results={results}
         total={results.length}
+        pager={pager}
       />
     </QueryClientProvider>,
   )
@@ -81,6 +83,13 @@ describe('SearchResultsAvailability', () => {
     expect(screen.getByRole('link', { name: 'WL6340' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'OC115' })).toBeInTheDocument()
     expect(screen.getAllByTestId('article-row-buy-skeleton')).toHaveLength(2)
+  })
+
+  it('forwards the server-rendered pager down to the results', () => {
+    availabilityMock.mockReturnValue(new Promise(() => {}))
+    renderResults(<span>1/5</span>)
+
+    expect(screen.getByText('1/5')).toBeInTheDocument()
   })
 
   it('merges availability onto the rows on success', async () => {
