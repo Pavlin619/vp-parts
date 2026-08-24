@@ -90,6 +90,144 @@ describe('RedisCache', () => {
     });
   });
 
+  describe('cachedMany', () => {
+    /**
+     * A row keyed by brand and number, as the hydrated cross-reference rows the
+     * primitive exists for are. `keyOf` and `keyOfLoaded` agree on that key,
+     * which is what lets the loader answer out of order or short.
+     */
+    function request(
+      items: Array<{ brandId: string; articleNumber: string }>,
+      loadMissing: jest.Mock,
+    ) {
+      const keyOf = (row: { brandId: string; articleNumber: string }) =>
+        `row:${row.brandId}:${row.articleNumber}`;
+
+      return { items, ttl: 3600, keyOf, keyOfLoaded: keyOf, loadMissing };
+    }
+
+    const bosch = { brandId: '30', articleNumber: 'A1' };
+    const mann = { brandId: '72', articleNumber: 'A2' };
+
+    it('returns the cached rows without calling the loader when all hit', async () => {
+      redis.mget.mockResolvedValueOnce([
+        JSON.stringify(bosch),
+        JSON.stringify(mann),
+      ]);
+      const loadMissing = jest.fn();
+
+      const result = await cache.cachedMany(
+        request([bosch, mann], loadMissing),
+      );
+
+      expect(redis.mget).toHaveBeenCalledWith(['row:30:A1', 'row:72:A2']);
+      expect(result).toEqual([bosch, mann]);
+      expect(loadMissing).not.toHaveBeenCalled();
+    });
+
+    it('loads every item and pins each row under its own key when all miss', async () => {
+      redis.mget.mockResolvedValueOnce([null, null]);
+      const loadMissing = jest.fn().mockResolvedValue([bosch, mann]);
+
+      const result = await cache.cachedMany(
+        request([bosch, mann], loadMissing),
+      );
+
+      expect(loadMissing).toHaveBeenCalledWith([bosch, mann]);
+      expect(result).toEqual([bosch, mann]);
+      expect(pipeline.set).toHaveBeenCalledWith(
+        'row:30:A1',
+        JSON.stringify(bosch),
+        'EX',
+        3600,
+      );
+      expect(pipeline.set).toHaveBeenCalledWith(
+        'row:72:A2',
+        JSON.stringify(mann),
+        'EX',
+        3600,
+      );
+    });
+
+    // The point of the primitive: the expensive loader is asked only for what
+    // Redis did not have, and the answer still arrives in the requested order.
+    it('asks the loader for the misses alone and keeps the requested order', async () => {
+      redis.mget.mockResolvedValueOnce([null, JSON.stringify(mann)]);
+      const loadMissing = jest.fn().mockResolvedValue([bosch]);
+
+      const result = await cache.cachedMany(
+        request([bosch, mann], loadMissing),
+      );
+
+      expect(loadMissing).toHaveBeenCalledWith([bosch]);
+      expect(result).toEqual([bosch, mann]);
+      expect(pipeline.set).toHaveBeenCalledTimes(1);
+      expect(pipeline.set).toHaveBeenCalledWith(
+        'row:30:A1',
+        JSON.stringify(bosch),
+        'EX',
+        3600,
+      );
+    });
+
+    /**
+     * TecDoc answers a 20-id hydration call with 19 rows, so an item the loader
+     * cannot produce has to drop out of the result rather than leave a hole in
+     * it — and nothing may be pinned in its place.
+     */
+    it('drops an item the loader returned nothing for, and caches no gap', async () => {
+      redis.mget.mockResolvedValueOnce([null, null]);
+      const loadMissing = jest.fn().mockResolvedValue([mann]);
+
+      const result = await cache.cachedMany(
+        request([bosch, mann], loadMissing),
+      );
+
+      expect(result).toEqual([mann]);
+      expect(pipeline.set).toHaveBeenCalledTimes(1);
+      expect(pipeline.set).toHaveBeenCalledWith(
+        'row:72:A2',
+        JSON.stringify(mann),
+        'EX',
+        3600,
+      );
+    });
+
+    // A loader that answers in TecDoc's order rather than ours is the normal
+    // case, so the pairing is by key and never by position.
+    it('pairs the loaded rows up by key rather than by position', async () => {
+      redis.mget.mockResolvedValueOnce([null, null]);
+      const loadMissing = jest.fn().mockResolvedValue([mann, bosch]);
+
+      const result = await cache.cachedMany(
+        request([bosch, mann], loadMissing),
+      );
+
+      expect(result).toEqual([bosch, mann]);
+    });
+
+    it('does not touch Redis or the loader for an empty request', async () => {
+      const loadMissing = jest.fn();
+
+      expect(await cache.cachedMany(request([], loadMissing))).toEqual([]);
+      expect(redis.mget).not.toHaveBeenCalled();
+      expect(redis.multi).not.toHaveBeenCalled();
+      expect(loadMissing).not.toHaveBeenCalled();
+    });
+
+    it('loads everything when Redis cannot be read', async () => {
+      redis.mget.mockRejectedValueOnce(new Error('Redis unavailable'));
+      const loadMissing = jest.fn().mockResolvedValue([bosch, mann]);
+
+      const result = await cache.cachedMany(
+        request([bosch, mann], loadMissing),
+      );
+
+      expect(loadMissing).toHaveBeenCalledWith([bosch, mann]);
+      expect(result).toEqual([bosch, mann]);
+    });
+  });
+
   describe('memo', () => {
     it('returns the parsed memo on a hit', async () => {
       redis.get.mockResolvedValueOnce(JSON.stringify('WA5432'));

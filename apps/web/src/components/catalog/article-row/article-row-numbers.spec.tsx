@@ -8,9 +8,10 @@ import { ArticleRowNumbers, mergePartNumbers } from './article-row-numbers'
 const alternativeNumbersMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  alternativeNumbersQueryOptions: (articleNumber: string) => ({
-    queryKey: ['catalog', 'alternative-numbers', articleNumber],
-    queryFn: () => alternativeNumbersMock(articleNumber) as Promise<unknown>,
+  alternativeNumbersQueryOptions: (brandId: string, articleNumber: string) => ({
+    queryKey: ['catalog', 'alternative-numbers', brandId, articleNumber],
+    queryFn: () =>
+      alternativeNumbersMock(brandId, articleNumber) as Promise<unknown>,
   }),
 }))
 
@@ -25,6 +26,7 @@ function oem(
 function renderNumbers(
   oemNumbers: OemNumberDto[] = [],
   articleNumber = 'OX 982D',
+  brandId = '94',
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -33,6 +35,7 @@ function renderNumbers(
   render(
     <QueryClientProvider client={queryClient}>
       <ArticleRowNumbers
+        brandId={brandId}
         articleNumber={articleNumber}
         oemNumbers={oemNumbers}
       />
@@ -69,12 +72,15 @@ describe('ArticleRowNumbers', () => {
     expect(screen.getByText('13717521033')).toBeInTheDocument()
   })
 
-  it('fetches the alternative numbers for the article it is mounted for', () => {
+  // Both halves of the identity travel: these numbers come from the equivalents
+  // of one brand's part, so a number-only fetch would answer with whichever
+  // brand the catalogue sorted first.
+  it('fetches the alternative numbers for the exact part it is mounted for', () => {
     alternativeNumbersMock.mockReturnValue(new Promise(() => {}))
 
-    renderNumbers([], 'OF-WL7090')
+    renderNumbers([], 'OF-WL7090', '268')
 
-    expect(alternativeNumbersMock).toHaveBeenCalledWith('OF-WL7090')
+    expect(alternativeNumbersMock).toHaveBeenCalledWith('268', 'OF-WL7090')
   })
 
   it('shows a skeleton while the alternative numbers are in flight', () => {
@@ -167,6 +173,7 @@ describe('ArticleRowNumbers', () => {
     renderWithoutReactWarnings(
       <QueryClientProvider client={queryClient}>
         <ArticleRowNumbers
+          brandId="94"
           articleNumber="OX 982D"
           oemNumbers={[
             oem('06J 115 403 Q', 'VW'),

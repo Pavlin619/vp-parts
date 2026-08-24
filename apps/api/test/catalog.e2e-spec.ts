@@ -6,14 +6,17 @@ import {
   VehiclesTecDoc,
   ArticlesTecDoc,
   BrandsTecDoc,
+  CrossReferencesTecDoc,
   LinkedVehiclesTecDoc,
   ArticleNotFoundException,
   AVAILABILITY_MAX_ARTICLE_NUMBERS,
 } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
 import {
+  ArticleStatus,
   CatalogArticlesPage,
   CatalogUnavailableException,
+  CrossReferenceCandidate,
 } from '../src/tecdoc';
 import {
   ManufacturerDto,
@@ -23,6 +26,7 @@ import {
   BrandDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
+  ArticleSummaryDto,
 } from '@vp-parts-shop/shared';
 
 const MANUFACTURERS: ManufacturerDto[] = [
@@ -105,6 +109,88 @@ const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   fitsVehicle: null,
 };
 
+/** TecDoc's generic article for a brake disc — what the fixture part is. */
+const BRAKE_DISC_TYPE = 82;
+
+/**
+ * What the single-article read answers with: the detail plus the generic
+ * articles it is catalogued as, which every cross-reference search is narrowed
+ * to.
+ */
+function articleRead(
+  detail: ArticleCatalogDetailDto = ARTICLE_DETAIL,
+  genericArticleIds: number[] = [BRAKE_DISC_TYPE],
+) {
+  return { detail, genericArticleIds };
+}
+
+/**
+ * A cross-reference candidate: another brand's part, citing the viewed one as
+ * interchangeable — which is what the provenance filter keeps it for. Its brand
+ * is deliberately one `getBrands` does not know, so the logo join leaves
+ * `brandLogoUrl` null rather than a row looking pre-filled.
+ */
+function candidate(
+  articleNumber: string,
+  cites = 'BD-001',
+): CrossReferenceCandidate {
+  return {
+    brandId: '72',
+    brandName: 'MANN-FILTER',
+    articleNumber,
+    description: 'Brake Disc',
+    legacyArticleIds: [legacyIdOf(articleNumber)],
+    articleStatusId: ArticleStatus.Normal,
+    citedNumbers: [{ brandId: BOSCH_BRAND_ID, articleNumber: cites }],
+  };
+}
+
+/** Past the sparse threshold, so the OE top-up is not reached. */
+function sixCandidates(): CrossReferenceCandidate[] {
+  return ['A1', 'A2', 'A3', 'A4', 'A5', 'A6'].map((number) =>
+    candidate(number),
+  );
+}
+
+/** The row a candidate hydrates into, so the two can be paired in a test. */
+function hydratedRow(articleNumber: string): ArticleSummaryDto {
+  return {
+    articleNumber,
+    brandId: '72',
+    brandName: 'MANN-FILTER',
+    brandLogoUrl: null,
+    description: 'Brake Disc',
+    thumbnailUrl: null,
+    technicalSpecs: [],
+    oemNumbers: [],
+    fitsVehicle: null,
+  };
+}
+
+/**
+ * Mints one hydration id per article number and keeps it, so a test can assert
+ * which candidates a page paid to hydrate and read the answer back as rows.
+ */
+const LEGACY_ID_BY_NUMBER = new Map<string, number>();
+
+function legacyIdOf(articleNumber: string): number {
+  const existing = LEGACY_ID_BY_NUMBER.get(articleNumber);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const minted = 900_001 + LEGACY_ID_BY_NUMBER.size;
+  LEGACY_ID_BY_NUMBER.set(articleNumber, minted);
+
+  return minted;
+}
+
+function numberOfLegacyId(legacyArticleId: number): string | undefined {
+  return [...LEGACY_ID_BY_NUMBER].find(
+    ([, minted]) => minted === legacyArticleId,
+  )?.[0];
+}
+
 const BRANDS: BrandDto[] = [
   {
     brandId: BOSCH_BRAND_ID,
@@ -135,7 +221,8 @@ const mockTecDocClient = {
   getBrands: jest.fn(),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
-  getComparableArticles: jest.fn(),
+  getCrossReferenceCandidates: jest.fn(),
+  getArticleRowsByLegacyIds: jest.fn(),
   getLegacyArticleIds: jest.fn(),
   getLinkedManufacturers: jest.fn(),
   getLinkedTargetIds: jest.fn(),
@@ -154,6 +241,9 @@ describe('CatalogController (e2e)', () => {
       builder.overrideProvider(VehiclesTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(ArticlesTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(BrandsTecDoc).useValue(mockTecDocClient);
+      builder
+        .overrideProvider(CrossReferencesTecDoc)
+        .useValue(mockTecDocClient);
       builder.overrideProvider(LinkedVehiclesTecDoc).useValue(mockTecDocClient);
     });
     redisClient = app.get<Redis>(REDIS_CLIENT);
@@ -175,6 +265,19 @@ describe('CatalogController (e2e)', () => {
     mockTecDocClient.getLinkedManufacturers.mockResolvedValue([]);
     mockTecDocClient.getLinkedTargetIds.mockResolvedValue([]);
     mockTecDocClient.getVehiclesByIds.mockResolvedValue([]);
+    // Same for the cross-reference read and the hydration behind it: a test that
+    // stubs one and not the other should not be answered with an undefined
+    // promise.
+    mockTecDocClient.getCrossReferenceCandidates.mockResolvedValue([]);
+    mockTecDocClient.getArticleRowsByLegacyIds.mockImplementation(
+      (legacyArticleIds: number[]) =>
+        Promise.resolve(
+          legacyArticleIds
+            .map(numberOfLegacyId)
+            .filter((number): number is string => number !== undefined)
+            .map(hydratedRow),
+        ),
+    );
     await redisClient.flushall();
   });
 
@@ -314,6 +417,22 @@ describe('CatalogController (e2e)', () => {
         20,
       );
     });
+
+    // Paging is bounded at the boundary, so nothing out of range reaches TecDoc
+    // — which is where an absurd page number would otherwise cost us a call and
+    // a cache key before being refused.
+    it.each([
+      ['a page size above the ceiling', 'pageSize=500'],
+      ['a page of zero', 'page=0'],
+      ['a page beyond the paging ceiling', 'page=10001'],
+      ['paging that is not a number', 'page=abc'],
+    ])('rejects %s', async (_label, query) => {
+      await request(app.getHttpServer())
+        .get(`/catalog/vehicles/10001/categories/100001/articles?${query}`)
+        .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
+
+      expect(mockTecDocClient.getArticles).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /catalog/articles-availability', () => {
@@ -398,7 +517,7 @@ describe('CatalogController (e2e)', () => {
 
   describe('GET /catalog/brands/:brandId/articles/:articleNumber', () => {
     it('returns cacheable catalog metadata only, without live inventory', async () => {
-      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
 
       const res = await request(app.getHttpServer())
         .get('/catalog/brands/30/articles/BD-001')
@@ -420,7 +539,7 @@ describe('CatalogController (e2e)', () => {
     });
 
     it('forwards the brand and the optional vehicleId to TecDoc', async () => {
-      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(ARTICLE_DETAIL);
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
 
       await request(app.getHttpServer())
         .get('/catalog/brands/30/articles/BD-001?vehicleId=10001')
@@ -438,14 +557,18 @@ describe('CatalogController (e2e)', () => {
     // and each has to be served its own, not whichever was cached first.
     it('serves two brands sharing an article number as different parts', async () => {
       mockTecDocClient.getArticleDetails
-        .mockResolvedValueOnce({ ...ARTICLE_DETAIL, articleNumber: 'OX 982D' })
-        .mockResolvedValueOnce({
-          ...ARTICLE_DETAIL,
-          articleNumber: 'OX 982D',
-          brandId: '94',
-          brandName: 'KNECHT',
-          technicalSpecs: [{ key: 'Filter type', value: 'Filter Insert' }],
-        });
+        .mockResolvedValueOnce(
+          articleRead({ ...ARTICLE_DETAIL, articleNumber: 'OX 982D' }),
+        )
+        .mockResolvedValueOnce(
+          articleRead({
+            ...ARTICLE_DETAIL,
+            articleNumber: 'OX 982D',
+            brandId: '94',
+            brandName: 'KNECHT',
+            technicalSpecs: [{ key: 'Filter type', value: 'Filter Insert' }],
+          }),
+        );
 
       const bosch = await request(app.getHttpServer())
         .get('/catalog/brands/30/articles/OX%20982D')
@@ -499,76 +622,232 @@ describe('CatalogController (e2e)', () => {
     });
   });
 
-  describe('GET /catalog/articles/:articleNumber/substitutes', () => {
-    it('returns the cross-reference parts as catalog metadata only', async () => {
-      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([
-        {
-          articleNumber: 'OC115',
-          brandName: 'MANN-FILTER',
-          description: 'Oil Filter',
-          thumbnailUrl: null,
-        },
+  describe('GET /catalog/brands/:brandId/articles/:articleNumber/substitutes', () => {
+    it('returns one page of the replacing parts as catalog metadata only', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce(
+        sixCandidates(),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes')
+        .expect(200);
+
+      // Searched by the part's own number, narrowed to the type it is: that is
+      // what makes the answer other brands' versions of this same part.
+      expect(mockTecDocClient.getCrossReferenceCandidates).toHaveBeenCalledWith(
+        'BD-001',
+        BRAKE_DISC_TYPE,
+      );
+      expect(res.body).toMatchObject({ total: 6, page: 1, pageSize: 20 });
+      expect(res.body.items).toHaveLength(6);
+      // Availability is fetched live and separately via
+      // GET /catalog/articles-availability, so the payload carries none.
+      expect(res.body.items[0]).not.toHaveProperty('available');
+      expect(res.body.items[0]).not.toHaveProperty('bestPriceIncVat');
+    });
+
+    /**
+     * The point of the whole design: `total` counts the set, so the section can
+     * offer every alternative, while only the rows on the page are paid for.
+     */
+    it('counts the whole set but hydrates only the requested page', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValue(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValue(
+        sixCandidates(),
+      );
+
+      const first = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes?page=1&pageSize=4')
+        .expect(200);
+
+      expect(first.body).toMatchObject({ total: 6, page: 1, pageSize: 4 });
+      expect(first.body.items).toHaveLength(4);
+      expect(mockTecDocClient.getArticleRowsByLegacyIds).toHaveBeenCalledWith([
+        legacyIdOf('A1'),
+        legacyIdOf('A2'),
+        legacyIdOf('A3'),
+        legacyIdOf('A4'),
+      ]);
+
+      const second = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes?page=2&pageSize=4')
+        .expect(200);
+
+      expect(
+        second.body.items.map((row: ArticleSummaryDto) => row.articleNumber),
+      ).toEqual(['A5', 'A6']);
+    });
+
+    // A page past the end is an empty page of a set that still has a size, not
+    // a 404: the pager reads `total` to decide there is nothing more to offer.
+    it('answers a page past the end with no rows and the full total', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce(
+        sixCandidates(),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes?page=9&pageSize=4')
+        .expect(200);
+
+      expect(res.body).toMatchObject({ total: 6, page: 9, items: [] });
+      expect(mockTecDocClient.getArticleRowsByLegacyIds).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Paging is validated at the boundary rather than clamped, so a caller asking
+     * for something we will not serve is told so. One page of rows is what a
+     * hydration read costs, which is what the ceiling protects.
+     */
+    it.each([
+      ['a page size above the ceiling', 'pageSize=500'],
+      ['a page size of zero', 'pageSize=0'],
+      ['a negative page', 'page=-3'],
+      ['a page beyond the paging ceiling', 'page=99999999'],
+      ['paging that is not a number', 'page=abc&pageSize=abc'],
+      ['a fractional page', 'page=1.5'],
+    ])('rejects %s', async (_label, query) => {
+      await request(app.getHttpServer())
+        .get(`/catalog/brands/30/articles/BD-001/substitutes?${query}`)
+        .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
+
+      expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The comparable-number index holds only suppliers who cited this brand, so a
+     * small one comes back nearly empty. It is served as it is: how many suppliers
+     * cite a brand is a property of the data, and one search is the whole answer.
+     */
+    it('serves a thin result as it is, on one search', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce([
+        candidate('A1'),
       ]);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles/OX%20982D/substitutes')
+        .get('/catalog/brands/30/articles/BD-001/substitutes')
         .expect(200);
 
-      expect(mockTecDocClient.getComparableArticles).toHaveBeenCalledWith(
-        'OX 982D',
-      );
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].articleNumber).toBe('OC115');
-      // Availability is fetched live and separately via
-      // GET /catalog/articles-availability, so the payload carries none.
-      expect(res.body[0]).not.toHaveProperty('available');
-      expect(res.body[0]).not.toHaveProperty('bestPriceIncVat');
+      expect(res.body.total).toBe(1);
+      expect(
+        mockTecDocClient.getCrossReferenceCandidates,
+      ).toHaveBeenCalledTimes(1);
     });
 
-    it('returns an empty array when the part has no cross-references', async () => {
-      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([]);
+    // A row that only shares this part's digits is a different part, and TecDoc
+    // returns those too: it matches a number against every supplier's references
+    // without regard to whose number it is.
+    it('drops a candidate that does not cite this part', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(
+        articleRead({ ...ARTICLE_DETAIL, oemNumbers: [] }),
+      );
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce([
+        candidate('A1', 'SOMEONE-ELSES'),
+      ]);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles/BD-001/substitutes')
+        .get('/catalog/brands/30/articles/BD-001/substitutes')
         .expect(200);
 
-      expect(res.body).toEqual([]);
+      expect(res.body).toMatchObject({ total: 0, items: [] });
+    });
+
+    // An empty section is the answer for a part nothing replaces. A looser
+    // search would fill it with parts a mechanic could fit to the wrong car.
+    it('returns an empty page when nothing replaces the part', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(
+        articleRead({ ...ARTICLE_DETAIL, oemNumbers: [] }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes')
+        .expect(200);
+
+      expect(res.body).toMatchObject({ total: 0, items: [] });
+    });
+
+    // The search is narrowed to the viewed part's type, so a part TecDoc files no
+    // generic article for gets an empty list rather than an unnarrowed search
+    // across the whole catalogue.
+    it('searches nothing for a part with no generic article', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(
+        articleRead(ARTICLE_DETAIL, []),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes')
+        .expect(200);
+
+      expect(res.body).toMatchObject({ total: 0, items: [] });
+      expect(
+        mockTecDocClient.getCrossReferenceCandidates,
+      ).not.toHaveBeenCalled();
+    });
+
+    // The search starts from the article itself, so a part the catalogue does
+    // not have cannot answer this — it 404s rather than reporting no substitutes.
+    it('returns 404 ARTICLE_NOT_FOUND for an unknown part', async () => {
+      mockTecDocClient.getArticleDetails.mockRejectedValueOnce(
+        new ArticleNotFoundException(),
+      );
+
+      await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/NOPE-1/substitutes')
+        .expect(404, { statusCode: 404, errorCode: 'ARTICLE_NOT_FOUND' });
     });
   });
 
-  describe('GET /catalog/articles/:articleNumber/alternative-numbers', () => {
-    it('returns the cross-reference numbers with the brand that files them', async () => {
-      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([
-        {
-          articleNumber: 'OC115',
-          brandName: 'MANN-FILTER',
-          description: 'Oil Filter',
-          thumbnailUrl: null,
-        },
+  describe('GET /catalog/brands/:brandId/articles/:articleNumber/alternative-numbers', () => {
+    it('returns every alternative’s number with the brand that sells it', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce([
+        candidate('OC115'),
       ]);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles/OX%20982D/alternative-numbers')
+        .get('/catalog/brands/30/articles/BD-001/alternative-numbers')
         .expect(200);
 
-      expect(mockTecDocClient.getComparableArticles).toHaveBeenCalledWith(
-        'OX 982D',
-      );
-      // The section renders chips, so the substitutes' catalog metadata is
-      // projected away rather than shipped to every expanded row.
+      // A chip is a number and a brand, both of which the candidate already
+      // carries — so this surface pays for no hydration at all.
       expect(res.body).toEqual([
         { articleNumber: 'OC115', brandName: 'MANN-FILTER' },
       ]);
+      expect(mockTecDocClient.getArticleRowsByLegacyIds).not.toHaveBeenCalled();
     });
 
-    it('returns an empty array when the part has no cross-references', async () => {
-      mockTecDocClient.getComparableArticles.mockResolvedValueOnce([]);
+    it('returns an empty array when nothing replaces the part', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(
+        articleRead({ ...ARTICLE_DETAIL, oemNumbers: [] }),
+      );
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles/BD-004/alternative-numbers')
+        .get('/catalog/brands/30/articles/BD-001/alternative-numbers')
         .expect(200);
 
       expect(res.body).toEqual([]);
+    });
+
+    // One cached candidate set serves both surfaces, so opening either warms the
+    // other rather than paying for a second search.
+    it('shares the substitutes search', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValue(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValue(
+        sixCandidates(),
+      );
+
+      await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes')
+        .expect(200);
+      await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/alternative-numbers')
+        .expect(200);
+
+      expect(
+        mockTecDocClient.getCrossReferenceCandidates,
+      ).toHaveBeenCalledTimes(1);
     });
   });
 

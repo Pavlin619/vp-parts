@@ -20,8 +20,8 @@ import {
  * Every request body is a JSON object keyed by the function name:
  *   { "getFunctionName": { "provider": PROVIDER_ID, ...params } }
  *
- * The provider field is mandatory on every call. It is the ProviderId
- * assigned by TecAlliance during onboarding.
+ * `provider` is the ProviderId assigned by TecAlliance during onboarding, and
+ * is optional here — see {@link readProviderId}.
  *
  * Full API contract and interactive test client:
  *   https://webservice.tecalliance.services/pegasus-3-0/info/
@@ -43,25 +43,16 @@ export class TecDocTransport {
   private readonly logger = new Logger(TecDocTransport.name);
   private readonly endpoint: string;
   private readonly apiKey: string;
-  private readonly providerId: number;
+  private readonly providerId: number | undefined;
   private readonly timeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.endpoint = `${this.config.get<string>('TECDOC_BASE_URL')}/services/TecdocToCatDLB.jsonEndpoint`;
     this.apiKey = this.config.get<string>('TECDOC_API_KEY')!;
-    this.providerId = Number(this.config.get<string>('TECDOC_PROVIDER_ID'));
+    this.providerId = readProviderId(this.config);
     this.timeoutMs =
       Number(this.config.get<string>('TECDOC_TIMEOUT_MS')) ||
       DEFAULT_TIMEOUT_MS;
-
-    // The Joi schema already guarantees this in the running app; the guard keeps
-    // a directly constructed transport (a script, a test) from posting
-    // `provider: null` and blaming TecDoc for the "Access not allowed" it earns.
-    if (!Number.isInteger(this.providerId) || this.providerId <= 0) {
-      throw new Error(
-        'TECDOC_PROVIDER_ID must be a positive integer (the ProviderId issued by TecAlliance)',
-      );
-    }
   }
 
   /**
@@ -98,9 +89,7 @@ export class TecDocTransport {
     params: Record<string, unknown>,
     signal: AbortSignal,
   ): Promise<Response> {
-    const body = JSON.stringify({
-      [functionName]: { provider: this.providerId, ...params },
-    });
+    const body = this.requestBody(functionName, params);
 
     let response: Response;
     try {
@@ -125,6 +114,22 @@ export class TecDocTransport {
     }
 
     return response;
+  }
+
+  /**
+   * An unconfigured provider is left out of the body rather than sent empty:
+   * `provider: null` is a value TecDoc rejects, absence is not.
+   */
+  private requestBody(
+    functionName: string,
+    params: Record<string, unknown>,
+  ): string {
+    const call =
+      this.providerId === undefined
+        ? params
+        : { provider: this.providerId, ...params };
+
+    return JSON.stringify({ [functionName]: call });
   }
 
   private async readJson<T>(
@@ -196,6 +201,39 @@ export class TecDocTransport {
 
     throw exceptionFor(failure);
   }
+}
+
+/**
+ * TecAlliance resolves entitlement from `X-Api-Key`, so a call that carries no
+ * `provider` at all is answered in full, while a ProviderId belonging to
+ * somebody else is refused outright with "Access not allowed". Sending nothing
+ * therefore beats sending a guess, and the value is optional.
+ *
+ * A malformed one still fails fast. Without this, `TECDOC_PROVIDER_ID=TODO`
+ * would read as "send no provider" and quietly work, so the day a real
+ * ProviderId is pasted in wrong nothing would say so.
+ *
+ * [VERIFY-TC] Whether a real ProviderId narrows or widens what the same key
+ * returns is unverified — we have never held one. If a subscription turns out to
+ * scope the assortment, article counts change the day one is configured.
+ */
+function readProviderId(config: ConfigService): number | undefined {
+  const configured = config.get<string>('TECDOC_PROVIDER_ID');
+
+  if (configured === undefined || configured === '') {
+    return undefined;
+  }
+
+  const providerId = Number(configured);
+
+  if (!Number.isInteger(providerId) || providerId <= 0) {
+    throw new Error(
+      'TECDOC_PROVIDER_ID must be a positive integer (the ProviderId issued by ' +
+        'TecAlliance) or left unset',
+    );
+  }
+
+  return providerId;
 }
 
 /**

@@ -1,22 +1,35 @@
 import { Logger } from '@nestjs/common';
 import { TecDocTransport } from '../../tecdoc';
 import { ArticleNotFoundException } from './article-not-found.exception';
-import { ArticlesTecDoc, COMPARABLE_PAGE_SIZE } from './articles.tecdoc';
+import { ArticlesTecDoc } from './articles.tecdoc';
 
 const BOSCH = 30;
+const BRAKE_DISC = 82;
 
 function record(
   articleNumber: string,
-  overrides: { dataSupplierId?: number; mfrName?: string } = {},
+  overrides: {
+    dataSupplierId?: number;
+    mfrName?: string;
+    genericArticleId?: number;
+  } = {},
 ) {
-  const { dataSupplierId = BOSCH, mfrName = 'Bosch' } = overrides;
+  const {
+    dataSupplierId = BOSCH,
+    mfrName = 'Bosch',
+    genericArticleId = BRAKE_DISC,
+  } = overrides;
 
   return {
     articleNumber,
     dataSupplierId,
     mfrName,
     genericArticles: [
-      { genericArticleDescription: 'Part', legacyArticleId: 555 },
+      {
+        genericArticleId,
+        genericArticleDescription: 'Part',
+        legacyArticleId: 555,
+      },
     ],
     images: [{ imageURL800: `https://img/${articleNumber}.jpg` }],
   };
@@ -114,10 +127,34 @@ describe('ArticlesTecDoc', () => {
     it('maps the article with its image gallery', async () => {
       call.mockResolvedValueOnce({ articles: [record('A1')] });
 
-      const result = await tecdoc.getArticleDetails(BOSCH, 'A1');
+      const { detail } = await tecdoc.getArticleDetails(BOSCH, 'A1');
 
-      expect(result.images).toEqual(['https://img/A1.jpg']);
-      expect(result.brandId).toBe('30');
+      expect(detail.images).toEqual(['https://img/A1.jpg']);
+      expect(detail.brandId).toBe('30');
+    });
+
+    /**
+     * What the part *is* is not on the DTO — nothing renders it — but the
+     * cross-reference search filters on it, and this read is the only one that
+     * knows it. Carrying it beside the DTO is what saves that search a lookup of
+     * its own.
+     */
+    it('carries the generic article ids beside the DTO', async () => {
+      call.mockResolvedValueOnce({
+        articles: [
+          {
+            ...record('A1'),
+            genericArticles: [
+              { genericArticleId: 82, legacyArticleId: 555 },
+              { genericArticleId: 91, legacyArticleId: 556 },
+            ],
+          },
+        ],
+      });
+
+      const { genericArticleIds } = await tecdoc.getArticleDetails(BOSCH, 'A1');
+
+      expect(genericArticleIds).toEqual([82, 91]);
     });
 
     // The bug this exists to prevent: an article number is unique only within a
@@ -170,9 +207,9 @@ describe('ArticlesTecDoc', () => {
         articles: [record('A1', { mfrName: 'Bosch Motorsport' })],
       });
 
-      const result = await tecdoc.getArticleDetails(BOSCH, 'A1');
+      const { detail } = await tecdoc.getArticleDetails(BOSCH, 'A1');
 
-      expect(result.brandName).toBe('Bosch Motorsport');
+      expect(detail.brandName).toBe('Bosch Motorsport');
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('Ambiguous'));
 
       warn.mockRestore();
@@ -190,80 +227,6 @@ describe('ArticlesTecDoc', () => {
       expect(warn).not.toHaveBeenCalled();
 
       warn.mockRestore();
-    });
-  });
-
-  describe('getComparableArticles', () => {
-    it('uses comparable search (type 3) and caps the page', async () => {
-      call.mockResolvedValueOnce({ articles: [record('A1')] });
-
-      await tecdoc.getComparableArticles('SRC');
-
-      expect(call).toHaveBeenCalledWith(
-        'getArticles',
-        expect.objectContaining({
-          searchType: 3,
-          searchMatchType: 'exact',
-          perPage: COMPARABLE_PAGE_SIZE,
-        }),
-      );
-    });
-
-    // TecDoc lists the same record once per data variant of the article.
-    it('drops a record TecDoc reports twice', async () => {
-      call.mockResolvedValueOnce({
-        articles: [record('A1'), record('A1'), record('A2')],
-      });
-
-      const result = await tecdoc.getComparableArticles('SRC');
-
-      expect(result.map((r) => r.articleNumber)).toEqual(['A1', 'A2']);
-    });
-
-    // A cross-reference list is precisely the place two suppliers share a
-    // number. Deduping on the number alone silently dropped one of them.
-    it('keeps two suppliers filing the same number', async () => {
-      call.mockResolvedValueOnce({
-        articles: [
-          record('A1', { dataSupplierId: 30, mfrName: 'Bosch' }),
-          record('A1', { dataSupplierId: 72, mfrName: 'MANN-FILTER' }),
-        ],
-      });
-
-      const result = await tecdoc.getComparableArticles('SRC');
-
-      expect(result.map((r) => r.brandName)).toEqual(['Bosch', 'MANN-FILTER']);
-    });
-
-    // Whether the searched part belongs in the list is a decision about the
-    // list, so it is the service's to make — this read reports what TecDoc said.
-    it('reports the searched article like any other comparable row', async () => {
-      call.mockResolvedValueOnce({
-        articles: [record('SRC'), record('A1')],
-      });
-
-      const result = await tecdoc.getComparableArticles('SRC');
-
-      expect(result.map((r) => r.articleNumber)).toEqual(['SRC', 'A1']);
-    });
-
-    // Sending `dataSupplierIds` here would filter the results down to the one
-    // brand we already have — the opposite of a cross-reference list.
-    it('does not narrow the comparable search to a brand', async () => {
-      call.mockResolvedValueOnce({ articles: [] });
-
-      await tecdoc.getComparableArticles('SRC');
-
-      expect(call).toHaveBeenCalledWith(
-        'getArticles',
-        expect.not.objectContaining({ dataSupplierIds: expect.anything() }),
-      );
-    });
-
-    it('returns an empty list when there are no articles', async () => {
-      call.mockResolvedValueOnce({});
-
-      expect(await tecdoc.getComparableArticles('SRC')).toEqual([]);
     });
   });
 });

@@ -1,4 +1,5 @@
 import {
+  ArticleCatalogDetailDto,
   ArticleSummaryDto,
   OemNumberDto,
   PaginatedCatalogArticlesDto,
@@ -24,6 +25,13 @@ export interface TecDocArticleRecord {
   dataSupplierId: number;
   mfrName: string;
   genericArticles?: Array<{
+    /**
+     * What the part *is* — "brake disc", "oil filter" — one level below the
+     * assembly group holding it. `getArticles` filters on it
+     * (`genericArticleIds`), which is how a cross-reference search is narrowed
+     * to the viewed part's own type.
+     */
+    genericArticleId?: number;
     genericArticleDescription?: string;
     /**
      * TecDoc's legacy id for this article/generic-article pair, and the only id
@@ -32,6 +40,24 @@ export interface TecDocArticleRecord {
      */
     legacyArticleId?: number;
   }>;
+  /**
+   * Cross-references: the numbers other suppliers declared interchangeable with
+   * this article. Populated only by a search that matched one of them, and only
+   * with `includeComparableNumbers` — the XSD's own note is "only populated if
+   * the comparable numbers match the search query", and a brand-scoped lookup of
+   * one part confirms it comes back empty.
+   *
+   * `dataSupplierId` is whose number was cited, in the same id space as our
+   * `brandId`. The `mfrId` beside it is the other, unlookuppable space warned
+   * about above, so provenance is read from `dataSupplierId` alone.
+   */
+  comparableNumbers?: Array<{
+    articleNumber: string;
+    dataSupplierId?: number;
+    matchesSearchQuery?: boolean;
+  }>;
+  /** Present with `includeMisc`. See {@link ArticleStatus}. */
+  misc?: { articleStatusId?: number };
   images?: Array<{ imageURL800?: string }>;
   articleCriteria?: Array<{
     criteriaId?: number;
@@ -75,6 +101,20 @@ export interface CatalogArticlesPage {
 }
 
 /**
+ * One article's detail, plus what the DTO deliberately does not carry.
+ *
+ * `genericArticleIds` is TecDoc's answer to what the part *is*, and nothing
+ * renders it — but the cross-reference search filters on it, and this read is
+ * the only one that knows it. Carried beside the DTO rather than added to it,
+ * the way {@link CatalogArticlesPage} carries linkage roles beside its rows: an
+ * internal side-channel, not a new public field.
+ */
+export interface ArticleDetailRead {
+  detail: ArticleCatalogDetailDto;
+  genericArticleIds: number[];
+}
+
+/**
  * TecDoc files one `legacyArticleId` per article/generic-article pair rather
  * than one per part, so a part catalogued in two roles carries two — with its
  * vehicle linkages split across both.
@@ -83,6 +123,17 @@ export function legacyArticleIdsOf(article: TecDocArticleRecord): number[] {
   return (article.genericArticles ?? [])
     .map((genericArticle) => genericArticle.legacyArticleId)
     .filter((articleId): articleId is number => articleId !== undefined);
+}
+
+/**
+ * The generic articles a part is catalogued as. Filed per role like the legacy
+ * ids above, so a part that is both a filter and part of a filter set carries
+ * two — the first is the one a type-scoped search narrows to.
+ */
+export function genericArticleIdsOf(article: TecDocArticleRecord): number[] {
+  return (article.genericArticles ?? [])
+    .map((genericArticle) => genericArticle.genericArticleId)
+    .filter((id): id is number => id !== undefined);
 }
 
 export function linkageRolesOf(

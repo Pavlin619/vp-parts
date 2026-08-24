@@ -58,9 +58,9 @@ jobs:
       SPEEDY_PASSWORD: stub
       # TECDOC_API_KEY and TECDOC_BASE_URL are never called at runtime in tests;
       # they exist only to satisfy the Joi required() validation in ConfigModule at startup.
+      # TECDOC_PROVIDER_ID is deliberately absent, matching how the shop runs.
       TECDOC_API_KEY: stub
       TECDOC_BASE_URL: https://stub.tecdoc.invalid
-      TECDOC_PROVIDER_ID: 12345
       RESEND_API_KEY: re_stub
       EMAIL_FROM: noreply@example.com
 

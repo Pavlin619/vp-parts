@@ -18,37 +18,11 @@ export interface WarehouseRow extends WarehouseAvailabilityDto {
 }
 
 /**
- * How fast a warehouse can fulfil, as a customer-facing speed band. Drives the
- * availability dot colour (green → blue → yellow → orange) so the tone reflects
- * the delivery promise rather than which warehouse holds the stock.
+ * Re-exported so this module stays the one place the frontend reads warehouse
+ * logic from. The band rule itself lives in the shared contract because the API
+ * orders parts by the same band the dot colour comes from.
  */
-export type DeliveryBand = "within-hour" | "today" | "day1" | "day2" | "day3";
-
-/**
- * Derives the speed band from the warehouse's pickup projection. The central
- * warehouse is our own in-stock stock — always the green "available" band, even
- * after the same-day cut-off rolls its pickup from a within-the-hour clock
- * promise to a dated one. A within-the-hour promise is likewise the fastest
- * band; otherwise the nominal working-day term (0 = today, then 1/2/3) selects
- * the band, clamped so anything slower than three days reads as the orange band.
- */
-export function deliveryBand(warehouse: WarehouseAvailabilityDto): DeliveryBand {
-  if (warehouse.warehouseId === "CENTRAL" || warehouse.pickup.granularity === "HOUR") {
-    return "within-hour";
-  }
-
-  if (warehouse.deliveryWorkDays <= 0) {
-    return "today";
-  }
-  if (warehouse.deliveryWorkDays === 1) {
-    return "day1";
-  }
-  if (warehouse.deliveryWorkDays === 2) {
-    return "day2";
-  }
-
-  return "day3";
-}
+export { deliveryBand, type DeliveryBand } from "@vp-parts-shop/shared";
 
 export interface AvailabilitySummary {
   /** Total available across every warehouse. */

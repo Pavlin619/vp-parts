@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { DEFAULT_SEARCH_MODE, type SearchMode } from "@vp-parts-shop/shared";
 import type {
   ManufacturerDto,
@@ -7,7 +7,6 @@ import type {
   AssemblyGroupDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
-  ArticleSummaryDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
   AlternativeNumberDto,
@@ -106,29 +105,54 @@ export function getArticleCatalogDetail(
 }
 
 /**
- * Cross-reference substitutes — the same part from other brands (TecDoc
- * comparable numbers), as cacheable catalog metadata only. Live
- * price/availability is fetched separately via {@link getArticlesAvailability},
- * mirroring the listing grid's metadata / live-availability split.
+ * Substitutes fetched per "show more".
+ *
+ * Kept at or below the availability batch limit, because each page is priced by
+ * one availability read of its own numbers.
+ */
+const SUBSTITUTES_PAGE_SIZE = 20;
+
+/**
+ * One page of substitutes — the other brands' parts replacing this one, as
+ * cacheable catalog metadata only. Live price/availability is fetched separately
+ * via {@link getArticlesAvailability}, mirroring the listing grid's metadata /
+ * live-availability split.
+ *
+ * Paged rather than capped: `total` counts every alternative, so the section can
+ * offer them all while a page carries only the rows a visitor has reached. The
+ * API orders the whole set by what we can ship before paging it, so page 1 is
+ * the part most likely to solve the visitor's problem.
+ *
+ * Brand-scoped like every article-scoped read: which parts replace a part is a
+ * property of that part, and two brands filing one number are two parts.
  */
 export function getSubstitutes(
+  brandId: string,
   articleNumber: string,
-): Promise<ArticleSummaryDto[]> {
-  return apiFetch<ArticleSummaryDto[]>(
-    `/catalog/articles/${encodeURIComponent(articleNumber)}/substitutes`,
+  page = 1,
+  pageSize = SUBSTITUTES_PAGE_SIZE,
+): Promise<PaginatedCatalogArticlesDto> {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+
+  return apiFetch<PaginatedCatalogArticlesDto>(
+    `${articlePath(brandId, articleNumber)}/substitutes?${params}`,
   );
 }
 
 /**
- * The numbers other brands sell the same part under. Its own read because the
- * catalog response carries only the OE numbers beside them — the
+ * The numbers other brands sell the equivalent part under. Its own read because
+ * the catalog response carries only the OE numbers beside them — the
  * alternative-numbers section fetches this when a visitor opens it.
  */
 export function getAlternativeNumbers(
+  brandId: string,
   articleNumber: string,
 ): Promise<AlternativeNumberDto[]> {
   return apiFetch<AlternativeNumberDto[]>(
-    `/catalog/articles/${encodeURIComponent(articleNumber)}/alternative-numbers`,
+    `${articlePath(brandId, articleNumber)}/alternative-numbers`,
   );
 }
 
@@ -278,25 +302,52 @@ export const linkedVehiclesByMakeQueryOptions = (
     gcTime: ROW_SECTION_GC_TIME,
   });
 
-/** Cross-reference numbers for one article, as chips. */
-export const alternativeNumbersQueryOptions = (articleNumber: string) =>
+/** The numbers one article's equivalents are sold under, as chips. */
+export const alternativeNumbersQueryOptions = (
+  brandId: string,
+  articleNumber: string,
+) =>
   queryOptions({
-    queryKey: ["catalog", "alternative-numbers", articleNumber],
-    queryFn: () => getAlternativeNumbers(articleNumber),
+    queryKey: ["catalog", "alternative-numbers", brandId, articleNumber],
+    queryFn: () => getAlternativeNumbers(brandId, articleNumber),
     staleTime: ROW_SECTION_STALE_TIME,
     gcTime: ROW_SECTION_GC_TIME,
   });
 
 /**
- * The same cross-references as {@link alternativeNumbersQueryOptions}, as whole
- * catalog rows rather than numbers. Keyed on the number alone, like the read
- * behind it — a comparable-number search takes the number as its query, not as
- * an identity, so there is no brand to key by.
+ * The same alternatives as {@link alternativeNumbersQueryOptions}, as whole
+ * catalog rows rather than numbers, a page at a time.
+ *
+ * Infinite rather than a pager: this is a section inside a row a visitor already
+ * expanded, so replacing the rows they are reading with a different page would
+ * lose their place. Each page also stays its own cache entry, which is what keeps
+ * one availability read per page inside the batch limit.
+ *
+ * Keyed on brand and number together, like the read behind it: which parts
+ * replace a part is a property of that part, so a number-only key serves one
+ * brand's alternatives to the other.
  */
-export const substitutesQueryOptions = (articleNumber: string) =>
-  queryOptions({
-    queryKey: ["catalog", "substitutes", articleNumber],
-    queryFn: () => getSubstitutes(articleNumber),
+export const substitutesQueryOptions = (
+  brandId: string,
+  articleNumber: string,
+) =>
+  infiniteQueryOptions({
+    queryKey: ["catalog", "substitutes", brandId, articleNumber],
+    queryFn: ({ pageParam }) =>
+      getSubstitutes(brandId, articleNumber, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: nextPageOf,
     staleTime: ROW_SECTION_STALE_TIME,
     gcTime: ROW_SECTION_GC_TIME,
   });
+
+/**
+ * The page after the one given, or `undefined` when it was the last.
+ *
+ * Derived from `total` rather than from the page being full: a set whose size is
+ * an exact multiple of the page size would otherwise always offer one more page,
+ * and that page would come back empty.
+ */
+function nextPageOf(page: PaginatedCatalogArticlesDto): number | undefined {
+  return page.page * page.pageSize < page.total ? page.page + 1 : undefined;
+}

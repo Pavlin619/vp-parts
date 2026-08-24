@@ -4,6 +4,24 @@ import { Redis } from 'ioredis';
 export const REDIS_CLIENT = 'REDIS_CLIENT';
 
 /**
+ * A batch read-through: the items wanted, how each one is keyed, and a loader
+ * for those the cache lacked.
+ *
+ * `keyOfLoaded` is what pairs the loader's answer back onto the request, so a
+ * loader may answer in its own order and may answer short — an item nothing was
+ * loaded for drops out of the result rather than leaving a hole in it. Both key
+ * functions must agree on the key for one thing; the usual shape is a single
+ * function over the identity both the item and the value carry.
+ */
+export interface CachedManyRequest<Item, Value> {
+  items: Item[];
+  ttl: number;
+  keyOf: (item: Item) => string;
+  keyOfLoaded: (value: Value) => string;
+  loadMissing: (missing: Item[]) => Promise<Value[]>;
+}
+
+/**
  * Thin, reusable Redis read-through cache. Each caller owns its own cache keys
  * and TTLs and wraps one of these helpers around the loader that produces the
  * data, so the key/TTL live next to the call rather than in a per-feature cache
@@ -69,6 +87,43 @@ export class RedisCache {
     await this.write(key, value, ttl);
 
     return value;
+  }
+
+  /**
+   * Reads many entries of one kind in a single round trip, loading only those
+   * Redis did not have and pinning each loaded one under its own key.
+   *
+   * For a list whose *order* is decided per request while its *rows* are stable:
+   * a page-shaped entry would serve yesterday's ordering, and per-row entries
+   * survive both a reordering and the same row appearing in another list. See
+   * {@link CachedManyRequest} for why the loader is free to answer short or out
+   * of order.
+   */
+  async cachedMany<Item, Value>(
+    request: CachedManyRequest<Item, Value>,
+  ): Promise<Value[]> {
+    const { items, keyOf, keyOfLoaded, ttl, loadMissing } = request;
+
+    if (items.length === 0) {
+      return [];
+    }
+
+    const cached = await this.readMemos<Value>(items.map(keyOf));
+    const missing = items.filter((_, index) => cached[index] === undefined);
+    const loaded = missing.length === 0 ? [] : await loadMissing(missing);
+
+    await this.writeMemos(
+      loaded.map((value) => ({ key: keyOfLoaded(value), value })),
+      ttl,
+    );
+
+    const loadedByKey = new Map(
+      loaded.map((value) => [keyOfLoaded(value), value]),
+    );
+
+    return items
+      .map((item, index) => cached[index] ?? loadedByKey.get(keyOf(item)))
+      .filter((value): value is Value => value !== undefined);
   }
 
   /**

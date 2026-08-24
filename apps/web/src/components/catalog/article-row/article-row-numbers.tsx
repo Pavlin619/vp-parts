@@ -8,6 +8,8 @@ import { PartNumberChip } from "./part-number-chip";
 import { SectionLoadError } from "./section-load-error";
 
 interface ArticleRowNumbersProps {
+  /** TecDoc brand id; the OE numbers behind these belong to one brand's part. */
+  brandId: string;
   articleNumber: string;
   oemNumbers: OemNumberDto[];
 }
@@ -35,14 +37,15 @@ export interface MergedPartNumber {
  * The alternative-numbers section of a catalog row: every number this part can
  * be ordered by. Two halves, because they arrive on different schedules —
  * TecDoc ships the OE numbers with the article itself, while the numbers other
- * brands sell it under only come out of a comparable-number search.
+ * brands sell the equivalent part under take a search per OE number.
  *
- * That search is why this component fetches at all, and why it is mounted only
- * once the section is opened: the read is the cost of the section, not of the
- * row. The query cache is what makes reopening it — or opening it on another
+ * Those searches are why this component fetches at all, and why it is mounted
+ * only once the section is opened: the read is the cost of the section, not of
+ * the row. The query cache is what makes reopening it — or opening it on another
  * row for the same part — free.
  */
 export function ArticleRowNumbers({
+  brandId,
   articleNumber,
   oemNumbers,
 }: ArticleRowNumbersProps) {
@@ -55,15 +58,21 @@ export function ArticleRowNumbers({
       )}
 
       <NumberBlock title="Номера от производители">
-        <AlternativeNumbers articleNumber={articleNumber} />
+        <AlternativeNumbers brandId={brandId} articleNumber={articleNumber} />
       </NumberBlock>
     </div>
   );
 }
 
-function AlternativeNumbers({ articleNumber }: { articleNumber: string }) {
+function AlternativeNumbers({
+  brandId,
+  articleNumber,
+}: {
+  brandId: string;
+  articleNumber: string;
+}) {
   const { data, isPending, isError, refetch } = useQuery(
-    alternativeNumbersQueryOptions(articleNumber),
+    alternativeNumbersQueryOptions(brandId, articleNumber),
   );
 
   if (isPending) {

@@ -3,6 +3,7 @@ import {
   LinkedVehicleManufacturerDto,
 } from '@vp-parts-shop/shared';
 import { TecDocMockClient } from './tecdoc-mock-client';
+import type { CrossReferenceCandidate } from './cross-reference-mapper';
 import { TecDocSearchType } from '../search/search-types';
 
 // The fixture's own node ids. They are written out in the mock rather than
@@ -10,7 +11,14 @@ import { TecDocSearchType } from '../search/search-types';
 const FILTERS_ROOT = 100;
 const OIL_FILTER_LEAF = 100100;
 const BRAKE_PAD_LEAF = 200200;
+const OIL_FILTER_TYPE = 7;
 const OIL_FILTER_HOUSING = 9;
+
+// Two suppliers of the same fixture number — the collision pair.
+const BOSCH = 30;
+const MANN = 72;
+const KNECHT = 94;
+const MOCK_BRAND = 99001;
 
 describe('TecDocMockClient', () => {
   let mock: TecDocMockClient;
@@ -427,11 +435,6 @@ describe('TecDocMockClient', () => {
   });
 
   describe('linked vehicles', () => {
-    const MANN = 72;
-    const KNECHT = 94;
-    const BOSCH = 30;
-    const MOCK_BRAND = 99001;
-
     /**
      * Walks an article to its makes exactly as ArticlesService does, so every
      * assertion below also proves the chain between article number, legacy id
@@ -559,42 +562,137 @@ describe('TecDocMockClient', () => {
   describe('getArticleDetails', () => {
     it('answers with the specs of the brand that was asked for', async () => {
       const [knecht, bosch] = await Promise.all([
-        mock.getArticleDetails(94, 'OX 982D'),
-        mock.getArticleDetails(30, 'OX 982D'),
+        mock.getArticleDetails(KNECHT, 'OX 982D'),
+        mock.getArticleDetails(BOSCH, 'OX 982D'),
       ]);
 
-      expect(knecht.brandName).toBe('KNECHT');
-      expect(bosch.brandName).toBe('Bosch');
-      expect(knecht.technicalSpecs).not.toEqual(bosch.technicalSpecs);
+      expect(knecht.detail.brandName).toBe('KNECHT');
+      expect(bosch.detail.brandName).toBe('Bosch');
+      expect(knecht.detail.technicalSpecs).not.toEqual(
+        bosch.detail.technicalSpecs,
+      );
+    });
+
+    // The cross-reference searches are narrowed by it, so a fixture the drill
+    // never reaches would otherwise have no substitutes at all.
+    it('carries the product type as the generic article beside the detail', async () => {
+      const { genericArticleIds } = await mock.getArticleDetails(
+        KNECHT,
+        'OX 982D',
+      );
+
+      expect(genericArticleIds).toEqual([OIL_FILTER_TYPE]);
     });
   });
 
-  describe('getComparableArticles', () => {
-    // Cross-references are mutual in TecDoc, so a part listed as another's
-    // comparable must list that other part back — otherwise the
-    // alternative-numbers section of one row contradicts the other's.
-    it('cross-references the oil filters both ways', async () => {
-      const [forKnecht, forMann] = await Promise.all([
-        mock.getComparableArticles('OX 982D'),
-        mock.getComparableArticles('OF-OC115'),
-      ]);
+  describe('getCrossReferenceCandidates', () => {
+    const numbersOf = (candidates: CrossReferenceCandidate[]) =>
+      candidates.map((candidate) => candidate.articleNumber);
 
-      expect(forKnecht.map((part) => part.articleNumber)).toContain('OF-OC115');
-      expect(forMann.map((part) => part.articleNumber)).toContain('OX 982D');
+    // Every brand replacing the same original comes back, which is what makes
+    // the result a substitutes list rather than a single part.
+    it('returns the parts replacing the same original', async () => {
+      const candidates = await mock.getCrossReferenceCandidates(
+        'OF-OC115',
+        OIL_FILTER_TYPE,
+      );
+
+      expect(numbersOf(candidates)).toEqual(
+        expect.arrayContaining(['OF-OC115', 'OF-WL7090']),
+      );
     });
 
     // The alternative-numbers section groups the chips per brand, which a
     // single-brand fixture would leave unexercised in dev.
     it('spans several brands so the grouped section has something to group', async () => {
-      const comparable = await mock.getComparableArticles('OX 982D');
+      const candidates = await mock.getCrossReferenceCandidates(
+        'OF-OC115',
+        OIL_FILTER_TYPE,
+      );
 
-      const brands = new Set(comparable.map((part) => part.brandName));
+      const brands = new Set(
+        candidates.map((candidate) => candidate.brandName),
+      );
 
       expect(brands.size).toBeGreaterThan(1);
     });
 
-    it('returns no comparables for an article with no cross-references', async () => {
-      expect(await mock.getComparableArticles('BP-0986494061')).toEqual([]);
+    /**
+     * The service drops every candidate that does not cite the viewed part, so a
+     * mock row carrying no citation would never reach a page. Both brands filing
+     * the searched number are named, because the search itself is brand-blind —
+     * exactly as TecDoc's is.
+     */
+    it('cites the brands that filed the searched number', async () => {
+      const candidates = await mock.getCrossReferenceCandidates(
+        'OX 982D',
+        OIL_FILTER_TYPE,
+      );
+
+      const cited = new Set(
+        candidates.flatMap((candidate) =>
+          candidate.citedNumbers.map((number) => number.brandId),
+        ),
+      );
+
+      expect(cited).toEqual(new Set([String(KNECHT), String(BOSCH)]));
+    });
+
+    // Equivalence is mutual because it is derived from a shared original rather
+    // than declared per part, so neither side can list the other without being
+    // listed back.
+    it('returns the sharers of an original together', async () => {
+      const candidates = await mock.getCrossReferenceCandidates(
+        'OX 982D',
+        OIL_FILTER_TYPE,
+      );
+
+      expect(numbersOf(candidates)).toEqual(
+        expect.arrayContaining(['OX 982D', 'HU 6013 z']),
+      );
+    });
+
+    // The housing shares no original with the filter, and a part of a different
+    // type is not a replacement for it however its numbers read.
+    it('keeps to the searched part’s own type', async () => {
+      const candidates = await mock.getCrossReferenceCandidates(
+        'OF-OC115',
+        OIL_FILTER_HOUSING,
+      );
+
+      expect(candidates).toEqual([]);
+    });
+
+    it('returns nothing for a number no fixture files', async () => {
+      expect(
+        await mock.getCrossReferenceCandidates('NO-SUCH-PART', OIL_FILTER_TYPE),
+      ).toEqual([]);
+    });
+  });
+
+  /**
+   * The inverse of the minted `legacyArticleId`s: a candidate is turned back into
+   * a row by the id it carries, which is the only way a substitute reaches a
+   * page.
+   */
+  describe('getArticleRowsByLegacyIds', () => {
+    it('hydrates a candidate back into the row it came from', async () => {
+      const [candidate] = await mock.getCrossReferenceCandidates(
+        'OX 982D',
+        OIL_FILTER_TYPE,
+      );
+
+      const rows = await mock.getArticleRowsByLegacyIds(
+        candidate.legacyArticleIds,
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].articleNumber).toBe(candidate.articleNumber);
+      expect(rows[0].brandId).toBe(candidate.brandId);
+    });
+
+    it('answers only for the ids it knows', async () => {
+      expect(await mock.getArticleRowsByLegacyIds([404_404])).toEqual([]);
     });
   });
 });

@@ -24,12 +24,13 @@ export interface OemNumberDto {
 }
 
 /**
- * A number another parts brand sells the same article under — a cross-reference
- * into a competitor's range, as opposed to an {@link OemNumberDto}, which is a
- * vehicle manufacturer's own number.
+ * A number another parts brand sells the equivalent article under — a
+ * cross-reference into a competitor's range, as opposed to an
+ * {@link OemNumberDto}, which is a vehicle manufacturer's own number.
  *
- * Unlike OE numbers these do not ride along on the catalog response: TecDoc
- * resolves them through a comparable-number search, so they are read on demand.
+ * Unlike OE numbers these do not ride along on the catalog response: they are
+ * the numbers of the parts found by searching the article's OE numbers, so they
+ * are read on demand.
  */
 export interface AlternativeNumberDto {
   articleNumber: string;

@@ -79,10 +79,14 @@ export function ArticleRowDetail({
             <TechnicalSpecTable technicalSpecs={technicalSpecs} />
           )}
           {openSection === "substitutes" && (
-            <ArticleRowSubstitutes articleNumber={articleNumber} />
+            <ArticleRowSubstitutes
+              brandId={brandId}
+              articleNumber={articleNumber}
+            />
           )}
           {openSection === "numbers" && (
             <ArticleRowNumbers
+              brandId={brandId}
               articleNumber={articleNumber}
               oemNumbers={oemNumbers}
             />
