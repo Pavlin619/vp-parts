@@ -265,6 +265,8 @@ For a given `tecdoc_number`:
 
 Delivery bands are an **internal** numeric speed rank (`DeliveryOutcome.rank` in `delivery.ts`): own stock is fixed to rank 0, and each supplier `DeliveryRule` maps to a rank (within-hour → same-day → next-day → 2 days → 3 days), resolved from a warehouse→rule map per supplier with an 11:00 `Europe/Sofia` same-day cut-off. This rank orders offers to pick the fastest one for the price; it is **not** exposed over HTTP. The price shown to **all** customers is this single locked sell price — mechanic trade pricing is a separate per-mechanic discount applied later, not part of the inventory layer.
 
+Do not confuse that rank with the **customer-facing** band, `deliveryBand` in `packages/shared/src/delivery.ts`. It is derived from a `WarehouseAvailabilityDto` we have already served, so any consumer of the availability contract can compute it: the web colours the availability dot from it (green for the central warehouse or a within-the-hour promise, blue for the rest of today, then yellow/orange), and the API orders cross-references by it. It lives in the shared package so those two never disagree — `deliveryWorkDays` cannot tell our own shelf from a supplier's same-day-before-cut-off promise, since both file nought days.
+
 There is **one** availability read behind every surface —
 `inventory.getAvailability([tecdocNumber, ...])` — with a single, fixed error
 policy: it **always fails closed**. It toggles only the DB query by input size (a
@@ -285,13 +287,20 @@ Each surface shows a scoped "try again" state rather than a silently wrong
 metadata payloads never store the error.
 ```
 
+One caller catches it, and only one: the cross-reference list orders its
+candidates by our own stock before paging them, and an outage there has to cost
+the list its *order*, not its existence — it degrades to catalogue order and logs
+a warning. The rows' own prices still come from the fail-closed read above, so no
+buy box renders a guess because of it.
+
 All three list surfaces — catalog grid, search, and substitutes — render the
 same row from cached TecDoc **metadata** hydrated with a **separate, live**
 availability read, mirroring the article detail page's cached-metadata /
 live-availability split. The metadata comes from a catalog response that carries
 no inventory (`GET /catalog/.../articles` → `PaginatedCatalogArticlesDto`,
-`GET /search` → `SearchResultItemDto[]`, `GET /catalog/articles/:n/substitutes` →
-`ArticleCatalogListItemDto[]`); the price/availability is fetched live via
+`GET /search` → `SearchResultItemDto[]`,
+`GET /catalog/brands/:brandId/articles/:n/substitutes` →
+`PaginatedCatalogArticlesDto`, one page per "show more"); the price/availability is fetched live via
 `GET /catalog/articles-availability` (`no-store`, backed by
 `CatalogService.getArticlesAvailability`) and merged on the frontend. Keeping
 inventory out of the search/list path means a cached list never serves a stale
@@ -424,6 +433,8 @@ No Postgres TecDoc tables at launch. Redis handles all TecDoc caching.
 | Vehicle types / engine variants | 7 days | Same |
 | Assembly group tree | 7 days | Same |
 | Article detail | 24h | |
+| Cross-reference candidate set | 24h / 1h empty | The parts replacing one part, per `(brandId, articleNumber)`. Serves the substitutes and alternative-numbers surfaces both. |
+| Hydrated cross-reference row | 24h | Per row, never per page — the list's *order* is decided per request from live stock. |
 | Part number search results | 1h / 5m empty | Paginated entries are evicted by LFU when cold. |
 | Autocomplete suggestions | 15m / 5m empty | Short negative caching avoids pinning typo prefixes. |
 | Price + availability (direct DB read) | none | Read live from `public.autoparts` + `supplier_stock` through the separate `no-store` availability endpoint. |
@@ -438,6 +449,7 @@ while evicting cold query/filter/page combinations.
 **Future:** Add circuit breaker for TecDoc incidents — return stale Redis value rather than failing the request. Add Postgres `tecdoc_cache` schema when Redis memory pressure becomes measurable.
 
 - **Part number search:** Strip known brand tokens (WIX, BOSCH, MANN…), normalize, call `getArticles` with `searchType: 10` and `searchMatchType: prefix_or_suffix`.
+- **Cross-references (substitutes, alternative numbers):** one cheap `searchType: 3` call for the whole candidate set, ordered by our own availability, then a rendered-row read per page — see [`docs/CROSS-REFERENCES.md`](./CROSS-REFERENCES.md) for the design, the live measurements behind it and the alternatives rejected.
 - **VIN/plate lookup:** Requires additional TecDoc license — post-launch.
 - **Legal:** "TecAlliance TecDoc Inside" signet required on shop homepage.
 

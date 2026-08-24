@@ -87,10 +87,16 @@ export function collectLinkedTargetIds(
  * has not catalogued rather than sending a null, and dereferencing a missing
  * key directly turns an ordinary sparse row into a 500. `motorCodes` arrives
  * only when the request asks for it.
+ *
+ * It nests its rows under `array` rather than being one: the XSD types it
+ * `motorCodesByCarIdRecordSeq`, and every `…Seq` is a wrapper holding a
+ * repeated `array` element — the same shape as `data.array` above, and as the
+ * `carIds` the request sends. `getArticles` and `getLinkageTargets` return bare
+ * arrays instead, so the convention is per function, not per service.
  */
 export interface TecDocVehicleRecord {
   carId: number;
-  motorCodes?: Array<{ motorCode?: string }>;
+  motorCodes?: { array?: Array<{ motorCode?: string }> };
   vehicleDetails?: {
     manuId?: number;
     manuName?: string;
@@ -132,7 +138,7 @@ export function mapLinkedVehicle(
       powerKw: details.powerKwFrom ?? null,
       powerHp: details.powerHpFrom ?? null,
       fuelType: details.fuelType ?? null,
-      engineCodes: (record.motorCodes ?? [])
+      engineCodes: (record.motorCodes?.array ?? [])
         .map((entry) => entry.motorCode)
         .filter((code): code is string => Boolean(code)),
     },

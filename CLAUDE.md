@@ -94,11 +94,10 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
 ```
 
-**Request shape:** The function name is the top-level JSON key, and every call includes `provider` (the ProviderId assigned by TecAlliance during onboarding):
+**Request shape:** The function name is the top-level JSON key:
 ```json
 {
   "getFunctionName": {
-    "provider": PROVIDER_ID,
     "lang": "bg",
     "linkageTargetCountry": "BG",
     ...other params
@@ -108,7 +107,9 @@ POST {TECDOC_BASE_URL}/services/TecdocToCatDLB.jsonEndpoint
 
 **Authentication:** `X-Api-Key: YOUR_KEY` HTTP header (correct as implemented).
 
-**Required env vars:** `TECDOC_BASE_URL`, `TECDOC_API_KEY`, `TECDOC_PROVIDER_ID`.
+**Required env vars:** `TECDOC_BASE_URL`, `TECDOC_API_KEY`.
+
+**`provider` is optional, and a wrong one is worse than none.** The XSD marks `provider` ("Your assigned TecDoc Provider Id") required on every request type, but the live service does not enforce it: entitlement is resolved from `X-Api-Key`. Verified against the live endpoint with our key — a call omitting `provider` is answered in full, and one carrying a ProviderId that is not ours is refused `{"status":401,"statusText":"Access not allowed"}` regardless of how valid the key is. This is why `TECDOC_PROVIDER_ID` is optional in the Joi schema and omitted from the body when unset; never fill it with a placeholder to get past a validation error. `[VERIFY-TC]` Whether a real ProviderId scopes the assortment is unverified — we have never held one.
 
 **Key functions used in this project:**
 
@@ -145,16 +146,40 @@ Rules when adding anything article-scoped:
 
 - **Resolving one specific part** — send `dataSupplierIds: [brandId]` plus `searchMatchType: 'exact'`, and route it through `ArticlesTecDoc.articleLookupPayload`. The public route is `/catalog/brands/:brandId/articles/:articleNumber`.
 - **Cache keys, query keys and React list keys** carry both halves. A number-only key serves one brand's part to everyone asking for the other.
-- **Cross-reference (comparable-number) reads are the exception** and stay keyed on the number alone. `searchType: 3` searches *by* number and `dataSupplierIds` filters the *results*, so sending a brand narrows a cross-reference list to the one brand you already have. Dedupe those results on each row's own `(dataSupplierId, articleNumber)`.
 - **Every link to a part** goes through `articleDetailHref(brandId, articleNumber)` in `apps/web/src/lib/catalog/article-href.ts`.
+- **There is no exception, substitutes included.** Which parts replace a part is a property of that part, not of its number, so two suppliers filing one number have different replacements — see the next section.
 
 The same ambiguity exists in inventory (`public.autoparts` and `public.supplier_stock` are keyed by `tecdoc_number` alone) but those tables belong to the Spring Boot backoffice — see the TODO on `InventoryService.getAvailability`.
+
+#### Cross-references: candidates first, detail per page
+
+**Which parts replace a part is read from the cross-reference index, in two phases: a cheap search for the whole candidate set, then a rendered-row read for the page a visitor reached.** `docs/CROSS-REFERENCES.md` is the design document — it carries the live measurements every number below comes from, and the alternatives that were rejected. The code is one package, `catalog/articles/cross-references/`, reached through its barrel: `cross-references.tecdoc.ts` (the search and the hydration read) and `candidate-set.ts` (the pure filtering, ordering and paging).
+
+**Phase 1 — the candidate set.** One `getArticles` with `searchType: 3` (Comparable Number) on the part's *own* number, narrowed by `genericArticleIds` to the type of part it is, asking only for `includeGenericArticles`, `includeComparableNumbers` and `includeMisc`. A candidate costs under a kilobyte, so the complete set arrives in one call at `perPage: 1000` — TecDoc's own maximum, against a measured median of 99 and a widest of 354 (341 KB) over 418 parts — and is cached whole. There is no paging loop, deliberately: a second page could only carry a set wider than the ceiling, so `readCandidates` warns on a truncated set instead of paging for a case three times wider than any in the data.
+
+**Phase 2 — the rendered page.** The `legacyArticleId` each candidate carries feeds back into `getArticles` for the images, criteria and OE numbers a row shows — 25 rows cost 611 KB, which is why only the page a visitor reached is paid for. Never `includeAll` here: `pdfs`, `links`, `linkages`, `partsList`, `accessoryList`, `gtins` and `prices` all ride along in it and none is rendered.
+
+A bare comparable-number search *is* unusable, and two things in the same response fix it — neither of which an earlier attempt used:
+
+- **`genericArticleIds` narrows to the part's own type**, server-side. A.B.S. `16100`: 269 candidates down to 58 brake discs.
+- **Each row reports whose number it matched**, in `comparableNumbers[].dataSupplierId` — the same id space as our `brandId`. `keepCandidatesCiting` keeps only the rows citing *this* brand's number, which is what turns a loose number match into equivalence. Do **not** use `searchQueryMatches` for this: it names the brand by `mfrId`, an unrelated id space (see the warning in `article-mapper.ts`).
+
+What follows:
+
+- **Both halves of the identity travel.** The routes are `/catalog/brands/:brandId/articles/:articleNumber/substitutes` and `.../alternative-numbers`; the cache keys (`tecdoc:crossrefs:…`, `tecdoc:article-row:…`), the TanStack query key and the React list keys all carry brand *and* number.
+- **An empty list is a legitimate answer.** A part TecDoc files no generic article for is not searched at all, and a candidate set the provenance filter empties stays empty — a wrong substitute is a part a mechanic fits to the wrong car.
+- **The whole set is ordered by what we can ship**, then paged: in stock first, then fastest delivery band and lowest price, then supply status, and finally `(brandName, articleNumber)` so paging is deterministic. This is why the set is read whole — a sort on stock is only meaningful if it sees every candidate. `InventoryService.getAvailability` fails closed everywhere else; the ordering step is the one caller that catches it, because a stock-database outage must cost the list its *order*, not its existence.
+- **The delivery rank is the band, never `deliveryWorkDays`.** `CENTRAL` and `REGIONAL_1` both file nought working days — our own shelf, and a supplier that ships today if the order beats its cut-off — so on days alone they tie, price decides, and the list interleaves green-badge rows with blue ones. `deliveryBand` in `packages/shared/src/delivery.ts` is the one definition of that band: the web colours the availability dot from it and the API sorts by it, so anything ranking or badging delivery speed reads it from there rather than re-deriving it.
+- **One search is the whole answer — there is no second source and no top-up.** A thin list is served thin: how many suppliers cite a brand is a property of TecDoc's data. An OE-number fallback shipped first and was removed, because "which parts fit the same original" is a different relation from "which parts replace this part", and mixing it in below a threshold meant two visitors could see rows selected by different rules. Do not add a second source here without deciding what the list *means*.
+- **The substitutes route is paginated and the alternative-numbers route is uncapped.** `total` counts the whole set, so the section offers every alternative; the chips need only a number and a brand, which the candidate already carries, so that surface pays for no hydration at all.
+- **TecDoc normalises punctuation and spacing on both sides of a number match**, so `895 615 301`, `895615301` and `895-615-301` are one number and one search.
+- **Drop the viewed part, on `(dataSupplierId, articleNumber)` and never on the number alone.** The search answers with the part it was given among the rest (60 of 236 sets measured), and matching on the number alone would also drop the *other* supplier's part filed under it — which is a genuine replacement, as the KNECHT/MAHLE `KC 69` pair shows. Nothing else is dropped: there is no dedupe, because no candidate set repeats a pair (0 in 542 sets / 30,830 rows) while 495 of those sets legitimately have one supplier contributing several rows under different numbers.
 
 #### Paging and sorting `getArticles`
 
 Settled from the two sources above, so none of it needs the Test Client.
 
-- **`perPage` defaults to 10** and the schema sets no ceiling; the guide's own examples use 100. We send 20 from `/search` and from the category listing.
+- **`perPage` defaults to 10 and tops out at 1000.** The schema sets no ceiling and the guide's own examples use 100, but the live service enforces one and names it: `perPage: 2000` is refused `400` with `Field 'perPage' must be > 0 and <= 1000`. We send 20 from `/search` and from the category listing, and 1000 for the cross-reference candidate read. `perPage` is a cap, not a fetch size — a request costs the rows that exist, so raising it does not cost anything on a narrow result.
 - **`page` reaches only the first ~10,000 results** — "exact limit subject to change". The schema offers no cursor, scroll or offset alternative, so this is a hard ceiling on any pager, not a tuning knob.
 - **`maxAllowedPage` in the response is the real bound.** It is derived from the match count *and* `perPage`, so raising `perPage` lowers it. Never size a pager on `ceil(total / perPage)`: a broad query reports millions of matches and still refuses page 501. `SearchTecDoc.resolveMaxPage` is the one place that decides this.
 - **`perPage: 0` returns counts and facets with no article rows** — guide §8.3 step 1 answers it with 6,943,670 matches and `articles: []`. That is the documented shape of a count-only or facet-only call.

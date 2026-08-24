@@ -8,8 +8,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.tecalliance.net" },
       { protocol: "https", hostname: "**.tecdoc.net" },
       { protocol: "https", hostname: "**.tecalliance.services" },
-      // Placeholder brand logos served by the TecDoc mock (removed once the
-      // real getBrands integration is enabled).
+      // Placeholder brand logos, reachable only under TECDOC_MOCK=true. Real
+      // getBrands logos are on digital-assets.tecalliance.services, covered
+      // above; this goes when TecDocMockClient does.
       { protocol: "https", hostname: "placehold.co" }
     ],
   },

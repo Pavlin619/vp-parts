@@ -8,6 +8,7 @@ import { InventoryService } from '../../inventory';
 import { CatalogUnavailableException } from '../../tecdoc';
 import { BrandsService } from '../brands';
 import { ArticleNotFoundException } from './article-not-found.exception';
+import { ArticleReadCache } from './article-read';
 import { ArticlesTecDoc } from './articles.tecdoc';
 import { ArticlesService } from './articles.service';
 import { LinkedVehiclesService } from './linked-vehicles';
@@ -45,30 +46,19 @@ function catalogPage(items: ArticleSummaryDto[]) {
 }
 
 describe('ArticlesService', () => {
-  let tecdoc: {
-    getArticles: jest.Mock;
-    getArticleDetails: jest.Mock;
-    getComparableArticles: jest.Mock;
-  };
-  let cache: { cached: jest.Mock; cachedArray: jest.Mock };
+  let tecdoc: { getArticles: jest.Mock };
+  let cache: { cached: jest.Mock };
   let brands: { attachLogos: jest.Mock };
   let inventory: { getAvailability: jest.Mock };
   let linkedVehicles: { rememberLinkageRoles: jest.Mock };
+  let articleRead: { read: jest.Mock };
   let service: ArticlesService;
 
   beforeEach(() => {
-    tecdoc = {
-      getArticles: jest.fn(),
-      getArticleDetails: jest.fn(),
-      getComparableArticles: jest.fn(),
-    };
+    tecdoc = { getArticles: jest.fn() };
     cache = {
       cached: jest.fn((_key: string, _ttl: number, loader: () => unknown) =>
         loader(),
-      ),
-      cachedArray: jest.fn(
-        (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
-          loader(),
       ),
     };
     // attachLogos is an identity passthrough here; the join itself is covered
@@ -76,10 +66,11 @@ describe('ArticlesService', () => {
     brands = {
       attachLogos: jest.fn((items: unknown) => Promise.resolve(items)),
     };
-    inventory = { getAvailability: jest.fn() };
+    inventory = { getAvailability: jest.fn().mockResolvedValue(new Map()) };
     linkedVehicles = {
       rememberLinkageRoles: jest.fn().mockResolvedValue(undefined),
     };
+    articleRead = { read: jest.fn() };
 
     service = new ArticlesService(
       tecdoc as unknown as ArticlesTecDoc,
@@ -87,8 +78,17 @@ describe('ArticlesService', () => {
       brands as unknown as BrandsService,
       inventory as unknown as InventoryService,
       linkedVehicles as unknown as LinkedVehiclesService,
+      articleRead as unknown as ArticleReadCache,
     );
   });
+
+  /** The cached article read the detail page is assembled from. */
+  function givenArticle(articleNumber: string): void {
+    articleRead.read.mockResolvedValue({
+      detail: { ...item(articleNumber), images: [] },
+      genericArticleIds: [82],
+    });
+  }
 
   describe('listArticleMetadata', () => {
     it('caches by vehicle/category/page/size for 24h and joins brand logos', async () => {
@@ -138,68 +138,20 @@ describe('ArticlesService', () => {
   });
 
   describe('getArticleDetail', () => {
-    it('caches with the brand key and joins the logo', async () => {
-      tecdoc.getArticleDetails.mockResolvedValueOnce({
-        ...item('A1'),
-        images: [],
-      });
+    // The read itself, and how it is keyed, belong to ArticleReadCache; what this
+    // service adds on top is the brand-logo join.
+    it('joins the brand logo onto the cached read', async () => {
+      givenArticle('A1');
 
-      await service.getArticleDetail(BOSCH, 'A1', 10001);
+      const detail = await service.getArticleDetail(BOSCH, 'A1', 10001);
 
-      expect(cache.cached).toHaveBeenCalledWith(
-        'tecdoc:article-detail:30:A1',
-        24 * 60 * 60,
-        expect.any(Function),
-      );
+      expect(articleRead.read).toHaveBeenCalledWith(BOSCH, 'A1', 10001);
       expect(brands.attachLogos).toHaveBeenCalled();
-    });
-
-    // Nothing in the payload varies by vehicle while fitsVehicle is unresolved,
-    // so keying on it stored one identical copy per vehicle a visitor arrived
-    // from.
-    it('serves one entry regardless of the vehicle the visitor arrived from', async () => {
-      tecdoc.getArticleDetails.mockResolvedValue({
-        ...item('A1'),
-        images: [],
-      });
-
-      await service.getArticleDetail(BOSCH, 'A1', 10001);
-      await service.getArticleDetail(BOSCH, 'A1', 20002);
-      await service.getArticleDetail(BOSCH, 'A1');
-
-      const keys = cache.cached.mock.calls.map(([key]) => key);
-      expect(new Set(keys)).toEqual(new Set(['tecdoc:article-detail:30:A1']));
-    });
-
-    // Two suppliers filing one number are two parts, and a key that omits the
-    // brand serves the first one cached to everyone asking for the second.
-    it('keys two brands sharing a number separately', async () => {
-      tecdoc.getArticleDetails.mockResolvedValue({
-        ...item('OX 982D'),
-        images: [],
-      });
-
-      await service.getArticleDetail(BOSCH, 'OX 982D');
-      await service.getArticleDetail(94, 'OX 982D');
-
-      expect(cache.cached).toHaveBeenNthCalledWith(
-        1,
-        'tecdoc:article-detail:30:OX 982D',
-        expect.any(Number),
-        expect.any(Function),
-      );
-      expect(cache.cached).toHaveBeenNthCalledWith(
-        2,
-        'tecdoc:article-detail:94:OX 982D',
-        expect.any(Number),
-        expect.any(Function),
-      );
+      expect(detail.articleNumber).toBe('A1');
     });
 
     it('surfaces a TecDoc miss as a 404', async () => {
-      tecdoc.getArticleDetails.mockRejectedValueOnce(
-        new ArticleNotFoundException(),
-      );
+      articleRead.read.mockRejectedValueOnce(new ArticleNotFoundException());
 
       await expect(
         service.getArticleDetail(BOSCH, 'missing'),
@@ -207,9 +159,7 @@ describe('ArticlesService', () => {
     });
 
     it('keeps a failed catalogue read out of the 404 path', async () => {
-      tecdoc.getArticleDetails.mockRejectedValueOnce(
-        new CatalogUnavailableException(),
-      );
+      articleRead.read.mockRejectedValueOnce(new CatalogUnavailableException());
 
       // A TecDoc outage used to be reported as "article not found", telling the
       // customer a part we do sell does not exist — and inviting the client to
@@ -217,84 +167,6 @@ describe('ArticlesService', () => {
       await expect(
         service.getArticleDetail(BOSCH, 'A1'),
       ).rejects.toBeInstanceOf(CatalogUnavailableException);
-    });
-  });
-
-  describe('getSubstitutes', () => {
-    it('caches (24h hit / 1h miss), joins logos and caps at the limit', async () => {
-      const many = Array.from({ length: 25 }, (_, i) => item(`S${i}`));
-      tecdoc.getComparableArticles.mockResolvedValueOnce(many);
-
-      const result = await service.getSubstitutes('SRC');
-
-      expect(cache.cachedArray).toHaveBeenCalledWith(
-        'tecdoc:substitutes:SRC',
-        24 * 60 * 60,
-        60 * 60,
-        expect.any(Function),
-      );
-      expect(result).toHaveLength(20);
-    });
-
-    // A comparable-number search matches the searched number itself, and a part
-    // is not its own substitute — whichever brand filed it.
-    it('drops the searched part from its own comparable list', async () => {
-      tecdoc.getComparableArticles.mockResolvedValueOnce([
-        item('SRC'),
-        item('SRC', { brandId: '72', brandName: 'MANN-FILTER' }),
-        item('A1'),
-      ]);
-
-      const result = await service.getSubstitutes('SRC');
-
-      expect(result.map((part) => part.articleNumber)).toEqual(['A1']);
-    });
-  });
-
-  describe('getAlternativeNumbers', () => {
-    it('projects the comparable parts down to number and brand', async () => {
-      tecdoc.getComparableArticles.mockResolvedValueOnce([
-        item('OF-OC115', { brandName: 'MANN-FILTER' }),
-        item('OF-WL7090', { brandName: 'WIX Filters' }),
-      ]);
-
-      expect(await service.getAlternativeNumbers('OX 982D')).toEqual([
-        { articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' },
-        { articleNumber: 'OF-WL7090', brandName: 'WIX Filters' },
-      ]);
-    });
-
-    // Both surfaces read the same TecDoc comparable-number set, so opening one
-    // warms the other instead of paying for a second lookup.
-    it('shares the substitutes cache entry', async () => {
-      tecdoc.getComparableArticles.mockResolvedValueOnce([]);
-
-      await service.getAlternativeNumbers('SRC');
-
-      expect(cache.cachedArray).toHaveBeenCalledWith(
-        'tecdoc:substitutes:SRC',
-        24 * 60 * 60,
-        60 * 60,
-        expect.any(Function),
-      );
-    });
-
-    it('caps at the substitutes limit', async () => {
-      tecdoc.getComparableArticles.mockResolvedValueOnce(
-        Array.from({ length: 25 }, (_, index) => item(`S${index}`)),
-      );
-
-      expect(await service.getAlternativeNumbers('SRC')).toHaveLength(20);
-    });
-
-    // The chips render the brand as text, so the logo join would be a round trip
-    // spent on a field nothing in the response carries.
-    it('skips the brand-logo join', async () => {
-      tecdoc.getComparableArticles.mockResolvedValueOnce([item('OF-OC115')]);
-
-      await service.getAlternativeNumbers('SRC');
-
-      expect(brands.attachLogos).not.toHaveBeenCalled();
     });
   });
 

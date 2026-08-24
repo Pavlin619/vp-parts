@@ -18,6 +18,19 @@ const validConfig = {
   TECDOC_PROVIDER_ID: '12345',
 };
 
+/** `undefined` drops the key rather than setting it, as an absent env var does. */
+function configWithProvider(providerId?: string): Record<string, string> {
+  const values = { ...validConfig };
+
+  if (providerId === undefined) {
+    delete (values as Partial<typeof validConfig>).TECDOC_PROVIDER_ID;
+  } else {
+    values.TECDOC_PROVIDER_ID = providerId;
+  }
+
+  return values;
+}
+
 describe('TecDocTransport', () => {
   let transport: TecDocTransport;
   let fetchMock: jest.Mock;
@@ -67,24 +80,34 @@ describe('TecDocTransport', () => {
       });
     });
 
-    // Without this guard the provider is serialised as `provider: null` and every
-    // call comes back "Access not allowed" — a config bug wearing an auth error's
-    // clothes.
+    // The live service reads entitlement from the API key and answers a call
+    // with no `provider` in full, so an unconfigured one is left out entirely.
+    // Sending `provider: null` instead earns "Access not allowed" on every call.
     it.each([
-      ['missing', undefined],
+      ['unset', undefined],
+      ['empty', ''],
+    ])('omits the provider when it is %s', async (_label, providerId) => {
+      respondWith({ status: 200 });
+
+      await new TecDocTransport(
+        configWith(configWithProvider(providerId)),
+      ).call('getBrands', { lang: 'bg' });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        getBrands: { lang: 'bg' },
+      });
+    });
+
+    // A value that was meant to be a ProviderId and is malformed must not read
+    // as "send none" and quietly work: nothing would then report the typo.
+    it.each([
       ['non-numeric', 'TODO'],
       ['zero', '0'],
+      ['negative', '-1'],
     ])('refuses to construct with a %s provider id', (_label, providerId) => {
-      const values: Record<string, string> = { ...validConfig };
-      if (providerId === undefined) {
-        delete values.TECDOC_PROVIDER_ID;
-      } else {
-        values.TECDOC_PROVIDER_ID = providerId;
-      }
-
-      expect(() => new TecDocTransport(configWith(values))).toThrow(
-        /TECDOC_PROVIDER_ID/,
-      );
+      expect(
+        () => new TecDocTransport(configWith(configWithProvider(providerId))),
+      ).toThrow(/TECDOC_PROVIDER_ID/);
     });
   });
 

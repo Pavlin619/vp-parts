@@ -22,9 +22,15 @@ import {
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import type {
+  ArticleDetailRead,
   ArticleLinkageRoles,
   CatalogArticlesPage,
 } from './article-mapper';
+import { ArticleStatus } from './cross-reference-mapper';
+import type {
+  CrossReferenceCandidate,
+  CrossReferenceCitation,
+} from './cross-reference-mapper';
 import type { LinkedVehicleWithSeries } from './linked-vehicle';
 import {
   SearchExecution,
@@ -187,6 +193,15 @@ function articleKeyForBrandName(
   articleNumber: string,
 ): string {
   return articleKey(brandIdFor(brandName), articleNumber);
+}
+
+/**
+ * A part number reduced to what TecDoc matches on: real TecDoc ignores spacing,
+ * hyphens and dots on both sides of a number comparison, so `06J 115 403 Q` and
+ * `06J115403Q` are the same number to it and must be here too.
+ */
+function numberKey(articleNumber: string): string {
+  return articleNumber.replace(/[-.\s]/g, '').toUpperCase();
 }
 
 const MANUFACTURERS: ManufacturerDto[] = [
@@ -617,74 +632,30 @@ function taxonomyOf(item: ArticleSummaryDto): MockTaxonomy | undefined {
   return TAXONOMY_BY_ARTICLE.get(articleKey(item.brandId, item.articleNumber));
 }
 
-// Comparable (cross-reference) parts keyed by the article being viewed — the
-// mock stand-in for TecDoc getArticles searchType 3. Backs two surfaces: the
-// "Заменки" tab, which lists them as parts, and the alternative-numbers section
-// of a catalog row, which lists their numbers. Cross-references are mutual, so
-// the oil filters point at each other; two brands per entry keep the section's
-// per-brand grouping exercised in dev, and an article absent here has none.
-const SUBSTITUTES_BY_ARTICLE: Record<string, MockArticleBase[]> = {
-  'OX 982D': [
-    {
-      articleNumber: 'OF-OC115',
-      brandName: 'MANN-FILTER',
-      description: 'Oil Filter',
-      thumbnailUrl:
-        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    },
-    {
-      articleNumber: 'OF-WL7090',
-      brandName: 'WIX Filters',
-      description: 'Oil Filter',
-      thumbnailUrl: null,
-    },
-    {
-      articleNumber: 'OF-HU816X',
-      brandName: 'MANN-FILTER',
-      description: 'Oil Filter',
-      thumbnailUrl:
-        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    },
-  ],
-  'OF-OC115': [
-    {
-      articleNumber: 'OX 982D',
-      brandName: 'KNECHT',
-      description: 'Oil Filter',
-      thumbnailUrl:
-        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    },
-    {
-      articleNumber: 'OF-WL7090',
-      brandName: 'WIX Filters',
-      description: 'Oil Filter',
-      thumbnailUrl: null,
-    },
-  ],
-  'OF-WL7090': [
-    {
-      articleNumber: 'OX 982D',
-      brandName: 'KNECHT',
-      description: 'Oil Filter',
-      thumbnailUrl:
-        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    },
-    {
-      articleNumber: 'OF-OC115',
-      brandName: 'MANN-FILTER',
-      description: 'Oil Filter',
-      thumbnailUrl:
-        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    },
-    {
-      articleNumber: 'OF-HU816X',
-      brandName: 'MANN-FILTER',
-      description: 'Oil Filter',
-      thumbnailUrl:
-        'https://digitalassets.tecalliance.services/images/800/mock-oil-filter.jpg',
-    },
-  ],
-};
+/**
+ * The product type each description stands for, learned from the catalogue
+ * entries that carry both. The mock's stand-in for a generic article is the
+ * product type, and a few fixtures exist only as details — a substitute nothing
+ * browses to — so those are typed by what they are called rather than by where
+ * they sit. Learned rather than written out so the two can never disagree.
+ */
+const PRODUCT_TYPE_ID_BY_DESCRIPTION = new Map(
+  Object.values(ARTICLES_BY_CATEGORY)
+    .flat()
+    .map((entry) => [entry.description, entry.productTypeId]),
+);
+
+/** The mock's stand-in for TecDoc's `genericArticleId`. */
+function productTypeIdOf(article: {
+  brandId: string;
+  articleNumber: string;
+  description: string;
+}): string | undefined {
+  return (
+    TAXONOMY_BY_ARTICLE.get(articleKey(article.brandId, article.articleNumber))
+      ?.productTypeId ?? PRODUCT_TYPE_ID_BY_DESCRIPTION.get(article.description)
+  );
+}
 
 /**
  * A fixture row. The make and series are stored alongside the vehicle because
@@ -843,28 +814,6 @@ const LINKED_VEHICLES_BY_ARTICLE: Record<string, MockLinkedVehicle[]> = {
   [articleKeyForBrandName('MockBrand', 'TEST-MANY-VEHICLES')]:
     generateBreadthVehicles(),
 };
-
-/**
- * The mock's stand-in for TecDoc's article-number → `legacyArticleId` → vehicle
- * chain. Real TecDoc answers the applicable-vehicles question in several steps
- * and the service is what joins them, so the mock offers the same steps rather
- * than the finished list — otherwise mock mode would never exercise the
- * orchestration that production runs. The ids are arbitrary; only the chain
- * between them has to hold together.
- */
-const LEGACY_ARTICLE_ID_BY_KEY: Record<string, number> = Object.fromEntries(
-  Object.keys(LINKED_VEHICLES_BY_ARTICLE).map((key, index) => [
-    key,
-    900_000 + index,
-  ]),
-);
-
-const LINKED_VEHICLES_BY_LEGACY_ID = new Map<number, MockLinkedVehicle[]>(
-  Object.entries(LINKED_VEHICLES_BY_ARTICLE).map(([key, vehicles]) => [
-    LEGACY_ARTICLE_ID_BY_KEY[key],
-    vehicles,
-  ]),
-);
 
 const LINKED_VEHICLE_BY_TARGET_ID = new Map<number, MockLinkedVehicle>(
   Object.values(LINKED_VEHICLES_BY_ARTICLE)
@@ -1093,6 +1042,30 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
     ],
     fitsVehicle: null,
   },
+  // MANN's filter for the same Mercedes engine, sharing two of the OE numbers
+  // above. Without it the part dev opens most often — the one stocked across
+  // most suppliers — would have no OE-equivalent in the fixture and so an empty
+  // substitutes tab. It is deliberately absent from the stock seed, which makes
+  // the tab show a priced row next to an unpriced one.
+  {
+    articleNumber: 'HU 6013 z',
+    brandName: 'MANN-FILTER',
+    brandLogoUrl: null,
+    description: 'Oil Filter',
+    thumbnailUrl: OIL_FILTER_IMAGES[0],
+    images: OIL_FILTER_IMAGES,
+    technicalSpecs: [
+      { key: 'Filter type', value: 'Filter Insert' },
+      { key: 'Outer Diameter', value: '71 mm' },
+      { key: 'Height', value: '86 mm' },
+      { key: 'Inner Diameter', value: '28.5 mm' },
+    ],
+    oemNumbers: [
+      oem('A2701800009', 'MERCEDES-BENZ'),
+      oem('A2701840025', 'MERCEDES-BENZ'),
+    ],
+    fitsVehicle: null,
+  },
   // The other half of the collision pair — same number, different supplier,
   // and deliberately different specs and OE numbers so a brand-blind detail
   // read is obvious on screen rather than merely wrong in the data.
@@ -1232,6 +1205,44 @@ const ARTICLE_DETAILS: Record<string, ArticleCatalogDetailDto> = indexDetails([
     fitsVehicle: null,
   })),
 ]);
+
+/**
+ * The mock's stand-in for TecDoc's article → `legacyArticleId` chain, which two
+ * flows run on: the applicable-vehicles lookup resolves vehicles by it, and the
+ * cross-reference hydration resolves a whole row by it. Real TecDoc answers both
+ * in several steps and the service is what joins them, so the mock offers the
+ * same steps rather than the finished list — otherwise mock mode would never
+ * exercise the orchestration production runs.
+ *
+ * Minted over every fixture article, not only those with vehicles, because an
+ * article that cannot be hydrated cannot appear as a substitute. Assigned in one
+ * sorted pass so an id is a property of the fixture rather than of whichever
+ * read happened to mint it first.
+ */
+const LEGACY_ARTICLE_ID_BY_KEY: Record<string, number> = Object.fromEntries(
+  [
+    ...new Set([
+      ...Object.keys(ARTICLE_DETAILS),
+      ...Object.keys(LINKED_VEHICLES_BY_ARTICLE),
+    ]),
+  ]
+    .sort()
+    .map((key, index) => [key, 900_000 + index]),
+);
+
+const ARTICLE_KEY_BY_LEGACY_ID = new Map(
+  Object.entries(LEGACY_ARTICLE_ID_BY_KEY).map(([key, legacyArticleId]) => [
+    legacyArticleId,
+    key,
+  ]),
+);
+
+const LINKED_VEHICLES_BY_LEGACY_ID = new Map<number, MockLinkedVehicle[]>(
+  Object.entries(LINKED_VEHICLES_BY_ARTICLE).map(([key, vehicles]) => [
+    LEGACY_ARTICLE_ID_BY_KEY[key],
+    vehicles,
+  ]),
+);
 
 /**
  * Numeric ids for the technical-spec keys the criteria facets are built from.
@@ -1407,14 +1418,12 @@ export class TecDocMockClient {
     query: string,
     execution?: SearchExecution,
   ): Promise<AutocompleteItemDto[]> {
-    const normalisedQuery = query.replace(/[-.\s]/g, '').toUpperCase();
+    const normalisedQuery = numberKey(query);
 
     const matches =
       execution?.matchType === 'exact'
         ? this.findMatchingArticles(query).filter(
-            (article) =>
-              article.articleNumber.replace(/[-.\s]/g, '').toUpperCase() ===
-              normalisedQuery,
+            (article) => numberKey(article.articleNumber) === normalisedQuery,
           )
         : this.findMatchingArticles(query);
 
@@ -1495,28 +1504,94 @@ export class TecDocMockClient {
     return Promise.resolve(terms);
   }
 
+  /**
+   * The article, with the generic articles it is catalogued as beside it — the
+   * same side-channel the real client answers with, because the cross-reference
+   * search is narrowed by it and this read is the only one that knows it.
+   */
   getArticleDetails(
     brandId: number,
     articleNumber: string,
     _vehicleId?: number,
-  ): Promise<ArticleCatalogDetailDto> {
-    const base = ARTICLE_DETAILS[
-      articleKey(String(brandId), articleNumber)
-    ] ?? {
+  ): Promise<ArticleDetailRead> {
+    const key = articleKey(String(brandId), articleNumber);
+    const detail = ARTICLE_DETAILS[key] ?? {
       ...DEFAULT_ARTICLE_DETAIL,
       brandId: String(brandId),
       articleNumber,
     };
+    const productTypeId = productTypeIdOf(detail);
 
-    return Promise.resolve(base);
+    return Promise.resolve({
+      detail,
+      genericArticleIds:
+        productTypeId === undefined ? [] : [Number(productTypeId)],
+    });
   }
 
-  getComparableArticles(articleNumber: string): Promise<ArticleSummaryDto[]> {
-    const comparable = (SUBSTITUTES_BY_ARTICLE[articleNumber] ?? []).map(
-      (base) => this.toSummary(base),
+  /**
+   * The fixture articles that cross-reference the given part — the mock stand-in
+   * for TecDoc getArticles searchType 3, which backs the "Заменки" tab and the
+   * alternative-numbers section of a catalog row.
+   *
+   * Derived from the fixtures' own `oemNumbers`, so equivalence cannot contradict
+   * itself: two parts replace each other exactly when they replace the same
+   * original. Real TecDoc reaches the same set through suppliers' cross-reference
+   * declarations instead, which is why every row here cites the searched part —
+   * mock mode has to survive the provenance filter the real rows are subject to.
+   *
+   * The searched part is returned among the matches, as TecDoc returns it among
+   * the parts replacing the same original; dropping it is the service's call.
+   */
+  getCrossReferenceCandidates(
+    articleNumber: string,
+    genericArticleId: number,
+  ): Promise<CrossReferenceCandidate[]> {
+    const searched = Object.values(ARTICLE_DETAILS).filter(
+      (detail) => numberKey(detail.articleNumber) === numberKey(articleNumber),
     );
+    const oeNumbers = new Set(
+      searched.flatMap((detail) =>
+        detail.oemNumbers.map((oemNumber) =>
+          numberKey(oemNumber.articleNumber),
+        ),
+      ),
+    );
+    const cited = searched.map((detail) => ({
+      brandId: detail.brandId,
+      articleNumber,
+    }));
 
-    return Promise.resolve(comparable);
+    const candidates = Object.values(ARTICLE_DETAILS)
+      .filter(
+        (detail) =>
+          this.isProductType(detail, genericArticleId) &&
+          detail.oemNumbers.some((oemNumber) =>
+            oeNumbers.has(numberKey(oemNumber.articleNumber)),
+          ),
+      )
+      .map((detail) => this.toCandidate(detail, cited));
+
+    return Promise.resolve(candidates);
+  }
+
+  /**
+   * Hydrates candidates back into rows. The mock's `legacyArticleId`s are minted
+   * per article by {@link LEGACY_ARTICLE_ID_BY_KEY}, so this is the inverse of
+   * that map — and, like the real read, it answers only for the ids it knows.
+   */
+  getArticleRowsByLegacyIds(
+    legacyArticleIds: number[],
+  ): Promise<ArticleSummaryDto[]> {
+    const rows = legacyArticleIds
+      .map((legacyArticleId) => ARTICLE_KEY_BY_LEGACY_ID.get(legacyArticleId))
+      .map((key) => (key === undefined ? undefined : ARTICLE_DETAILS[key]))
+      .filter(
+        (detail): detail is ArticleCatalogDetailDto => detail !== undefined,
+      )
+      .map((detail) => this.toSummary(detail));
+
+    return Promise.resolve(rows);
   }
 
   /**
@@ -1593,13 +1668,49 @@ export class TecDocMockClient {
     const detail = ARTICLE_DETAILS[articleKey(brandId, base.articleNumber)];
 
     return {
-      ...base,
+      articleNumber: base.articleNumber,
       brandId,
+      brandName: base.brandName,
       brandLogoUrl: null,
+      description: base.description,
+      thumbnailUrl: base.thumbnailUrl,
       technicalSpecs: detail?.technicalSpecs ?? [],
       oemNumbers: detail?.oemNumbers ?? [],
       fitsVehicle: null,
     };
+  }
+
+  /**
+   * A detail fixture as a cross-reference candidate. `citedNumbers` names the
+   * brands that filed the searched number, which is what the provenance filter
+   * checks — real rows carry it because a supplier declared the reference, and a
+   * mock row that carried none would be filtered out before it reached a page.
+   */
+  private toCandidate(
+    detail: ArticleCatalogDetailDto,
+    cited: CrossReferenceCitation[],
+  ): CrossReferenceCandidate {
+    const legacyArticleId =
+      LEGACY_ARTICLE_ID_BY_KEY[
+        articleKey(detail.brandId, detail.articleNumber)
+      ];
+
+    return {
+      brandId: detail.brandId,
+      brandName: detail.brandName,
+      articleNumber: detail.articleNumber,
+      description: detail.description,
+      legacyArticleIds: legacyArticleId === undefined ? [] : [legacyArticleId],
+      articleStatusId: ArticleStatus.Normal,
+      citedNumbers: cited,
+    };
+  }
+
+  private isProductType(
+    detail: ArticleCatalogDetailDto,
+    productTypeId: number,
+  ): boolean {
+    return productTypeIdOf(detail) === String(productTypeId);
   }
 
   private linkageRolesOf(base: MockArticleBase): ArticleLinkageRoles {
@@ -1615,7 +1726,7 @@ export class TecDocMockClient {
   }
 
   private findMatchingArticles(query: string) {
-    const normalisedQuery = query.replace(/[-.\s]/g, '').toUpperCase();
+    const normalisedQuery = numberKey(query);
 
     return Object.values(ARTICLES_BY_CATEGORY)
       .flat()
@@ -1669,10 +1780,7 @@ export class TecDocMockClient {
     ];
 
     return candidateNumbers.some((number) =>
-      number
-        .replace(/[-.\s]/g, '')
-        .toUpperCase()
-        .includes(normalisedQuery),
+      numberKey(number).includes(normalisedQuery),
     );
   }
 

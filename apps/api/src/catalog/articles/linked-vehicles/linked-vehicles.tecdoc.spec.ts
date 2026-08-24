@@ -231,7 +231,7 @@ describe('LinkedVehiclesTecDoc', () => {
         data: {
           array: carIds.map((carId) => ({
             carId,
-            motorCodes: [{ motorCode: 'N47 D20 C' }],
+            motorCodes: { array: [{ motorCode: 'N47 D20 C' }] },
             vehicleDetails: {
               manuId: 5,
               modId: 8506,

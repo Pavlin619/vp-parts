@@ -118,7 +118,7 @@ describe('mapLinkedVehicle', () => {
     expect(
       mapLinkedVehicle({
         carId: 10020,
-        motorCodes: [{ motorCode: 'N47 D20 C' }],
+        motorCodes: { array: [{ motorCode: 'N47 D20 C' }] },
         vehicleDetails: {
           manuId: 5,
           manuName: 'BMW',
@@ -187,7 +187,9 @@ describe('mapLinkedVehicle', () => {
   it('keeps every engine code on file', () => {
     const row = mapLinkedVehicle({
       carId: 1,
-      motorCodes: [{ motorCode: 'N47 D20 C' }, { motorCode: 'N47 D20 A' }],
+      motorCodes: {
+        array: [{ motorCode: 'N47 D20 C' }, { motorCode: 'N47 D20 A' }],
+      },
     });
 
     expect(row.vehicle.engineCodes).toEqual(['N47 D20 C', 'N47 D20 A']);
@@ -196,10 +198,28 @@ describe('mapLinkedVehicle', () => {
   it('drops an engine entry with no code rather than listing a blank', () => {
     const row = mapLinkedVehicle({
       carId: 1,
-      motorCodes: [{ motorCode: 'N47 D20 C' }, {}],
+      motorCodes: { array: [{ motorCode: 'N47 D20 C' }, {}] },
     });
 
     expect(row.vehicle.engineCodes).toEqual(['N47 D20 C']);
+  });
+
+  // The shape live TecDoc actually sends, which the mapper originally read as a
+  // bare array: `.map` on the wrapper threw and took the whole section with it.
+  it('reads engine codes out of the array wrapper TecDoc nests them in', () => {
+    const row = mapLinkedVehicle({
+      carId: 1,
+      motorCodes: { array: [{ motorCode: 'ABM' }] },
+    });
+
+    expect(row.vehicle.engineCodes).toEqual(['ABM']);
+  });
+
+  // A vehicle with no engine codes on file arrives as an empty wrapper.
+  it('reads an empty wrapper as no engine codes', () => {
+    const row = mapLinkedVehicle({ carId: 1, motorCodes: {} });
+
+    expect(row.vehicle.engineCodes).toEqual([]);
   });
 
   // These years arrive as YYYYMM integers here, unlike the YYYY-MM strings the

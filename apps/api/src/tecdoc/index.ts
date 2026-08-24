@@ -3,15 +3,25 @@ export { TecDocTransport } from './tecdoc-transport';
 export { TecDocMockClient } from './tecdoc-mock-client';
 export { tecDocSourceProvider } from './tecdoc-source.provider';
 export {
+  genericArticleIdsOf,
   legacyArticleIdsOf,
   linkageRolesOf,
   mapArticleSummary,
 } from './article-mapper';
 export type {
+  ArticleDetailRead,
   ArticleLinkageRoles,
   CatalogArticlesPage,
   TecDocArticleRecord,
 } from './article-mapper';
+export {
+  ArticleStatus,
+  mapCrossReferenceCandidate,
+} from './cross-reference-mapper';
+export type {
+  CrossReferenceCandidate,
+  CrossReferenceCitation,
+} from './cross-reference-mapper';
 export type { LinkedVehicleWithSeries } from './linked-vehicle';
 export {
   CatalogRequestRejectedException,

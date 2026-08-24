@@ -6,22 +6,28 @@ import { ArticleRowDetail } from './article-row-detail'
 
 // Every read-on-demand section is stubbed: this spec is about which section is
 // open, not what any of them renders. Their own specs cover that — and mounting
-// the real ones here would need a query client to no purpose.
+// the real ones here would need a query client to no purpose. Each stub echoes
+// the part it was handed, because all three read TecDoc by brand *and* number.
+type SectionProps = { brandId: string; articleNumber: string }
+
+const part = ({ brandId, articleNumber }: SectionProps) =>
+  `${brandId}:${articleNumber}`
+
 jest.mock('./article-row-numbers', () => ({
-  ArticleRowNumbers: ({ articleNumber }: { articleNumber: string }) => (
-    <div data-testid="numbers-section">{articleNumber}</div>
+  ArticleRowNumbers: (props: SectionProps) => (
+    <div data-testid="numbers-section">{part(props)}</div>
   ),
 }))
 
 jest.mock('./article-row-substitutes', () => ({
-  ArticleRowSubstitutes: ({ articleNumber }: { articleNumber: string }) => (
-    <div data-testid="substitutes-section">{articleNumber}</div>
+  ArticleRowSubstitutes: (props: SectionProps) => (
+    <div data-testid="substitutes-section">{part(props)}</div>
   ),
 }))
 
 jest.mock('./article-row-vehicles', () => ({
-  ArticleRowVehicles: ({ articleNumber }: { articleNumber: string }) => (
-    <div data-testid="vehicles-section">{articleNumber}</div>
+  ArticleRowVehicles: (props: SectionProps) => (
+    <div data-testid="vehicles-section">{part(props)}</div>
   ),
 }))
 
@@ -83,12 +89,13 @@ describe('ArticleRowDetail', () => {
 
     await user.click(screen.getByRole('button', { name: /Алтернативни номера/ }))
 
-    expect(screen.getByTestId('numbers-section')).toHaveTextContent('WL6340')
+    expect(screen.getByTestId('numbers-section')).toHaveTextContent('268:WL6340')
     expect(screen.queryByText('79 mm')).not.toBeInTheDocument()
   })
 
-  // Substitutes are read by number, not by brand — the section takes the number
-  // alone, unlike the vehicles section beside it.
+  // The substitutes read is brand-scoped like the vehicles one beside it: it
+  // starts from the OE numbers of this brand's part, so the section cannot be
+  // handed the number alone.
   it('switches to the substitutes section', async () => {
     const user = userEvent.setup()
     render(
@@ -102,7 +109,9 @@ describe('ArticleRowDetail', () => {
 
     await user.click(screen.getByRole('button', { name: /Заменяеми/ }))
 
-    expect(screen.getByTestId('substitutes-section')).toHaveTextContent('WL6340')
+    expect(screen.getByTestId('substitutes-section')).toHaveTextContent(
+      '268:WL6340',
+    )
     expect(screen.queryByText('79 mm')).not.toBeInTheDocument()
   })
 

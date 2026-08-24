@@ -105,8 +105,12 @@ the grid caches this and hydrates it with a separate live availability read
 cached-metadata / live-availability split so a cached page never serves a stale
 delivery date. Shape: `PaginatedCatalogArticlesDto`.
 
-Query params:
-- `page` (default 1), `pageSize` (default 20, max 50)
+Query params (`ArticlePageQueryDto`, shared with *Substitutes*):
+- `page` — `1…10000`, default 1. The ceiling is TecDoc's own paging limit.
+- `pageSize` — `1…50`, default 20.
+
+Out of range or not an integer is a `400` / `VALIDATION_ERROR`, so nothing absurd
+reaches TecDoc and spends a call and a cache key on the way to being refused.
 
 Response `200`:
 ```json
@@ -166,18 +170,16 @@ one for different parts. An article is identified by `(brandId, articleNumber)`,
 where `brandId` is TecDoc's `dataSupplierId` — the same id `GET /catalog/brands`
 is keyed by, carried on every article row as `brandId`.
 
-This splits the article routes in two, and the split is deliberate rather than a
-naming inconsistency:
+Every endpoint that **resolves one specific part** is therefore nested under the
+brand: `/catalog/brands/:brandId/articles/:articleNumber…`. Without the brand the
+lookup returns whichever supplier the catalogue sorted first, so the response can
+describe a different company's part.
 
-- Endpoints that **resolve one specific part** are nested under the brand:
-  `/catalog/brands/:brandId/articles/:articleNumber…`. Without the brand the
-  lookup returns whichever supplier the catalogue sorted first, so the response
-  can describe a different company's part.
-- Endpoints that **search by a number** stay flat at
-  `/catalog/articles/:articleNumber/…`. Cross-reference (comparable-number)
-  lookups take a number as their query, not as an identity, and answer with
-  parts from every brand; adding a brand segment would narrow the answer to the
-  one brand the caller already has.
+Substitutes and alternative numbers are nested too, though they answer with parts
+from every brand. What is brand-scoped there is the *question*: the equivalents
+are found by searching the viewed part's own OE numbers, and two suppliers filing
+one number file different OE numbers. The search itself sends no brand — that
+would narrow the answer to the one brand the caller already has.
 
 ---
 
@@ -256,25 +258,30 @@ from the shared DB per request and embedded into this response.
 
 ### Alternative Numbers
 
-**`GET /catalog/articles/:articleNumber/alternative-numbers`** `[PUBLIC]`
+**`GET /catalog/brands/:brandId/articles/:articleNumber/alternative-numbers`** `[PUBLIC]`
 
-The numbers other parts brands sell the same article under. Its **own** endpoint
-because, unlike the OE numbers it is displayed beside, no list response carries
-them: TecDoc only resolves them through a comparable-number search. The
-alternative-numbers section of a catalog row fetches this when a visitor opens
-it, so an unopened section costs nothing. Shape: `AlternativeNumberDto[]`.
+The numbers other parts brands sell the replacing article under. Its **own**
+endpoint because, unlike the OE numbers it is displayed beside, no list response
+carries them: they are the numbers of the parts TecDoc's cross-reference index
+answers with for this one. The alternative-numbers section of a catalog row
+fetches this when a visitor opens it, so an unopened section costs nothing.
+Shape: `AlternativeNumberDto[]`.
 
-Keyed on the number alone — see *Article identity* above. Rows are deduplicated
-on each result's own `(brandId, articleNumber)`, so two brands answering with the
-same number are kept as the two cross-references they are.
+Brand-scoped — see *Article identity* above. Only the viewed part is removed from
+the result, compared on its own `(brandId, articleNumber)`, so another brand
+answering with the same number is kept as the cross-reference it is.
 
-This is the same TecDoc comparable-number set that backs
-`GET /catalog/articles/:articleNumber/substitutes` (`getArticles`,
-`searchType: 3`), projected down to number + brand and sharing one Redis entry —
-opening either surface warms the other. The section renders chips, so the
-substitutes' catalog metadata (description, thumbnail, specs) is deliberately
-projected away rather than shipped to every expanded row. Capped at 20 numbers
-(`SUBSTITUTES_LIMIT`); a part with no cross-references is a `200` with `[]`.
+This is the same cross-reference set that backs
+`GET /catalog/brands/:brandId/articles/:articleNumber/substitutes`, projected down
+to number + brand and sharing one Redis entry — opening either surface warms the
+other. The section renders chips, so the replacements' catalog metadata
+(description, thumbnail, specs) is deliberately projected away rather than
+shipped to every expanded row.
+
+**Uncapped**, unlike the paginated substitutes endpoint: a chip needs only the
+number and brand the candidate set already carries, so there is nothing per row
+to pay for however many alternatives a part has. A part with no cross-references
+is a `200` with `[]`.
 
 Response `200`:
 ```json
@@ -285,51 +292,92 @@ Response `200`:
 ```
 
 Cache: Redis, 24h on a hit / 1h on an empty result — shared with the substitutes
-endpoint (key `tecdoc:substitutes:{articleNumber}`).
+endpoint (key `tecdoc:crossrefs:{brandId}:{articleNumber}`).
 
 ---
 
 ### Substitutes
 
-**`GET /catalog/articles/:articleNumber/substitutes`** `[PUBLIC]`
+**`GET /catalog/brands/:brandId/articles/:articleNumber/substitutes`** `[PUBLIC]`
 
-The same cross-references as the endpoint above, as whole catalog rows rather
-than numbers: identity, brand, description, thumbnail and specs, so the
-substitutes section of a catalog row can render each one as a row a visitor can
-price and buy. Shape: `ArticleSummaryDto[]` — the same row shape the listing and
-search return, so every list surface shares one row component.
+The same replacements as the endpoint above, as whole catalog rows rather than
+numbers: identity, brand, description, thumbnail and specs, so the substitutes
+section of a catalog row can render each one as a row a visitor can price and buy.
 
-Keyed on the number alone, and capped at 20 (`SUBSTITUTES_LIMIT`), for the same
-reasons as *Alternative Numbers*. A part with no cross-references is a `200`
-with `[]`.
+Query: `?page=1&pageSize=20`, validated at the boundary by `ArticlePageQueryDto`
+like every other query param in this module: `page` is `1…10000` and `pageSize` is
+`1…50`, and anything outside those — or not an integer at all — is a `400` /
+`VALIDATION_ERROR`. Bounded rather than clamped, so a caller asking for a page of
+500 is told we will not serve it instead of receiving 50 rows labelled 500. Shape:
+`PaginatedCatalogArticlesDto` — the same paginated row shape the category listing
+returns, so every list surface shares one row component.
+
+**Paginated rather than capped.** `total` is the size of the whole cross-reference
+set, so the section can offer every alternative and say how many are left, while
+a page carries only the rows a visitor reached. That split is the point: a
+candidate costs under a kilobyte and a rendered row ten to thirty, so the set is
+resolved and ordered whole and only the page is hydrated.
+
+Brand-scoped for the same reason as *Alternative Numbers*: which parts replace a
+part is a property of that part.
+
+**Ordered by what we can ship**, before paging: in stock first, then fastest
+delivery band and lowest price, then supply status, then `(brandName, articleNumber)`
+so page 2 does not reshuffle against page 1. A stock-database outage degrades the
+list to catalogue order rather than emptying it.
+
+The delivery rank is the band from `deliveryBand` (`packages/shared`), not
+`deliveryWorkDays`: the central warehouse and `REGIONAL_1` both file nought working
+days, so on days alone stock on our own shelf ties with stock a supplier ships only
+if the order beats its cut-off, and price interleaves them. The web colours the
+availability dot from the same function, so the order a visitor reads matches the
+badges beside it.
+
+Resolution is one `getArticles` `searchType: 3` on the part's own number, narrowed
+to its `genericArticleId` and filtered to the rows that cite this brand's number.
+There is no second source: a thin list is served thin. See
+`docs/CROSS-REFERENCES.md` for why, with the measurements. A part TecDoc files no
+generic article for, or one nothing cross-references, is a `200` with an empty
+page — there is no looser search that is right, since a wrong substitute is a part
+a mechanic fits to the wrong car. An article the catalogue does not have is a
+`404` / `ARTICLE_NOT_FOUND`, because the search starts from the article itself.
 
 Catalog metadata only — **no** price or stock, like every other cacheable
 catalog read. The section hydrates the rows client-side through
-`GET /catalog/articles-availability?numbers=…`, so a substitute's delivery date
-is never served from a cache. Vehicle-independent by design: if the viewed part
-fits the selected vehicle then its comparables do too, so no per-substitute fit
+`GET /catalog/articles-availability?numbers=…` one page at a time, so a
+substitute's delivery date is never served from a cache and a batch stays within
+that endpoint's limit. Vehicle-independent by design: if the viewed part fits the
+selected vehicle then so does anything replacing it, so no per-substitute fit
 check is made.
 
 Response `200`:
 ```json
-[
-  {
-    "articleNumber": "OC 115",
-    "brandId": "77",
-    "brandName": "MANN-FILTER",
-    "brandLogoUrl": "https://cdn.example.com/brands/77.png",
-    "description": "Маслен филтър",
-    "thumbnailUrl": "https://cdn.example.com/img/OC115.jpg",
-    "technicalSpecs": [{ "key": "Височина", "value": "79 mm" }],
-    "oemNumbers": [],
-    "fitsVehicle": null
-  }
-]
+{
+  "total": 76,
+  "page": 1,
+  "pageSize": 20,
+  "items": [
+    {
+      "articleNumber": "OC 115",
+      "brandId": "77",
+      "brandName": "MANN-FILTER",
+      "brandLogoUrl": "https://cdn.example.com/brands/77.png",
+      "description": "Маслен филтър",
+      "thumbnailUrl": "https://cdn.example.com/img/OC115.jpg",
+      "technicalSpecs": [{ "key": "Височина", "value": "79 mm" }],
+      "oemNumbers": [],
+      "fitsVehicle": null
+    }
+  ]
+}
 ```
 
-Cache: Redis, 24h on a hit / 1h on an empty result — one entry shared with the
-alternative-numbers endpoint (key `tecdoc:substitutes:{articleNumber}`), so
-opening either section warms the other.
+Cache: the candidate set in Redis, 24h on a hit / 1h on an empty result — one
+entry shared with the alternative-numbers endpoint (key
+`tecdoc:crossrefs:{brandId}:{articleNumber}`), so opening either section warms the
+other. Hydrated rows are cached **per row** (`tecdoc:article-row:{brandId}:{articleNumber}`,
+24h), never per page: the ordering is live, so a page-number key would serve
+yesterday's ordering.
 
 ---
 

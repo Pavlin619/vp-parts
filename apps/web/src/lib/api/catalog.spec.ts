@@ -128,17 +128,35 @@ describe('getArticleCatalogDetail', () => {
 })
 
 describe('getSubstitutes', () => {
-  it('calls the substitutes endpoint for the article number', () => {
-    getSubstitutes('OX 982D')
+  it('asks the brand-scoped substitutes endpoint for the first page', () => {
+    getSubstitutes('94', 'OX 982D')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/OX%20982D/substitutes',
+      '/catalog/brands/94/articles/OX%20982D/substitutes?page=1&pageSize=20',
     )
   })
 
-  it('URL-encodes special characters in the article number', () => {
-    getSubstitutes('ABC/123')
+  it('asks for a later page when one is requested', () => {
+    getSubstitutes('94', 'OX 982D', 3)
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC%2F123/substitutes',
+      '/catalog/brands/94/articles/OX%20982D/substitutes?page=3&pageSize=20',
+    )
+  })
+
+  // Each page is priced by one availability read of its own numbers, and that
+  // endpoint takes at most 50 at a time.
+  it('asks for no more rows than one availability batch can price', () => {
+    getSubstitutes('94', 'OX 982D')
+
+    const [url] = mockApiFetch.mock.calls[0] as [string]
+    const pageSize = Number(new URL(url, 'https://api.test').searchParams.get('pageSize'))
+
+    expect(pageSize).toBeLessThanOrEqual(50)
+  })
+
+  it('URL-encodes special characters in the article number', () => {
+    getSubstitutes('94', 'ABC/123')
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/94/articles/ABC%2F123/substitutes?page=1&pageSize=20',
     )
   })
 })
@@ -169,17 +187,17 @@ describe('getLinkedVehiclesByManufacturer', () => {
 })
 
 describe('getAlternativeNumbers', () => {
-  it('calls the alternative-numbers endpoint for the article number', () => {
-    getAlternativeNumbers('OX 982D')
+  it('calls the brand-scoped alternative-numbers endpoint', () => {
+    getAlternativeNumbers('94', 'OX 982D')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/OX%20982D/alternative-numbers',
+      '/catalog/brands/94/articles/OX%20982D/alternative-numbers',
     )
   })
 
   it('URL-encodes special characters in the article number', () => {
-    getAlternativeNumbers('ABC/123')
+    getAlternativeNumbers('94', 'ABC/123')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/ABC%2F123/alternative-numbers',
+      '/catalog/brands/94/articles/ABC%2F123/alternative-numbers',
     )
   })
 })
@@ -229,10 +247,11 @@ describe('linkedVehiclesByMakeQueryOptions', () => {
 })
 
 describe('alternativeNumbersQueryOptions', () => {
-  it('keys by the article number', () => {
-    expect(alternativeNumbersQueryOptions('OX 982D').queryKey).toEqual([
+  it('keys by the brand and the article number', () => {
+    expect(alternativeNumbersQueryOptions('94', 'OX 982D').queryKey).toEqual([
       'catalog',
       'alternative-numbers',
+      '94',
       'OX 982D',
     ])
   })
@@ -240,7 +259,7 @@ describe('alternativeNumbersQueryOptions', () => {
   // Nothing in the payload is price-bearing, so reopening the section on
   // another row for the same part must not refetch.
   it('survives a collapsed section as long as it stays fresh', () => {
-    const options = alternativeNumbersQueryOptions('OX 982D')
+    const options = alternativeNumbersQueryOptions('94', 'OX 982D')
 
     expect(options.staleTime).toBe(60 * 60 * 1000)
     expect(options.gcTime).toBe(options.staleTime)
@@ -248,33 +267,67 @@ describe('alternativeNumbersQueryOptions', () => {
 })
 
 describe('substitutesQueryOptions', () => {
-  it('keys by the article number', () => {
-    expect(substitutesQueryOptions('OX 982D').queryKey).toEqual([
+  it('keys by the brand and the article number', () => {
+    expect(substitutesQueryOptions('94', 'OX 982D').queryKey).toEqual([
       'catalog',
       'substitutes',
+      '94',
       'OX 982D',
     ])
   })
 
-  // The comparable-number search is keyed on the number alone, so the two
-  // brands filing one number share the one cross-reference list — unlike the
-  // brand-scoped reads above, where a shared key would be a bug.
-  it('does not split the cache by the brand asking', () => {
-    expect(substitutesQueryOptions('OX 982D').queryKey).not.toContain('94')
+  // Which parts replace a part is a property of that part, so the two brands
+  // filing one number have different substitutes. A shared key served one
+  // brand's list to the other.
+  it('splits the cache between two brands sharing a number', () => {
+    expect(substitutesQueryOptions('94', 'OX 982D').queryKey).not.toEqual(
+      substitutesQueryOptions('30', 'OX 982D').queryKey,
+    )
   })
 
   it('survives a collapsed section as long as it stays fresh', () => {
-    const options = substitutesQueryOptions('OX 982D')
+    const options = substitutesQueryOptions('94', 'OX 982D')
 
     expect(options.staleTime).toBe(60 * 60 * 1000)
     expect(options.gcTime).toBe(options.staleTime)
   })
 
-  it('queryFn requests the substitutes for the article', () => {
-    substitutesQueryOptions('OX 982D').queryFn?.({} as never)
+  it('starts at the first page', () => {
+    expect(substitutesQueryOptions('94', 'OX 982D').initialPageParam).toBe(1)
+  })
+
+  it('queryFn requests the page it is given', () => {
+    substitutesQueryOptions('94', 'OX 982D').queryFn?.({
+      pageParam: 2,
+    } as never)
+
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles/OX%20982D/substitutes',
+      '/catalog/brands/94/articles/OX%20982D/substitutes?page=2&pageSize=20',
     )
+  })
+
+  describe('getNextPageParam', () => {
+    const nextAfter = (page: number, pageSize: number, total: number) =>
+      substitutesQueryOptions('94', 'OX 982D').getNextPageParam(
+        { total, page, pageSize, items: [] },
+        [],
+        page,
+        [],
+      )
+
+    it('offers the page after one the set outlasts', () => {
+      expect(nextAfter(1, 20, 76)).toBe(2)
+    })
+
+    // A set whose size is an exact multiple of the page size would otherwise
+    // always offer one more page, and that page would come back empty.
+    it('stops at the last page of an exactly-filled set', () => {
+      expect(nextAfter(2, 20, 40)).toBeUndefined()
+    })
+
+    it('stops when the set fits in one page', () => {
+      expect(nextAfter(1, 20, 3)).toBeUndefined()
+    })
   })
 })
 
