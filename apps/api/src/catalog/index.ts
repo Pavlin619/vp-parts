@@ -9,9 +9,10 @@ export { ArticleReadCache } from './articles/article-read';
 export { ArticleNotFoundException } from './articles/article-not-found.exception';
 export { ArticlesController } from './articles/articles.controller';
 export {
+  ArticleIdentityQueryDto,
   ArticlesAvailabilityQueryDto,
-  AVAILABILITY_MAX_ARTICLE_NUMBERS,
-  parseArticleNumbers,
+  AVAILABILITY_MAX_ARTICLES,
+  parseArticleIdentities,
 } from './articles/articles.dto';
 export {
   CrossReferencesController,

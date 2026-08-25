@@ -65,10 +65,7 @@ export function SearchResults({
           <li key={`${result.brandId}-${result.articleNumber}`}>
             <ArticleRow
               article={result}
-              availability={selectArticleAvailability(
-                availability,
-                result.articleNumber,
-              )}
+              availability={selectArticleAvailability(availability, result)}
             />
           </li>
         ))}

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
+  ArticleIdentityDto,
   ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
@@ -56,7 +57,7 @@ export class ArticlesService {
   }
 
   /**
-   * Live price/availability for a batch of article numbers, keyed by number.
+   * Live price/availability for a batch of articles, keyed by brand and number.
    * This is the single, uncached availability read behind every list surface —
    * the catalog grid, search, and substitutes all hydrate their cached metadata
    * with it client-side. It fails closed: a DB read error throws
@@ -64,13 +65,13 @@ export class ArticlesService {
    * of stock.
    */
   async getArticlesAvailability(
-    articleNumbers: string[],
+    articles: ArticleIdentityDto[],
   ): Promise<ArticlesAvailabilityDto> {
-    const detailByNumber = await this.inventory.getAvailability(articleNumbers);
+    const detailByArticle = await this.inventory.getAvailability(articles);
 
     const availability: ArticlesAvailabilityDto = {};
-    for (const [articleNumber, detail] of detailByNumber) {
-      availability[articleNumber] = detail;
+    for (const [key, detail] of detailByArticle) {
+      availability[key] = detail;
     }
 
     return availability;

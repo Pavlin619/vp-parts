@@ -88,10 +88,15 @@ describe('getArticlesMetadata', () => {
 })
 
 describe('getArticlesAvailability', () => {
-  it('requests the comma-joined numbers from the live endpoint', () => {
-    getArticlesAvailability(['WL6340', 'OC115'])
+  // Brand and number together: a number alone names as many parts as there are
+  // suppliers filing it, and the endpoint must not have to guess which.
+  it('requests the comma-joined brand:number pairs from the live endpoint', () => {
+    getArticlesAvailability([
+      { brandId: '268', articleNumber: 'WL6340' },
+      { brandId: '72', articleNumber: 'OC115' },
+    ])
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles-availability?numbers=WL6340%2COC115',
+      '/catalog/articles-availability?articles=268%3AWL6340%2C72%3AOC115',
     )
   })
 
@@ -423,26 +428,37 @@ describe('autocompleteQueryOptions', () => {
 })
 
 describe('availabilityQueryOptions', () => {
-  it('keys by the sorted, comma-joined numbers so order never forks the cache', () => {
-    expect(availabilityQueryOptions(['WL6340', 'OC115']).queryKey).toEqual([
+  const wixFilter = { brandId: '268', articleNumber: 'WL6340' }
+  const mannFilter = { brandId: '72', articleNumber: 'OC115' }
+
+  it('keys by the sorted, comma-joined articles so order never forks the cache', () => {
+    expect(availabilityQueryOptions([wixFilter, mannFilter]).queryKey).toEqual([
       'catalog',
       'availability',
-      'OC115,WL6340',
+      '268:WL6340,72:OC115',
     ])
     // The same set in a different order shares one cache entry.
-    expect(availabilityQueryOptions(['OC115', 'WL6340']).queryKey).toEqual(
-      availabilityQueryOptions(['WL6340', 'OC115']).queryKey,
+    expect(availabilityQueryOptions([mannFilter, wixFilter]).queryKey).toEqual(
+      availabilityQueryOptions([wixFilter, mannFilter]).queryKey,
+    )
+  })
+
+  // Two brands filing one number are two parts, so they must not share an entry.
+  it('keys one number under two brands separately', () => {
+    expect(availabilityQueryOptions([wixFilter]).queryKey).not.toEqual(
+      availabilityQueryOptions([{ brandId: '72', articleNumber: 'WL6340' }])
+        .queryKey,
     )
   })
 
   it('sets a browse-time staleTime', () => {
-    expect(availabilityQueryOptions(['WL6340']).staleTime).toBe(30_000)
+    expect(availabilityQueryOptions([wixFilter]).staleTime).toBe(30_000)
   })
 
-  it('queryFn requests the live availability for the numbers', () => {
-    availabilityQueryOptions(['WL6340', 'OC115']).queryFn?.({} as never)
+  it('queryFn requests the live availability for the articles', () => {
+    availabilityQueryOptions([wixFilter, mannFilter]).queryFn?.({} as never)
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/articles-availability?numbers=WL6340%2COC115',
+      '/catalog/articles-availability?articles=268%3AWL6340%2C72%3AOC115',
     )
   })
 })

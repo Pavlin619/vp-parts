@@ -1,21 +1,30 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type {
-  ArticleListItemDto,
-  ArticlesAvailabilityDto,
-  PaginatedCatalogArticlesDto,
+import {
+  articleIdentityKey,
+  type ArticleIdentityDto,
+  type ArticleListItemDto,
+  type ArticlesAvailabilityDto,
+  type PaginatedCatalogArticlesDto,
 } from '@vp-parts-shop/shared'
 import { ArticleGridAvailability } from './article-grid-availability'
 
 const availabilityMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  availabilityQueryOptions: (articleNumbers: string[]) => ({
-    queryKey: ['catalog', 'availability', [...articleNumbers].sort().join(',')],
-    queryFn: () => availabilityMock(articleNumbers) as Promise<ArticlesAvailabilityDto>,
+  availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
+    queryKey: ['catalog', 'availability', identityKeys(articles).sort().join(',')],
+    queryFn: () => availabilityMock(articles) as Promise<ArticlesAvailabilityDto>,
   }),
 }))
+
+/** The key both the request and the response map are built from. */
+function identityKeys(articles: ArticleIdentityDto[]): string[] {
+  return articles.map((article) =>
+    articleIdentityKey(article.brandId, article.articleNumber),
+  )
+}
 
 // Keep the test focused on the fetch/merge orchestration, not card rendering.
 jest.mock('./article-grid', () => ({
@@ -91,7 +100,7 @@ describe('ArticleGridAvailability', () => {
 
   it('merges availability onto the metadata rows on success', async () => {
     availabilityMock.mockResolvedValue({
-      'A-001': {
+      [articleIdentityKey('268', 'A-001')]: {
         available: true,
         bestPriceExVat: 1000,
         bestPriceIncVat: 1200,

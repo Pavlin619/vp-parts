@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ArticleIdentityDto, articleIdentityKey } from '@vp-parts-shop/shared';
 import { Prisma } from '../generated/prisma';
 import { PrismaService } from '../prisma';
 import { toCents, toInteger } from './db-value';
@@ -11,13 +12,20 @@ import { toCents, toInteger } from './db-value';
  */
 export interface OwnStockRow {
   tecdocNumber: string;
+  /** TecDoc `dataSupplierId` the backoffice attributed the line to. */
+  brandId: string;
   availableQuantity: number;
   sellPriceExVatCents: number;
   sellPriceIncVatCents: number;
 }
 
+/**
+ * `tecdoc_supplier_id` is nullable in the table but never null here: every query
+ * below equates it to a brand id, and NULL equals nothing.
+ */
 interface RawAutopartRow {
   tecdoc_number: string;
+  tecdoc_supplier_id: string;
   available_quantity: number | string | bigint | null;
   sell_price_net: number | string | Prisma.Decimal | null;
   gross_price: number | string | Prisma.Decimal | null;
@@ -28,50 +36,63 @@ interface RawAutopartRow {
  * stock. Checked first: when we carry a part the displayed price is locked to
  * our sell price. The shop role has column-scoped SELECT only; never writes.
  *
- * TODO(inventory-keying): confirm `tecdoc_number` alone identifies a part, i.e.
- * that the WHERE clauses below are narrow enough. TecDoc keys an article by
- * brand *and* article number, so two data suppliers shipping the same number
- * would both match here and one brand's part could be priced from another's
- * stock. The per-number row array hides it, because it cannot distinguish
- * "several stock lines for this part" from "two brands collided". Check how the
- * backoffice fills the table; if the number is not unique across brands, these
- * lookups need the brand too.
+ * Rows are matched on the whole article identity — number *and* brand — which
+ * is what `idx_autoparts_tecdoc` is keyed on. A number alone is not an identity:
+ * two data suppliers can file the same one, and quoting a customer the other
+ * supplier's price is a wrong price on a part they then buy.
  */
 @Injectable()
 export class AutopartsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByTecdocNumber(tecdocNumber: string): Promise<OwnStockRow[]> {
+  async findByArticle({
+    brandId,
+    articleNumber,
+  }: ArticleIdentityDto): Promise<OwnStockRow[]> {
     const rows = await this.prisma.$queryRaw<RawAutopartRow[]>(Prisma.sql`
-      SELECT tecdoc_number, available_quantity, sell_price_net, gross_price
+      SELECT tecdoc_number, tecdoc_supplier_id, available_quantity, sell_price_net, gross_price
       FROM public.autoparts
-      WHERE tecdoc_number = ${tecdocNumber}
+      WHERE tecdoc_number = ${articleNumber}
+        AND tecdoc_supplier_id = ${brandId}
     `);
 
     return rows.map(mapRow);
   }
 
-  async findByTecdocNumbers(
-    tecdocNumbers: string[],
+  /**
+   * The batch read, keyed by {@link articleIdentityKey}. The wanted pairs are
+   * joined in as two parallel arrays rather than expanded into an OR list, so
+   * one prepared statement serves any batch size and each pair is an index
+   * lookup on both columns.
+   */
+  async findByArticles(
+    articles: ArticleIdentityDto[],
   ): Promise<Map<string, OwnStockRow[]>> {
-    if (tecdocNumbers.length === 0) {
+    if (articles.length === 0) {
       return new Map();
     }
 
+    const articleNumbers = articles.map((article) => article.articleNumber);
+    const brandIds = articles.map((article) => article.brandId);
+
     const rows = await this.prisma.$queryRaw<RawAutopartRow[]>(Prisma.sql`
-      SELECT tecdoc_number, available_quantity, sell_price_net, gross_price
-      FROM public.autoparts
-      WHERE tecdoc_number IN (${Prisma.join(tecdocNumbers)})
+      SELECT autopart.tecdoc_number, autopart.tecdoc_supplier_id,
+             autopart.available_quantity, autopart.sell_price_net, autopart.gross_price
+      FROM public.autoparts AS autopart
+      JOIN unnest(${articleNumbers}::text[], ${brandIds}::text[])
+        AS wanted(tecdoc_number, tecdoc_supplier_id)
+        ON autopart.tecdoc_number = wanted.tecdoc_number
+       AND autopart.tecdoc_supplier_id = wanted.tecdoc_supplier_id
     `);
 
     const grouped = new Map<string, OwnStockRow[]>();
     for (const raw of rows) {
-      const row = mapRow(raw);
-      const existing = grouped.get(row.tecdocNumber);
+      const key = articleIdentityKey(raw.tecdoc_supplier_id, raw.tecdoc_number);
+      const existing = grouped.get(key);
       if (existing) {
-        existing.push(row);
+        existing.push(mapRow(raw));
       } else {
-        grouped.set(row.tecdocNumber, [row]);
+        grouped.set(key, [mapRow(raw)]);
       }
     }
 
@@ -82,6 +103,7 @@ export class AutopartsRepository {
 function mapRow(raw: RawAutopartRow): OwnStockRow {
   return {
     tecdocNumber: raw.tecdoc_number,
+    brandId: raw.tecdoc_supplier_id,
     availableQuantity: toInteger(raw.available_quantity),
     sellPriceExVatCents: toCents(raw.sell_price_net),
     sellPriceIncVatCents: toCents(raw.gross_price),

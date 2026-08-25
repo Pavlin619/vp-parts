@@ -1,10 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type {
-  ArticleInventoryDetailDto,
-  ArticleSummaryDto,
-  PaginatedCatalogArticlesDto,
+import {
+  articleIdentityKey,
+  type ArticleIdentityDto,
+  type ArticleInventoryDetailDto,
+  type ArticleSummaryDto,
+  type PaginatedCatalogArticlesDto,
 } from '@vp-parts-shop/shared'
 import { ArticleRowSubstitutes } from './article-row-substitutes'
 
@@ -20,11 +22,18 @@ jest.mock('@/lib/api/catalog', () => ({
     getNextPageParam: (page: PaginatedCatalogArticlesDto) =>
       page.page * page.pageSize < page.total ? page.page + 1 : undefined,
   }),
-  availabilityQueryOptions: (articleNumbers: string[]) => ({
-    queryKey: ['catalog', 'availability', [...articleNumbers].sort().join(',')],
-    queryFn: () => availabilityMock(articleNumbers) as Promise<unknown>,
+  availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
+    queryKey: ['catalog', 'availability', identityKeys(articles).sort().join(',')],
+    queryFn: () => availabilityMock(articles) as Promise<unknown>,
   }),
 }))
+
+/** The key both the request and the response map are built from. */
+function identityKeys(articles: ArticleIdentityDto[]): string[] {
+  return articles.map((article) =>
+    articleIdentityKey(article.brandId, article.articleNumber),
+  )
+}
 
 function substitute(
   overrides: Partial<ArticleSummaryDto> = {},
@@ -175,16 +184,22 @@ describe('ArticleRowSubstitutes', () => {
   // The substitutes read is cacheable catalog metadata; price and stock are
   // live, so the rows hydrate from the same bulk availability read every other
   // list surface uses.
-  it('hydrates the rows with live availability for the substitute numbers', async () => {
+  it('hydrates the rows with live availability for the substitutes', async () => {
     substitutesMock.mockResolvedValue(
       page([substitute(), substitute({ articleNumber: 'WL7090', brandId: '268' })]),
     )
-    availabilityMock.mockResolvedValue({ 'OC 115': detail() })
+    availabilityMock.mockResolvedValue({
+      [articleIdentityKey('77', 'OC 115')]: detail(),
+    })
 
     renderSubstitutes()
 
     expect(await screen.findByText(/15[.,]00/)).toBeInTheDocument()
-    expect(availabilityMock).toHaveBeenCalledWith(['OC 115', 'WL7090'])
+    // Each row is priced as the brand that files it, never by number alone.
+    expect(availabilityMock).toHaveBeenCalledWith([
+      expect.objectContaining({ brandId: '77', articleNumber: 'OC 115' }),
+      expect.objectContaining({ brandId: '268', articleNumber: 'WL7090' }),
+    ])
   })
 
   // Nothing may be read until a visitor opens the section, and the numbers to
@@ -345,8 +360,12 @@ describe('ArticleRowSubstitutes', () => {
       )
       await screen.findByRole('link', { name: 'WL7090' })
 
-      expect(availabilityMock).toHaveBeenCalledWith(['OC 115'])
-      expect(availabilityMock).toHaveBeenCalledWith(['WL7090'])
+      expect(availabilityMock).toHaveBeenCalledWith([
+        expect.objectContaining({ brandId: '77', articleNumber: 'OC 115' }),
+      ])
+      expect(availabilityMock).toHaveBeenCalledWith([
+        expect.objectContaining({ brandId: '268', articleNumber: 'WL7090' }),
+      ])
     })
 
     it('offers nothing more once the set is exhausted', async () => {

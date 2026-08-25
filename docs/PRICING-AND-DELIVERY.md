@@ -183,7 +183,10 @@ All money is handled as **integer EUR cents** everywhere.
 - **Unknown supplier/warehouse mapping:** that offer is dropped and an alert is logged
   (never shown to the customer).
 - **A supplier row with no usable quantity:** treated as "unknown" and excluded.
-- **Read failure policy:** there is one live read — `getAvailability(numbers)`,
+- **A line filed under another brand, or under none:** not this article's stock.
+  The read matches `tecdoc_number` **and** `tecdoc_supplier_id`, so a number two
+  suppliers share no longer quotes one brand's part from the other's shelf.
+- **Read failure policy:** there is one live read — `getAvailability(articles)`,
   which toggles only the DB query by input size (single-row vs batch) — and it
   **always fails closed**: on a read error it throws `InventoryUnavailableException`
   (503 / `INVENTORY_UNAVAILABLE`) rather than marking anything as falsely out of
@@ -214,6 +217,12 @@ All money is handled as **integer EUR cents** everywhere.
 ## Known future work (intentionally not done yet)
 
 - **Per-mechanic trade discount** applied on top of this single locked price.
+- **Original parts.** A stock line is matched on the whole article identity —
+  `tecdoc_number` **and** `tecdoc_supplier_id` — so 70,677 lines filed under an
+  internal OE code instead of a TecDoc supplier id are unreachable. They are a
+  different relation ("the original this part replaces") and need their own
+  lookup, off an aftermarket article's `oemNumbers`, shown as a separate offer.
+  See `TODO(inventory-oe-parts)` in `inventory.service.ts`.
 - **Matching beyond `tecdoc_number`** (e.g. `supplier_code` / `catalog_number`) for rows
   that have no TecDoc number.
 - **Real warehouse→delivery-day values** refined as we learn each supplier's true lead

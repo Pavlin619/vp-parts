@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import {
   ArticleSummaryDto,
   ArticleInventoryDetailDto,
+  articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { RedisCache, CachedManyRequest } from '../../../redis';
 import {
@@ -15,6 +16,7 @@ import { CrossReferencesService } from './cross-references.service';
 import { CrossReferencesTecDoc } from './cross-references.tecdoc';
 
 const BOSCH = 30;
+const FERODO = '101';
 const BRAKE_DISC = 82;
 
 function item(
@@ -41,7 +43,7 @@ function candidate(
   overrides: Partial<CrossReferenceCandidate> = {},
 ): CrossReferenceCandidate {
   return {
-    brandId: '101',
+    brandId: FERODO,
     brandName: 'Ferodo',
     articleNumber,
     description: 'Спирачен диск',
@@ -251,9 +253,9 @@ describe('CrossReferencesService', () => {
       ]);
       inventory.getAvailability.mockResolvedValueOnce(
         new Map([
-          ['OUT-OF-STOCK', OUT_OF_STOCK],
+          [articleIdentityKey(FERODO, 'OUT-OF-STOCK'), OUT_OF_STOCK],
           [
-            'IN-STOCK',
+            articleIdentityKey(FERODO, 'IN-STOCK'),
             { ...OUT_OF_STOCK, available: true, bestPriceIncVat: 4200 },
           ],
         ]),
@@ -261,9 +263,10 @@ describe('CrossReferencesService', () => {
 
       const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 1);
 
+      // Priced as the brand that files each number, never by the number alone.
       expect(inventory.getAvailability).toHaveBeenCalledWith([
-        'OUT-OF-STOCK',
-        'IN-STOCK',
+        { brandId: FERODO, articleNumber: 'OUT-OF-STOCK' },
+        { brandId: FERODO, articleNumber: 'IN-STOCK' },
       ]);
       expect(tecdoc.getArticleRowsByLegacyIds).toHaveBeenCalledWith([2]);
       expect(page.items).toHaveLength(1);

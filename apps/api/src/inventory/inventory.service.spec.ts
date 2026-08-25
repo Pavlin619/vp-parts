@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { articleIdentityKey } from '@vp-parts-shop/shared';
 import { InventoryService } from './inventory.service';
 import { AutopartsRepository, OwnStockRow } from './autoparts.repository';
 import {
@@ -11,19 +12,19 @@ import { DeliveryScheduleService } from './delivery-schedule.service';
 import { DeliveryRule, rankForRule } from './delivery';
 import { InventoryUnavailableException } from './inventory-unavailable.exception';
 
-const ownFindByNumber = jest.fn();
-const ownFindByNumbers = jest.fn();
-const supplierFindByNumber = jest.fn();
-const supplierFindByNumbers = jest.fn();
+const ownFindByArticle = jest.fn();
+const ownFindByArticles = jest.fn();
+const supplierFindByArticle = jest.fn();
+const supplierFindByArticles = jest.fn();
 
 const ownStock = {
-  findByTecdocNumber: ownFindByNumber,
-  findByTecdocNumbers: ownFindByNumbers,
+  findByArticle: ownFindByArticle,
+  findByArticles: ownFindByArticles,
 } as unknown as AutopartsRepository;
 
 const supplierStock = {
-  findByTecdocNumber: supplierFindByNumber,
-  findByTecdocNumbers: supplierFindByNumbers,
+  findByArticle: supplierFindByArticle,
+  findByArticles: supplierFindByArticles,
 } as unknown as SupplierStockRepository;
 
 // Deterministic resolver: INTERCARS within hour, AUTOPLUS same day, AUTO1 2
@@ -82,9 +83,21 @@ function warehouseRow(warehouseId: string, quantity: number) {
   };
 }
 
+const BOSCH = '30';
+const SPIDAN = '1';
+
+/** The article every fixture below is about, unless a test says otherwise. */
+function bosch(articleNumber: string) {
+  return { brandId: BOSCH, articleNumber };
+}
+
+const WL6340 = bosch('WL6340');
+const WL6340_KEY = articleIdentityKey(BOSCH, 'WL6340');
+
 function ownRow(overrides: Partial<OwnStockRow> = {}): OwnStockRow {
   return {
     tecdocNumber: 'WL6340',
+    brandId: BOSCH,
     availableQuantity: 4,
     sellPriceExVatCents: 5000,
     sellPriceIncVatCents: 6000,
@@ -102,6 +115,7 @@ function supplierRow(
     buyPriceCents: 4000,
     sellPriceCents: 5500,
     tecdocNumber: 'WL6340',
+    brandId: BOSCH,
     ...overrides,
   };
 }
@@ -125,36 +139,36 @@ describe('InventoryService', () => {
       const result = await service.getAvailability([]);
 
       expect(result.size).toBe(0);
-      expect(ownFindByNumber).not.toHaveBeenCalled();
-      expect(ownFindByNumbers).not.toHaveBeenCalled();
-      expect(supplierFindByNumber).not.toHaveBeenCalled();
-      expect(supplierFindByNumbers).not.toHaveBeenCalled();
+      expect(ownFindByArticle).not.toHaveBeenCalled();
+      expect(ownFindByArticles).not.toHaveBeenCalled();
+      expect(supplierFindByArticle).not.toHaveBeenCalled();
+      expect(supplierFindByArticles).not.toHaveBeenCalled();
     });
 
     describe('single article (single-row read)', () => {
       it('uses the single-row query, not the batch query', async () => {
-        ownFindByNumber.mockResolvedValueOnce([]);
-        supplierFindByNumber.mockResolvedValueOnce([]);
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([]);
 
-        await service.getAvailability(['WL6340']);
+        await service.getAvailability([WL6340]);
 
-        expect(ownFindByNumber).toHaveBeenCalledWith('WL6340');
-        expect(supplierFindByNumber).toHaveBeenCalledWith('WL6340');
-        expect(ownFindByNumbers).not.toHaveBeenCalled();
-        expect(supplierFindByNumbers).not.toHaveBeenCalled();
+        expect(ownFindByArticle).toHaveBeenCalledWith(WL6340);
+        expect(supplierFindByArticle).toHaveBeenCalledWith(WL6340);
+        expect(ownFindByArticles).not.toHaveBeenCalled();
+        expect(supplierFindByArticles).not.toHaveBeenCalled();
       });
 
       it('locks the price to our own stock and ships it immediately', async () => {
-        ownFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([
           ownRow({ availableQuantity: 4 }),
         ]);
-        supplierFindByNumber.mockResolvedValueOnce([
+        supplierFindByArticle.mockResolvedValueOnce([
           supplierRow({ availability: 3, sellPriceCents: 5200 }),
         ]);
 
-        const result = await service.getAvailability(['WL6340']);
+        const result = await service.getAvailability([WL6340]);
 
-        expect(result.get('WL6340')).toEqual({
+        expect(result.get(WL6340_KEY)).toEqual({
           available: true,
           bestPriceExVat: 5000,
           bestPriceIncVat: 6000,
@@ -165,14 +179,14 @@ describe('InventoryService', () => {
       });
 
       it('raises the displayed price to the cheapest supplier when our price undercuts them', async () => {
-        ownFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([
           ownRow({
             availableQuantity: 4,
             sellPriceExVatCents: 3000,
             sellPriceIncVatCents: 3600,
           }),
         ]);
-        supplierFindByNumber.mockResolvedValueOnce([
+        supplierFindByArticle.mockResolvedValueOnce([
           supplierRow({
             availability: 3,
             buyPriceCents: 3000,
@@ -180,8 +194,8 @@ describe('InventoryService', () => {
           }),
         ]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         expect(detail?.bestPriceIncVat).toBe(4800);
@@ -189,8 +203,8 @@ describe('InventoryService', () => {
       });
 
       it('falls back to the lowest-buy-price supplier within the fastest band when we do not carry the part', async () => {
-        ownFindByNumber.mockResolvedValueOnce([]);
-        supplierFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([
           supplierRow({
             supplierSource: 'INTERCARS',
             availability: 2,
@@ -205,8 +219,8 @@ describe('InventoryService', () => {
           }),
         ]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         expect(detail?.available).toBe(true);
@@ -216,11 +230,11 @@ describe('InventoryService', () => {
       });
 
       it('returns an out-of-stock availability when nobody has stock', async () => {
-        ownFindByNumber.mockResolvedValueOnce([]);
-        supplierFindByNumber.mockResolvedValueOnce([]);
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         expect(detail?.available).toBe(false);
@@ -229,13 +243,13 @@ describe('InventoryService', () => {
       });
 
       it('drops an unknown supplier/warehouse line (no delivery rule) and treats it as out of stock', async () => {
-        ownFindByNumber.mockResolvedValueOnce([]);
-        supplierFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([
           supplierRow({ supplierSource: 'MYSTERY', availability: 9 }),
         ]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         expect(detail?.available).toBe(false);
@@ -243,8 +257,8 @@ describe('InventoryService', () => {
       });
 
       it('groups stock into fastest-first warehouses by inherent capability', async () => {
-        ownFindByNumber.mockResolvedValueOnce([]);
-        supplierFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([
           // Same-day capable -> Regional 1.
           supplierRow({ supplierSource: 'AUTOPLUS', availability: 5 }),
           // Within the hour -> Central.
@@ -253,8 +267,8 @@ describe('InventoryService', () => {
           supplierRow({ supplierSource: 'AUTO1', availability: 9 }),
         ]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         expect(detail?.availabilityByWarehouse).toEqual([
@@ -265,13 +279,13 @@ describe('InventoryService', () => {
       });
 
       it('omits warehouses that hold no stock', async () => {
-        ownFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([
           ownRow({ availableQuantity: 3 }),
         ]);
-        supplierFindByNumber.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         expect(detail?.availabilityByWarehouse).toEqual([
@@ -283,8 +297,8 @@ describe('InventoryService', () => {
         const errorSpy = jest
           .spyOn(Logger.prototype, 'error')
           .mockImplementation(() => undefined);
-        ownFindByNumber.mockResolvedValueOnce([]);
-        supplierFindByNumber.mockResolvedValueOnce([
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([
           supplierRow({ supplierSource: 'INTERCARS', availability: null }),
           supplierRow({
             supplierSource: 'INTERCARS',
@@ -294,8 +308,8 @@ describe('InventoryService', () => {
           }),
         ]);
 
-        const detail = (await service.getAvailability(['WL6340'])).get(
-          'WL6340',
+        const detail = (await service.getAvailability([WL6340])).get(
+          WL6340_KEY,
         );
 
         // Only the valid line (5) counts towards the Central warehouse quantity.
@@ -312,12 +326,12 @@ describe('InventoryService', () => {
         const errorSpy = jest
           .spyOn(Logger.prototype, 'error')
           .mockImplementation(() => undefined);
-        ownFindByNumber.mockRejectedValueOnce(new Error('db down'));
-        supplierFindByNumber.mockResolvedValueOnce([]);
+        ownFindByArticle.mockRejectedValueOnce(new Error('db down'));
+        supplierFindByArticle.mockResolvedValueOnce([]);
 
-        await expect(
-          service.getAvailability(['WL6340']),
-        ).rejects.toBeInstanceOf(InventoryUnavailableException);
+        await expect(service.getAvailability([WL6340])).rejects.toBeInstanceOf(
+          InventoryUnavailableException,
+        );
 
         errorSpy.mockRestore();
       });
@@ -325,25 +339,36 @@ describe('InventoryService', () => {
 
     describe('multiple articles (batch read)', () => {
       it('uses the batch query, not the single-row query', async () => {
-        ownFindByNumbers.mockResolvedValueOnce(new Map());
-        supplierFindByNumbers.mockResolvedValueOnce(new Map());
+        ownFindByArticles.mockResolvedValueOnce(new Map());
+        supplierFindByArticles.mockResolvedValueOnce(new Map());
 
-        await service.getAvailability(['A', 'B']);
+        await service.getAvailability([bosch('A'), bosch('B')]);
 
-        expect(ownFindByNumbers).toHaveBeenCalledWith(['A', 'B']);
-        expect(supplierFindByNumbers).toHaveBeenCalledWith(['A', 'B']);
-        expect(ownFindByNumber).not.toHaveBeenCalled();
-        expect(supplierFindByNumber).not.toHaveBeenCalled();
+        expect(ownFindByArticles).toHaveBeenCalledWith([
+          bosch('A'),
+          bosch('B'),
+        ]);
+        expect(supplierFindByArticles).toHaveBeenCalledWith([
+          bosch('A'),
+          bosch('B'),
+        ]);
+        expect(ownFindByArticle).not.toHaveBeenCalled();
+        expect(supplierFindByArticle).not.toHaveBeenCalled();
       });
 
-      it('resolves an offer per requested number, with warehouses always attached', async () => {
-        ownFindByNumbers.mockResolvedValueOnce(
-          new Map([['OWNED', [ownRow({ tecdocNumber: 'OWNED' })]]]),
-        );
-        supplierFindByNumbers.mockResolvedValueOnce(
+      it('resolves an offer per requested article, with warehouses always attached', async () => {
+        ownFindByArticles.mockResolvedValueOnce(
           new Map([
             [
-              'SUPPLIED',
+              articleIdentityKey(BOSCH, 'OWNED'),
+              [ownRow({ tecdocNumber: 'OWNED' })],
+            ],
+          ]),
+        );
+        supplierFindByArticles.mockResolvedValueOnce(
+          new Map([
+            [
+              articleIdentityKey(BOSCH, 'SUPPLIED'),
               [
                 supplierRow({
                   tecdocNumber: 'SUPPLIED',
@@ -356,33 +381,87 @@ describe('InventoryService', () => {
         );
 
         const result = await service.getAvailability([
-          'OWNED',
-          'SUPPLIED',
-          'MISSING',
+          bosch('OWNED'),
+          bosch('SUPPLIED'),
+          bosch('MISSING'),
         ]);
 
-        const owned = result.get('OWNED');
+        const owned = result.get(articleIdentityKey(BOSCH, 'OWNED'));
         expect(owned?.bestPriceIncVat).toBe(6000);
         // Every entry carries the request-time warehouse projection now.
         expect(owned?.availabilityByWarehouse.length).toBeGreaterThan(0);
         expect(owned?.computedAt).not.toBeNull();
-        expect(result.get('SUPPLIED')?.available).toBe(true);
-        expect(result.get('SUPPLIED')?.bestPriceIncVat).toBe(4000);
-        expect(result.get('MISSING')?.available).toBe(false);
+        expect(
+          result.get(articleIdentityKey(BOSCH, 'SUPPLIED'))?.available,
+        ).toBe(true);
+        expect(
+          result.get(articleIdentityKey(BOSCH, 'SUPPLIED'))?.bestPriceIncVat,
+        ).toBe(4000);
+        expect(
+          result.get(articleIdentityKey(BOSCH, 'MISSING'))?.available,
+        ).toBe(false);
       });
 
       it('fails closed with InventoryUnavailableException on a database error', async () => {
         const errorSpy = jest
           .spyOn(Logger.prototype, 'error')
           .mockImplementation(() => undefined);
-        ownFindByNumbers.mockRejectedValueOnce(new Error('db down'));
-        supplierFindByNumbers.mockResolvedValueOnce(new Map());
+        ownFindByArticles.mockRejectedValueOnce(new Error('db down'));
+        supplierFindByArticles.mockResolvedValueOnce(new Map());
 
         await expect(
-          service.getAvailability(['A', 'B']),
+          service.getAvailability([bosch('A'), bosch('B')]),
         ).rejects.toBeInstanceOf(InventoryUnavailableException);
 
         errorSpy.mockRestore();
+      });
+    });
+
+    // An article number is not unique in TecDoc, so an article is a (brand,
+    // number) pair the whole way down: the repositories match on both, and this
+    // service keys its answer on both. Without that a customer can be quoted
+    // another company's price for the part they are looking at.
+    describe('article identity', () => {
+      it('answers each brand separately when both file one number', async () => {
+        const spidan = { brandId: SPIDAN, articleNumber: 'WL6340' };
+        ownFindByArticles.mockResolvedValueOnce(new Map());
+        supplierFindByArticles.mockResolvedValueOnce(
+          new Map([
+            [
+              WL6340_KEY,
+              [supplierRow({ availability: 2, sellPriceCents: 5500 })],
+            ],
+            [
+              articleIdentityKey(SPIDAN, 'WL6340'),
+              [
+                supplierRow({
+                  brandId: SPIDAN,
+                  availability: 4,
+                  sellPriceCents: 3300,
+                }),
+              ],
+            ],
+          ]),
+        );
+
+        const result = await service.getAvailability([WL6340, spidan]);
+
+        expect(supplierFindByArticles).toHaveBeenCalledWith([WL6340, spidan]);
+        expect(result.get(WL6340_KEY)?.bestPriceIncVat).toBe(5500);
+        expect(
+          result.get(articleIdentityKey(SPIDAN, 'WL6340'))?.bestPriceIncVat,
+        ).toBe(3300);
+      });
+
+      it('asks for a repeated article once', async () => {
+        ownFindByArticle.mockResolvedValueOnce([]);
+        supplierFindByArticle.mockResolvedValueOnce([]);
+
+        const result = await service.getAvailability([WL6340, { ...WL6340 }]);
+
+        expect(supplierFindByArticle).toHaveBeenCalledTimes(1);
+        expect(supplierFindByArticles).not.toHaveBeenCalled();
+        expect(result.get(WL6340_KEY)?.available).toBe(false);
       });
     });
   });

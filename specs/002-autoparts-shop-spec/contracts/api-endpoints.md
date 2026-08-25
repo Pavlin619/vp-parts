@@ -134,22 +134,31 @@ Response `200`:
 
 ### Bulk Availability
 
-**`GET /catalog/articles-availability?numbers=WL6340,OC123`** `[PUBLIC]`
+**`GET /catalog/articles-availability?articles=268:WL6340,77:OC123`** `[PUBLIC]`
 
 Live, never-cached (`Cache-Control: no-store`) price/availability for a batch of
-article numbers, keyed by number. The cached listing grid calls this per request
-to hydrate its metadata rows with fresh price + per-warehouse delivery data, and
-it is the single availability read every list surface (grid, search, substitutes)
-shares. **Fails closed**: a stock-DB read error returns `503` /
+articles, keyed by `brandId:articleNumber`. The cached listing grid calls this per
+request to hydrate its metadata rows with fresh price + per-warehouse delivery
+data, and it is the single availability read every list surface (grid, search,
+substitutes) shares. **Fails closed**: a stock-DB read error returns `503` /
 `INVENTORY_UNAVAILABLE` so a whole grid never renders as falsely out of stock.
-A requested number with genuinely no stock resolves to `available: false` and is
+A requested article with genuinely no stock resolves to `available: false` and is
 still present in the map. Shape: `ArticlesAvailabilityDto`
 (`Record<string, ArticleInventoryDetailDto>`).
 
-Response `200`:
+Query params (`ArticlesAvailabilityQueryDto`):
+- `articles` — repeatable and/or comma-separated `brandId:articleNumber` tokens,
+  1…50 after de-duplication. `brandId` is digits; the article number is
+  everything after the first colon, so a number containing one survives. A token
+  without a colon, with an empty half or with a non-numeric brand is a `400` /
+  `VALIDATION_ERROR` — the brand is not optional, because a number alone matches
+  every supplier that ever filed it and would price one brand's part from
+  another's stock line.
+
+Response `200` — the key is the identity, not the number:
 ```json
 {
-  "WL6340": {
+  "268:WL6340": {
     "available": true,
     "bestPriceExVat": 1250,
     "bestPriceIncVat": 1500,
@@ -344,7 +353,7 @@ a mechanic fits to the wrong car. An article the catalogue does not have is a
 
 Catalog metadata only — **no** price or stock, like every other cacheable
 catalog read. The section hydrates the rows client-side through
-`GET /catalog/articles-availability?numbers=…` one page at a time, so a
+`GET /catalog/articles-availability?articles=…` one page at a time, so a
 substitute's delivery date is never served from a cache and a batch stays within
 that endpoint's limit. Vehicle-independent by design: if the viewed part fits the
 selected vehicle then so does anything replacing it, so no per-substitute fit
@@ -700,7 +709,8 @@ zero-result response:
 Returns cacheable TecDoc **metadata + fit + facets — no live inventory**,
 mirroring the listing grid / article detail split. `available` and price are not
 on the search response; the client fetches live price/availability for the
-result article numbers via `GET /catalog/articles-availability` and merges it
+result articles — brand and number both — via
+`GET /catalog/articles-availability` and merges it
 in. This keeps a search from triggering a stock-DB read per TecDoc call attempt
 — availability is read once, client-side, for the final result set.
 
@@ -783,11 +793,19 @@ Cache: Redis, 15 min for suggestions and 5 min for empty results.
 ## Inventory Module
 
 There is **no standalone inventory HTTP endpoint.** Client-facing availability is
-served through the catalog endpoint `GET /catalog/articles-availability?numbers=…`
+served through the catalog endpoint `GET /catalog/articles-availability?articles=…`
 (`no-store`), which reads `public.autoparts` + `public.supplier_stock` directly and
 live (no Redis).
 
-There is **one** read behind every surface — `InventoryService.getAvailability(numbers)`,
+Both tables carry `tecdoc_supplier_id` alongside `tecdoc_number` and are indexed
+on the pair, and the repositories match on both in the `WHERE` clause: 13,596
+numbers in `supplier_stock` are filed by more than one supplier, so a number-only
+match prices one brand's part off another's line. Rows whose `tecdoc_supplier_id`
+is absent or is an internal OE code therefore match nothing — see the
+`TODO(inventory-oe-parts)` on `InventoryService` for the original-parts relation,
+which needs its own lookup rather than a looser match here.
+
+There is **one** read behind every surface — `InventoryService.getAvailability(articles)`,
 exposed via `CatalogService.getArticlesAvailability` — which toggles only the DB
 query by input size (single-row vs batch) and **always fails closed**: on a read
 error it throws `InventoryUnavailableException` (`INVENTORY_UNAVAILABLE`, 503) rather
@@ -799,7 +817,7 @@ article that genuinely has no stock still resolves to `available: false`; only a
 *failure* throws.)
 
 The **binding pre-checkout re-validation** uses the same fail-closed read
-(`InventoryService.getAvailability(cart numbers)`), called **in-process** by
+(`InventoryService.getAvailability(cart articles)`), called **in-process** by
 `CheckoutService` during the confirm step so a DB error aborts the order rather than
 selling stale stock. It is not exposed over HTTP: NestJS services read the shared DB
 directly, with no internal REST hop.

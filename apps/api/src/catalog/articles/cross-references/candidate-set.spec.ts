@@ -1,6 +1,7 @@
 import {
   ArticleInventoryDetailDto,
   WarehouseAvailabilityDto,
+  articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { ArticleStatus, CrossReferenceCandidate } from '../../../tecdoc';
 import {
@@ -83,6 +84,21 @@ const OUT_OF_STOCK: ArticleInventoryDetailDto = {
 
 function numbersOf(candidates: CrossReferenceCandidate[]): string[] {
   return candidates.map((entry) => entry.articleNumber);
+}
+
+/**
+ * Availability as the inventory read returns it — keyed by brand and number, not
+ * by number alone. Every candidate here is BOSCH's, as {@link candidate} builds.
+ */
+function priced(
+  entries: Array<[string, ArticleInventoryDetailDto]>,
+): Map<string, ArticleInventoryDetailDto> {
+  return new Map(
+    entries.map(([articleNumber, detail]) => [
+      articleIdentityKey('30', articleNumber),
+      detail,
+    ]),
+  );
 }
 
 describe('keepCandidatesCiting', () => {
@@ -198,7 +214,7 @@ describe('dropViewedPart', () => {
 
 describe('orderByAvailability', () => {
   it('puts what we can ship before what we cannot', () => {
-    const availability = new Map([
+    const availability = priced([
       ['A1', OUT_OF_STOCK],
       ['A2', inStock(1, 4200)],
     ]);
@@ -212,7 +228,7 @@ describe('orderByAvailability', () => {
   });
 
   it('orders in-stock parts by soonest delivery, then by price', () => {
-    const availability = new Map([
+    const availability = priced([
       ['SLOW-CHEAP', inStock(3, 1000)],
       ['FAST-DEAR', inStock(0, 9000)],
       ['FAST-CHEAP', inStock(0, 5000)],
@@ -241,7 +257,7 @@ describe('orderByAvailability', () => {
    * The band separates them, and it outranks price.
    */
   it('puts stock on our own shelf above same-day supplier stock', () => {
-    const availability = new Map([
+    const availability = priced([
       [
         'SUPPLIER-CHEAP',
         inStock(0, 890, [warehouse(0, { warehouseId: 'REGIONAL_1' })]),
@@ -263,7 +279,7 @@ describe('orderByAvailability', () => {
   // A warehouse we could ship from tomorrow is the answer even when a slower one
   // is listed first, so the delivery band is the fastest of them, not the first.
   it('takes the soonest of several warehouses', () => {
-    const availability = new Map([
+    const availability = priced([
       ['SPREAD', inStock(3, 4200, [warehouse(3), warehouse(1)])],
       ['SINGLE', inStock(2, 4200)],
     ]);
@@ -279,7 +295,7 @@ describe('orderByAvailability', () => {
   // The badge is drawn from the fastest warehouse that actually holds stock, so
   // an empty one must not lend the row its speed.
   it('ignores a warehouse holding none of the part', () => {
-    const availability = new Map([
+    const availability = priced([
       [
         'EMPTY-SHELF',
         inStock(1, 4200, [
@@ -301,7 +317,7 @@ describe('orderByAvailability', () => {
   // Nothing to sort on, so this only decides which out-of-stock row a visitor
   // reads first: one a supplier still ships beats one nobody makes any more.
   it('puts a part still in supply before a discontinued one', () => {
-    const availability = new Map([
+    const availability = priced([
       ['GONE', OUT_OF_STOCK],
       ['MADE', OUT_OF_STOCK],
     ]);
@@ -318,7 +334,7 @@ describe('orderByAvailability', () => {
   });
 
   it('ranks a part TecDoc files no status for below one in normal supply', () => {
-    const availability = new Map([
+    const availability = priced([
       ['UNKNOWN', OUT_OF_STOCK],
       ['NORMAL', OUT_OF_STOCK],
     ]);
@@ -337,7 +353,7 @@ describe('orderByAvailability', () => {
   // Page 2 must not reshuffle against page 1 on the next request, so nothing is
   // ever left to the order TecDoc happened to answer in.
   it('breaks every remaining tie on brand, then number', () => {
-    const availability = new Map([
+    const availability = priced([
       ['B2', inStock(1, 4200)],
       ['B1', inStock(1, 4200)],
       ['A1', inStock(1, 4200)],
@@ -378,7 +394,7 @@ describe('orderByAvailability', () => {
   // Every candidate number is sent to the availability read, but a number with
   // no inventory row at all must not sort above one that has stock.
   it('treats a number the availability read did not answer for as out of stock', () => {
-    const availability = new Map([['STOCKED', inStock(2, 4200)]]);
+    const availability = priced([['STOCKED', inStock(2, 4200)]]);
 
     const ordered = orderByAvailability(
       [candidate('UNPRICED'), candidate('STOCKED')],
@@ -386,6 +402,25 @@ describe('orderByAvailability', () => {
     );
 
     expect(numbersOf(ordered)).toEqual(['STOCKED', 'UNPRICED']);
+  });
+
+  // Two suppliers filing one number are two parts, so the stock of one must not
+  // lift the other up the list.
+  it('does not price a candidate from another brand filing its number', () => {
+    const availability = priced([['SHARED', inStock(0, 4200)]]);
+
+    const ordered = orderByAvailability(
+      [
+        candidate('SHARED', { brandId: '4', brandName: 'MANN' }),
+        candidate('OWN-STOCK'),
+      ],
+      new Map([
+        ...availability,
+        [articleIdentityKey('30', 'OWN-STOCK'), inStock(3, 9000)],
+      ]),
+    );
+
+    expect(numbersOf(ordered)).toEqual(['OWN-STOCK', 'SHARED']);
   });
 
   it('leaves the input array untouched', () => {

@@ -257,7 +257,8 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
 ## The wire contract
 
 `ArticleInventoryDetailDto` is the single availability shape on the wire —
-returned per-article by `GET /catalog/articles-availability` and merged onto
+returned by `GET /catalog/articles-availability` under the article's
+`brandId:articleNumber` identity, and merged onto
 cached catalog metadata client-side by every list surface (grid, search,
 substitutes). It carries `availabilityByWarehouse: WarehouseAvailabilityDto[]`
 (fastest-first) plus a top-level `computedAt`. Only the warehouse **id** crosses
@@ -287,7 +288,7 @@ breakdown, and the frontend derives its delivery label per warehouse from
 
 **Caching note:** availability is always read on a **dynamic (uncached)** path,
 so it never carries a stale date. Every surface goes through one live read —
-`InventoryService.getAvailability(numbers)` (single vs bulk DB query by count,
+`InventoryService.getAvailability(articles)` (single vs bulk DB query by count,
 warehouses always attached), exposed as `GET /catalog/articles-availability`
 (`no-store`). The buy box, catalog grid, search, and substitutes all fetch their
 **metadata** from a separate cacheable catalog response (e.g.

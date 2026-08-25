@@ -1,5 +1,6 @@
 import {
   ArticleInventoryDetailDto,
+  articleIdentityKey,
   deliveryBand,
   deliveryBandRank,
 } from '@vp-parts-shop/shared';
@@ -20,10 +21,10 @@ export interface CandidatePage {
 }
 
 /**
- * Live availability for the candidates, keyed by article number, or null when
- * the stock database could not be read.
+ * Live availability for the candidates, keyed by {@link articleIdentityKey}, or
+ * null when the stock database could not be read.
  */
-export type AvailabilityByNumber = Map<
+export type CandidateAvailability = Map<
   string,
   ArticleInventoryDetailDto
 > | null;
@@ -94,11 +95,11 @@ export function dropViewedPart(
  */
 export function orderByAvailability(
   candidates: CrossReferenceCandidate[],
-  availability: AvailabilityByNumber,
+  availability: CandidateAvailability,
 ): CrossReferenceCandidate[] {
   const ranked = candidates.map((candidate) => ({
     candidate,
-    stock: availability?.get(candidate.articleNumber),
+    stock: availability?.get(identityOf(candidate)),
   }));
 
   ranked.sort((left, right) => {
@@ -186,7 +187,7 @@ function catalogueOrder(
 }
 
 function identityOf(article: ViewedArticle): string {
-  return `${article.brandId}:${article.articleNumber}`;
+  return articleIdentityKey(article.brandId, article.articleNumber);
 }
 
 /**
