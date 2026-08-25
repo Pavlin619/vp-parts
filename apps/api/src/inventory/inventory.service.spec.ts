@@ -54,17 +54,19 @@ const deliverySpeed = {
 } as unknown as DeliverySpeedResolver;
 
 // Deterministic projection so warehouse assertions don't depend on the clock.
+const projectWarehouse = jest.fn((warehouse: string) => ({
+  deliveryWorkDays: 0,
+  orderCutoffTime: '18:00',
+  cutoffAt: `cutoff:${warehouse}`,
+  pickup: { earliestAt: `pickup:${warehouse}`, granularity: 'DAY' as const },
+  courier: {
+    earliestAt: `courier:${warehouse}`,
+    granularity: 'DAY' as const,
+  },
+}));
+
 const deliverySchedule = {
-  projectWarehouse: (warehouse: string) => ({
-    deliveryWorkDays: 0,
-    orderCutoffTime: '18:00',
-    cutoffAt: `cutoff:${warehouse}`,
-    pickup: { earliestAt: `pickup:${warehouse}`, granularity: 'DAY' as const },
-    courier: {
-      earliestAt: `courier:${warehouse}`,
-      granularity: 'DAY' as const,
-    },
-  }),
+  projectWarehouse,
 } as unknown as DeliveryScheduleService;
 
 const config = {
@@ -414,6 +416,27 @@ describe('InventoryService', () => {
         ).rejects.toBeInstanceOf(InventoryUnavailableException);
 
         errorSpy.mockRestore();
+      });
+
+      // The projection depends only on the warehouse and the request instant,
+      // so recomputing it per article made it ~90% of the cost of a large read.
+      it('projects each warehouse once for the whole batch', async () => {
+        const articles = ['A', 'B', 'C', 'D'].map(bosch);
+        const stocked = new Map(
+          articles.map((article) => [
+            articleIdentityKey(BOSCH, article.articleNumber),
+            [supplierRow({ tecdocNumber: article.articleNumber })],
+          ]),
+        );
+        ownFindByArticles.mockResolvedValueOnce(new Map());
+        supplierFindByArticles.mockResolvedValueOnce(stocked);
+
+        await service.getAvailability(articles);
+
+        const projected = projectWarehouse.mock.calls.map(
+          ([warehouse]) => warehouse,
+        );
+        expect(projected).toEqual([...new Set(projected)]);
       });
     });
 
