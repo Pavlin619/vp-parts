@@ -63,7 +63,7 @@ WHERE to_regclass('public.supplier_stock') IS NOT NULL
 --     actual supplier_stock columns.
 SELECT format(
   'GRANT SELECT (id, supplier_source, supplier_code, warehouse_code, '
-  'availability, buy_price, sell_price, tecdoc_number, '
+  'availability, buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, '
   'brand, description, last_synced_at) ON public.supplier_stock TO %I',
   :'shop_db_user')
 WHERE to_regclass('public.supplier_stock') IS NOT NULL\gexec

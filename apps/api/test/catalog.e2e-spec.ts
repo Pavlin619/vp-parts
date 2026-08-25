@@ -9,7 +9,7 @@ import {
   CrossReferencesTecDoc,
   LinkedVehiclesTecDoc,
   ArticleNotFoundException,
-  AVAILABILITY_MAX_ARTICLE_NUMBERS,
+  AVAILABILITY_MAX_ARTICLES,
 } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
 import {
@@ -436,14 +436,17 @@ describe('CatalogController (e2e)', () => {
   });
 
   describe('GET /catalog/articles-availability', () => {
-    it('returns live availability keyed by number and is not cached', async () => {
+    // MANN-FILTER, the brand the seed files OF-OC115 under.
+    const MANN = '72';
+
+    it('returns live availability keyed by brand and number, and is not cached', async () => {
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles-availability?numbers=BD-001,BD-002')
+        .get('/catalog/articles-availability?articles=30:BD-001,30:BD-002')
         .expect(200);
 
       expect(res.headers['cache-control']).toBe('no-store');
-      // No stock in the test DB -> neutral unavailable detail per requested number.
-      expect(res.body['BD-001']).toEqual({
+      // No stock in the test DB -> neutral unavailable detail per requested article.
+      expect(res.body['30:BD-001']).toEqual({
         available: false,
         bestPriceExVat: null,
         bestPriceIncVat: null,
@@ -452,16 +455,20 @@ describe('CatalogController (e2e)', () => {
       });
     });
 
-    // The response is a map keyed by article number, so answering an empty
+    // The response is a map keyed by brand and number, so answering an empty
     // request with `{}` would be indistinguishable from "none of these are in
     // stock" and would render a whole grid as out of stock. A request that asks
     // about nothing is a caller bug and is answered as one.
     it.each([
-      ['no numbers param', '/catalog/articles-availability'],
-      ['an empty numbers param', '/catalog/articles-availability?numbers='],
+      ['no articles param', '/catalog/articles-availability'],
+      ['an empty articles param', '/catalog/articles-availability?articles='],
       [
-        'a numbers param of only separators',
-        '/catalog/articles-availability?numbers=%20,%20',
+        'an articles param of only separators',
+        '/catalog/articles-availability?articles=%20,%20',
+      ],
+      [
+        'an article with no brand',
+        '/catalog/articles-availability?articles=OF-OC115',
       ],
     ])('returns 400 for %s', async (_label, url) => {
       await request(app.getHttpServer()).get(url).expect(400);
@@ -470,24 +477,24 @@ describe('CatalogController (e2e)', () => {
     // Unbounded batches fan out into a single `IN (...)` against the shared
     // database on an endpoint that is deliberately never cached.
     it('returns 400 for a batch over the cap', async () => {
-      const numbers = Array.from(
-        { length: AVAILABILITY_MAX_ARTICLE_NUMBERS + 1 },
-        (_, index) => `A${index}`,
+      const articles = Array.from(
+        { length: AVAILABILITY_MAX_ARTICLES + 1 },
+        (_, index) => `30:A${index}`,
       ).join(',');
 
       await request(app.getHttpServer())
-        .get(`/catalog/articles-availability?numbers=${numbers}`)
+        .get(`/catalog/articles-availability?articles=${articles}`)
         .expect(400);
     });
 
     it('accepts a batch at the cap', async () => {
-      const numbers = Array.from(
-        { length: AVAILABILITY_MAX_ARTICLE_NUMBERS },
-        (_, index) => `A${index}`,
+      const articles = Array.from(
+        { length: AVAILABILITY_MAX_ARTICLES },
+        (_, index) => `30:A${index}`,
       ).join(',');
 
       await request(app.getHttpServer())
-        .get(`/catalog/articles-availability?numbers=${numbers}`)
+        .get(`/catalog/articles-availability?articles=${articles}`)
         .expect(200);
     });
 
@@ -496,10 +503,10 @@ describe('CatalogController (e2e)', () => {
     // 8.50 / 10.20) from infra/db/02-mock-stock-seed.sql.
     it('returns seeded availability for an own-stock part', async () => {
       const res = await request(app.getHttpServer())
-        .get('/catalog/articles-availability?numbers=OF-OC115')
+        .get(`/catalog/articles-availability?articles=${MANN}:OF-OC115`)
         .expect(200);
 
-      expect(res.body['OF-OC115']).toEqual({
+      expect(res.body[`${MANN}:OF-OC115`]).toEqual({
         available: true,
         bestPriceExVat: 850,
         bestPriceIncVat: 1020,
@@ -510,6 +517,22 @@ describe('CatalogController (e2e)', () => {
             deliveryWorkDays: 0,
           }),
         ],
+        computedAt: expect.any(String),
+      });
+    });
+
+    // The whole point of carrying the brand: the same number under another data
+    // supplier is another part, and must not be priced from this one's stock.
+    it('does not answer one brand from another brand\u2019s stock', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/catalog/articles-availability?articles=30:OF-OC115')
+        .expect(200);
+
+      expect(res.body['30:OF-OC115']).toEqual({
+        available: false,
+        bestPriceExVat: null,
+        bestPriceIncVat: null,
+        availabilityByWarehouse: [],
         computedAt: expect.any(String),
       });
     });

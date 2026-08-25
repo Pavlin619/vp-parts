@@ -32,17 +32,18 @@ export class ArticlesController {
   }
 
   /**
-   * Live, never-cached price/availability for a batch of article numbers. The
-   * cached catalog grid calls this to hydrate its metadata rows with fresh
-   * delivery/stock data, so the response must not be cached (a stale delivery
-   * date is worse than a slightly slower read).
+   * Live, never-cached price/availability for a batch of articles, each named by
+   * brand and number (`?articles=30:0986479061`). The cached catalog grid calls
+   * this to hydrate its metadata rows with fresh delivery/stock data, so the
+   * response must not be cached (a stale delivery date is worse than a slightly
+   * slower read).
    */
   @Get('articles-availability')
   @Header('Cache-Control', 'no-store')
   getArticlesAvailability(
     @Query() dto: ArticlesAvailabilityQueryDto,
   ): Promise<ArticlesAvailabilityDto> {
-    return this.articles.getArticlesAvailability(dto.numbers);
+    return this.articles.getArticlesAvailability(dto.articles);
   }
 
   /**

@@ -1,5 +1,9 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
-import { DEFAULT_SEARCH_MODE, type SearchMode } from "@vp-parts-shop/shared";
+import {
+  DEFAULT_SEARCH_MODE,
+  articleIdentityKey,
+  type SearchMode,
+} from "@vp-parts-shop/shared";
 import type {
   ManufacturerDto,
   ModelSeriesDto,
@@ -7,6 +11,7 @@ import type {
   AssemblyGroupDto,
   PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
+  ArticleIdentityDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
   AlternativeNumberDto,
@@ -56,18 +61,30 @@ export function getArticlesMetadata(
 }
 
 /**
- * Live price/availability for a batch of article numbers, keyed by number.
- * Never cache — the cached metadata grid calls this per request to attach fresh
- * delivery/stock data. Short-circuits an empty request to skip the round trip.
+ * Live price/availability for a batch of articles, keyed by
+ * {@link articleIdentityKey}. Never cache — the cached metadata grid calls this
+ * per request to attach fresh delivery/stock data. Short-circuits an empty
+ * request to skip the round trip.
+ *
+ * Both halves of the identity are sent because an article number is unique only
+ * within a brand: asking by number alone would price one supplier's part from
+ * another's stock.
  */
 export function getArticlesAvailability(
-  articleNumbers: string[],
+  articles: ArticleIdentityDto[],
 ): Promise<ArticlesAvailabilityDto> {
-  if (articleNumbers.length === 0) {
+  if (articles.length === 0) {
     return Promise.resolve({});
   }
 
-  const params = new URLSearchParams({ numbers: articleNumbers.join(",") });
+  const params = new URLSearchParams({
+    articles: articles
+      .map((article) =>
+        articleIdentityKey(article.brandId, article.articleNumber),
+      )
+      .join(","),
+  });
+
   return apiFetch<ArticlesAvailabilityDto>(
     `/catalog/articles-availability?${params}`,
   );
@@ -234,16 +251,26 @@ export const categoriesQueryOptions = (vehicleId: string) =>
   });
 
 /**
- * Live price/availability for one or many article numbers, fetched client-side.
- * Serves every surface — the buy box (`[articleNumber]`), listing grid, search,
- * and substitutes — so identical number sets share one cache entry. The key
- * sorts the numbers so order never forks the cache. `staleTime` keeps browse
- * data fresh enough without polling; checkout is the binding re-check.
+ * Live price/availability for one or many articles, fetched client-side. Serves
+ * every surface — the buy box (a single article), listing grid, search, and
+ * substitutes — so identical sets share one cache entry. The key carries brand
+ * and number per article and sorts them, so neither order nor a number shared by
+ * two brands forks the cache. `staleTime` keeps browse data fresh enough without
+ * polling; checkout is the binding re-check.
  */
-export const availabilityQueryOptions = (articleNumbers: string[]) =>
+export const availabilityQueryOptions = (articles: ArticleIdentityDto[]) =>
   queryOptions({
-    queryKey: ["catalog", "availability", [...articleNumbers].sort().join(",")],
-    queryFn: () => getArticlesAvailability(articleNumbers),
+    queryKey: [
+      "catalog",
+      "availability",
+      articles
+        .map((article) =>
+          articleIdentityKey(article.brandId, article.articleNumber),
+        )
+        .sort()
+        .join(","),
+    ],
+    queryFn: () => getArticlesAvailability(articles),
     staleTime: 30_000,
   });
 

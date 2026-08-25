@@ -22,9 +22,8 @@ interface ArticleGridAvailabilityProps {
 export function ArticleGridAvailability({
   metadata,
 }: ArticleGridAvailabilityProps) {
-  const numbers = metadata.items.map((item) => item.articleNumber);
   const { data, isPending, isError, refetch } = useQuery(
-    availabilityQueryOptions(numbers),
+    availabilityQueryOptions(metadata.items),
   );
 
   if (isPending) {

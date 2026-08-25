@@ -2,21 +2,30 @@ import type { ReactNode } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type {
-  ArticlesAvailabilityDto,
-  ArticleSummaryDto,
+import {
+  articleIdentityKey,
+  type ArticleIdentityDto,
+  type ArticlesAvailabilityDto,
+  type ArticleSummaryDto,
 } from '@vp-parts-shop/shared'
 import { SearchResultsAvailability } from './search-results-availability'
 
 const availabilityMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  availabilityQueryOptions: (articleNumbers: string[]) => ({
-    queryKey: ['catalog', 'availability', [...articleNumbers].sort().join(',')],
+  availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
+    queryKey: ['catalog', 'availability', identityKeys(articles).sort().join(',')],
     queryFn: () =>
-      availabilityMock(articleNumbers) as Promise<ArticlesAvailabilityDto>,
+      availabilityMock(articles) as Promise<ArticlesAvailabilityDto>,
   }),
 }))
+
+/** The key both the request and the response map are built from. */
+function identityKeys(articles: ArticleIdentityDto[]): string[] {
+  return articles.map((article) =>
+    articleIdentityKey(article.brandId, article.articleNumber),
+  )
+}
 
 const results: ArticleSummaryDto[] = [
   {
@@ -44,7 +53,7 @@ const results: ArticleSummaryDto[] = [
 ]
 
 const WL6340_AVAILABILITY: ArticlesAvailabilityDto = {
-  WL6340: {
+  [articleIdentityKey('268', 'WL6340')]: {
     available: true,
     bestPriceExVat: 1250,
     bestPriceIncVat: 1500,

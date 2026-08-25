@@ -6,33 +6,64 @@ import {
   ARTICLE_MAX_PAGE_SIZE,
   ArticlePageQueryDto,
   ArticlesAvailabilityQueryDto,
-  AVAILABILITY_MAX_ARTICLE_NUMBERS,
-  parseArticleNumbers,
+  AVAILABILITY_MAX_ARTICLES,
+  parseArticleIdentities,
 } from './articles.dto';
 
-describe('parseArticleNumbers', () => {
+describe('parseArticleIdentities', () => {
   it('returns an empty list for an absent or blank value', () => {
-    expect(parseArticleNumbers(undefined)).toEqual([]);
-    expect(parseArticleNumbers('')).toEqual([]);
-    expect(parseArticleNumbers('  ,  ')).toEqual([]);
+    expect(parseArticleIdentities(undefined)).toEqual([]);
+    expect(parseArticleIdentities('')).toEqual([]);
+    expect(parseArticleIdentities('  ,  ')).toEqual([]);
   });
 
-  it('splits, trims and de-duplicates the comma-separated numbers', () => {
-    expect(parseArticleNumbers(' A1 , A2 ,A1, ')).toEqual(['A1', 'A2']);
+  it('splits, trims and de-duplicates the comma-separated articles', () => {
+    expect(parseArticleIdentities(' 30:A1 , 1:A2 ,30:A1, ')).toEqual([
+      { brandId: '30', articleNumber: 'A1' },
+      { brandId: '1', articleNumber: 'A2' },
+    ]);
+  });
+
+  // The same number under two brands is two different parts, so it must survive
+  // de-duplication as two entries.
+  it('keeps one number filed by two brands apart', () => {
+    expect(parseArticleIdentities('30:WL6340,1:WL6340')).toEqual([
+      { brandId: '30', articleNumber: 'WL6340' },
+      { brandId: '1', articleNumber: 'WL6340' },
+    ]);
+  });
+
+  // A brand id is digits only, so everything after the first colon is number.
+  it('splits on the first colon so a number may contain one', () => {
+    expect(parseArticleIdentities('30:A:1')).toEqual([
+      { brandId: '30', articleNumber: 'A:1' },
+    ]);
   });
 
   // A query string can express the same list either way, and the de-duplication
   // has to span both forms.
   it('accepts the repeated-param form and de-duplicates across entries', () => {
-    expect(parseArticleNumbers(['A1,A2', ' A2 ', 'A3'])).toEqual([
-      'A1',
-      'A2',
-      'A3',
-    ]);
+    expect(parseArticleIdentities(['30:A1,30:A2', ' 30:A2 ', '30:A3'])).toEqual(
+      [
+        { brandId: '30', articleNumber: 'A1' },
+        { brandId: '30', articleNumber: 'A2' },
+        { brandId: '30', articleNumber: 'A3' },
+      ],
+    );
   });
 
   it('ignores entries that are not strings', () => {
-    expect(parseArticleNumbers([1, null, 'A1'])).toEqual(['A1']);
+    expect(parseArticleIdentities([1, null, '30:A1'])).toEqual([
+      { brandId: '30', articleNumber: 'A1' },
+    ]);
+  });
+
+  // Kept rather than dropped, so the DTO can reject it: a caller that sent half
+  // an identity has a bug, and a shorter answer would hide it.
+  it('keeps a token that carries no brand', () => {
+    expect(parseArticleIdentities('A1')).toEqual([
+      { brandId: '', articleNumber: 'A1' },
+    ]);
   });
 });
 
@@ -44,47 +75,56 @@ describe('ArticlesAvailabilityQueryDto', () => {
     validateSync(dto).map((error) => error.property);
 
   it('parses a comma-separated batch', () => {
-    const dto = toDto({ numbers: 'WL6340,OC115' });
+    const dto = toDto({ articles: '30:WL6340,1:OC115' });
 
     expect(failedProperties(dto)).toEqual([]);
-    expect(dto.numbers).toEqual(['WL6340', 'OC115']);
+    expect(dto.articles).toEqual([
+      { brandId: '30', articleNumber: 'WL6340' },
+      { brandId: '1', articleNumber: 'OC115' },
+    ]);
   });
 
   it('accepts a batch at the cap', () => {
-    const numbers = Array.from(
-      { length: AVAILABILITY_MAX_ARTICLE_NUMBERS },
-      (_, index) => `A${index}`,
+    const articles = Array.from(
+      { length: AVAILABILITY_MAX_ARTICLES },
+      (_, index) => `30:A${index}`,
     ).join(',');
 
-    expect(failedProperties(toDto({ numbers }))).toEqual([]);
+    expect(failedProperties(toDto({ articles }))).toEqual([]);
   });
 
-  // The response is a map keyed by article number, so an empty request would
+  // The response is a map keyed by brand and number, so an empty request would
   // come back as `{}` — indistinguishable from "none of these are in stock",
   // which renders a whole grid as out of stock.
   it.each([
     ['an absent param', {}],
-    ['an empty param', { numbers: '' }],
-    ['a param of only separators', { numbers: ' , , ' }],
+    ['an empty param', { articles: '' }],
+    ['a param of only separators', { articles: ' , , ' }],
   ])('rejects %s', (_label, query) => {
-    expect(failedProperties(toDto(query))).toContain('numbers');
+    expect(failedProperties(toDto(query))).toContain('articles');
   });
 
   // Unbounded batches fan out into one `IN (...)` against the shared database on
   // an endpoint that is never cached.
   it('rejects a batch over the cap', () => {
-    const numbers = Array.from(
-      { length: AVAILABILITY_MAX_ARTICLE_NUMBERS + 1 },
-      (_, index) => `A${index}`,
+    const articles = Array.from(
+      { length: AVAILABILITY_MAX_ARTICLES + 1 },
+      (_, index) => `30:A${index}`,
     ).join(',');
 
-    expect(failedProperties(toDto({ numbers }))).toContain('numbers');
+    expect(failedProperties(toDto({ articles }))).toContain('articles');
   });
 
-  it('rejects an article number longer than the limit', () => {
-    expect(failedProperties(toDto({ numbers: 'A'.repeat(51) }))).toContain(
-      'numbers',
-    );
+  // Half an identity resolves to whichever brand the catalogue sorted first,
+  // which is the bug this endpoint's contract exists to prevent.
+  it.each([
+    ['an article with no brand', 'WL6340'],
+    ['an empty brand', ':WL6340'],
+    ['a brand that is not a TecDoc id', 'BOSCH:WL6340'],
+    ['an article with no number', '30:'],
+    ['a number longer than the limit', `30:${'A'.repeat(51)}`],
+  ])('rejects %s', (_label, articles) => {
+    expect(failedProperties(toDto({ articles }))).toContain('articles');
   });
 });
 

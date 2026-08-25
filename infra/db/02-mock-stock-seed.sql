@@ -8,8 +8,13 @@
 -- by typing the URL directly (the mock client returns a default detail page for
 -- any unknown article number).
 --
--- The inventory layer joins strictly on `tecdoc_number = <articleNumber>`
--- (exact match), so tecdoc_number MUST equal the article number verbatim.
+-- The inventory layer matches on the whole article identity — `tecdoc_number =
+-- <articleNumber>` AND `tecdoc_supplier_id = <brandId>` — so both MUST equal
+-- what the mock catalogue files: the number verbatim, and the brand's stand-in
+-- dataSupplierId from BRAND_ID_BY_NAME in apps/api/src/tecdoc/
+-- tecdoc-mock-client.ts (MANN-FILTER 72, WIX Filters 268, Bosch 30, Ferodo 101,
+-- Monroe 4346, MockBrand 99001). A row with the wrong brand is a row the shop
+-- cannot see.
 --
 -- Warehouse -> customer-facing warehouse mapping (see apps/api/src/inventory/
 -- delivery.ts + warehouse.ts):
@@ -60,11 +65,11 @@ WHERE tecdoc_number IN (
 --   1 warehouse (CENTRAL) qty 25, within-the-hour pickup clock time.
 -- ===========================================================================
 INSERT INTO public.autoparts
-  (catalog_number, name, tecdoc_number, supplier_source, brand, description,
-   available_quantity, sell_price_net, gross_price, currency, in_price_list,
-   warehouse_number)
+  (catalog_number, name, tecdoc_number, tecdoc_supplier_id, supplier_source,
+   brand, description, available_quantity, sell_price_net, gross_price,
+   currency, in_price_list, warehouse_number)
 VALUES
-  ('OC115', 'Маслен филтър', 'OF-OC115', 'INTERNAL', 'MANN-FILTER',
+  ('OC115', 'Маслен филтър', 'OF-OC115', '72', 'INTERNAL', 'MANN-FILTER',
    'Oil Filter', 25, 8.50, 10.20, 'EUR', true, 0);
 
 -- ===========================================================================
@@ -74,10 +79,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('AUTOPLUS', 'WL7090-PLEVEN', 'MAGAZIN_PLEVEN', 6,
-   5.00, 9.60, 'OF-WL7090', 'WIX Filters', 'Oil Filter');
+   5.00, 9.60, 'OF-WL7090', '268', 'WIX Filters', 'Oil Filter');
 
 -- ===========================================================================
 -- SCENARIO 3 — BD-0986478451 : supplier SAME_DAY only (REGIONAL_1)
@@ -88,10 +93,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('AUTOPLUS', 'BD986478451-CS', 'CENTRALEN_SKLAD', 4,
-   20.00, 33.60, 'BD-0986478451', 'Bosch', 'Brake Disc');
+   20.00, 33.60, 'BD-0986478451', '30', 'Bosch', 'Brake Disc');
 
 -- ===========================================================================
 -- SCENARIO 4 — BD-DF4074 : supplier NEXT_DAY only (REGIONAL_2)
@@ -100,10 +105,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('AUTOKOMERS', 'DF4074-CENTRAL', 'CENTRAL', 3,
-   22.00, 39.60, 'BD-DF4074', 'Ferodo', 'Brake Disc');
+   22.00, 39.60, 'BD-DF4074', '101', 'Ferodo', 'Brake Disc');
 
 -- ===========================================================================
 -- SCENARIO 5 — BP-0986494061 : supplier 2 BUSINESS DAYS only (ROMANIA)
@@ -112,10 +117,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('INTERCARS', 'BP494061-R00', 'R00', 8,
-   12.00, 24.00, 'BP-0986494061', 'Bosch', 'Brake Pad Set, disc brake');
+   12.00, 24.00, 'BP-0986494061', '30', 'Bosch', 'Brake Pad Set, disc brake');
 
 -- ===========================================================================
 -- SCENARIO 6 — AF-C2585 : supplier 3 BUSINESS DAYS only (POLAND, slowest)
@@ -124,10 +129,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('INTERCARS', 'AFC2585-HSN', 'HSN', 15,
-   6.00, 12.00, 'AF-C2585', 'MANN-FILTER', 'Air Filter');
+   6.00, 12.00, 'AF-C2585', '72', 'MANN-FILTER', 'Air Filter');
 
 -- ===========================================================================
 -- SCENARIO 7 — SA-343347 : OWN + MULTI-WAREHOUSE split (the rich case)
@@ -145,20 +150,20 @@ VALUES
 --   Quantity-aware date: 1-5 -> CENTRAL, 6-10 -> REGIONAL_2, 11-30 -> POLAND.
 -- ===========================================================================
 INSERT INTO public.autoparts
-  (catalog_number, name, tecdoc_number, supplier_source, brand, description,
-   available_quantity, sell_price_net, gross_price, currency, in_price_list,
-   warehouse_number)
+  (catalog_number, name, tecdoc_number, tecdoc_supplier_id, supplier_source,
+   brand, description, available_quantity, sell_price_net, gross_price,
+   currency, in_price_list, warehouse_number)
 VALUES
-  ('343347', 'Амортисьор', 'SA-343347', 'INTERNAL', 'Monroe',
+  ('343347', 'Амортисьор', 'SA-343347', '4346', 'INTERNAL', 'Monroe',
    'Shock Absorber', 2, 40.00, 48.00, 'EUR', true, 0);
 
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
-  ('INTERCARS',  'SA343347-B24', 'B24',     3, 30.00, 66.00, 'SA-343347', 'Monroe', 'Shock Absorber'),
-  ('AUTOKOMERS', 'SA343347-CEN', 'CENTRAL', 5, 28.00, 60.00, 'SA-343347', 'Monroe', 'Shock Absorber'),
-  ('INTERCARS',  'SA343347-HSN', 'HSN',    20, 25.00, 54.00, 'SA-343347', 'Monroe', 'Shock Absorber');
+  ('INTERCARS',  'SA343347-B24', 'B24',     3, 30.00, 66.00, 'SA-343347', '4346', 'Monroe', 'Shock Absorber'),
+  ('AUTOKOMERS', 'SA343347-CEN', 'CENTRAL', 5, 28.00, 60.00, 'SA-343347', '4346', 'Monroe', 'Shock Absorber'),
+  ('INTERCARS',  'SA343347-HSN', 'HSN',    20, 25.00, 54.00, 'SA-343347', '4346', 'Monroe', 'Shock Absorber');
 
 -- ===========================================================================
 -- EDGE CASE 8 — TEST-OOS : supplier row with availability 0 -> excluded
@@ -166,10 +171,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('INTERCARS', 'TESTOOS-B01', 'B01', 0,
-   5.00, 10.00, 'TEST-OOS', 'MockBrand', 'Out of stock test part');
+   5.00, 10.00, 'TEST-OOS', '99001', 'MockBrand', 'Out of stock test part');
 
 -- ===========================================================================
 -- EDGE CASE 9 — TEST-BAD-WAREHOUSE : unknown warehouse code -> dropped offer
@@ -178,10 +183,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('INTERCARS', 'TESTBADWH-ZZZ', 'ZZZ_UNKNOWN', 7,
-   5.00, 10.00, 'TEST-BAD-WAREHOUSE', 'MockBrand', 'Unknown-warehouse test part');
+   5.00, 10.00, 'TEST-BAD-WAREHOUSE', '99001', 'MockBrand', 'Unknown-warehouse test part');
 
 -- ===========================================================================
 -- EDGE CASE 10 — TEST-OWN-ZERO : we carry it but hold 0, no supplier
@@ -189,11 +194,11 @@ VALUES
 --   (ex 10.00 / inc 12.00). No warehouses.
 -- ===========================================================================
 INSERT INTO public.autoparts
-  (catalog_number, name, tecdoc_number, supplier_source, brand, description,
-   available_quantity, sell_price_net, gross_price, currency, in_price_list,
-   warehouse_number)
+  (catalog_number, name, tecdoc_number, tecdoc_supplier_id, supplier_source,
+   brand, description, available_quantity, sell_price_net, gross_price,
+   currency, in_price_list, warehouse_number)
 VALUES
-  ('TESTOWNZERO', 'Празна наличност', 'TEST-OWN-ZERO', 'INTERNAL', 'MockBrand',
+  ('TESTOWNZERO', 'Празна наличност', 'TEST-OWN-ZERO', '99001', 'INTERNAL', 'MockBrand',
    'Own-stock-zero test part', 0, 10.00, 12.00, 'EUR', true, 0);
 
 -- ===========================================================================
@@ -203,19 +208,19 @@ VALUES
 --   CENTRAL qty 9 (own 4 + supplier 5).
 -- ===========================================================================
 INSERT INTO public.autoparts
-  (catalog_number, name, tecdoc_number, supplier_source, brand, description,
-   available_quantity, sell_price_net, gross_price, currency, in_price_list,
-   warehouse_number)
+  (catalog_number, name, tecdoc_number, tecdoc_supplier_id, supplier_source,
+   brand, description, available_quantity, sell_price_net, gross_price,
+   currency, in_price_list, warehouse_number)
 VALUES
-  ('TESTOWNPREM', 'Собствена по-висока цена', 'TEST-OWN-PREMIUM', 'INTERNAL',
-   'MockBrand', 'Own-premium test part', 4, 50.00, 60.00, 'EUR', true, 0);
+  ('TESTOWNPREM', 'Собствена по-висока цена', 'TEST-OWN-PREMIUM', '99001',
+   'INTERNAL', 'MockBrand', 'Own-premium test part', 4, 50.00, 60.00, 'EUR', true, 0);
 
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
   ('INTERCARS', 'TESTOWNPREM-B24', 'B24', 5,
-   30.00, 55.00, 'TEST-OWN-PREMIUM', 'MockBrand', 'Own-premium test part');
+   30.00, 55.00, 'TEST-OWN-PREMIUM', '99001', 'MockBrand', 'Own-premium test part');
 
 -- ===========================================================================
 -- QUANTITY CASE 12 — TEST-QTY-1 : only ONE unit in stock (quantity cap)
@@ -223,11 +228,11 @@ VALUES
 --   "-" disabled). Proves the customer can never order more than we hold.
 -- ===========================================================================
 INSERT INTO public.autoparts
-  (catalog_number, name, tecdoc_number, supplier_source, brand, description,
-   available_quantity, sell_price_net, gross_price, currency, in_price_list,
-   warehouse_number)
+  (catalog_number, name, tecdoc_number, tecdoc_supplier_id, supplier_source,
+   brand, description, available_quantity, sell_price_net, gross_price,
+   currency, in_price_list, warehouse_number)
 VALUES
-  ('TESTQTY1', 'Единична бройка', 'TEST-QTY-1', 'INTERNAL', 'MockBrand',
+  ('TESTQTY1', 'Единична бройка', 'TEST-QTY-1', '99001', 'INTERNAL', 'MockBrand',
    'Single-unit test part', 1, 15.00, 18.00, 'EUR', true, 0);
 
 -- ===========================================================================
@@ -243,11 +248,11 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
-  ('INTERCARS',  'QTYSPLIT-B24', 'B24',     1, 8.00, 18.00, 'TEST-QTY-SPLIT', 'MockBrand', 'Thin-split test part'),
-  ('AUTOKOMERS', 'QTYSPLIT-CEN', 'CENTRAL', 1, 8.00, 18.00, 'TEST-QTY-SPLIT', 'MockBrand', 'Thin-split test part'),
-  ('INTERCARS',  'QTYSPLIT-HSN', 'HSN',     2, 8.00, 18.00, 'TEST-QTY-SPLIT', 'MockBrand', 'Thin-split test part');
+  ('INTERCARS',  'QTYSPLIT-B24', 'B24',     1, 8.00, 18.00, 'TEST-QTY-SPLIT', '99001', 'MockBrand', 'Thin-split test part'),
+  ('AUTOKOMERS', 'QTYSPLIT-CEN', 'CENTRAL', 1, 8.00, 18.00, 'TEST-QTY-SPLIT', '99001', 'MockBrand', 'Thin-split test part'),
+  ('INTERCARS',  'QTYSPLIT-HSN', 'HSN',     2, 8.00, 18.00, 'TEST-QTY-SPLIT', '99001', 'MockBrand', 'Thin-split test part');
 
 -- ===========================================================================
 -- QUANTITY CASE 14 — TEST-QTY-ZERO-FAST : fast warehouse holds 0, slow holds stock
@@ -258,10 +263,10 @@ VALUES
 -- ===========================================================================
 INSERT INTO public.supplier_stock
   (supplier_source, supplier_code, warehouse_code, availability,
-   buy_price, sell_price, tecdoc_number, brand, description)
+   buy_price, sell_price, tecdoc_number, tecdoc_supplier_id, brand, description)
 VALUES
-  ('INTERCARS', 'QTYZERO-B24', 'B24', 0, 10.00, 21.60, 'TEST-QTY-ZERO-FAST', 'MockBrand', 'Zero-fast test part'),
-  ('INTERCARS', 'QTYZERO-R00', 'R00', 5, 10.00, 21.60, 'TEST-QTY-ZERO-FAST', 'MockBrand', 'Zero-fast test part');
+  ('INTERCARS', 'QTYZERO-B24', 'B24', 0, 10.00, 21.60, 'TEST-QTY-ZERO-FAST', '99001', 'MockBrand', 'Zero-fast test part'),
+  ('INTERCARS', 'QTYZERO-R00', 'R00', 5, 10.00, 21.60, 'TEST-QTY-ZERO-FAST', '99001', 'MockBrand', 'Zero-fast test part');
 
 COMMIT;
 

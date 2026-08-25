@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { articleIdentityKey } from "@vp-parts-shop/shared";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { UNAVAILABLE_DETAIL } from "@/lib/catalog/merge-availability";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
@@ -8,7 +9,12 @@ import { ArticleBuyBoxContent } from "./article-buy-box-content";
 import { ArticleBuyBoxSkeleton } from "./article-buy-box-skeleton";
 
 interface ArticleBuyBoxProps {
-  /** Identifies the part — drives the live availability read and cart. */
+  /**
+   * Identifies the part — drives the live availability read and cart. The brand
+   * travels with the number because a number alone names as many parts as there
+   * are suppliers filing it.
+   */
+  brandId: string;
   articleNumber: string;
   /** Server-driven vehicle fit, passed from the cached catalog chrome. */
   fitsVehicle: boolean | null;
@@ -29,6 +35,7 @@ interface ArticleBuyBoxProps {
  * chrome, so it is not refetched here.
  */
 export function ArticleBuyBox({
+  brandId,
   articleNumber,
   fitsVehicle,
   articleName,
@@ -36,7 +43,7 @@ export function ArticleBuyBox({
   onAddToCart,
 }: ArticleBuyBoxProps) {
   const { data, isPending, isError, refetch } = useQuery(
-    availabilityQueryOptions([articleNumber]),
+    availabilityQueryOptions([{ brandId, articleNumber }]),
   );
 
   if (isPending) {
@@ -54,7 +61,8 @@ export function ArticleBuyBox({
     );
   }
 
-  const detail = data?.[articleNumber] ?? UNAVAILABLE_DETAIL;
+  const detail =
+    data?.[articleIdentityKey(brandId, articleNumber)] ?? UNAVAILABLE_DETAIL;
 
   return (
     <ArticleBuyBoxContent

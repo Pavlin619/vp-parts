@@ -1,5 +1,8 @@
 import { render, screen } from '@testing-library/react'
-import type { ArticlesAvailabilityDto } from '@vp-parts-shop/shared'
+import {
+  articleIdentityKey,
+  type ArticlesAvailabilityDto,
+} from '@vp-parts-shop/shared'
 import { SearchResults, type SearchResultRow } from './search-results'
 
 function resultItem(
@@ -19,8 +22,10 @@ function resultItem(
   }
 }
 
+const WIX = '268'
+
 const availability: ArticlesAvailabilityDto = {
-  WL6340: {
+  [articleIdentityKey(WIX, 'WL6340')]: {
     available: true,
     bestPriceExVat: 1250,
     bestPriceIncVat: 1500,

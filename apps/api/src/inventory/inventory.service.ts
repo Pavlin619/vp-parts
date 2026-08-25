@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ArticleIdentityDto,
   ArticleInventoryDetailDto,
   WarehouseAvailabilityDto,
+  articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { AutopartsRepository, OwnStockRow } from './autoparts.repository';
 import {
@@ -33,6 +35,12 @@ interface ResolvedOffers {
   suppliers: SupplierOffer[];
 }
 
+/** The stock lines both tables hold, keyed by {@link articleIdentityKey}. */
+interface StockByArticle {
+  own: Map<string, OwnStockRow[]>;
+  suppliers: Map<string, SupplierStockRow[]>;
+}
+
 const EMPTY_OFFERS: ResolvedOffers = { own: null, suppliers: [] };
 
 @Injectable()
@@ -51,45 +59,51 @@ export class InventoryService {
   }
 
   /**
-   * Live price & availability for one or many article numbers, keyed by number.
+   * Live price & availability for one or many articles, keyed by
+   * {@link articleIdentityKey}.
    *
    * This is the single availability read behind every surface — the buy box,
    * listing grid, search, substitutes, and the checkout re-check. It toggles
-   * only the DB query by input size: one number takes the single-row read, many
+   * only the DB query by input size: one article takes the single-row read, many
    * take the batch read. Every entry then runs the same offer selection and
    * per-warehouse projection, so the request-time delivery dates are always
    * attached (the detail/list surfaces are dynamic, never cached).
    *
+   * Articles are identified by brand *and* number, the way TecDoc identifies
+   * them, and the repositories match on both. Two brands filing one number
+   * therefore get one answer each, rather than each other's price.
+   *
    * Fails **closed** in both cases: any read error throws
    * InventoryUnavailableException (mapped to HTTP 503 / INVENTORY_UNAVAILABLE by
    * the global filter) rather than reporting stock as unavailable. It is up to
-   * the caller/UI to decide what to render on that error. Article numbers with
-   * no stock still resolve to `available: false` — that is not an error.
+   * the caller/UI to decide what to render on that error. Articles with no stock
+   * still resolve to `available: false` — that is not an error.
    *
-   * TODO(inventory-brand-scope): key this on brand + number, as the catalog
-   * already does. An article number is not unique in TecDoc, but
-   * `public.autoparts` and `public.supplier_stock` are keyed by `tecdoc_number`
-   * alone, so two suppliers filing one number collapse into a single row here —
-   * meaning we can quote one part's price for another. Those tables are owned
-   * by the Spring Boot backoffice, so the column has to be added there (and
-   * backfilled from the supplier feeds) before this signature can change; needs
-   * a cross-team ticket rather than a change in this repo.
+   * TODO(inventory-oe-parts): reach the original parts too. 70,677 stock lines
+   * are filed under an internal OE code (`A1080`) instead of a TecDoc
+   * data-supplier id, covering 65,314 numbers no aftermarket article carries, so
+   * matching on the identity leaves them unreachable — as number-only matching
+   * effectively did too, by quoting them for whichever aftermarket part shared a
+   * number. They are a separate relation ("the original this replaces") and need
+   * their own lookup, off the `oemNumbers` an aftermarket article already
+   * carries, rendered as a distinct offer rather than blended into this one.
    */
   async getAvailability(
-    articleNumbers: string[],
+    articles: ArticleIdentityDto[],
   ): Promise<Map<string, ArticleInventoryDetailDto>> {
     const result = new Map<string, ArticleInventoryDetailDto>();
-    if (articleNumbers.length === 0) {
+    if (articles.length === 0) {
       return result;
     }
 
-    const offersByNumber = await this.loadOffersByNumber(articleNumbers);
+    const offersByArticle = await this.loadOffersByArticle(articles);
 
     const now = new Date();
-    for (const articleNumber of articleNumbers) {
-      const offers = offersByNumber.get(articleNumber) ?? EMPTY_OFFERS;
+    for (const article of articles) {
+      const key = articleIdentityKey(article.brandId, article.articleNumber);
+      const offers = offersByArticle.get(key) ?? EMPTY_OFFERS;
       result.set(
-        articleNumber,
+        key,
         this.toInventoryDetail(
           this.select(offers),
           this.buildWarehouseAvailability(offers, now),
@@ -102,62 +116,73 @@ export class InventoryService {
   }
 
   /**
-   * Resolves the offers for every requested number, toggling only the DB query
-   * by input size — a single number takes the single-row read, many take the
+   * Resolves the offers for every requested article, toggling only the DB query
+   * by input size — a single article takes the single-row read, many take the
    * batch read. Wraps both paths in one fail-closed guard: any read error
    * becomes InventoryUnavailableException.
    */
-  private async loadOffersByNumber(
-    articleNumbers: string[],
+  private async loadOffersByArticle(
+    articles: ArticleIdentityDto[],
   ): Promise<Map<string, ResolvedOffers>> {
+    const wanted = uniqueArticles(articles);
+
     try {
-      return articleNumbers.length === 1
-        ? await this.loadSingleOffers(articleNumbers[0])
-        : await this.loadBulkOffers(articleNumbers);
+      const stock =
+        wanted.length === 1
+          ? await this.readSingle(wanted[0])
+          : await this.readBatch(wanted);
+
+      return this.toOffersByArticle(stock);
     } catch (error) {
       this.logger.error(
-        `Availability read failed for ${articleNumbers.length} article(s)`,
+        `Availability read failed for ${articles.length} article(s)`,
         error instanceof Error ? error.stack : String(error),
       );
       throw new InventoryUnavailableException();
     }
   }
 
-  private async loadSingleOffers(
-    articleNumber: string,
-  ): Promise<Map<string, ResolvedOffers>> {
-    const offers = await this.loadOffers(articleNumber);
-    return new Map([[articleNumber, offers]]);
-  }
-
-  private async loadBulkOffers(
-    articleNumbers: string[],
-  ): Promise<Map<string, ResolvedOffers>> {
-    const [ownByNumber, suppliersByNumber] = await Promise.all([
-      this.ownStock.findByTecdocNumbers(articleNumbers),
-      this.supplierStock.findByTecdocNumbers(articleNumbers),
+  private async readSingle(
+    article: ArticleIdentityDto,
+  ): Promise<StockByArticle> {
+    const [ownRows, supplierRows] = await Promise.all([
+      this.ownStock.findByArticle(article),
+      this.supplierStock.findByArticle(article),
     ]);
 
-    const offersByNumber = new Map<string, ResolvedOffers>();
-    for (const articleNumber of articleNumbers) {
-      offersByNumber.set(
-        articleNumber,
-        this.toOffers(
-          ownByNumber.get(articleNumber) ?? [],
-          suppliersByNumber.get(articleNumber) ?? [],
-        ),
+    const key = articleIdentityKey(article.brandId, article.articleNumber);
+
+    return {
+      own: new Map([[key, ownRows]]),
+      suppliers: new Map([[key, supplierRows]]),
+    };
+  }
+
+  private async readBatch(
+    articles: ArticleIdentityDto[],
+  ): Promise<StockByArticle> {
+    const [own, suppliers] = await Promise.all([
+      this.ownStock.findByArticles(articles),
+      this.supplierStock.findByArticles(articles),
+    ]);
+
+    return { own, suppliers };
+  }
+
+  private toOffersByArticle(
+    stock: StockByArticle,
+  ): Map<string, ResolvedOffers> {
+    const offersByArticle = new Map<string, ResolvedOffers>();
+
+    const stocked = new Set([...stock.own.keys(), ...stock.suppliers.keys()]);
+    for (const key of stocked) {
+      offersByArticle.set(
+        key,
+        this.toOffers(stock.own.get(key) ?? [], stock.suppliers.get(key) ?? []),
       );
     }
 
-    return offersByNumber;
-  }
-
-  private async loadOffers(articleNumber: string): Promise<ResolvedOffers> {
-    const [ownRows, supplierRows] = await Promise.all([
-      this.ownStock.findByTecdocNumber(articleNumber),
-      this.supplierStock.findByTecdocNumber(articleNumber),
-    ]);
-    return this.toOffers(ownRows, supplierRows);
+    return offersByArticle;
   }
 
   private toOffers(
@@ -239,7 +264,7 @@ export class InventoryService {
         this.logger.error(
           `ALERT: missing quantity for supplier_stock ` +
             `${row.supplierSource}/${row.warehouseCode ?? '∅'} ` +
-            `(tecdoc=${row.tecdocNumber}); dropping the offer.`,
+            `(tecdoc=${row.brandId}:${row.tecdocNumber}); dropping the offer.`,
         );
         continue;
       }
@@ -296,6 +321,19 @@ export class InventoryService {
       computedAt,
     };
   }
+}
+
+/** One entry per identity, so a repeated article costs no extra index lookup. */
+function uniqueArticles(articles: ArticleIdentityDto[]): ArticleIdentityDto[] {
+  const byKey = new Map<string, ArticleIdentityDto>();
+  for (const article of articles) {
+    byKey.set(
+      articleIdentityKey(article.brandId, article.articleNumber),
+      article,
+    );
+  }
+
+  return [...byKey.values()];
 }
 
 function addQuantity(

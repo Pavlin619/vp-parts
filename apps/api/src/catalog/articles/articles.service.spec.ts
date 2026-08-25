@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import {
   ArticleSummaryDto,
   ArticleInventoryDetailDto,
+  articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { InventoryService } from '../../inventory';
@@ -171,23 +172,25 @@ describe('ArticlesService', () => {
   });
 
   describe('getArticlesAvailability', () => {
+    const OC115 = { brandId: String(BOSCH), articleNumber: 'OF-OC115' };
+
     it('turns the inventory map into a keyed availability object', async () => {
       const detail = {
         available: true,
       } as unknown as ArticleInventoryDetailDto;
-      inventory.getAvailability.mockResolvedValueOnce(
-        new Map([['OF-OC115', detail]]),
-      );
+      const key = articleIdentityKey(BOSCH, 'OF-OC115');
+      inventory.getAvailability.mockResolvedValueOnce(new Map([[key, detail]]));
 
-      const result = await service.getArticlesAvailability(['OF-OC115']);
+      const result = await service.getArticlesAvailability([OC115]);
 
-      expect(result).toEqual({ 'OF-OC115': detail });
+      expect(inventory.getAvailability).toHaveBeenCalledWith([OC115]);
+      expect(result).toEqual({ [key]: detail });
     });
 
     it('propagates an inventory read failure', async () => {
       inventory.getAvailability.mockRejectedValueOnce(new Error('db down'));
 
-      await expect(service.getArticlesAvailability(['X'])).rejects.toThrow(
+      await expect(service.getArticlesAvailability([OC115])).rejects.toThrow(
         'db down',
       );
     });

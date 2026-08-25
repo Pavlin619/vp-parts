@@ -1,6 +1,8 @@
-import type {
-  ArticleInventoryDetailDto,
-  ArticlesAvailabilityDto,
+import {
+  articleIdentityKey,
+  type ArticleIdentityDto,
+  type ArticleInventoryDetailDto,
+  type ArticlesAvailabilityDto,
 } from "@vp-parts-shop/shared";
 
 /** Neutral detail for a requested article the availability read had no row for. */
@@ -13,20 +15,23 @@ export const UNAVAILABLE_DETAIL: ArticleInventoryDetailDto = {
 };
 
 /**
- * Joins cached catalog metadata rows with a live availability map (keyed by
- * article number) into a single enriched row shape. Works for any metadata that
- * carries an `articleNumber` — the listing grid and substitutes (catalog list
- * items), search hits, etc. A row the availability read had no entry for
- * degrades to the neutral unavailable state rather than dropping out, so the
- * metadata order is always preserved.
+ * Joins cached catalog metadata rows with a live availability map into a single
+ * enriched row shape. Works for any metadata that carries the article's identity
+ * — the listing grid and substitutes (catalog list items), search hits, etc. A
+ * row the availability read had no entry for degrades to the neutral unavailable
+ * state rather than dropping out, so the metadata order is always preserved.
+ *
+ * Matched on brand *and* number: two suppliers filing one number are two parts,
+ * and a number-only join would show one of them the other's price.
  */
-export function mergeArticleAvailability<T extends { articleNumber: string }>(
+export function mergeArticleAvailability<T extends ArticleIdentityDto>(
   items: T[],
   availability: ArticlesAvailabilityDto,
 ): (T & ArticleInventoryDetailDto)[] {
   return items.map((item) => ({
     ...item,
-    ...(availability[item.articleNumber] ?? UNAVAILABLE_DETAIL),
+    ...(availability[articleIdentityKey(item.brandId, item.articleNumber)] ??
+      UNAVAILABLE_DETAIL),
   }));
 }
 
@@ -45,17 +50,20 @@ export type RowAvailability = ArticleInventoryDetailDto | null | undefined;
 
 /**
  * Picks one article's live inventory out of a batch availability read, carrying
- * the pending/failed state through untouched. A number the read had no row for
+ * the pending/failed state through untouched. An article the read had no row for
  * degrades to {@link UNAVAILABLE_DETAIL}, matching
  * {@link mergeArticleAvailability}.
  */
 export function selectArticleAvailability(
   availability: ArticlesAvailabilityDto | null | undefined,
-  articleNumber: string,
+  article: ArticleIdentityDto,
 ): RowAvailability {
   if (!availability) {
     return availability;
   }
 
-  return availability[articleNumber] ?? UNAVAILABLE_DETAIL;
+  return (
+    availability[articleIdentityKey(article.brandId, article.articleNumber)] ??
+    UNAVAILABLE_DETAIL
+  );
 }

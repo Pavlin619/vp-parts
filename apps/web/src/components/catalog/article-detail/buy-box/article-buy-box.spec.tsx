@@ -1,10 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type {
-  ArticlesAvailabilityDto,
-  WarehouseAvailabilityDto,
-  WarehouseId,
+import {
+  articleIdentityKey,
+  type ArticleIdentityDto,
+  type ArticlesAvailabilityDto,
+  type WarehouseAvailabilityDto,
+  type WarehouseId,
 } from '@vp-parts-shop/shared'
 import { ArticleBuyBox } from './article-buy-box'
 
@@ -13,11 +15,20 @@ import { ArticleBuyBox } from './article-buy-box'
 const availabilityMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  availabilityQueryOptions: (articleNumbers: string[]) => ({
-    queryKey: ['catalog', 'availability', [...articleNumbers].sort().join(',')],
-    queryFn: () => availabilityMock(articleNumbers) as Promise<ArticlesAvailabilityDto>,
+  availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
+    queryKey: [
+      'catalog',
+      'availability',
+      articles
+        .map((article) => `${article.brandId}:${article.articleNumber}`)
+        .sort()
+        .join(','),
+    ],
+    queryFn: () => availabilityMock(articles) as Promise<ArticlesAvailabilityDto>,
   }),
 }))
+
+const WIX = '268'
 
 function warehouse(
   warehouseId: WarehouseId,
@@ -40,7 +51,7 @@ function renderBuyBox() {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <ArticleBuyBox articleNumber="WL6340" fitsVehicle={null} />
+      <ArticleBuyBox brandId={WIX} articleNumber="WL6340" fitsVehicle={null} />
     </QueryClientProvider>,
   )
 }
@@ -59,7 +70,7 @@ describe('ArticleBuyBox — live availability', () => {
 
   it('renders the buy box from the fetched availability on success', async () => {
     availabilityMock.mockResolvedValue({
-      WL6340: {
+      [articleIdentityKey(WIX, 'WL6340')]: {
         available: true,
         bestPriceExVat: 7017,
         bestPriceIncVat: 8420,

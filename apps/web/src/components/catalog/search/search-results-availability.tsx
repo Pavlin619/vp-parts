@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ArticleSummaryDto } from "@vp-parts-shop/shared";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
@@ -36,11 +36,7 @@ export function SearchResultsAvailability({
   total,
   pager,
 }: SearchResultsAvailabilityProps) {
-  const numbers = useMemo(
-    () => results.map((result) => result.articleNumber),
-    [results],
-  );
-  const { data, isError, refetch } = useQuery(availabilityQueryOptions(numbers));
+  const { data, isError, refetch } = useQuery(availabilityQueryOptions(results));
 
   return (
     <>

@@ -67,7 +67,32 @@ export interface ArticleInventoryDetailDto extends ArticleInventorySummaryDto {
 }
 
 /**
- * Live price/availability for a batch of articles, keyed by article number.
- * A requested number is absent only when it has no inventory row.
+ * The two halves that identify a TecDoc article. A number is unique only within
+ * a data supplier, so no inventory read takes one without the other.
+ */
+export interface ArticleIdentityDto {
+  /** TecDoc `dataSupplierId` — the brand. */
+  brandId: string;
+  articleNumber: string;
+}
+
+/**
+ * The string form of an article's identity, used as a map key on both sides of
+ * the wire and as the token the availability endpoint accepts.
+ *
+ * Brand first so the split is unambiguous: a brand id is digits only, so the
+ * first colon always separates the halves even when the number contains one.
+ */
+export function articleIdentityKey(
+  brandId: string | number,
+  articleNumber: string,
+): string {
+  return `${brandId}:${articleNumber}`;
+}
+
+/**
+ * Live price/availability for a batch of articles, keyed by
+ * {@link articleIdentityKey}. A requested article is absent only when it has no
+ * inventory row.
  */
 export type ArticlesAvailabilityDto = Record<string, ArticleInventoryDetailDto>;

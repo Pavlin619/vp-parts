@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import type { ArticleSummaryDto } from "@vp-parts-shop/shared";
@@ -111,13 +110,8 @@ export function ArticleRowSubstitutes({
  * click they asked for, and each read is cached.
  */
 function SubstituteRows({ substitutes }: { substitutes: ArticleSummaryDto[] }) {
-  const articleNumbers = useMemo(
-    () => substitutes.map((substitute) => substitute.articleNumber),
-    [substitutes],
-  );
-
   const { data, isError, refetch } = useQuery(
-    availabilityQueryOptions(articleNumbers),
+    availabilityQueryOptions(substitutes),
   );
 
   // A failed refetch keeps the prices already on screen; only a first read that
@@ -145,7 +139,7 @@ function SubstituteRows({ substitutes }: { substitutes: ArticleSummaryDto[] }) {
               article={substitute}
               availability={selectArticleAvailability(
                 availability,
-                substitute.articleNumber,
+                substitute,
               )}
             />
           </li>

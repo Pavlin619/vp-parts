@@ -12,7 +12,7 @@ export {
   pageOf,
 } from './candidate-set';
 export type {
-  AvailabilityByNumber,
+  CandidateAvailability,
   CandidatePage,
   ViewedArticle,
 } from './candidate-set';

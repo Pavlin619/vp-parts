@@ -14,7 +14,7 @@ import {
   ARTICLE_DEFAULT_PAGE_SIZE,
 } from '../articles.dto';
 import {
-  AvailabilityByNumber,
+  CandidateAvailability,
   ViewedArticle,
   dropViewedPart,
   keepCandidatesCiting,
@@ -173,20 +173,21 @@ export class CrossReferencesService {
    */
   private async availabilityForOrdering(
     candidates: CrossReferenceCandidate[],
-  ): Promise<AvailabilityByNumber> {
+  ): Promise<CandidateAvailability> {
     if (candidates.length === 0) {
       return null;
     }
 
-    const articleNumbers = [
-      ...new Set(candidates.map((candidate) => candidate.articleNumber)),
-    ];
+    const articles = candidates.map((candidate) => ({
+      brandId: candidate.brandId,
+      articleNumber: candidate.articleNumber,
+    }));
 
     try {
-      return await this.inventory.getAvailability(articleNumbers);
+      return await this.inventory.getAvailability(articles);
     } catch (error) {
       this.logger.warn(
-        `Ordering ${articleNumbers.length} cross-reference(s) by catalogue data: ` +
+        `Ordering ${articles.length} cross-reference(s) by catalogue data: ` +
           `availability unavailable (${describe(error)})`,
       );
 

@@ -254,9 +254,15 @@ The backoffice computes and **writes** all supplier pricing/stock into the share
 
 > **Plain-language deep dive:** see [`docs/PRICING-AND-DELIVERY.md`](./PRICING-AND-DELIVERY.md) for a worked-example walkthrough of how we pick the price and the delivery date, including a decision diagram.
 
+### Which stock lines belong to an article
+
+A stock line is attributed to an article only when **both** halves of the article's identity match: `tecdoc_number = articleNumber` **and** `tecdoc_supplier_id = brandId`. Both backoffice tables carry the TecDoc `dataSupplierId`, and both are indexed on the pair, so this is a `WHERE` clause rather than a filter in application code — the batch read joins the wanted pairs in as two parallel arrays (`unnest($1::text[], $2::text[])`), one index lookup per pair, measured at 1.7 ms for 500 pairs against 1.84 M rows. A number-only match is not a lookup: 13,596 numbers in `public.supplier_stock` are filed by more than one supplier, so it priced one brand's part off another brand's line, and a measured 23% of number-only matches were attributing stock to the wrong brand.
+
+What that excludes is deliberate. A line the backoffice left unattributed matches nothing, which is correct — nothing says which part it is. So does a zero-padded internal code like `030`, which is not BOSCH's `30`; there are 89 such lines and they stay out rather than being guessed at. And 70,677 lines filed under an internal OE code (`A1080` and the like) describe **original** parts, a different relation from "the aftermarket part with this number"; they need their own lookup off an article's `oemNumbers`, rendered as a separate offer. See `TODO(inventory-oe-parts)` on `InventoryService`.
+
 ### Own-stock-first best-offer algorithm
 
-For a given `tecdoc_number`:
+For a given article:
 
 1. **Our own stock (`public.autoparts`) is primary.** If we carry the part, the displayed price is **always our** sell price (`sell_price_net` ex-VAT, `gross_price` inc-VAT — taken directly, no VAT recompute) and our `available_quantity` is treated as the fastest (own-stock, rank 0) band. We never undercut the supplier we would actually source from: if our price is below that supplier's sell price we raise the displayed price up to it; otherwise we keep ours.
 2. **Suppliers (`public.supplier_stock`) layer on top.** Each supplier line is resolved to a delivery band from its `supplier_source` + `warehouse_code`. Supplier quantity is added onto the matching delivery band (today / next day / 2–3 days).
@@ -268,17 +274,19 @@ Delivery bands are an **internal** numeric speed rank (`DeliveryOutcome.rank` in
 Do not confuse that rank with the **customer-facing** band, `deliveryBand` in `packages/shared/src/delivery.ts`. It is derived from a `WarehouseAvailabilityDto` we have already served, so any consumer of the availability contract can compute it: the web colours the availability dot from it (green for the central warehouse or a within-the-hour promise, blue for the rest of today, then yellow/orange), and the API orders cross-references by it. It lives in the shared package so those two never disagree — `deliveryWorkDays` cannot tell our own shelf from a supplier's same-day-before-cut-off promise, since both file nought days.
 
 There is **one** availability read behind every surface —
-`inventory.getAvailability([tecdocNumber, ...])` — with a single, fixed error
+`inventory.getAvailability([{ brandId, articleNumber }, ...])`, answering a map
+keyed by `articleIdentityKey` — with a single, fixed error
 policy: it **always fails closed**. It toggles only the DB query by input size (a
-single number takes the single-row read, many take the batch read), runs the same
+single article takes the single-row read, many take the batch read), runs the same
 offer selection + per-warehouse projection for each, and always attaches
 request-time delivery dates. (This concerns read *failures* only — an article that
 genuinely has no stock resolves to `available: false`, which is not an error.)
 
 **Live availability read** (buy box, catalog grid, search, substitutes — fails *closed*):
 ```
-inventory.getAvailability([tecdocNumber, ...])
-  → read public.autoparts + public.supplier_stock → selectBestOffer per article
+inventory.getAvailability([{ brandId, articleNumber }, ...])
+  → read public.autoparts + public.supplier_stock on (number, supplier id)
+  → selectBestOffer per article
   → on a DB error: throw InventoryUnavailableException (503 / INVENTORY_UNAVAILABLE)
         │
         ▼
@@ -309,7 +317,7 @@ attempt — availability is read once, client-side, for the final result set.
 
 **At checkout confirmation** (before payment — always fresh, fails *closed*):
 ```
-CheckoutService → inventory.getAvailability(cart tecdocNumbers)
+CheckoutService → inventory.getAvailability(cart article identities)
   → in-process call, direct DB read, no Redis, every request (not an HTTP hop)
         │
         ├── Price / availability unchanged → proceed to payment

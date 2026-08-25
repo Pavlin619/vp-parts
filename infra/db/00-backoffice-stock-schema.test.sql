@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS public.autoparts (
   catalog_number      TEXT,
   name                TEXT,
   tecdoc_number       TEXT,
+  -- TecDoc dataSupplierId: the other half of an article's identity, without
+  -- which a number matches every brand that ever filed it.
   tecdoc_supplier_id  TEXT,
   supplier_source     TEXT,
   supplier_sku        TEXT,
@@ -43,23 +45,33 @@ CREATE TABLE IF NOT EXISTS public.autoparts (
   updated_at          TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS autoparts_tecdoc_number_idx
-  ON public.autoparts (tecdoc_number);
+-- Named after the backoffice's own index so that running this against a database
+-- that already has the real schema is a no-op rather than a second copy of it.
+CREATE INDEX IF NOT EXISTS idx_autoparts_tecdoc
+  ON public.autoparts (tecdoc_number, tecdoc_supplier_id);
 
 -- Supplier stock projection (fallback source).
 CREATE TABLE IF NOT EXISTS public.supplier_stock (
-  id               BIGSERIAL PRIMARY KEY,
-  supplier_source  TEXT,
-  supplier_code    TEXT,
-  warehouse_code   TEXT,
-  availability     INTEGER,
-  buy_price        NUMERIC(12, 2),
-  sell_price       NUMERIC(12, 2),
-  tecdoc_number    TEXT,
-  brand            TEXT,
-  description      TEXT,
-  last_synced_at   TIMESTAMPTZ DEFAULT now()
+  id                  BIGSERIAL PRIMARY KEY,
+  supplier_source     TEXT,
+  supplier_code       TEXT,
+  warehouse_code      TEXT,
+  availability        INTEGER,
+  buy_price           NUMERIC(12, 2),
+  sell_price          NUMERIC(12, 2),
+  tecdoc_number       TEXT,
+  tecdoc_supplier_id  TEXT,
+  brand               TEXT,
+  description         TEXT,
+  last_synced_at      TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS supplier_stock_tecdoc_number_idx
-  ON public.supplier_stock (tecdoc_number);
+-- Added separately so a database created before the shop read the brand picks
+-- the column up on the next run rather than silently keeping the old shape.
+ALTER TABLE public.supplier_stock
+  ADD COLUMN IF NOT EXISTS tecdoc_supplier_id TEXT;
+
+-- Both halves of the article identity: the repositories match on the pair, so
+-- this is the index every availability read goes through.
+CREATE INDEX IF NOT EXISTS idx_supplier_stock_tecdoc
+  ON public.supplier_stock (tecdoc_number, tecdoc_supplier_id);

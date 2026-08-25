@@ -328,7 +328,7 @@ The web section uses `useInfiniteQuery`: it is inside a row a visitor already
 expanded, so replacing the rows they are reading with a different page would lose
 their place. Each fetched page keeps its own cache entry and is priced by its own
 availability read, which is what keeps a batch inside
-`AVAILABILITY_MAX_ARTICLE_NUMBERS` however many pages are open.
+`AVAILABILITY_MAX_ARTICLES` however many pages are open.
 
 ---
 
@@ -417,11 +417,14 @@ equivalence — the right source for a "superseded by" notice, unrelated to this
 
 ## Open questions and known limits
 
-- **Ordering accuracy for shared numbers.** `InventoryService.getAvailability` is
-  keyed on `tecdoc_number` alone (see its `TODO(inventory-brand-scope)`), so two
-  brands filing the same number share one availability entry and may sort wrongly
-  against each other. Pre-existing; this design surfaces it more often because it
-  now sorts on that data.
+- **Original parts are invisible to the ordering.** The availability read now
+  matches on `(tecdoc_number, tecdoc_supplier_id)`, so a candidate is priced by
+  the brand that files it rather than by whoever else shares its number — which is
+  what makes the availability sort mean anything on a collision-prone number. The
+  cost is that 70,677 stock lines filed under an internal OE code match no
+  aftermarket article and drop out of the ordering entirely; see
+  `TODO(inventory-oe-parts)`. They were never sorted correctly before either — they
+  were quoted for whichever aftermarket part happened to share the number.
 - **Live ordering versus paging.** Page 2 can shift if stock changes between
   requests. The `(brandName, articleNumber)` tiebreak bounds the drift; if it
   becomes visible, the answer is a snapshot token on the first page rather than

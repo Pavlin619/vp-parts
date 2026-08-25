@@ -86,6 +86,7 @@ export default async function ArticleDetailPage({
 
         <aside className="h-fit lg:sticky lg:top-4">
           <ArticleBuyBox
+            brandId={brandId}
             articleNumber={articleNumber}
             fitsVehicle={article.fitsVehicle}
             articleName={article.description}
