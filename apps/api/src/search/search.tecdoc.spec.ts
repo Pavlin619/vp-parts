@@ -48,6 +48,29 @@ describe('SearchTecDoc', () => {
       expect(result.attributes).toEqual([]);
     });
 
+    // `includeAll` also carries PDFs, links, linkages, parts lists, accessory
+    // lists, GTINs, prices and trade numbers, none of which a result row shows.
+    // OE numbers are excluded too — the row reads them from the part-numbers
+    // endpoint when a visitor opens that section.
+    it('asks only for the fields a result row renders', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+      await tecdoc.searchArticles('WL634', undefined, {
+        type: 10,
+        matchType: 'prefix_or_suffix',
+      });
+
+      const [, params] = call.mock.calls[0];
+      expect(params).toMatchObject({
+        includeGenericArticles: true,
+        includeImages: true,
+        includeArticleCriteria: true,
+      });
+      for (const flag of ['includeAll', 'includeOEMNumbers', 'includeMisc']) {
+        expect(params).not.toHaveProperty(flag);
+      }
+    });
+
     // TecDoc omits a field rather than sending a zero, and the lane resolver
     // reads `total > 0` to decide a lane matched — so an absent total would
     // discard a page that did come back with articles.

@@ -14,7 +14,7 @@ import type {
   ArticleIdentityDto,
   ArticlesAvailabilityDto,
   AutocompleteItemDto,
-  AlternativeNumberDto,
+  ArticlePartNumbersDto,
   LinkedVehicleManufacturerDto,
   LinkedVehicleSeriesDto,
 } from "@vp-parts-shop/shared";
@@ -160,16 +160,17 @@ export function getSubstitutes(
 }
 
 /**
- * The numbers other brands sell the equivalent part under. Its own read because
- * the catalog response carries only the OE numbers beside them — the
- * alternative-numbers section fetches this when a visitor opens it.
+ * Every number a part can be ordered by: the vehicle makers' OE numbers and the
+ * numbers other brands sell the equivalent under. Its own read because no list
+ * response carries either — OE numbers are the bulkiest field on an article —
+ * so the numbers section fetches both when a visitor opens it.
  */
-export function getAlternativeNumbers(
+export function getPartNumbers(
   brandId: string,
   articleNumber: string,
-): Promise<AlternativeNumberDto[]> {
-  return apiFetch<AlternativeNumberDto[]>(
-    `${articlePath(brandId, articleNumber)}/alternative-numbers`,
+): Promise<ArticlePartNumbersDto> {
+  return apiFetch<ArticlePartNumbersDto>(
+    `${articlePath(brandId, articleNumber)}/part-numbers`,
   );
 }
 
@@ -329,21 +330,21 @@ export const linkedVehiclesByMakeQueryOptions = (
     gcTime: ROW_SECTION_GC_TIME,
   });
 
-/** The numbers one article's equivalents are sold under, as chips. */
-export const alternativeNumbersQueryOptions = (
+/** Every number one article can be ordered by, as chips. */
+export const partNumbersQueryOptions = (
   brandId: string,
   articleNumber: string,
 ) =>
   queryOptions({
-    queryKey: ["catalog", "alternative-numbers", brandId, articleNumber],
-    queryFn: () => getAlternativeNumbers(brandId, articleNumber),
+    queryKey: ["catalog", "part-numbers", brandId, articleNumber],
+    queryFn: () => getPartNumbers(brandId, articleNumber),
     staleTime: ROW_SECTION_STALE_TIME,
     gcTime: ROW_SECTION_GC_TIME,
   });
 
 /**
- * The same alternatives as {@link alternativeNumbersQueryOptions}, as whole
- * catalog rows rather than numbers, a page at a time.
+ * The same alternatives as {@link partNumbersQueryOptions}, as whole catalog
+ * rows rather than numbers, a page at a time.
  *
  * Infinite rather than a pager: this is a section inside a row a visitor already
  * expanded, so replacing the rows they are reading with a different page would

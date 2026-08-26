@@ -1,7 +1,11 @@
-import { mapArticleSummary, TecDocArticleRecord } from './article-mapper';
+import {
+  mapArticleSummary,
+  mapOemNumbers,
+  TecDocArticleRecord,
+} from './article-mapper';
 
 describe('mapArticleSummary', () => {
-  it('maps identity, description, thumbnail, specs and OE numbers from a raw record', () => {
+  it('maps identity, description, thumbnail and specs from a raw record', () => {
     const raw: TecDocArticleRecord = {
       articleNumber: 'OC-115',
       dataSupplierId: 72,
@@ -28,15 +32,21 @@ describe('mapArticleSummary', () => {
       description: 'Oil Filter',
       thumbnailUrl: 'https://img/oc115.jpg',
       technicalSpecs: [{ key: 'Height', value: '89 mm' }],
-      oemNumbers: [
-        {
-          articleNumber: '06J 115 403 Q',
-          manufacturerName: 'VW',
-          interchangeability: 'Interchangeable',
-        },
-      ],
       fitsVehicle: null,
     });
+  });
+
+  // They are the bulkiest field on an article and no list row renders them, so
+  // the list calls do not request them and the summary does not carry them.
+  it('leaves OE numbers out even when the record carries them', () => {
+    const raw: TecDocArticleRecord = {
+      articleNumber: 'OC-115',
+      dataSupplierId: 72,
+      mfrName: 'MANN-FILTER',
+      oemNumbers: [{ articleNumber: '06J 115 403 Q', mfrName: 'VW' }],
+    };
+
+    expect(mapArticleSummary(raw)).not.toHaveProperty('oemNumbers');
   });
 
   // TecDoc carries two brand-ish ids and only `dataSupplierId` is the one
@@ -63,7 +73,7 @@ describe('mapArticleSummary', () => {
       ],
     };
 
-    expect(mapArticleSummary(raw).oemNumbers).toEqual([
+    expect(mapOemNumbers(raw.oemNumbers)).toEqual([
       {
         articleNumber: '06J 115 403 Q',
         manufacturerName: 'VW',
@@ -85,7 +95,7 @@ describe('mapArticleSummary', () => {
       oemNumbers: [{ articleNumber: '1J0 115 403 C' }],
     };
 
-    expect(mapArticleSummary(raw).oemNumbers).toEqual([
+    expect(mapOemNumbers(raw.oemNumbers)).toEqual([
       {
         articleNumber: '1J0 115 403 C',
         manufacturerName: null,
@@ -132,7 +142,6 @@ describe('mapArticleSummary', () => {
       description: '',
       thumbnailUrl: null,
       technicalSpecs: [],
-      oemNumbers: [],
       fitsVehicle: null,
     });
   });

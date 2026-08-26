@@ -21,7 +21,6 @@ const ARTICLE: ArticleSummaryDto = {
   description: 'Oil Filter',
   thumbnailUrl: null,
   technicalSpecs: [],
-  oemNumbers: [],
   fitsVehicle: null,
 };
 

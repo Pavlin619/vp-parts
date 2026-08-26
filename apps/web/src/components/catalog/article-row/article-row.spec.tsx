@@ -19,13 +19,6 @@ function article(
     description: 'Маслен филтър',
     thumbnailUrl: null,
     technicalSpecs: [{ key: 'Височина', value: '79 mm' }],
-    oemNumbers: [
-      {
-        articleNumber: '13717521033',
-        manufacturerName: 'BMW',
-        interchangeability: null,
-      },
-    ],
     fitsVehicle: null,
     ...overrides,
   }
@@ -229,12 +222,10 @@ describe('ArticleRow — interactions', () => {
   })
 
   // Applicable vehicles are fetched on demand, so every row has something to
-  // expand into even when the catalog response carried no specs or OE numbers.
+  // expand into even when the catalog response carried no specs.
   it('keeps the expander on a row with no catalog detail, offering the vehicles section', async () => {
     const user = userEvent.setup()
-    render(
-      <ArticleRow article={article({ technicalSpecs: [], oemNumbers: [] })} />,
-    )
+    render(<ArticleRow article={article({ technicalSpecs: [] })} />)
 
     await user.click(
       screen.getByRole('button', { name: 'Допълнителна информация за WL6340' }),

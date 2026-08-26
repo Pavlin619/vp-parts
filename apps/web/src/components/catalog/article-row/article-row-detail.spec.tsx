@@ -1,5 +1,4 @@
 import type { ReactElement } from 'react'
-import type { OemNumberDto } from '@vp-parts-shop/shared'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ArticleRowDetail } from './article-row-detail'
@@ -36,16 +35,6 @@ const specs = [
   { key: 'Външен диаметър', value: '93 mm' },
 ]
 
-function oem(
-  articleNumber: string,
-  manufacturerName: string | null = 'BMW',
-  interchangeability: string | null = null,
-): OemNumberDto {
-  return { articleNumber, manufacturerName, interchangeability }
-}
-
-const oemNumbers = [oem('13717521033'), oem('13718508913')]
-
 /**
  * React only reports a duplicate `key` through `console.error`, so asserting on
  * the rendered output alone would pass while React is free to drop a row.
@@ -66,7 +55,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={specs}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -83,7 +71,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={specs}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -103,7 +90,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={specs}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -122,7 +108,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={specs}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -144,7 +129,6 @@ describe('ArticleRowDetail', () => {
           { key: 'Забележка', value: 'за модели с ABS' },
           { key: 'Забележка', value: 'само за десен волан' },
         ]}
-        oemNumbers={[]}
       />,
     )
 
@@ -158,7 +142,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={[]}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -176,7 +159,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={[]}
-        oemNumbers={[]}
       />,
     )
 
@@ -200,7 +182,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={specs}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -220,7 +201,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={specs}
-        oemNumbers={oemNumbers}
       />,
     )
 
@@ -244,7 +224,6 @@ describe('ArticleRowDetail', () => {
         brandId="268"
         articleNumber="WL6340"
         technicalSpecs={[]}
-        oemNumbers={oemNumbers}
       />,
     )
 

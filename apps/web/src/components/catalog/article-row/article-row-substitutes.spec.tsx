@@ -46,7 +46,6 @@ function substitute(
     description: 'Маслен филтър',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
     ...overrides,
   }

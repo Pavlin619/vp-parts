@@ -22,7 +22,6 @@ const metadata: ArticleSummaryDto[] = [
     description: "Oil Filter",
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
   },
   {
@@ -33,7 +32,6 @@ const metadata: ArticleSummaryDto[] = [
     description: "Oil Filter",
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
   },
 ];

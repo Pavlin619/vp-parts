@@ -148,10 +148,12 @@ export function linkageRolesOf(
 
 /**
  * Maps a raw TecDoc `getArticles` article into the shared summary shape every
- * list surface renders. Technical specs (`articleCriteria`) and OE numbers ride
- * along free on the same `includeAll` response, so they are always populated
- * here. `brandLogoUrl` is joined later in the brands layer, since `getArticles`
- * carries no logo.
+ * list surface renders. `brandLogoUrl` is joined later in the brands layer,
+ * since `getArticles` carries no logo.
+ *
+ * OE numbers are deliberately absent: they are the bulkiest thing on an article
+ * — 34 to 61 on a filter — and no list row shows them, so the list calls do not
+ * request them and the numbers section reads them on demand instead.
  *
  * `fitsVehicle` stays null here by design. List surfaces are vehicle-agnostic —
  * resolving fit would cost a lookup per row — so no list client reads it; a
@@ -173,7 +175,6 @@ export function mapArticleSummary(
     description: article.genericArticles?.[0]?.genericArticleDescription ?? '',
     thumbnailUrl: article.images?.[0]?.imageURL800 ?? null,
     technicalSpecs: mapTechnicalSpecs(article.articleCriteria),
-    oemNumbers: mapOemNumbers(article.oemNumbers),
     fitsVehicle: null,
   };
 }
@@ -199,7 +200,7 @@ function mapTechnicalSpecs(
  * pair is the identity: one make listed twice is a repeat, two makes sharing a
  * number are two separate facts worth showing.
  */
-function mapOemNumbers(
+export function mapOemNumbers(
   oemNumbers: TecDocArticleRecord['oemNumbers'],
 ): OemNumberDto[] {
   const numbers = (oemNumbers ?? []).map((oem) => ({

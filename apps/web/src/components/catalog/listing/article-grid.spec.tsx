@@ -16,7 +16,6 @@ const makeArticle = (articleNumber: string): ArticleListItemDto => ({
   description: 'Oil Filter',
   thumbnailUrl: null,
   technicalSpecs: [],
-  oemNumbers: [],
   fitsVehicle: null,
   available: true,
   bestPriceExVat: 2183,

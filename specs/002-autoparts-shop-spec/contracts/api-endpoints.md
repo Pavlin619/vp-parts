@@ -184,7 +184,7 @@ brand: `/catalog/brands/:brandId/articles/:articleNumber…`. Without the brand 
 lookup returns whichever supplier the catalogue sorted first, so the response can
 describe a different company's part.
 
-Substitutes and alternative numbers are nested too, though they answer with parts
+Substitutes and part numbers are nested too, though they answer with parts
 from every brand. What is brand-scoped there is the *question*: the equivalents
 are found by searching the viewed part's own OE numbers, and two suppliers filing
 one number file different OE numbers. The search itself sends no brand — that
@@ -265,16 +265,19 @@ from the shared DB per request and embedded into this response.
 
 ---
 
-### Alternative Numbers
+### Part Numbers
 
-**`GET /catalog/brands/:brandId/articles/:articleNumber/alternative-numbers`** `[PUBLIC]`
+**`GET /catalog/brands/:brandId/articles/:articleNumber/part-numbers`** `[PUBLIC]`
 
-The numbers other parts brands sell the replacing article under. Its **own**
-endpoint because, unlike the OE numbers it is displayed beside, no list response
-carries them: they are the numbers of the parts TecDoc's cross-reference index
-answers with for this one. The alternative-numbers section of a catalog row
-fetches this when a visitor opens it, so an unopened section costs nothing.
-Shape: `AlternativeNumberDto[]`.
+Every number this part can be ordered by, in the two kinds the chip list
+distinguishes: the vehicle makers' own OE numbers and the numbers other parts
+brands sell the replacing article under. Its **own** endpoint because no list
+response carries either — the alternatives are only known once the
+cross-reference index is searched, and OE numbers are the bulkiest field on an
+article (34–61 on a filter) which no list row renders, so the list calls stopped
+requesting them. The numbers section of a catalog row fetches both on one
+request when a visitor opens it, so an unopened section costs nothing.
+Shape: `ArticlePartNumbersDto` — `{ oemNumbers, alternativeNumbers }`.
 
 Brand-scoped — see *Article identity* above. Only the viewed part is removed from
 the result, compared on its own `(brandId, articleNumber)`, so another brand
@@ -290,14 +293,27 @@ shipped to every expanded row.
 **Uncapped**, unlike the paginated substitutes endpoint: a chip needs only the
 number and brand the candidate set already carries, so there is nothing per row
 to pay for however many alternatives a part has. A part with no cross-references
-is a `200` with `[]`.
+is a `200` with an empty `alternativeNumbers`.
+
+The OE half is read from the cached article read the cross-reference resolution
+already makes to learn the part's generic article, so it is normally a cache hit
+rather than a second TecDoc call.
 
 Response `200`:
 ```json
-[
-  { "articleNumber": "OC 115", "brandName": "MANN-FILTER" },
-  { "articleNumber": "WL7090", "brandName": "WIX Filters" }
-]
+{
+  "oemNumbers": [
+    {
+      "articleNumber": "06J 115 403 Q",
+      "manufacturerName": "VW",
+      "interchangeability": "Interchangeable"
+    }
+  ],
+  "alternativeNumbers": [
+    { "articleNumber": "OC 115", "brandName": "MANN-FILTER" },
+    { "articleNumber": "WL7090", "brandName": "WIX Filters" }
+  ]
+}
 ```
 
 Cache: Redis, 24h on a hit / 1h on an empty result — shared with the substitutes
@@ -374,7 +390,6 @@ Response `200`:
       "description": "Маслен филтър",
       "thumbnailUrl": "https://cdn.example.com/img/OC115.jpg",
       "technicalSpecs": [{ "key": "Височина", "value": "79 mm" }],
-      "oemNumbers": [],
       "fitsVehicle": null
     }
   ]
@@ -382,7 +397,7 @@ Response `200`:
 ```
 
 Cache: the candidate set in Redis, 24h on a hit / 1h on an empty result — one
-entry shared with the alternative-numbers endpoint (key
+entry shared with the part-numbers endpoint (key
 `tecdoc:crossrefs:{brandId}:{articleNumber}`), so opening either section warms the
 other. Hydrated rows are cached **per row** (`tecdoc:article-row:{brandId}:{articleNumber}`,
 24h), never per page: the ordering is live, so a page-number key would serve

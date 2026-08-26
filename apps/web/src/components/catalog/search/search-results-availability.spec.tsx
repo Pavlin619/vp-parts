@@ -36,7 +36,6 @@ const results: ArticleSummaryDto[] = [
     description: 'Oil Filter',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
   },
   {
@@ -47,7 +46,6 @@ const results: ArticleSummaryDto[] = [
     description: 'Oil Filter',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
   },
 ]

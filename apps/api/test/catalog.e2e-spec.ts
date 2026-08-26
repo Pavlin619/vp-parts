@@ -73,7 +73,6 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
       description: 'Brake Disc',
       thumbnailUrl: null,
       technicalSpecs: [],
-      oemNumbers: [],
       fitsVehicle: null,
     },
     {
@@ -84,7 +83,6 @@ const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
       description: 'Brake Disc',
       thumbnailUrl: null,
       technicalSpecs: [],
-      oemNumbers: [],
       fitsVehicle: null,
     },
   ],
@@ -162,7 +160,6 @@ function hydratedRow(articleNumber: string): ArticleSummaryDto {
     description: 'Brake Disc',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
   };
 }
@@ -822,7 +819,7 @@ describe('CatalogController (e2e)', () => {
     });
   });
 
-  describe('GET /catalog/brands/:brandId/articles/:articleNumber/alternative-numbers', () => {
+  describe('GET /catalog/brands/:brandId/articles/:articleNumber/part-numbers', () => {
     it('returns every alternative’s number with the brand that sells it', async () => {
       mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
       mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce([
@@ -830,15 +827,30 @@ describe('CatalogController (e2e)', () => {
       ]);
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/brands/30/articles/BD-001/alternative-numbers')
+        .get('/catalog/brands/30/articles/BD-001/part-numbers')
         .expect(200);
 
       // A chip is a number and a brand, both of which the candidate already
-      // carries — so this surface pays for no hydration at all.
-      expect(res.body).toEqual([
+      // carries — so the alternatives pay for no hydration at all.
+      expect(res.body.alternativeNumbers).toEqual([
         { articleNumber: 'OC115', brandName: 'MANN-FILTER' },
       ]);
       expect(mockTecDocClient.getArticleRowsByLegacyIds).not.toHaveBeenCalled();
+    });
+
+    // The list surfaces stopped carrying these once search dropped
+    // `includeOEMNumbers`, so this route is the only place a row chip gets them.
+    it('returns the OE numbers alongside the alternatives', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce([
+        candidate('OC115'),
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/part-numbers')
+        .expect(200);
+
+      expect(res.body.oemNumbers).toEqual(ARTICLE_DETAIL.oemNumbers);
     });
 
     it('returns an empty array when nothing replaces the part', async () => {
@@ -847,10 +859,10 @@ describe('CatalogController (e2e)', () => {
       );
 
       const res = await request(app.getHttpServer())
-        .get('/catalog/brands/30/articles/BD-001/alternative-numbers')
+        .get('/catalog/brands/30/articles/BD-001/part-numbers')
         .expect(200);
 
-      expect(res.body).toEqual([]);
+      expect(res.body.alternativeNumbers).toEqual([]);
     });
 
     // One cached candidate set serves both surfaces, so opening either warms the
@@ -865,7 +877,7 @@ describe('CatalogController (e2e)', () => {
         .get('/catalog/brands/30/articles/BD-001/substitutes')
         .expect(200);
       await request(app.getHttpServer())
-        .get('/catalog/brands/30/articles/BD-001/alternative-numbers')
+        .get('/catalog/brands/30/articles/BD-001/part-numbers')
         .expect(200);
 
       expect(

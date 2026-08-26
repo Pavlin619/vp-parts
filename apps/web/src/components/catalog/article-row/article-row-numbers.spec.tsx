@@ -5,13 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { OemNumberDto } from '@vp-parts-shop/shared'
 import { ArticleRowNumbers, mergePartNumbers } from './article-row-numbers'
 
-const alternativeNumbersMock = jest.fn()
+const partNumbersMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  alternativeNumbersQueryOptions: (brandId: string, articleNumber: string) => ({
-    queryKey: ['catalog', 'alternative-numbers', brandId, articleNumber],
-    queryFn: () =>
-      alternativeNumbersMock(brandId, articleNumber) as Promise<unknown>,
+  partNumbersQueryOptions: (brandId: string, articleNumber: string) => ({
+    queryKey: ['catalog', 'part-numbers', brandId, articleNumber],
+    queryFn: () => partNumbersMock(brandId, articleNumber) as Promise<unknown>,
   }),
 }))
 
@@ -23,22 +22,22 @@ function oem(
   return { articleNumber, manufacturerName, interchangeability }
 }
 
-function renderNumbers(
+/** Both halves now arrive on one response, so a fixture names them together. */
+function givenNumbers(
   oemNumbers: OemNumberDto[] = [],
-  articleNumber = 'OX 982D',
-  brandId = '94',
+  alternativeNumbers: Array<{ articleNumber: string; brandName: string }> = [],
 ) {
+  partNumbersMock.mockResolvedValue({ oemNumbers, alternativeNumbers })
+}
+
+function renderNumbers(articleNumber = 'OX 982D', brandId = '94') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
 
   render(
     <QueryClientProvider client={queryClient}>
-      <ArticleRowNumbers
-        brandId={brandId}
-        articleNumber={articleNumber}
-        oemNumbers={oemNumbers}
-      />
+      <ArticleRowNumbers brandId={brandId} articleNumber={articleNumber} />
     </QueryClientProvider>,
   )
 }
@@ -58,49 +57,57 @@ function renderWithoutReactWarnings(ui: ReactElement) {
 
 describe('ArticleRowNumbers', () => {
   beforeEach(() => {
-    alternativeNumbersMock.mockReset()
-    alternativeNumbersMock.mockResolvedValue([])
+    partNumbersMock.mockReset()
+    givenNumbers()
   })
 
-  // The OE half rides along on the catalog response, so it must not wait on the
-  // read the other half is behind.
-  it('renders the OE numbers without waiting for the cross-reference read', () => {
-    alternativeNumbersMock.mockReturnValue(new Promise(() => {}))
+  // Both halves of the identity travel: these numbers belong to one brand's
+  // part, so a number-only fetch would answer with whichever brand the
+  // catalogue sorted first.
+  it('fetches the numbers for the exact part it is mounted for', () => {
+    partNumbersMock.mockReturnValue(new Promise(() => {}))
 
-    renderNumbers([oem('13717521033')])
+    renderNumbers('OF-WL7090', '268')
 
-    expect(screen.getByText('13717521033')).toBeInTheDocument()
+    expect(partNumbersMock).toHaveBeenCalledWith('268', 'OF-WL7090')
   })
 
-  // Both halves of the identity travel: these numbers come from the equivalents
-  // of one brand's part, so a number-only fetch would answer with whichever
-  // brand the catalogue sorted first.
-  it('fetches the alternative numbers for the exact part it is mounted for', () => {
-    alternativeNumbersMock.mockReturnValue(new Promise(() => {}))
+  // OE numbers stopped riding along on the catalog response once the list calls
+  // dropped `includeOEMNumbers`, so both halves are behind this one read.
+  it('reads both kinds of number from a single request', async () => {
+    givenNumbers(
+      [oem('13717521033')],
+      [{ articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' }],
+    )
 
-    renderNumbers([], 'OF-WL7090', '268')
+    renderNumbers()
 
-    expect(alternativeNumbersMock).toHaveBeenCalledWith('268', 'OF-WL7090')
+    expect(await screen.findByText('13717521033')).toBeInTheDocument()
+    expect(screen.getByText('OF-OC115')).toBeInTheDocument()
+    expect(partNumbersMock).toHaveBeenCalledTimes(1)
   })
 
-  it('shows a skeleton while the alternative numbers are in flight', () => {
-    alternativeNumbersMock.mockReturnValue(new Promise(() => {}))
+  it('shows a skeleton while the numbers are in flight', () => {
+    partNumbersMock.mockReturnValue(new Promise(() => {}))
 
     renderNumbers()
 
     expect(
-      screen.getByTestId('article-row-alternative-numbers-skeleton'),
+      screen.getByTestId('article-row-part-numbers-skeleton'),
     ).toBeInTheDocument()
   })
 
   // Every chip names its own brand, so two numbers from one brand each carry it
   // rather than sharing a heading.
   it('renders each alternative number beside the brand that sells it', async () => {
-    alternativeNumbersMock.mockResolvedValue([
-      { articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' },
-      { articleNumber: 'OF-HU816X', brandName: 'MANN-FILTER' },
-      { articleNumber: 'OF-WL7090', brandName: 'WIX Filters' },
-    ])
+    givenNumbers(
+      [],
+      [
+        { articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' },
+        { articleNumber: 'OF-HU816X', brandName: 'MANN-FILTER' },
+        { articleNumber: 'OF-WL7090', brandName: 'WIX Filters' },
+      ],
+    )
 
     renderNumbers()
 
@@ -111,11 +118,12 @@ describe('ArticleRowNumbers', () => {
   })
 
   it('separates the two kinds of number under their own headings', async () => {
-    alternativeNumbersMock.mockResolvedValue([
-      { articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' },
-    ])
+    givenNumbers(
+      [oem('13717521033')],
+      [{ articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' }],
+    )
 
-    renderNumbers([oem('13717521033')])
+    renderNumbers()
 
     expect(await screen.findByText('OF-OC115')).toBeInTheDocument()
     expect(
@@ -128,11 +136,12 @@ describe('ArticleRowNumbers', () => {
 
   // A part TecDoc files no OE numbers for still has cross-references worth
   // showing; an empty heading is not one of them.
-  it('omits the OE heading for a part with no OE numbers', () => {
-    alternativeNumbersMock.mockReturnValue(new Promise(() => {}))
+  it('omits the OE heading for a part with no OE numbers', async () => {
+    givenNumbers([], [{ articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' }])
 
-    renderNumbers([])
+    renderNumbers()
 
+    expect(await screen.findByText('OF-OC115')).toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { name: 'OE номера' }),
     ).not.toBeInTheDocument()
@@ -141,56 +150,60 @@ describe('ArticleRowNumbers', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders each OE number beside the vehicle manufacturer that uses it', () => {
-    renderNumbers([oem('11427508969', 'BMW'), oem('15208HG00D', 'NISSAN')])
+  it('renders each OE number beside the vehicle manufacturer that uses it', async () => {
+    givenNumbers([oem('11427508969', 'BMW'), oem('15208HG00D', 'NISSAN')])
 
-    expect(screen.getByText('BMW')).toBeInTheDocument()
+    renderNumbers()
+
+    expect(await screen.findByText('BMW')).toBeInTheDocument()
     expect(screen.getByText('NISSAN')).toBeInTheDocument()
   })
 
-  it('names the manufacturer in the copy action too, for screen readers', () => {
-    renderNumbers([oem('11427508969', 'BMW')])
+  it('names the manufacturer in the copy action too, for screen readers', async () => {
+    givenNumbers([oem('11427508969', 'BMW')])
+
+    renderNumbers()
 
     expect(
-      screen.getByRole('button', { name: 'Копирай номер 11427508969 на BMW' }),
+      await screen.findByRole('button', {
+        name: 'Копирай номер 11427508969 на BMW',
+      }),
     ).toBeInTheDocument()
   })
 
-  it('shows how far a number interchanges when TecDoc qualifies it', () => {
-    renderNumbers([oem('11427508969', 'BMW', 'Различен обхват на доставка')])
+  it('shows how far a number interchanges when TecDoc qualifies it', async () => {
+    givenNumbers([oem('11427508969', 'BMW', 'Различен обхват на доставка')])
 
-    expect(screen.getByText('Различен обхват на доставка')).toBeInTheDocument()
+    renderNumbers()
+
+    expect(
+      await screen.findByText('Различен обхват на доставка'),
+    ).toBeInTheDocument()
   })
 
   // TecDoc files an OE number once per make that uses it, so a shared number
   // arrives repeated — one chip naming both makes, not two chips.
-  it('renders a number shared by two makes as a single chip', () => {
+  it('renders a number shared by two makes as a single chip', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
-    alternativeNumbersMock.mockReturnValue(new Promise(() => {}))
+    givenNumbers([oem('06J 115 403 Q', 'VW'), oem('06J 115 403 Q', 'AUDI')])
 
     renderWithoutReactWarnings(
       <QueryClientProvider client={queryClient}>
-        <ArticleRowNumbers
-          brandId="94"
-          articleNumber="OX 982D"
-          oemNumbers={[
-            oem('06J 115 403 Q', 'VW'),
-            oem('06J 115 403 Q', 'AUDI'),
-          ]}
-        />
+        <ArticleRowNumbers brandId="94" articleNumber="OX 982D" />
       </QueryClientProvider>,
     )
 
+    expect(await screen.findByText('06J 115 403 Q')).toBeInTheDocument()
     expect(screen.getAllByText('06J 115 403 Q')).toHaveLength(1)
     expect(screen.getByText('VW, AUDI')).toBeInTheDocument()
   })
 
   it('reports an article TecDoc has no cross-references for', async () => {
-    alternativeNumbersMock.mockResolvedValue([])
+    givenNumbers([oem('13717521033')], [])
 
-    renderNumbers([oem('13717521033')])
+    renderNumbers()
 
     expect(
       await screen.findByText(/Няма номера от други производители/),
@@ -199,16 +212,16 @@ describe('ArticleRowNumbers', () => {
     expect(screen.getByText('13717521033')).toBeInTheDocument()
   })
 
-  it('offers a retry when the alternative-numbers read fails', async () => {
+  it('offers a retry when the read fails', async () => {
     const user = userEvent.setup()
-    alternativeNumbersMock.mockRejectedValue(new Error('catalog unavailable'))
+    partNumbersMock.mockRejectedValue(new Error('catalog unavailable'))
 
     renderNumbers()
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Опитай отново' }))
-    expect(alternativeNumbersMock).toHaveBeenCalledTimes(2)
+    expect(partNumbersMock).toHaveBeenCalledTimes(2)
   })
 })
 

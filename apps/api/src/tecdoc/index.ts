@@ -7,6 +7,7 @@ export {
   legacyArticleIdsOf,
   linkageRolesOf,
   mapArticleSummary,
+  mapOemNumbers,
 } from './article-mapper';
 export type {
   ArticleDetailRead,

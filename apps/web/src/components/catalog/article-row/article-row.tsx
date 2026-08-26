@@ -144,7 +144,6 @@ export function ArticleRow({
           brandId={brandId}
           articleNumber={articleNumber}
           technicalSpecs={article.technicalSpecs}
-          oemNumbers={article.oemNumbers}
         />
       )}
     </article>

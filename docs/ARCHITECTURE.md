@@ -441,7 +441,7 @@ No Postgres TecDoc tables at launch. Redis handles all TecDoc caching.
 | Vehicle types / engine variants | 7 days | Same |
 | Assembly group tree | 7 days | Same |
 | Article detail | 24h | |
-| Cross-reference candidate set | 24h / 1h empty | The parts replacing one part, per `(brandId, articleNumber)`. Serves the substitutes and alternative-numbers surfaces both. |
+| Cross-reference candidate set | 24h / 1h empty | The parts replacing one part, per `(brandId, articleNumber)`. Serves the substitutes and part-numbers surfaces both. |
 | Hydrated cross-reference row | 24h | Per row, never per page — the list's *order* is decided per request from live stock. |
 | Part number search results | 1h / 5m empty | Paginated entries are evicted by LFU when cold. |
 | Autocomplete suggestions | 15m / 5m empty | Short negative caching avoids pinning typo prefixes. |

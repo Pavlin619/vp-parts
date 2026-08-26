@@ -28,7 +28,6 @@ function item(
     description: 'Part',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
     ...overrides,
   };

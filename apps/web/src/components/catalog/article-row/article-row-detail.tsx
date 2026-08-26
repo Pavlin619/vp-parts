@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
-import type { OemNumberDto, TechnicalSpecDto } from "@vp-parts-shop/shared";
+import type { TechnicalSpecDto } from "@vp-parts-shop/shared";
 import { cn } from "@/lib/utils";
 import { ArticleRowNumbers } from "./article-row-numbers";
 import { ArticleRowSubstitutes } from "./article-row-substitutes";
@@ -15,7 +15,6 @@ interface ArticleRowDetailProps {
   brandId: string;
   articleNumber: string;
   technicalSpecs: TechnicalSpecDto[];
-  oemNumbers: OemNumberDto[];
 }
 
 const SECTION_LABEL: Record<DetailSectionId, string> = {
@@ -37,7 +36,6 @@ export function ArticleRowDetail({
   brandId,
   articleNumber,
   technicalSpecs,
-  oemNumbers,
 }: ArticleRowDetailProps) {
   const sections = availableSections(technicalSpecs);
   const [openSection, setOpenSection] = useState<DetailSectionId | null>(
@@ -88,7 +86,6 @@ export function ArticleRowDetail({
             <ArticleRowNumbers
               brandId={brandId}
               articleNumber={articleNumber}
-              oemNumbers={oemNumbers}
             />
           )}
           {openSection === "vehicles" && (
