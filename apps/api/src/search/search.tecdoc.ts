@@ -287,7 +287,14 @@ export class SearchTecDoc {
       }),
       perPage: pageSize,
       page,
-      includeAll: true,
+      // Exactly what `mapArticleSummary` reads, and nothing more. The identity
+      // it also needs — number, `dataSupplierId`, `mfrName` — comes back
+      // unasked. `includeAll` would add PDFs, links, linkages, parts and
+      // accessory lists, GTINs, prices, trade numbers and OE numbers that no
+      // row renders, for a measured 25–58% of the response.
+      includeGenericArticles: true,
+      includeImages: true,
+      includeArticleCriteria: true,
       includeDataSupplierFacets: true,
       includeGenericArticleFacets: true,
       // TODO(search-ux): auto-surface dimensions when a precise query (e.g. a

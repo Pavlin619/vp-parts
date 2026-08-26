@@ -10,9 +10,9 @@ import {
   getSubstitutes,
   getLinkedManufacturers,
   getLinkedVehiclesByManufacturer,
-  getAlternativeNumbers,
+  getPartNumbers,
   getAutocomplete,
-  alternativeNumbersQueryOptions,
+  partNumbersQueryOptions,
   substitutesQueryOptions,
   linkedManufacturersQueryOptions,
   linkedVehiclesByMakeQueryOptions,
@@ -191,18 +191,18 @@ describe('getLinkedVehiclesByManufacturer', () => {
   })
 })
 
-describe('getAlternativeNumbers', () => {
-  it('calls the brand-scoped alternative-numbers endpoint', () => {
-    getAlternativeNumbers('94', 'OX 982D')
+describe('getPartNumbers', () => {
+  it('calls the brand-scoped part-numbers endpoint', () => {
+    getPartNumbers('94', 'OX 982D')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/brands/94/articles/OX%20982D/alternative-numbers',
+      '/catalog/brands/94/articles/OX%20982D/part-numbers',
     )
   })
 
   it('URL-encodes special characters in the article number', () => {
-    getAlternativeNumbers('94', 'ABC/123')
+    getPartNumbers('94', 'ABC/123')
     expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/brands/94/articles/ABC%2F123/alternative-numbers',
+      '/catalog/brands/94/articles/ABC%2F123/part-numbers',
     )
   })
 })
@@ -251,11 +251,11 @@ describe('linkedVehiclesByMakeQueryOptions', () => {
   })
 })
 
-describe('alternativeNumbersQueryOptions', () => {
+describe('partNumbersQueryOptions', () => {
   it('keys by the brand and the article number', () => {
-    expect(alternativeNumbersQueryOptions('94', 'OX 982D').queryKey).toEqual([
+    expect(partNumbersQueryOptions('94', 'OX 982D').queryKey).toEqual([
       'catalog',
-      'alternative-numbers',
+      'part-numbers',
       '94',
       'OX 982D',
     ])
@@ -264,7 +264,7 @@ describe('alternativeNumbersQueryOptions', () => {
   // Nothing in the payload is price-bearing, so reopening the section on
   // another row for the same part must not refetch.
   it('survives a collapsed section as long as it stays fresh', () => {
-    const options = alternativeNumbersQueryOptions('94', 'OX 982D')
+    const options = partNumbersQueryOptions('94', 'OX 982D')
 
     expect(options.staleTime).toBe(60 * 60 * 1000)
     expect(options.gcTime).toBe(options.staleTime)

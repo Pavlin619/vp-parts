@@ -31,7 +31,6 @@ function item(
     description: 'Part',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
     ...overrides,
   };
@@ -118,14 +117,13 @@ describe('CrossReferencesService', () => {
 
     articleRead.read.mockResolvedValue({
       detail: {
-        ...item(articleNumber, {
-          oemNumbers: oeNumbers.map((oeNumber) => ({
-            articleNumber: oeNumber,
-            manufacturerName: 'VW',
-            interchangeability: null,
-          })),
-        }),
+        ...item(articleNumber),
         images: [],
+        oemNumbers: oeNumbers.map((oeNumber) => ({
+          articleNumber: oeNumber,
+          manufacturerName: 'VW',
+          interchangeability: null,
+        })),
       },
       genericArticleIds,
     });
@@ -389,7 +387,7 @@ describe('CrossReferencesService', () => {
     });
   });
 
-  describe('getAlternativeNumbers', () => {
+  describe('getPartNumbers', () => {
     it('projects the candidate set down to number and brand', async () => {
       givenArticle('SRC');
       tecdoc.getCrossReferenceCandidates.mockResolvedValueOnce([
@@ -400,9 +398,9 @@ describe('CrossReferencesService', () => {
         candidate('A5'),
       ]);
 
-      const numbers = await service.getAlternativeNumbers(BOSCH, 'SRC');
+      const numbers = await service.getPartNumbers(BOSCH, 'SRC');
 
-      expect(numbers).toEqual([
+      expect(numbers.alternativeNumbers).toEqual([
         { articleNumber: 'OF-OC115', brandName: 'MANN-FILTER' },
         { articleNumber: 'OF-WL7090', brandName: 'WIX Filters' },
         { articleNumber: 'A3', brandName: 'Ferodo' },
@@ -411,12 +409,31 @@ describe('CrossReferencesService', () => {
       ]);
     });
 
+    // No list surface carries them any more, so this route is where the chips
+    // get them — from the article read the cross-reference search already made.
+    it('answers with the OE numbers alongside the alternatives', async () => {
+      givenArticle('SRC', { oeNumbers: ['06J 115 403 Q'] });
+      tecdoc.getCrossReferenceCandidates.mockResolvedValueOnce([
+        candidate('OF-OC115'),
+      ]);
+
+      const numbers = await service.getPartNumbers(BOSCH, 'SRC');
+
+      expect(numbers.oemNumbers).toEqual([
+        {
+          articleNumber: '06J 115 403 Q',
+          manufacturerName: 'VW',
+          interchangeability: null,
+        },
+      ]);
+    });
+
     // Both surfaces read the same set, so opening one warms the other instead of
     // paying for a second search.
     it('shares the substitutes cache entry', async () => {
       givenArticle('SRC');
 
-      await service.getAlternativeNumbers(BOSCH, 'SRC');
+      await service.getPartNumbers(BOSCH, 'SRC');
 
       expect(cache.cachedArray).toHaveBeenCalledWith(
         'tecdoc:crossrefs:30:SRC',
@@ -440,7 +457,7 @@ describe('CrossReferencesService', () => {
         candidate('A5'),
       ]);
 
-      await service.getAlternativeNumbers(BOSCH, 'SRC');
+      await service.getPartNumbers(BOSCH, 'SRC');
 
       expect(tecdoc.getArticleRowsByLegacyIds).not.toHaveBeenCalled();
       expect(inventory.getAvailability).not.toHaveBeenCalled();
@@ -454,7 +471,7 @@ describe('CrossReferencesService', () => {
         candidate('OF-OC115'),
       ]);
 
-      await service.getAlternativeNumbers(BOSCH, 'SRC');
+      await service.getPartNumbers(BOSCH, 'SRC');
 
       expect(brands.attachLogos).not.toHaveBeenCalled();
     });

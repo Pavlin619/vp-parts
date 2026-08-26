@@ -58,7 +58,6 @@ const metadata: PaginatedCatalogArticlesDto = {
       description: 'Filter',
       thumbnailUrl: null,
       technicalSpecs: [],
-      oemNumbers: [],
       fitsVehicle: null,
     },
     {
@@ -69,7 +68,6 @@ const metadata: PaginatedCatalogArticlesDto = {
       description: 'Filter',
       thumbnailUrl: null,
       technicalSpecs: [],
-      oemNumbers: [],
       fitsVehicle: null,
     },
   ],

@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
-  AlternativeNumberDto,
+  ArticlePartNumbersDto,
 } from '@vp-parts-shop/shared';
 import { Public } from '../../../auth/public.decorator';
 import { ParseTecDocIdPipe } from '../../../tecdoc';
@@ -40,20 +40,21 @@ export class CrossReferencesController {
   }
 
   /**
-   * The numbers other brands sell this part under. Its own route because no list
-   * surface carries them — only the OE numbers ride along on the catalog
-   * response — so the alternative-numbers section fetches them when a visitor
-   * opens it.
+   * Every number this part can be ordered by: the vehicle manufacturers' own OE
+   * numbers and the numbers other parts brands sell the equivalent under. Its
+   * own route because no list surface carries either — OE numbers are the
+   * bulkiest thing on an article and the alternatives are only known once the
+   * cross-references resolve — so the section fetches both when it is opened.
    *
-   * Uncapped: it is answered from the same cross-reference set the substitutes
-   * page is, and a chip needs only the number and brand the candidate already
-   * carries, so there is nothing per row to pay for.
+   * Uncapped: the alternatives come from the same cross-reference set the
+   * substitutes page is answered from, and a chip needs only the number and
+   * brand the candidate already carries, so there is nothing per row to pay for.
    */
-  @Get('alternative-numbers')
-  getAlternativeNumbers(
+  @Get('part-numbers')
+  getPartNumbers(
     @Param('brandId', ParseTecDocIdPipe) brandId: number,
     @Param('articleNumber') articleNumber: string,
-  ): Promise<AlternativeNumberDto[]> {
-    return this.crossReferences.getAlternativeNumbers(brandId, articleNumber);
+  ): Promise<ArticlePartNumbersDto> {
+    return this.crossReferences.getPartNumbers(brandId, articleNumber);
   }
 }

@@ -1657,11 +1657,12 @@ export class TecDocMockClient {
   }
 
   /**
-   * Expands a bare mock row into the shared summary shape. Specs and OE numbers
-   * are borrowed from the article's detail fixture when present (mirroring how
-   * the real client gets them free on the same `getArticles` response);
-   * `brandLogoUrl` stays null because the brands layer joins logos from
-   * getBrands, exactly as it does for the real client.
+   * Expands a bare mock row into the shared summary shape. Specs are borrowed
+   * from the article's detail fixture when present, mirroring how the real
+   * client gets them on the same `getArticles` response; OE numbers are not,
+   * because no list call requests them. `brandLogoUrl` stays null because the
+   * brands layer joins logos from getBrands, exactly as it does for the real
+   * client.
    */
   private toSummary(base: MockArticleBase): ArticleSummaryDto {
     const brandId = brandIdFor(base.brandName);
@@ -1675,7 +1676,6 @@ export class TecDocMockClient {
       description: base.description,
       thumbnailUrl: base.thumbnailUrl,
       technicalSpecs: detail?.technicalSpecs ?? [],
-      oemNumbers: detail?.oemNumbers ?? [],
       fitsVehicle: null,
     };
   }

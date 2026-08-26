@@ -316,10 +316,13 @@ so the section names how many alternatives are left and offers *show more* until
 they are exhausted. `SUBSTITUTES_LIMIT` is gone. This was a breaking change to a
 route the web app is the only consumer of, so both moved together.
 
-**`GET /catalog/brands/:brandId/articles/:articleNumber/alternative-numbers`**
-keeps its shape and has lost its cap. It needs number and brand only, which the
-candidate set already carries, so it is answered from step 2 with **no hydration
-at all** — one 203 KB call at worst, down from six.
+**`GET /catalog/brands/:brandId/articles/:articleNumber/part-numbers`** (renamed
+from `alternative-numbers`) has lost its cap. The alternatives need number and
+brand only, which the candidate set already carries, so that half is answered
+from step 2 with **no hydration at all** — one 203 KB call at worst, down from
+six. It now also carries the article's OE numbers, which moved off
+`ArticleSummaryDto` when the list calls dropped `includeOEMNumbers`; they come
+from the cached article read step 2 already makes, so they cost no extra call.
 
 Both stay brand-scoped, and both keep serving `200` with an empty payload for a
 part with no cross-references.

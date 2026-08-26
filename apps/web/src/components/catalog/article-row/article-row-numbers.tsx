@@ -3,15 +3,14 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AlternativeNumberDto, OemNumberDto } from "@vp-parts-shop/shared";
-import { alternativeNumbersQueryOptions } from "@/lib/api/catalog";
+import { partNumbersQueryOptions } from "@/lib/api/catalog";
 import { PartNumberChip } from "./part-number-chip";
 import { SectionLoadError } from "./section-load-error";
 
 interface ArticleRowNumbersProps {
-  /** TecDoc brand id; the OE numbers behind these belong to one brand's part. */
+  /** TecDoc brand id; the numbers behind these belong to one brand's part. */
   brandId: string;
   articleNumber: string;
-  oemNumbers: OemNumberDto[];
 }
 
 /**
@@ -35,68 +34,64 @@ export interface MergedPartNumber {
 
 /**
  * The alternative-numbers section of a catalog row: every number this part can
- * be ordered by. Two halves, because they arrive on different schedules —
- * TecDoc ships the OE numbers with the article itself, while the numbers other
- * brands sell the equivalent part under take a search per OE number.
+ * be ordered by, in the two kinds a chip list distinguishes — the vehicle
+ * makers' own OE numbers and the numbers other parts brands sell the equivalent
+ * under.
  *
- * Those searches are why this component fetches at all, and why it is mounted
- * only once the section is opened: the read is the cost of the section, not of
- * the row. The query cache is what makes reopening it — or opening it on another
- * row for the same part — free.
+ * Both halves are read here rather than carried by the row: the alternatives
+ * because they are only known once the cross-references resolve, the OE numbers
+ * because they are the bulkiest field on an article and a list would pay for
+ * them on every row to render them on none. That read is the cost of the
+ * section, not of the row, which is why the component is mounted only once the
+ * section is opened. The query cache is what makes reopening it — or opening it
+ * on another row for the same part — free.
  */
 export function ArticleRowNumbers({
   brandId,
   articleNumber,
-  oemNumbers,
 }: ArticleRowNumbersProps) {
-  return (
-    <div className="flex flex-col gap-5">
-      {oemNumbers.length > 0 && (
-        <NumberBlock title="OE номера">
-          <ChipList numbers={mergePartNumbers(fromOemNumbers(oemNumbers))} />
-        </NumberBlock>
-      )}
-
-      <NumberBlock title="Номера от производители">
-        <AlternativeNumbers brandId={brandId} articleNumber={articleNumber} />
-      </NumberBlock>
-    </div>
-  );
-}
-
-function AlternativeNumbers({
-  brandId,
-  articleNumber,
-}: {
-  brandId: string;
-  articleNumber: string;
-}) {
   const { data, isPending, isError, refetch } = useQuery(
-    alternativeNumbersQueryOptions(brandId, articleNumber),
+    partNumbersQueryOptions(brandId, articleNumber),
   );
 
   if (isPending) {
-    return <AlternativeNumbersSkeleton />;
+    return <PartNumbersSkeleton />;
   }
 
   if (isError) {
     return (
       <SectionLoadError
-        message="В момента не можем да заредим номерата от други производители."
+        message="В момента не можем да заредим номерата за този артикул."
         onRetry={() => refetch()}
       />
     );
   }
 
-  if (data.length === 0) {
-    return (
-      <p className="rounded-md border border-dashed border-line-2 bg-canvas p-5 text-[13px] text-ink-3">
-        Няма номера от други производители за този артикул.
-      </p>
-    );
-  }
+  return (
+    <div className="flex flex-col gap-5">
+      {data.oemNumbers.length > 0 && (
+        <NumberBlock title="OE номера">
+          <ChipList
+            numbers={mergePartNumbers(fromOemNumbers(data.oemNumbers))}
+          />
+        </NumberBlock>
+      )}
 
-  return <ChipList numbers={mergePartNumbers(fromAlternativeNumbers(data))} />;
+      <NumberBlock title="Номера от производители">
+        {data.alternativeNumbers.length === 0 ? (
+          <p className="rounded-md border border-dashed border-line-2 bg-canvas p-5 text-[13px] text-ink-3">
+            Няма номера от други производители за този артикул.
+          </p>
+        ) : (
+          <ChipList
+            numbers={mergePartNumbers(
+              fromAlternativeNumbers(data.alternativeNumbers),
+            )}
+          />
+        )}
+      </NumberBlock>
+    </div>
+  );
 }
 
 function NumberBlock({
@@ -131,11 +126,11 @@ function ChipList({ numbers }: { numbers: MergedPartNumber[] }) {
   );
 }
 
-function AlternativeNumbersSkeleton() {
+function PartNumbersSkeleton() {
   return (
     <div
       className="flex flex-wrap gap-[7px]"
-      data-testid="article-row-alternative-numbers-skeleton"
+      data-testid="article-row-part-numbers-skeleton"
       aria-hidden="true"
     >
       {[0, 1, 2, 3].map((chip) => (

@@ -27,7 +27,6 @@ const makeArticle = (
   description,
   thumbnailUrl: null,
   technicalSpecs: [],
-  oemNumbers: [],
   fitsVehicle: null,
 });
 

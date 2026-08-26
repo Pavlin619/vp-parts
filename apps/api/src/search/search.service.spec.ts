@@ -79,7 +79,6 @@ function articleItem(
     description: 'Oil Filter',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
     ...overrides,
   };

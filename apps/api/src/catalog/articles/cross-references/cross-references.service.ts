@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
-  AlternativeNumberDto,
+  ArticlePartNumbersDto,
   ArticleSummaryDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
@@ -31,9 +31,9 @@ const ARTICLE_ROW_TTL = 24 * 60 * 60;
 
 /**
  * Which parts replace a part, in the two shapes the frontend asks for: whole
- * rows for the substitutes section and bare numbers for the alternative-numbers
- * chips. Both are answered from one cached candidate set, so opening either
- * surface warms the other.
+ * rows for the substitutes section and bare numbers for the part-numbers chips.
+ * Both are answered from one cached candidate set, so opening either surface
+ * warms the other.
  *
  * `docs/CROSS-REFERENCES.md` is the design document — it carries the live
  * measurements behind the candidate/row split and the alternatives rejected.
@@ -84,24 +84,36 @@ export class CrossReferencesService {
   }
 
   /**
-   * The numbers other brands sell this part under, for the alternative-numbers
-   * section. Read on demand: unlike the OE numbers it sits beside, these are only
-   * known once the cross-references are resolved, so no list response carries
-   * them.
+   * Every number this part can be ordered by, for the numbers section: the
+   * vehicle manufacturers' OE numbers and the numbers other brands sell the
+   * equivalent part under.
    *
-   * Answered from the candidate set with no hydration at all — number and brand
-   * are all a chip renders, and both are on the candidate.
+   * Both halves are read on demand rather than carried by the list surfaces —
+   * the alternatives because they are only known once the cross-references
+   * resolve, the OE numbers because they are the bulkiest field on an article
+   * and no row renders them until this section opens.
+   *
+   * The two reads run together and both are cached: the alternatives need no
+   * hydration at all, since number and brand are already on the candidate, and
+   * the article read behind the OE numbers is the same one the cross-reference
+   * resolution just warmed.
    */
-  async getAlternativeNumbers(
+  async getPartNumbers(
     brandId: number,
     articleNumber: string,
-  ): Promise<AlternativeNumberDto[]> {
-    const candidates = await this.loadCrossReferences(brandId, articleNumber);
+  ): Promise<ArticlePartNumbersDto> {
+    const [candidates, article] = await Promise.all([
+      this.loadCrossReferences(brandId, articleNumber),
+      this.articleRead.read(brandId, articleNumber),
+    ]);
 
-    return candidates.map((candidate) => ({
-      articleNumber: candidate.articleNumber,
-      brandName: candidate.brandName,
-    }));
+    return {
+      oemNumbers: article.detail.oemNumbers,
+      alternativeNumbers: candidates.map((candidate) => ({
+        articleNumber: candidate.articleNumber,
+        brandName: candidate.brandName,
+      })),
+    };
   }
 
   /**

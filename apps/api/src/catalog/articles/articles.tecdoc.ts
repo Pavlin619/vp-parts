@@ -8,6 +8,7 @@ import {
   genericArticleIdsOf,
   linkageRolesOf,
   mapArticleSummary,
+  mapOemNumbers,
 } from '../../tecdoc';
 import {
   ArticleLookupResponse,
@@ -83,12 +84,14 @@ export class ArticlesTecDoc {
 
     return {
       detail: {
-        // The row summary (identity, brand, description, thumbnail, specs, OE)
-        // is shared with every list surface; the detail adds the image gallery.
+        // The row summary (identity, brand, description, thumbnail, specs) is
+        // shared with every list surface; the detail adds the image gallery and
+        // the OE numbers, which are too bulky for a list to carry per row.
         ...mapArticleSummary(article),
         images: (article.images ?? [])
           .map((img) => img.imageURL800 ?? '')
           .filter(Boolean),
+        oemNumbers: mapOemNumbers(article.oemNumbers),
       },
       genericArticleIds: genericArticleIdsOf(article),
     };

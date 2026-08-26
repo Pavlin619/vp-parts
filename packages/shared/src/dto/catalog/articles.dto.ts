@@ -27,15 +27,24 @@ export interface OemNumberDto {
  * A number another parts brand sells the equivalent article under — a
  * cross-reference into a competitor's range, as opposed to an
  * {@link OemNumberDto}, which is a vehicle manufacturer's own number.
- *
- * Unlike OE numbers these do not ride along on the catalog response: they are
- * the numbers of the parts found by searching the article's OE numbers, so they
- * are read on demand.
  */
 export interface AlternativeNumberDto {
   articleNumber: string;
   /** The parts brand, e.g. `MANN-FILTER`. Always filed, unlike an OE marque. */
   brandName: string;
+}
+
+/**
+ * Every number one article can be ordered by, in the two kinds a chip list
+ * distinguishes.
+ *
+ * Read on demand rather than carried by the list surfaces, because OE numbers
+ * are bulky — a filter files 34 to 61 of them, roughly half the weight of a
+ * hydrated row — and nothing renders them until a visitor opens the section.
+ */
+export interface ArticlePartNumbersDto {
+  oemNumbers: OemNumberDto[];
+  alternativeNumbers: AlternativeNumberDto[];
 }
 
 /**
@@ -113,7 +122,6 @@ export interface ArticleSummaryDto {
   description: string;
   thumbnailUrl: string | null;
   technicalSpecs: TechnicalSpecDto[];
-  oemNumbers: OemNumberDto[];
   /** `true`/`false` when a vehicle is scoped for the request, else `null`. */
   fitsVehicle: boolean | null;
 }
@@ -138,4 +146,11 @@ export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
  */
 export interface ArticleCatalogDetailDto extends ArticleSummaryDto {
   images: string[];
+  /**
+   * Carried here rather than on {@link ArticleSummaryDto} because only the
+   * detail page renders them outright; a list row reads them from
+   * `/catalog/brands/:brandId/articles/:articleNumber/part-numbers` when its
+   * numbers section is opened.
+   */
+  oemNumbers: OemNumberDto[];
 }

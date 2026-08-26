@@ -16,7 +16,6 @@ function resultItem(
     description: 'Oil Filter',
     thumbnailUrl: null,
     technicalSpecs: [],
-    oemNumbers: [],
     fitsVehicle: null,
     ...overrides,
   }
