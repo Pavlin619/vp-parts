@@ -51,16 +51,7 @@ export function toShopCivil(
   instant: Date,
   timeZone: string,
 ): CivilDateTime & { weekday: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-    weekday: 'short',
-  }).formatToParts(instant);
+  const parts = civilPartsFormatter(timeZone).formatToParts(instant);
 
   const lookup = partsLookup(parts);
 
@@ -196,6 +187,56 @@ export function bgPublicHolidayPredicate(
 
 const MILLIS_PER_DAY = 86_400_000;
 
+/**
+ * Building an `Intl.DateTimeFormat` costs ~40 µs against ~3 µs to reuse one,
+ * and an availability read formats several times per article — so the
+ * formatters are built once per timezone and kept. Keyed by timezone rather
+ * than held in a single slot: there is one shop timezone in practice, but a
+ * second one must not silently answer with the first one's calendar.
+ */
+const civilPartsFormatters = new Map<string, Intl.DateTimeFormat>();
+const offsetProbeFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function cachedFormatter(
+  cache: Map<string, Intl.DateTimeFormat>,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  const cached = cache.get(timeZone);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', { ...options, timeZone });
+  cache.set(timeZone, formatter);
+
+  return formatter;
+}
+
+function civilPartsFormatter(timeZone: string): Intl.DateTimeFormat {
+  return cachedFormatter(civilPartsFormatters, timeZone, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    weekday: 'short',
+  });
+}
+
+function offsetProbeFormatter(timeZone: string): Intl.DateTimeFormat {
+  return cachedFormatter(offsetProbeFormatters, timeZone, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+}
+
 function partsLookup(parts: Intl.DateTimeFormatPart[]): Record<string, string> {
   const lookup: Record<string, string> = {};
   for (const part of parts) {
@@ -206,16 +247,7 @@ function partsLookup(parts: Intl.DateTimeFormatPart[]): Record<string, string> {
 
 /** Milliseconds the timezone is ahead of UTC at the given instant. */
 function timeZoneOffsetMillis(timeZone: string, instant: Date): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(instant);
+  const parts = offsetProbeFormatter(timeZone).formatToParts(instant);
 
   const lookup = partsLookup(parts);
   const wallClockAsUtc = Date.UTC(

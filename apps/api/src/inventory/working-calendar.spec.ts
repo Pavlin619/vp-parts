@@ -63,6 +63,14 @@ describe('working-calendar', () => {
       const civil = toShopCivil(new Date('2026-06-25T22:30:00Z'), SOFIA);
       expect(civil).toMatchObject({ year: 2026, month: 6, day: 26, hour: 1 });
     });
+
+    it('keeps timezones apart when one instant is read repeatedly', () => {
+      const instant = new Date('2026-06-25T22:30:00Z');
+
+      expect(toShopCivil(instant, SOFIA)).toMatchObject({ day: 26, hour: 1 });
+      expect(toShopCivil(instant, 'UTC')).toMatchObject({ day: 25, hour: 22 });
+      expect(toShopCivil(instant, SOFIA)).toMatchObject({ day: 26, hour: 1 });
+    });
   });
 
   describe('civil date helpers', () => {
@@ -173,6 +181,20 @@ describe('working-calendar', () => {
       const civilIn = { year: 2026, month: 7, day: 1, hour: 11, minute: 12 };
       const instant = shopCivilToInstant(civilIn, SOFIA);
       expect(toShopCivil(instant, SOFIA)).toMatchObject(civilIn);
+    });
+
+    it('keeps timezones apart when one civil time is converted repeatedly', () => {
+      const civil = { year: 2026, month: 6, day: 25, hour: 11, minute: 0 };
+
+      expect(shopCivilToInstant(civil, SOFIA).toISOString()).toBe(
+        '2026-06-25T08:00:00.000Z',
+      );
+      expect(shopCivilToInstant(civil, 'UTC').toISOString()).toBe(
+        '2026-06-25T11:00:00.000Z',
+      );
+      expect(shopCivilToInstant(civil, SOFIA).toISOString()).toBe(
+        '2026-06-25T08:00:00.000Z',
+      );
     });
   });
 

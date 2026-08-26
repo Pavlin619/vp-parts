@@ -12,7 +12,10 @@ import {
   SupplierStockRow,
 } from './supplier-stock.repository';
 import { DeliverySpeedResolver } from './delivery-speed.resolver';
-import { DeliveryScheduleService } from './delivery-schedule.service';
+import {
+  DeliveryScheduleService,
+  WarehouseProjection,
+} from './delivery-schedule.service';
 import {
   BestOffer,
   OwnOffer,
@@ -99,6 +102,7 @@ export class InventoryService {
     const offersByArticle = await this.loadOffersByArticle(articles);
 
     const now = new Date();
+    const projections = this.projectWarehouses(now);
     for (const article of articles) {
       const key = articleIdentityKey(article.brandId, article.articleNumber);
       const offers = offersByArticle.get(key) ?? EMPTY_OFFERS;
@@ -106,7 +110,7 @@ export class InventoryService {
         key,
         this.toInventoryDetail(
           this.select(offers),
-          this.buildWarehouseAvailability(offers, now),
+          this.buildWarehouseAvailability(offers, projections),
           now.toISOString(),
         ),
       );
@@ -200,6 +204,22 @@ export class InventoryService {
   }
 
   /**
+   * Every warehouse projected for one instant, fastest first.
+   *
+   * A projection depends only on its warehouse and `now`, so a batch of
+   * thousands of articles would otherwise recompute the same five answers per
+   * article — which measured as ~90% of the cost of a large availability read.
+   */
+  private projectWarehouses(now: Date): Map<Warehouse, WarehouseProjection> {
+    return new Map(
+      warehousesFastestFirst().map((warehouse) => [
+        warehouse,
+        this.deliverySchedule.projectWarehouse(warehouse, now),
+      ]),
+    );
+  }
+
+  /**
    * Groups all stock into the customer-facing warehouses (by inherent supplier
    * capability), unites the quantity per warehouse, and attaches the projected
    * pickup/courier delivery dates. Computed at request time, so callers must
@@ -207,7 +227,7 @@ export class InventoryService {
    */
   private buildWarehouseAvailability(
     offers: ResolvedOffers,
-    now: Date = new Date(),
+    projections: Map<Warehouse, WarehouseProjection>,
   ): WarehouseAvailabilityDto[] {
     const quantityByWarehouse = new Map<Warehouse, number>();
 
@@ -229,11 +249,10 @@ export class InventoryService {
     }
 
     const warehouses: WarehouseAvailabilityDto[] = [];
-    for (const warehouse of warehousesFastestFirst()) {
+    for (const [warehouse, projection] of projections) {
       const quantity = quantityByWarehouse.get(warehouse);
       if (!quantity) continue;
 
-      const projection = this.deliverySchedule.projectWarehouse(warehouse, now);
       warehouses.push({
         warehouseId: warehouse,
         quantity,
