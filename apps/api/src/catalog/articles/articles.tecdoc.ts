@@ -50,7 +50,13 @@ export class ArticlesTecDoc {
       linkageTargetId: vehicleId,
       perPage: pageSize,
       page,
-      includeAll: true,
+      // Exactly what a listing row renders, and nothing more — the same set the
+      // search payload asks for. `includeGenericArticles` doubles as the source
+      // of the `legacyArticleId`s pinned for the applicable-vehicles section, so
+      // keeping those costs no flag of its own.
+      includeGenericArticles: true,
+      includeImages: true,
+      includeArticleCriteria: true,
     });
 
     const records = data.articles ?? [];
@@ -76,7 +82,12 @@ export class ArticlesTecDoc {
       'getArticles',
       {
         ...articleLookupPayload(brandId, articleNumber),
-        includeAll: true,
+        // The list flags plus OE numbers: this is the one read whose surface
+        // renders them, and the one the part-numbers route reads them from.
+        includeGenericArticles: true,
+        includeImages: true,
+        includeArticleCriteria: true,
+        includeOEMNumbers: true,
       },
     );
 

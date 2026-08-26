@@ -7,10 +7,15 @@ import {
 } from '@vp-parts-shop/shared';
 
 /**
- * The subset of a TecDoc `getArticles` (`includeAll: true`) article record the
- * catalog surfaces consume. One shape backs the listing, search, substitutes,
- * and detail responses — they only differ in how the articles are selected, so
- * the mapper is shared by the articles and search TecDoc sources.
+ * The subset of a TecDoc `getArticles` article record the catalog surfaces
+ * consume. One shape backs the listing, search, substitutes, and detail
+ * responses — they differ in how the articles are selected and in which include
+ * flags they set, so the mapper is shared by the articles and search TecDoc
+ * sources.
+ *
+ * Every field below is optional because every one of them is behind a flag: a
+ * caller that does not ask for images gets no `images` key at all, not an empty
+ * one. Each field names the flag that carries it.
  */
 export interface TecDocArticleRecord {
   articleNumber: string;
@@ -90,9 +95,9 @@ export interface ArticleLinkageRoles {
 /**
  * A mapped page of catalog rows and the linkage roles that came down with it.
  *
- * An `includeAll` response already carries every row's `genericArticles`, so
- * the ids the applicable-vehicles section needs are in hand the moment a
- * category page is read. Keeping them is what saves that section a
+ * `includeGenericArticles` is what a listing already sets to name each row, and
+ * the same field carries these ids — so they are in hand the moment a category
+ * page is read. Keeping them is what saves the applicable-vehicles section a
  * `getArticles` of its own per article.
  */
 export interface CatalogArticlesPage {

@@ -60,7 +60,6 @@ describe('ArticlesTecDoc', () => {
           linkageTargetId: 10001,
           perPage: 20,
           page: 1,
-          includeAll: true,
         }),
       );
       expect(result.articles.total).toBe(2);
@@ -70,9 +69,29 @@ describe('ArticlesTecDoc', () => {
       ]);
     });
 
-    // The ids the applicable-vehicles section needs ride along on every
-    // `includeAll` response. Dropping them here is what used to make that
-    // section re-read each article through `getLegacyArticleIds`.
+    // A listing row renders exactly `mapArticleSummary`, and its linkage roles
+    // come from `genericArticles`. `includeAll` would add PDFs, linkages, OE and
+    // trade numbers to all 20 rows for a measured 41% of the response.
+    it('asks only for the fields a listing row renders', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+      await tecdoc.getArticles(10001, 100002, 1, 20);
+
+      const [, params] = call.mock.calls[0];
+      expect(params).toMatchObject({
+        includeGenericArticles: true,
+        includeImages: true,
+        includeArticleCriteria: true,
+      });
+      for (const flag of ['includeAll', 'includeOEMNumbers', 'includeMisc']) {
+        expect(params).not.toHaveProperty(flag);
+      }
+    });
+
+    // The ids the applicable-vehicles section needs ride along on the
+    // `genericArticles` the description is already read from. Dropping them here
+    // is what used to make that section re-read each article through
+    // `getLegacyArticleIds`.
     it('returns each row\u2019s linkage roles beside the page', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 2,
@@ -131,6 +150,24 @@ describe('ArticlesTecDoc', () => {
 
       expect(detail.images).toEqual(['https://img/A1.jpg']);
       expect(detail.brandId).toBe('30');
+    });
+
+    // One row, so the saving is small — but the detail page is the one surface
+    // that renders OE numbers, which is why this read asks for them and no list
+    // read does.
+    it('asks for the detail fields, OE numbers included', async () => {
+      call.mockResolvedValueOnce({ articles: [record('A1')] });
+
+      await tecdoc.getArticleDetails(BOSCH, 'A1');
+
+      const [, params] = call.mock.calls[0];
+      expect(params).toMatchObject({
+        includeGenericArticles: true,
+        includeImages: true,
+        includeArticleCriteria: true,
+        includeOEMNumbers: true,
+      });
+      expect(params).not.toHaveProperty('includeAll');
     });
 
     /**

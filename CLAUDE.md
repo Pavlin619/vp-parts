@@ -177,7 +177,14 @@ What follows:
 
 #### What a list call asks for: never `includeAll`
 
-**Every `getArticles` request names the fields it needs.** `includeAll` looks convenient and is the single most expensive mistake available on this API: it adds PDFs, links, linkages, parts lists, accessory lists, GTINs, prices, trade numbers and OE numbers to every row, and a search page of 20 measured 25–58% smaller once they were dropped (1,834 KB → 979 KB across six real queries), with the mapped rows byte-identical over 60 rows.
+**Every `getArticles` request names the fields it needs.** `includeAll` looks convenient and is the single most expensive mistake available on this API: it adds PDFs, links, linkages, parts lists, accessory lists, GTINs, prices, trade numbers and OE numbers to every row. Measured against real queries, with the mapped rows byte-identical each time:
+
+| call | flags it needs | saving |
+|---|---|---|
+| Search page (`search.tecdoc.ts`) | generic articles, images, criteria | 25–58% (1,834 → 979 KB over six queries) |
+| Category listing (`articles.tecdoc.ts`) | the same three | 35–44% (486 → 287 KB over four pages of 20) |
+| Article detail (`articles.tecdoc.ts`) | the same three **plus OE numbers** | 4–23%; one row, so this one is about saying what the read needs, not speed |
+| `getBrands` (`brands.tecdoc.ts`) | `includeDataSupplierLogo` | 512 → 292 KB and 5× faster, same 539 logos over 619 brands |
 
 Three facts to build a payload from:
 
