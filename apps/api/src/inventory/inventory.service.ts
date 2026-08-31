@@ -32,6 +32,13 @@ import { InventoryUnavailableException } from './inventory-unavailable.exception
 
 const DEFAULT_VAT_RATE = 0.2;
 
+/**
+ * Live price and availability for a set of articles, keyed by
+ * {@link articleIdentityKey} — brand and number together, because a number alone
+ * does not identify a part.
+ */
+export type AvailabilityByArticle = Map<string, ArticleInventoryDetailDto>;
+
 /** Resolved offers for a single article, ready for both selection paths. */
 interface ResolvedOffers {
   own: OwnOffer | null;
@@ -93,8 +100,8 @@ export class InventoryService {
    */
   async getAvailability(
     articles: ArticleIdentityDto[],
-  ): Promise<Map<string, ArticleInventoryDetailDto>> {
-    const result = new Map<string, ArticleInventoryDetailDto>();
+  ): Promise<AvailabilityByArticle> {
+    const result: AvailabilityByArticle = new Map();
     if (articles.length === 0) {
       return result;
     }
@@ -117,6 +124,40 @@ export class InventoryService {
     }
 
     return result;
+  }
+
+  /**
+   * The same read, for callers that order a list by it — and the *only* place
+   * {@link InventoryUnavailableException} is answered with a value instead of
+   * propagating.
+   *
+   * A stock-database outage has to cost such a list its *ordering*, not its
+   * existence: the rows are catalogue data and stand on their own, and null is
+   * what the ordering reads as "rank on catalogue data alone". Every other
+   * caller — every buy box, every checkout re-check — keeps failing closed, so
+   * no price is ever rendered from a guess because of this catch.
+   *
+   * It lives here rather than in each list surface so that the exception cannot
+   * be swallowed by accident: the fail-soft path is a method whose name says
+   * what it is for.
+   */
+  async getAvailabilityForOrdering(
+    articles: ArticleIdentityDto[],
+  ): Promise<AvailabilityByArticle | null> {
+    if (articles.length === 0) {
+      return null;
+    }
+
+    try {
+      return await this.getAvailability(articles);
+    } catch (error) {
+      this.logger.warn(
+        `Ordering ${articles.length} article(s) by catalogue data: ` +
+          `availability unavailable (${describeError(error)})`,
+      );
+
+      return null;
+    }
   }
 
   /**
@@ -364,4 +405,8 @@ function addQuantity(
     warehouse,
     (quantityByWarehouse.get(warehouse) ?? 0) + quantity,
   );
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

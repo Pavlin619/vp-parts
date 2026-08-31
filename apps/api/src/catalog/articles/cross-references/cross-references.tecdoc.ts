@@ -95,10 +95,14 @@ export class CrossReferencesTecDoc {
    * Turns candidates into rendered rows, by the `legacyArticleId`s they carry.
    *
    * This is the expensive half of the cross-reference read, so it is paid for one
-   * page of rows at a time: the same 25 rows cost 611 KB with images, criteria and
-   * OE numbers against 24 KB as candidates. `includeAll` is deliberately not
-   * used — `pdfs`, `links`, `linkages`, `partsList`, `accessoryList`, `gtins` and
-   * `prices` all ride along in it and none is rendered.
+   * page of rows at a time: the same 25 rows cost 611 KB with images and criteria
+   * against 24 KB as candidates. `includeAll` is deliberately not used — `pdfs`,
+   * `links`, `linkages`, `partsList`, `accessoryList`, `gtins` and `prices` all
+   * ride along in it and none is rendered.
+   *
+   * The includes are exactly what {@link mapArticleSummary} reads, which is why
+   * OE numbers are not among them: they are the bulkiest field on an article and
+   * the numbers section fetches them on demand instead.
    *
    * TecDoc may answer with fewer rows than there were ids, so the caller pairs
    * the answer back onto what it asked for rather than assuming positions.
@@ -119,9 +123,7 @@ export class CrossReferencesTecDoc {
       perPage: legacyArticleIds.length,
       page: 1,
       includeGenericArticles: true,
-      includeArticleText: true,
       includeArticleCriteria: true,
-      includeOEMNumbers: true,
       includeImages: true,
     });
 

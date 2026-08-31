@@ -229,12 +229,28 @@ describe('CrossReferencesTecDoc', () => {
         perPage: 2,
         page: 1,
         includeGenericArticles: true,
-        includeArticleText: true,
         includeArticleCriteria: true,
-        includeOEMNumbers: true,
         includeImages: true,
       });
       expect(rows.map((row) => row.articleNumber)).toEqual(['A1']);
+    });
+
+    // OE numbers are the bulkiest field on an article — 34 to 61 on a filter,
+    // roughly half a hydrated row — and `mapArticleSummary` reads neither them
+    // nor the article text, so both were paid for and dropped.
+    it('asks for nothing a row does not render', async () => {
+      call.mockResolvedValueOnce({ articles: [record('A1')] });
+
+      await tecdoc.getArticleRowsByLegacyIds([777]);
+
+      const [, params] = call.mock.calls[0];
+      for (const flag of [
+        'includeAll',
+        'includeOEMNumbers',
+        'includeArticleText',
+      ]) {
+        expect(params).not.toHaveProperty(flag);
+      }
     });
 
     /**

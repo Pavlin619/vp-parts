@@ -325,4 +325,52 @@ describe('selectBestOffer', () => {
       expect(offer.priceIncVatCents).toBeNull();
     });
   });
+
+  // Two suppliers at the same speed and the same buy price used to leave the
+  // displayed price to the order the stock rows arrived in, which is not stable
+  // between reads. The lower sell price settles it.
+  describe('suppliers tied on delivery band and buy price', () => {
+    const tied: SupplierSeed[] = [
+      {
+        supplierSource: 'INTERCARS',
+        warehouseCode: 'B24',
+        quantity: 3,
+        buyPriceCents: 4000,
+        sellPriceCents: 5600,
+      },
+      {
+        supplierSource: 'INTERCARS',
+        warehouseCode: 'B01',
+        quantity: 5,
+        buyPriceCents: 4000,
+        sellPriceCents: 5200,
+      },
+    ];
+
+    it.each([
+      ['cheaper line first', [tied[1], tied[0]]],
+      ['cheaper line last', [tied[0], tied[1]]],
+    ])('shows the lower sell price with the %s', (_case, suppliers) => {
+      const offer = run({ own: null, suppliers });
+
+      expect(offer.priceIncVatCents).toBe(5200);
+      expect(offer.priceExVatCents).toBe(Math.round(5200 / 1.2));
+    });
+
+    it.each([
+      ['cheaper line first', [tied[1], tied[0]]],
+      ['cheaper line last', [tied[0], tied[1]]],
+    ])(
+      'uses the lower sell price as the undercut reference with the %s',
+      (_case, suppliers) => {
+        const offer = run({
+          own: { quantity: 4, priceExVatCents: 3000, priceIncVatCents: 3600 },
+          suppliers,
+        });
+
+        expect(offer.priceIncVatCents).toBe(5200);
+        expect(offer.priceExVatCents).toBe(Math.round(5200 / 1.2));
+      },
+    );
+  });
 });

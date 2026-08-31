@@ -147,13 +147,35 @@ function addSource(
   buckets.set(outcome.rank, { outcome, sources: [source] });
 }
 
-/** Our own stock (no buy price) first, then suppliers by ascending buy price. */
+/** A source we buy in, i.e. anything but our own stock. */
+type PurchasedSource = OfferSource & { buyPriceCents: number };
+
+/**
+ * Order of the suppliers we would buy a part from within one delivery band:
+ * lowest buy price, then lowest sell price. The second key is not cosmetic —
+ * two suppliers quoting the same buy price at the same speed is common enough
+ * to matter, and with buy price as the only key the price we display is
+ * whichever row the database happened to return first.
+ */
+function bySourcingPreference(
+  a: PurchasedSource | SupplierOffer,
+  b: PurchasedSource | SupplierOffer,
+): number {
+  return (
+    a.buyPriceCents - b.buyPriceCents || a.sellPriceCents - b.sellPriceCents
+  );
+}
+
+/** Our own stock (no buy price) first, then the suppliers we would source from. */
 function sortedCheapestFirst(sources: OfferSource[]): OfferSource[] {
-  return [...sources].sort((a, b) => {
-    if (a.buyPriceCents === null) return -1;
-    if (b.buyPriceCents === null) return 1;
-    return a.buyPriceCents - b.buyPriceCents;
-  });
+  const ownStock = sources.filter((source) => source.buyPriceCents === null);
+  const purchased = sources
+    .filter(
+      (source): source is PurchasedSource => source.buyPriceCents !== null,
+    )
+    .sort(bySourcingPreference);
+
+  return [...ownStock, ...purchased];
 }
 
 /**
@@ -205,7 +227,7 @@ function sourcedSupplierSellPrice(suppliers: SupplierOffer[]): number | null {
   return sourced?.sellPriceCents ?? null;
 }
 
-/** Faster delivery wins; ties within the same delivery band go to lower buy price. */
+/** Faster delivery wins; within one delivery band the sourcing order decides. */
 function isPreferredSupplier(
   candidate: SupplierOffer,
   current: SupplierOffer,
@@ -213,7 +235,7 @@ function isPreferredSupplier(
   if (candidate.delivery.rank !== current.delivery.rank) {
     return candidate.delivery.rank < current.delivery.rank;
   }
-  return candidate.buyPriceCents < current.buyPriceCents;
+  return bySourcingPreference(candidate, current) < 0;
 }
 
 /** Derives the ex-VAT figure from a VAT-inclusive price (no VAT added on top). */

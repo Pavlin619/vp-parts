@@ -488,4 +488,52 @@ describe('InventoryService', () => {
       });
     });
   });
+
+  /**
+   * The one read that answers a stock-DB outage with a value. It exists so the
+   * list surfaces that order by availability degrade to catalogue order, and so
+   * that swallowing the exception takes a deliberate call to a differently-named
+   * method rather than a try/catch in each surface.
+   */
+  describe('getAvailabilityForOrdering', () => {
+    it('answers with the same availability the read returns', async () => {
+      ownFindByArticle.mockResolvedValueOnce([]);
+      supplierFindByArticle.mockResolvedValueOnce([
+        supplierRow({ availability: 2, sellPriceCents: 5500 }),
+      ]);
+
+      const availability = await service.getAvailabilityForOrdering([WL6340]);
+
+      expect(availability?.get(WL6340_KEY)?.bestPriceIncVat).toBe(5500);
+    });
+
+    it('answers with null and warns when the read fails', async () => {
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      ownFindByArticle.mockRejectedValueOnce(new Error('db down'));
+      supplierFindByArticle.mockResolvedValueOnce([]);
+
+      await expect(
+        service.getAvailabilityForOrdering([WL6340]),
+      ).resolves.toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('availability unavailable'),
+      );
+
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    // Null rather than an empty map: there is nothing to order, and an empty map
+    // would read to the ordering as "every row is out of stock".
+    it('answers with null for an empty set without querying', async () => {
+      await expect(service.getAvailabilityForOrdering([])).resolves.toBeNull();
+      expect(ownFindByArticle).not.toHaveBeenCalled();
+      expect(ownFindByArticles).not.toHaveBeenCalled();
+    });
+  });
 });

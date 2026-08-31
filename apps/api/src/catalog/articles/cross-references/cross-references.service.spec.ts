@@ -1,14 +1,10 @@
-import { Logger } from '@nestjs/common';
 import {
   ArticleSummaryDto,
   ArticleInventoryDetailDto,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { RedisCache, CachedManyRequest } from '../../../redis';
-import {
-  InventoryService,
-  InventoryUnavailableException,
-} from '../../../inventory';
+import { InventoryService } from '../../../inventory';
 import { ArticleStatus, CrossReferenceCandidate } from '../../../tecdoc';
 import { BrandsService } from '../../brands';
 import { ArticleReadCache } from '../article-read';
@@ -68,7 +64,7 @@ describe('CrossReferencesService', () => {
   };
   let cache: { cachedArray: jest.Mock; cachedMany: jest.Mock };
   let brands: { attachLogos: jest.Mock };
-  let inventory: { getAvailability: jest.Mock };
+  let inventory: { getAvailabilityForOrdering: jest.Mock };
   let articleRead: { read: jest.Mock };
   let service: CrossReferencesService;
 
@@ -92,7 +88,9 @@ describe('CrossReferencesService', () => {
     brands = {
       attachLogos: jest.fn((items: unknown) => Promise.resolve(items)),
     };
-    inventory = { getAvailability: jest.fn().mockResolvedValue(new Map()) };
+    inventory = {
+      getAvailabilityForOrdering: jest.fn().mockResolvedValue(new Map()),
+    };
     articleRead = { read: jest.fn() };
 
     service = new CrossReferencesService(
@@ -249,7 +247,7 @@ describe('CrossReferencesService', () => {
         candidate('OUT-OF-STOCK', { legacyArticleIds: [1] }),
         candidate('IN-STOCK', { legacyArticleIds: [2] }),
       ]);
-      inventory.getAvailability.mockResolvedValueOnce(
+      inventory.getAvailabilityForOrdering.mockResolvedValueOnce(
         new Map([
           [articleIdentityKey(FERODO, 'OUT-OF-STOCK'), OUT_OF_STOCK],
           [
@@ -262,7 +260,7 @@ describe('CrossReferencesService', () => {
       const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 1);
 
       // Priced as the brand that files each number, never by the number alone.
-      expect(inventory.getAvailability).toHaveBeenCalledWith([
+      expect(inventory.getAvailabilityForOrdering).toHaveBeenCalledWith([
         { brandId: FERODO, articleNumber: 'OUT-OF-STOCK' },
         { brandId: FERODO, articleNumber: 'IN-STOCK' },
       ]);
@@ -271,29 +269,22 @@ describe('CrossReferencesService', () => {
     });
 
     /**
-     * Availability fails closed everywhere else. Here it must not: a stock-DB
-     * outage costs the list its ordering, not its existence — the rows' own prices
-     * are a separate, still-fail-closed read.
+     * A stock-DB outage costs the list its ordering, not its existence — the
+     * ordering read reports that as null (it is the one caller of the inventory
+     * read that does not fail closed), and the list still has to be served.
      */
-    it('degrades to catalogue order when availability cannot be read', async () => {
-      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    it('still serves the list when the ordering read has no availability', async () => {
       givenArticle('SRC');
       givenHydratedRows();
       tecdoc.getCrossReferenceCandidates.mockResolvedValueOnce([
         candidate('A1', { legacyArticleIds: [1] }),
       ]);
-      inventory.getAvailability.mockRejectedValueOnce(
-        new InventoryUnavailableException(),
-      );
+      inventory.getAvailabilityForOrdering.mockResolvedValueOnce(null);
 
       const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
 
       expect(page.total).toBe(1);
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('availability unavailable'),
-      );
-
-      warn.mockRestore();
+      expect(page.items).toHaveLength(1);
     });
 
     // The search answers with the part it was given among the rest, and a part is
@@ -460,7 +451,7 @@ describe('CrossReferencesService', () => {
       await service.getPartNumbers(BOSCH, 'SRC');
 
       expect(tecdoc.getArticleRowsByLegacyIds).not.toHaveBeenCalled();
-      expect(inventory.getAvailability).not.toHaveBeenCalled();
+      expect(inventory.getAvailabilityForOrdering).not.toHaveBeenCalled();
     });
 
     // The chips render the brand as text, so joining logos onto them would be a

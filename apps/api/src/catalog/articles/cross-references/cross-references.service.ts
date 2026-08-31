@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
+  ArticleIdentityDto,
   ArticlePartNumbersDto,
   ArticleSummaryDto,
 } from '@vp-parts-shop/shared';
@@ -8,17 +9,16 @@ import { RedisCache } from '../../../redis';
 import { InventoryService } from '../../../inventory';
 import { CrossReferenceCandidate } from '../../../tecdoc';
 import { BrandsService } from '../../brands';
+import { orderByAvailability } from '../article-ordering';
 import { ArticleReadCache } from '../article-read';
 import {
   ARTICLE_DEFAULT_PAGE,
   ARTICLE_DEFAULT_PAGE_SIZE,
 } from '../articles.dto';
 import {
-  CandidateAvailability,
   ViewedArticle,
   dropViewedPart,
   keepCandidatesCiting,
-  orderByAvailability,
   pageOf,
 } from './candidate-set';
 import { CrossReferencesTecDoc } from './cross-references.tecdoc';
@@ -40,8 +40,6 @@ const ARTICLE_ROW_TTL = 24 * 60 * 60;
  */
 @Injectable()
 export class CrossReferencesService {
-  private readonly logger = new Logger(CrossReferencesService.name);
-
   constructor(
     private readonly tecdoc: CrossReferencesTecDoc,
     private readonly cache: RedisCache,
@@ -74,7 +72,7 @@ export class CrossReferencesService {
     const candidates = await this.loadCrossReferences(brandId, articleNumber);
     const ordered = orderByAvailability(
       candidates,
-      await this.availabilityForOrdering(candidates),
+      await this.inventory.getAvailabilityForOrdering(identitiesOf(candidates)),
     );
 
     const requested = pageOf(ordered, page, pageSize);
@@ -175,39 +173,6 @@ export class CrossReferencesService {
   }
 
   /**
-   * Live availability for every candidate, for the ordering step alone.
-   *
-   * `getAvailability` fails closed everywhere else, and this is the one caller
-   * that must not: a stock-database outage has to cost the cross-reference list
-   * its *ordering*, not its existence. The rows' own prices are fetched by the
-   * client through the live availability endpoint, which keeps failing closed, so
-   * no buy box ever renders a guess because of this catch.
-   */
-  private async availabilityForOrdering(
-    candidates: CrossReferenceCandidate[],
-  ): Promise<CandidateAvailability> {
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    const articles = candidates.map((candidate) => ({
-      brandId: candidate.brandId,
-      articleNumber: candidate.articleNumber,
-    }));
-
-    try {
-      return await this.inventory.getAvailability(articles);
-    } catch (error) {
-      this.logger.warn(
-        `Ordering ${articles.length} cross-reference(s) by catalogue data: ` +
-          `availability unavailable (${describe(error)})`,
-      );
-
-      return null;
-    }
-  }
-
-  /**
    * Turns the candidates on one page into rows a list can render.
    *
    * Cached per row rather than per page, because the ordering is live: a
@@ -236,6 +201,15 @@ function articleRowKey(article: {
   return `tecdoc:article-row:${article.brandId}:${article.articleNumber}`;
 }
 
+function identitiesOf(
+  candidates: CrossReferenceCandidate[],
+): ArticleIdentityDto[] {
+  return candidates.map((candidate) => ({
+    brandId: candidate.brandId,
+    articleNumber: candidate.articleNumber,
+  }));
+}
+
 /**
  * One hydration id per candidate. A part catalogued in two roles carries one id
  * per role, and both resolve to the same article, so the second would buy a
@@ -248,8 +222,4 @@ function hydrationIdsOf(candidates: CrossReferenceCandidate[]): number[] {
       (legacyArticleId): legacyArticleId is number =>
         legacyArticleId !== undefined,
     );
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

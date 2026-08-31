@@ -244,11 +244,18 @@ considered.
 
 The read is live and uncached, exactly as availability is treated everywhere
 else — the cached artifact is the candidate set, and the ordering happens per
-request. **`getAvailability` fails closed by design, and this one caller must
-catch it**: a stock-DB outage has to degrade to catalogue order with a `warn`,
-not take out the cross-reference list. The rows' own price and stock are hydrated
-separately by the client, and *that* read keeps failing closed, so no buy box
-ever renders a guess.
+request. **`getAvailability` fails closed by design, and ordering is the one
+reason not to**: a stock-DB outage has to degrade to catalogue order with a
+`warn`, not take out the cross-reference list. That single exception is
+`InventoryService.getAvailabilityForOrdering`, which answers null instead of
+throwing, so no surface has to catch the exception itself. The rows' own price and
+stock are hydrated separately by the client, and *that* read keeps failing closed,
+so no buy box ever renders a guess.
+
+The ranking itself is `orderByAvailability` in
+`catalog/articles/article-ordering.ts`, structural over `OrderableArticle` rather
+than tied to a candidate, because the search results are ordered by the same rule
+and two definitions of it would be two answers to which part we show first.
 
 ### 4. Hydrate the rendered page
 
@@ -261,23 +268,23 @@ ever renders a guess.
     "perPage": 25,
     "page": 1,
     "includeGenericArticles": true,
-    "includeArticleText": true,
     "includeArticleCriteria": true,
-    "includeOEMNumbers": true,
-    "includeImages": true,
-    "includeMisc": true
+    "includeImages": true
   }
 }
 ```
 
-A page measures 611 KB for 25 FERODO-equivalent brake pads, the heaviest set
-sampled, and 108–185 KB for 20 rows of filters or the BOSCH pad set — the spread
-is how many OE numbers and criteria each brand files, not the page size. The
-shipped page size is 20, matching the availability endpoint's batch limit, since
-each page is priced by one availability read of its own numbers.
-`includeAll` is deliberately not used: `pdfs`, `links`,
-`linkages`, `partsList`, `accessoryList`, `gtins` and `prices` are all in it and
-none is rendered.
+The includes are exactly the three fields `mapArticleSummary` reads. It asked for
+`includeArticleText` and `includeOEMNumbers` as well until both were measured and
+found to be paid for and dropped — the mapper reads neither, and no row renders
+them. Removing them took 25 FERODO-equivalent pads from 549 KB to 217 KB (60%)
+and 25 BREMBO-equivalent ones from 370 KB to 251 KB (32%), with the mapped rows
+byte-identical in both cases; the spread between the two is how many OE numbers
+each brand files. The shipped page size is 20, matching the availability
+endpoint's batch limit, since each page is priced by one availability read of its
+own numbers. `includeAll` is deliberately not used: `pdfs`, `links`, `linkages`,
+`partsList`, `accessoryList`, `gtins` and `prices` are all in it and none is
+rendered.
 
 Rows are returned in candidate order, not TecDoc's; ids that resolve to nothing
 are dropped rather than left as holes. One id per candidate is sent: a part

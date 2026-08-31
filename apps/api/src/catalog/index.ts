@@ -6,6 +6,11 @@ export { VehiclesController } from './vehicles/vehicles.controller';
 export { ArticlesService } from './articles/articles.service';
 export { ArticlesTecDoc } from './articles/articles.tecdoc';
 export { ArticleReadCache } from './articles/article-read';
+export { orderByAvailability } from './articles/article-ordering';
+export type {
+  OrderableArticle,
+  OrderingAvailability,
+} from './articles/article-ordering';
 export { ArticleNotFoundException } from './articles/article-not-found.exception';
 export { ArticlesController } from './articles/articles.controller';
 export {
