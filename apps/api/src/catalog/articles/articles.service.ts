@@ -96,11 +96,12 @@ export class ArticlesService {
    * A page of catalog rows, with each row's `legacyArticleId`s pinned on the
    * way past.
    *
-   * The `includeAll` listing already carries those ids, and the
-   * applicable-vehicles section needs exactly them — without this it re-reads
-   * each article the first time a visitor expands a row. Warming from inside the
-   * loader ties it to the TecDoc read itself, so the memos are written when the
-   * page is, and the two entries then age out together.
+   * The listing already carries those ids on the `genericArticles` it names each
+   * row from, and the applicable-vehicles section needs exactly them — without
+   * this it re-reads each article the first time a visitor expands a row.
+   * Warming from inside the loader ties it to the TecDoc read itself, so the
+   * memos are written when the page is, and the two entries then age out
+   * together.
    */
   private loadArticlePage(
     vehicleId: number,

@@ -47,9 +47,12 @@ import {
 
 /**
  * The bare row fields the mock stores per article. The richer summary fields
- * (specs, OE numbers, brand logo, fit) are derived at read time in
+ * (specs, brand logo, fit) are derived at read time in
  * {@link TecDocMockClient.toSummary}, mirroring how the real client fills them
- * from a single `getArticles` (`includeAll`) response plus the brand-logo join.
+ * from a single `getArticles` response plus the brand-logo join.
+ *
+ * Note the mock answers the same fixture whatever include flags a payload sets,
+ * so it cannot catch a field that stopped being requested — only a live read can.
  */
 type MockArticleBase = Pick<
   ArticleSummaryDto,

@@ -10,7 +10,7 @@ describe('BrandsTecDoc', () => {
     tecdoc = new BrandsTecDoc({ call } as unknown as TecDocTransport);
   });
 
-  it('calls getBrands with includeAll and maps the id, name and preferred logo size', async () => {
+  it('asks only for the logo block and maps the id, name and preferred size', async () => {
     call.mockResolvedValueOnce({
       data: {
         array: [
@@ -32,7 +32,7 @@ describe('BrandsTecDoc', () => {
     expect(call).toHaveBeenCalledWith('getBrands', {
       articleCountry: 'BG',
       lang: 'bg',
-      includeAll: true,
+      includeDataSupplierLogo: true,
     });
     // Prefers the 200px logo when present. The id is what article rows join on,
     // so it has to survive the mapping as well as the name.

@@ -104,9 +104,10 @@ export class LinkedVehiclesService {
    * Pins the linkage ids a catalog listing already carried, so expanding a row
    * does not re-read the article it came from.
    *
-   * An `includeAll` listing answers with every row's `genericArticles`, which is
-   * exactly what {@link resolveLegacyArticleIds} would otherwise fetch one
-   * article at a time the first time a visitor opens the section.
+   * The listing asks for `includeGenericArticles` to name each row, and the same
+   * field carries the linkage ids — exactly what {@link resolveLegacyArticleIds}
+   * would otherwise fetch one article at a time the first time a visitor opens
+   * the section.
    *
    * Rows with no role are skipped rather than memoised as an empty list: that
    * answer belongs at the shorter miss TTL, which only the read path applies.

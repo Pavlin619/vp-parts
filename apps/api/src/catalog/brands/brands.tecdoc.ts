@@ -13,9 +13,10 @@ export class BrandsTecDoc {
   constructor(private readonly transport: TecDocTransport) {}
 
   /**
-   * All parts brands with their logo URLs. `includeAll` makes TecDoc attach the
-   * `dataSupplierLogo` block; we pick a mid-resolution image and fall back
-   * through the other sizes.
+   * All parts brands with their logo URLs. `includeDataSupplierLogo` attaches
+   * the `dataSupplierLogo` block; we pick a mid-resolution image and fall back
+   * through the other sizes. `includeAll` answers with the same 539 logos over
+   * 619 brands for 512 KB against 292 KB, and five times slower.
    */
   async getBrands(): Promise<BrandDto[]> {
     const data = await this.transport.call<{
@@ -36,7 +37,7 @@ export class BrandsTecDoc {
     }>('getBrands', {
       articleCountry: 'BG',
       lang: 'bg',
-      includeAll: true,
+      includeDataSupplierLogo: true,
     });
 
     return (data.data?.array ?? []).map((brand) => ({
