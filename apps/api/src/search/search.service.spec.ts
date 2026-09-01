@@ -635,7 +635,100 @@ describe('SearchService', () => {
       expect(second.results?.map((row) => row.articleNumber)).toEqual([
         'FIRST',
       ]);
+      // Ranked once and pinned: the second page read stock again for its own
+      // counts, but it did not get to reorder the list underneath the visitor.
+      expect(writeMemoMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Which parts each origin can ship is what the stock control on the results
+  // header is labelled with, and the only axis a visitor can narrow a ranked
+  // search by that TecDoc knows nothing about.
+  describe('search — narrowing by stock origin', () => {
+    beforeEach(() => {
+      enumerateMock.mockResolvedValue(
+        enumerationOf([articleItem('STOCKED'), articleItem('UNSTOCKED')]),
+      );
+      availabilityMock.mockResolvedValue(
+        new Map([[articleIdentityKey('268', 'STOCKED'), inStock(42)]]),
+      );
+    });
+
+    it('reports what each origin holds across the whole match set', async () => {
+      const result = await service.search('WL634');
+
+      expect(result.stockScopeCounts).toEqual({
+        all: 2,
+        central: 1,
+        external: 0,
+      });
+    });
+
+    it('serves only what the requested origin holds', async () => {
+      const result = await service.search('WL634', undefined, 1, 20, {
+        stockScope: 'central',
+      });
+
+      expect(result.results?.map((row) => row.articleNumber)).toEqual([
+        'STOCKED',
+      ]);
+    });
+
+    // The pager measures what is being paged through; the counts describe what
+    // dropping the narrowing would restore. Two different numbers, both needed.
+    it('reports the narrowed total beside the unnarrowed counts', async () => {
+      const result = await service.search('WL634', undefined, 1, 20, {
+        stockScope: 'central',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.maxPage).toBe(1);
+      expect(result.stockScopeCounts?.all).toBe(2);
+    });
+
+    it('omits the counts when stock could not be read', async () => {
+      availabilityMock.mockResolvedValue(null);
+
+      const result = await service.search('WL634');
+
+      expect(result.stockScopeCounts).toBeUndefined();
+      expect(result.results).toHaveLength(2);
+    });
+
+    // The query matched perfectly well — it was the visitor's own filter that
+    // emptied it, and "did you mean" would send them away from the one click
+    // that fixes it.
+    it('suggests nothing for a search its own stock filter emptied', async () => {
+      const result = await service.search('WL634', undefined, 1, 20, {
+        stockScope: 'external',
+      });
+
+      expect(result.total).toBe(0);
+      expect(result.suggestions).toBeUndefined();
+    });
+
+    // The counts and the narrowing are read off the origins the ranking already
+    // recorded. A second read here measured 10 ms over 100 articles and 70 ms
+    // over 1,000, two thirds of it blocking the event loop — and it would answer
+    // a fresher question than the order it narrows.
+    it('costs the ranking no second stock read', async () => {
+      await service.search('WL634', undefined, 1, 20, {
+        stockScope: 'central',
+      });
+
       expect(availabilityMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('costs a pinned search no stock read at all', async () => {
+      readMemoMock.mockResolvedValue([
+        { brandId: '268', articleNumber: 'STOCKED', legacyArticleIds: [1] },
+      ]);
+
+      await service.search('WL634', undefined, 1, 20, {
+        stockScope: 'central',
+      });
+
+      expect(availabilityMock).not.toHaveBeenCalled();
     });
   });
 

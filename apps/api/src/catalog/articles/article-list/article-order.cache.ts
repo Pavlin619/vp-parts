@@ -1,9 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { ArticleIdentityDto } from '@vp-parts-shop/shared';
+import {
+  ArticleIdentityDto,
+  articleIdentityKey,
+  stockScopesOf,
+} from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
 import { InventoryService } from '../../../inventory';
-import { OrderableArticle, orderByAvailability } from './article-ordering';
+import {
+  OrderableArticle,
+  OrderingAvailability,
+  orderByAvailability,
+} from './article-ordering';
 import { HydratableArticle } from './article-rows.cache';
+import { ScopedArticle } from './stock-scope-selection';
 
 /**
  * How long a ranked set stays pinned: long enough to page through a list, short
@@ -16,6 +25,19 @@ const ARTICLE_ORDER_TTL = 5 * 60;
 
 /** An article a list can both rank and later hydrate a row for. */
 export type RankableArticle = OrderableArticle & HydratableArticle;
+
+/**
+ * An article in a pinned order: enough to hydrate its row, plus which stock
+ * origins could ship it at the instant the order was ranked.
+ *
+ * Those origins are a by-product, not a second read. Ranking already resolves
+ * every warehouse behind every candidate — see `deliverySpeed` in
+ * {@link orderByAvailability} — and used to discard it. Keeping two bits of it
+ * is what lets a list be counted and narrowed by origin for free, and pairs
+ * those numbers with the same snapshot the row *positions* came from. Reading
+ * stock again instead would answer a fresher question than the order beneath it.
+ */
+export type OrderedArticle = HydratableArticle & ScopedArticle;
 
 /**
  * The order a ranked article set is served in, pinned for the length of a paging
@@ -57,8 +79,8 @@ export class ArticleOrderCache {
   async ordered(
     key: string,
     candidates: RankableArticle[],
-  ): Promise<HydratableArticle[]> {
-    const pinned = await this.cache.readMemo<HydratableArticle[]>(key);
+  ): Promise<OrderedArticle[]> {
+    const pinned = await this.cache.readMemo<OrderedArticle[]>(key);
 
     if (pinned !== undefined) {
       return pinned;
@@ -69,7 +91,7 @@ export class ArticleOrderCache {
     );
 
     const ordered = orderByAvailability(candidates, availability).map(
-      hydratableOf,
+      (candidate) => orderedOf(candidate, availability),
     );
 
     if (availability !== null) {
@@ -87,10 +109,28 @@ function identitiesOf(candidates: RankableArticle[]): ArticleIdentityDto[] {
   }));
 }
 
-function hydratableOf(candidate: RankableArticle): HydratableArticle {
-  return {
+/**
+ * Keyed off the availability read as a whole, not off the entry for this
+ * article: a successful read reports a part nobody stocks by having no
+ * warehouses, so an empty origin list is the answer there — while a failed read
+ * has to leave the origins unknown for every article in the set.
+ */
+function orderedOf(
+  candidate: RankableArticle,
+  availability: OrderingAvailability,
+): OrderedArticle {
+  const hydratable = {
     brandId: candidate.brandId,
     articleNumber: candidate.articleNumber,
     legacyArticleIds: candidate.legacyArticleIds,
   };
+
+  if (availability === null) {
+    return hydratable;
+  }
+
+  const key = articleIdentityKey(candidate.brandId, candidate.articleNumber);
+  const warehouses = availability.get(key)?.availabilityByWarehouse ?? [];
+
+  return { ...hydratable, stockScopes: stockScopesOf(warehouses) };
 }

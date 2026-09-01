@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { ArticleSummaryDto, SearchOrdering } from '@vp-parts-shop/shared';
+import {
+  ArticleSummaryDto,
+  SearchOrdering,
+  StockScopeCountsDto,
+} from '@vp-parts-shop/shared';
 import {
   ArticleOrderCache,
   ArticleRowsCache,
   pageOf,
+  selectStockScope,
 } from '../catalog/articles/article-list';
 import {
   SearchCall,
@@ -22,8 +27,16 @@ import { searchOrderCacheKey } from './search-cache-keys';
 /** The rows one page of a search renders, and the order they are in. */
 export interface SearchResultPage {
   items: ArticleSummaryDto[];
+  /**
+   * Matches after any stock narrowing, which is what the pager measures. It is
+   * the enumeration's total only while nothing was narrowed away, so a caller
+   * must take it from here rather than from the set it was cut out of.
+   */
+  total: number;
   maxPage: number;
   ordering: SearchOrdering;
+  /** Over the set *before* narrowing; null when stock could not be read. */
+  stockScopeCounts: StockScopeCountsDto | null;
 }
 
 /**
@@ -60,7 +73,10 @@ export class SearchResults {
    *
    * The ranking is pinned under a page-free key, so every page of one search is
    * cut from the same order — see {@link ArticleOrderCache} for why that matters
-   * and how long it holds.
+   * and how long it holds. The stock narrowing is applied to that whole order
+   * before the page is cut, which is the only way the pager can measure what a
+   * visitor is actually paging through, and it costs no read of its own: the
+   * pinned order carries the origins it was ranked on.
    */
   private async readOrderedPage(
     enumeration: SearchEnumeration,
@@ -72,12 +88,17 @@ export class SearchResults {
       enumeration.candidates,
     );
 
-    const requested = pageOf(ordered, scope.page, scope.pageSize);
+    const selection = selectStockScope(ordered, scope.filters.stockScope);
+
+    const total = selection.articles.length;
+    const requested = pageOf(selection.articles, scope.page, scope.pageSize);
 
     return {
       items: await this.rows.hydrate(requested.items),
-      maxPage: resolveMaxPage(enumeration.total, scope.pageSize),
+      total,
+      maxPage: resolveMaxPage(total, scope.pageSize),
       ordering: 'availability',
+      stockScopeCounts: selection.counts,
     };
   }
 
@@ -87,6 +108,12 @@ export class SearchResults {
    * `maxPage` comes from this read rather than from the total, because TecDoc
    * serves only the first ~10,000 results of a match set: a query reporting
    * millions of matches will refuse a page the count says exists.
+   *
+   * A stock narrowing cannot be honoured here and is silently dropped rather
+   * than half-applied to a page. Narrowing the twenty rows TecDoc happened to
+   * return would answer "what can we ship" over an arbitrary slice of a million
+   * matches; the null counts are what tell the client the control is not on
+   * offer for this set.
    */
   private async readCataloguePage(
     enumeration: SearchEnumeration,
@@ -97,12 +124,14 @@ export class SearchResults {
 
     return {
       items: page.items,
+      total: enumeration.total,
       maxPage: resolveMaxPage(
         enumeration.total,
         scope.pageSize,
         page.maxAllowedPage,
       ),
       ordering: 'catalogue',
+      stockScopeCounts: null,
     };
   }
 }

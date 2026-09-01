@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ArticleInventoryDetailDto } from '@vp-parts-shop/shared'
+import { usePriceDisplay } from '@/hooks/use-price-display'
 import type { BuyBoxQuantity } from '@/hooks/use-buy-box-quantity'
 import { ArticleRowBuy } from './article-row-buy'
 
@@ -44,6 +45,10 @@ function renderBuy(
     />,
   )
 }
+
+beforeEach(() => {
+  usePriceDisplay.setState({ includesVat: true })
+})
 
 describe('ArticleRowBuy — pending', () => {
   it('renders a skeleton instead of a price while the read is in flight', () => {
@@ -121,5 +126,32 @@ describe('ArticleRowBuy — resolved', () => {
     expect(
       screen.queryByRole('button', { name: /кошницата/ }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('ArticleRowBuy — the VAT preference', () => {
+  it('shows the net price and says so when VAT is switched off', () => {
+    usePriceDisplay.setState({ includesVat: false })
+    renderBuy(detail())
+
+    expect(screen.getByText(/12[.,]50/)).toBeInTheDocument()
+    expect(screen.getByText('без ДДС · за брой')).toBeInTheDocument()
+    expect(screen.queryByText(/15[.,]00/)).not.toBeInTheDocument()
+  })
+
+  it('follows the preference changing under it', () => {
+    renderBuy(detail())
+    expect(screen.getByText(/15[.,]00/)).toBeInTheDocument()
+
+    act(() => usePriceDisplay.getState().setIncludesVat(false))
+
+    expect(screen.getByText(/12[.,]50/)).toBeInTheDocument()
+  })
+
+  it('falls back to a dash when the preferred price is missing', () => {
+    usePriceDisplay.setState({ includesVat: false })
+    renderBuy(detail({ bestPriceExVat: null }))
+
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

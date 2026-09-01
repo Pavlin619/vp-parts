@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -12,6 +13,7 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { STOCK_SCOPES, type StockScope } from '@vp-parts-shop/shared';
 import { CriteriaFilter, SearchMode } from './search-types';
 
 export const SEARCH_DEFAULT_PAGE = 1;
@@ -179,6 +181,17 @@ export class SearchQueryDto {
   @IsOptional()
   @IsEnum(SearchMode)
   searchMode?: SearchMode;
+
+  /**
+   * Narrow to what one stock origin can ship — `central` for our own shelf,
+   * `external` for supplier stock. Rejected rather than ignored when it is
+   * neither: unlike the facet params this is not an id we served back, so an
+   * unrecognised value is a request we cannot answer, and quietly widening it
+   * would serve an unnarrowed list under a control saying otherwise.
+   */
+  @IsOptional()
+  @IsIn(STOCK_SCOPES)
+  stock?: StockScope;
 }
 
 /**

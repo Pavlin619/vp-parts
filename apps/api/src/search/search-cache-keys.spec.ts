@@ -75,6 +75,15 @@ describe('searchSetCacheKey', () => {
     );
   });
 
+  // TecDoc knows nothing about what we can ship, so a stock narrowing changes
+  // no article it matches. Keyed on it, one search would pay for a TecDoc call
+  // per state of a control that never reaches TecDoc.
+  it('ignores a stock narrowing, which TecDoc never sees', () => {
+    expect(
+      searchSetCacheKey(setRequest({ filters: { stockScope: 'central' } })),
+    ).toBe(searchSetCacheKey(setRequest()));
+  });
+
   it('separates two searches narrowed to different product types', () => {
     expect(
       searchSetCacheKey(setRequest({ filters: { productTypeIds: [7] } })),
@@ -189,6 +198,15 @@ describe('searchOrderCacheKey', () => {
     expect(searchOrderCacheKey(request({ page: 2, pageSize: 50 }))).toBe(
       searchOrderCacheKey(setRequest()),
     );
+  });
+
+  // A stock narrowing is cut out of the ranking rather than ranked separately,
+  // so all three of its states share one order. Keyed on it, switching the
+  // control would re-rank the list the visitor is standing in.
+  it('is free of the stock narrowing cut out of it', () => {
+    expect(
+      searchOrderCacheKey(setRequest({ filters: { stockScope: 'central' } })),
+    ).toBe(searchOrderCacheKey(setRequest()));
   });
 
   it('never collides with the enumeration of the same set', () => {

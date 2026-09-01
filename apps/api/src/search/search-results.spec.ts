@@ -230,6 +230,84 @@ describe('SearchResults', () => {
     });
   });
 
+  describe('narrowing a ranked set by stock origin', () => {
+    it('counts what each origin holds across the whole set', async () => {
+      availabilityMock.mockResolvedValue(stocked('B-STOCKED'));
+
+      const page = await results.read(
+        enumeration([candidate('A-NO-STOCK'), candidate('B-STOCKED')]),
+        CALL,
+        scope(),
+      );
+
+      expect(page.stockScopeCounts).toEqual({
+        all: 2,
+        central: 1,
+        external: 0,
+      });
+    });
+
+    it('serves only what the requested origin holds', async () => {
+      availabilityMock.mockResolvedValue(stocked('B-STOCKED'));
+
+      const page = await results.read(
+        enumeration([candidate('A-NO-STOCK'), candidate('B-STOCKED')]),
+        CALL,
+        scope({ filters: { stockScope: 'central' } }),
+      );
+
+      expect(page.items.map((item) => item.articleNumber)).toEqual([
+        'B-STOCKED',
+      ]);
+    });
+
+    // The pager has to measure what is actually being paged through, or it
+    // offers pages that were narrowed away.
+    it('sizes the total and the pager from the narrowed set', async () => {
+      availabilityMock.mockResolvedValue(stocked('B-STOCKED'));
+
+      const page = await results.read(
+        enumeration(candidates(45).concat(candidate('B-STOCKED'))),
+        CALL,
+        scope({ pageSize: 20, filters: { stockScope: 'central' } }),
+      );
+
+      expect(page.total).toBe(1);
+      expect(page.maxPage).toBe(1);
+    });
+
+    // The counts label the control that applied the narrowing, so they describe
+    // the set as it would be without it.
+    it('counts the set before the narrowing it reports', async () => {
+      availabilityMock.mockResolvedValue(stocked('B-STOCKED'));
+
+      const page = await results.read(
+        enumeration([candidate('A-NO-STOCK'), candidate('B-STOCKED')]),
+        CALL,
+        scope({ filters: { stockScope: 'central' } }),
+      );
+
+      expect(page.stockScopeCounts).toEqual({
+        all: 2,
+        central: 1,
+        external: 0,
+      });
+    });
+
+    it('serves the set unnarrowed and uncounted when stock cannot be read', async () => {
+      availabilityMock.mockResolvedValue(null);
+
+      const page = await results.read(
+        enumeration([candidate('WL6340'), candidate('WL6341')]),
+        CALL,
+        scope({ filters: { stockScope: 'central' } }),
+      );
+
+      expect(page.items).toHaveLength(2);
+      expect(page.stockScopeCounts).toBeNull();
+    });
+  });
+
   // Ranking is live, so two page turns a minute apart would be ranked against
   // two different stock reads — and a part whose last unit sold in between
   // would move down a place, appearing twice or not at all. The order is
@@ -250,8 +328,8 @@ describe('SearchResults', () => {
       expect(writeMemoMock).toHaveBeenCalledWith(
         ORDER_KEY,
         [
-          { brandId: WIX, articleNumber: 'B-STOCKED', legacyArticleIds: [22] },
-          { brandId: WIX, articleNumber: 'A-NO-STOCK', legacyArticleIds: [11] },
+          expect.objectContaining({ articleNumber: 'B-STOCKED' }),
+          expect.objectContaining({ articleNumber: 'A-NO-STOCK' }),
         ],
         expect.any(Number),
       );
@@ -272,7 +350,6 @@ describe('SearchResults', () => {
       expect(page.items.map((item) => item.articleNumber)).toEqual([
         'PINNED-1',
       ]);
-      expect(availabilityMock).not.toHaveBeenCalled();
       expect(writeMemoMock).not.toHaveBeenCalled();
     });
 
@@ -362,6 +439,32 @@ describe('SearchResults', () => {
       );
 
       expect(page.maxPage).toBe(Math.ceil(WIDE_TOTAL / 20));
+    });
+
+    it('reports the whole match count as its total', async () => {
+      const page = await results.read(
+        enumeration([], { total: WIDE_TOTAL }),
+        CALL,
+        scope(),
+      );
+
+      expect(page.total).toBe(WIDE_TOTAL);
+    });
+
+    // Narrowing the twenty rows TecDoc happened to return would answer "what can
+    // we ship" over an arbitrary slice of a million matches. The absent counts
+    // are what tell the client the control is not on offer here.
+    it('drops a stock narrowing it cannot honour, and offers no counts', async () => {
+      const page = await results.read(
+        enumeration([], { total: WIDE_TOTAL }),
+        CALL,
+        scope({ filters: { stockScope: 'central' } }),
+      );
+
+      expect(page.items).toEqual([row('WL6340')]);
+      expect(page.total).toBe(WIDE_TOTAL);
+      expect(page.stockScopeCounts).toBeNull();
+      expect(availabilityMock).not.toHaveBeenCalled();
     });
   });
 

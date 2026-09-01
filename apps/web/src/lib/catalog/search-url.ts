@@ -2,9 +2,11 @@ import {
   DEFAULT_SEARCH_MODE,
   hasCoherentDimensions,
   isSearchMode,
+  isStockScope,
   type AttributeSelectionDto,
   type CategoryOptionDto,
   type SearchMode,
+  type StockScope,
 } from "@vp-parts-shop/shared";
 
 /**
@@ -25,6 +27,7 @@ export const SEARCH_PARAM = {
   category: "cat",
   categoryHasChildren: "catHasChildren",
   attribute: "attr",
+  stock: "stock",
 } as const;
 
 export const SEARCH_PATH = "/search";
@@ -68,6 +71,15 @@ export interface SearchUrlState {
    */
   categoryHasChildren?: boolean;
   attributes: AttributeSelectionDto[];
+  /**
+   * Which stock origin the results are narrowed to; absent means all of them.
+   *
+   * Unlike every other narrowing here it is not a TecDoc facet — the API applies
+   * it to the ranked set after enumerating it, so it is offered only where the
+   * response carries stock counts and is simply ignored on a set too wide to
+   * rank.
+   */
+  stockScope?: StockScope;
 }
 
 type SearchParamsInput =
@@ -91,6 +103,7 @@ export function parseSearchUrl(input: SearchParamsInput): SearchUrlState {
       categoryPath,
     ),
     attributes: parseAttributes(read.all(SEARCH_PARAM.attribute)),
+    stockScope: parseStockScope(read.one(SEARCH_PARAM.stock)),
   };
 }
 
@@ -114,6 +127,7 @@ export function newSearch(params: {
     categoryPath: [],
     categoryHasChildren: undefined,
     attributes: [],
+    stockScope: undefined,
   };
 }
 
@@ -156,6 +170,10 @@ export function buildSearchUrl(state: SearchUrlState): string {
     );
   }
 
+  if (state.stockScope) {
+    params.set(SEARCH_PARAM.stock, state.stockScope);
+  }
+
   if (state.page > FIRST_PAGE) {
     params.set(SEARCH_PARAM.page, String(state.page));
   }
@@ -187,6 +205,7 @@ export function toSearchRequest(state: SearchUrlState) {
     categoryNodeId: selectedCategoryId(state),
     categoryHasChildren: state.categoryHasChildren,
     attributes: state.attributes,
+    stockScope: state.stockScope,
   };
 }
 
@@ -195,7 +214,8 @@ export function hasActiveFilters(state: SearchUrlState): boolean {
     state.brandIds.length > 0 ||
     state.productTypeId !== undefined ||
     state.categoryPath.length > 0 ||
-    state.attributes.length > 0
+    state.attributes.length > 0 ||
+    state.stockScope !== undefined
   );
 }
 
@@ -240,7 +260,9 @@ export function isPageOutOfRange(
  * result set has actually changed and the retained block must be dropped.
  *
  * Attribute selections are deliberately excluded — they always return to page 1
- * and so are answered by a fresh block anyway.
+ * and so are answered by a fresh block anyway. So is the stock scope, which
+ * narrows the ranked set rather than the match set: the facets describe what
+ * TecDoc matched, and that is the same list whichever origin is selected.
  */
 export function facetScopeKey(state: SearchUrlState): string {
   return [
@@ -284,6 +306,21 @@ export function withMode(
   mode: SearchMode,
 ): SearchUrlState {
   return { ...clearAllFilters(state), mode };
+}
+
+/**
+ * Scopes the search to a vehicle, which is the strongest narrowing on offer and
+ * the one the wide-result prompt leads with.
+ *
+ * Drops every selection for the reason {@link withMode} does: the results become
+ * a different set, and the facet ids the filters were picked from may not appear
+ * in it at all.
+ */
+export function withVehicle(
+  state: SearchUrlState,
+  vehicleId: string,
+): SearchUrlState {
+  return { ...clearAllFilters(state), vehicleId };
 }
 
 export function toggleBrand(
@@ -397,6 +434,19 @@ export function clearAttributes(state: SearchUrlState): SearchUrlState {
   return { ...state, attributes: [], page: FIRST_PAGE };
 }
 
+/**
+ * Narrows to one stock origin, or back to all of them with `undefined`. The
+ * facet selections survive: this narrows the ranked set the API already
+ * enumerated, so it changes neither which articles TecDoc matched nor the
+ * facets offered over them.
+ */
+export function withStockScope(
+  state: SearchUrlState,
+  stockScope: StockScope | undefined,
+): SearchUrlState {
+  return { ...state, stockScope, page: FIRST_PAGE };
+}
+
 /** Clears every narrowing but keeps the query, the vehicle and the mode. */
 export function clearAllFilters(state: SearchUrlState): SearchUrlState {
   return {
@@ -406,6 +456,7 @@ export function clearAllFilters(state: SearchUrlState): SearchUrlState {
     categoryPath: [],
     categoryHasChildren: undefined,
     attributes: [],
+    stockScope: undefined,
     page: FIRST_PAGE,
   };
 }
@@ -447,6 +498,15 @@ function parsePage(raw: string | undefined): number {
 
 function parseMode(raw: string | undefined): SearchMode {
   return isSearchMode(raw) ? raw : DEFAULT_SEARCH_MODE;
+}
+
+/**
+ * Dropped rather than forwarded when it is not an origin we know, because the
+ * API rejects one it does not recognise — and a hand-edited URL should widen
+ * the search back to everything, not 400 it.
+ */
+function parseStockScope(raw: string | undefined): StockScope | undefined {
+  return isStockScope(raw) ? raw : undefined;
 }
 
 /**

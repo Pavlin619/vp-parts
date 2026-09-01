@@ -11,8 +11,8 @@ import { ArticleOrderCache } from './article-order.cache';
  * one page of it: the ranked order and its pin, the hydration read and its
  * per-row cache. Consumed by the cross-reference lists and by search.
  *
- * The ordering rule itself and the paging cut are pure functions and need no
- * provider — they come out of the same barrel.
+ * The ordering rule, the stock-scope selection and the paging cut are pure
+ * functions and need no provider — they come out of the same barrel.
  */
 @Module({
   imports: [TecDocModule, RedisModule, InventoryModule],

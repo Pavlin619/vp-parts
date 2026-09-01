@@ -79,10 +79,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         <main className="min-w-0">
           {response.results.length > 0 ? (
             <SearchResultsAvailability
-              query={state.query}
+              state={state}
               results={response.results}
               total={response.total}
               ordering={response.ordering}
+              stockScopeCounts={response.stockScopeCounts}
               pager={
                 <SearchPaginationCompact
                   state={state}

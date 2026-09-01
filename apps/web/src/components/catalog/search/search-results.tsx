@@ -3,20 +3,23 @@ import type {
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
   SearchOrdering,
+  StockScopeCountsDto,
 } from "@vp-parts-shop/shared";
 import { ArticleRow } from "@/components/catalog/article-row";
 import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
-import { SearchOrderingNote } from "./search-ordering-note";
+import type { SearchUrlState } from "@/lib/catalog/search-url";
+import { SearchResultsHeader } from "./search-results-header";
 
 /** A search hit — the catalog metadata TecDoc owns, with no live inventory. */
 export type SearchResultRow = ArticleSummaryDto;
 
 interface SearchResultsProps {
-  query: string;
+  /** The URL the header's controls navigate from. */
+  state: SearchUrlState;
   results: SearchResultRow[];
   /**
-   * Every match the API found, which is not `results.length` — the search
-   * endpoint pages its hits.
+   * Every match the API found after the stock narrowing, which is not
+   * `results.length` — the search endpoint pages its hits.
    */
   total: number;
   /**
@@ -24,6 +27,8 @@ interface SearchResultsProps {
    * API to rank it by what we can ship.
    */
   ordering: SearchOrdering;
+  /** Per-origin stock, when the API had the whole set and its stock to count. */
+  stockScopeCounts?: StockScopeCountsDto;
   /**
    * The compact pager shown beside the count. Passed in as a slot rather than
    * built here so it renders on the server: this component's caller is a client
@@ -48,27 +53,23 @@ interface SearchResultsProps {
  * (it owns the availability query), which is what puts this in the browser.
  */
 export function SearchResults({
-  query,
+  state,
   results,
   total,
   ordering,
+  stockScopeCounts,
   pager,
   availability,
 }: SearchResultsProps) {
   return (
     <section aria-label="Резултати от търсенето">
-      <h1 className="mb-1 text-xl font-semibold text-ink">
-        Резултати за „{query}“
-      </h1>
-
-      <div className="mb-2 flex items-center justify-between gap-3">
-        {/* The match count only; which slice of it is on screen is the pager's
-            line, so the two never disagree. */}
-        <p className="text-sm text-muted">{total} намерени части</p>
-        {pager}
-      </div>
-
-      <SearchOrderingNote ordering={ordering} />
+      <SearchResultsHeader
+        state={state}
+        total={total}
+        ordering={ordering}
+        stockScopeCounts={stockScopeCounts}
+        pager={pager}
+      />
 
       <ul
         className="flex flex-col gap-2"

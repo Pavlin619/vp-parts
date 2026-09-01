@@ -10,8 +10,9 @@ import { SearchResults } from './search-results';
 import { AutocompleteService } from './autocomplete.service';
 import { SearchController } from './search.controller';
 
-// Stock is not read here: the search ranks through ArticleListModule's order
-// cache, which owns the one fail-soft availability read every list shares.
+// Stock is not read here. The search ranks through ArticleListModule, which
+// owns the one fail-soft availability read a list makes, and narrows by origin
+// off what that read already recorded.
 @Module({
   imports: [TecDocModule, RedisModule, BrandsModule, ArticleListModule],
   controllers: [SearchController],
