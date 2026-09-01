@@ -41,6 +41,7 @@ export class SearchController {
         categoryNodeId: dto.categoryNodeId,
         categoryHasChildren: dto.categoryHasChildren,
         criteria: parseCriteriaFilters(dto.attr),
+        stockScope: dto.stock,
       },
       dto.searchMode,
     );

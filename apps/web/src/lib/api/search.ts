@@ -7,6 +7,7 @@ import {
   type AttributeSelectionDto,
   type SearchMode,
   type SearchResponseDto,
+  type StockScope,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
 
@@ -29,6 +30,12 @@ export interface SearchArticlesParams {
    */
   categoryHasChildren?: boolean;
   attributes?: AttributeSelectionDto[];
+  /**
+   * Narrow to one stock origin. Honoured only on a match set narrow enough for
+   * the API to have ranked — a wider one comes back unnarrowed, and says so by
+   * carrying no `stockScopeCounts`.
+   */
+  stockScope?: StockScope;
 }
 
 /**
@@ -90,6 +97,10 @@ function searchQueryString(params: SearchArticlesParams): URLSearchParams {
 
   for (const attribute of params.attributes ?? []) {
     query.append("attr", `${attribute.criteriaId}:${attribute.value}`);
+  }
+
+  if (params.stockScope !== undefined) {
+    query.set("stock", params.stockScope);
   }
 
   return query;

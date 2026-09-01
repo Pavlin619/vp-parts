@@ -1,5 +1,7 @@
 import {
   ArticleInventoryDetailDto,
+  WarehouseAvailabilityDto,
+  WarehouseId,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
@@ -62,6 +64,40 @@ function stocked(
   return new Map([[articleIdentityKey(WIX, articleNumber), IN_STOCK]]);
 }
 
+function warehouse(
+  warehouseId: WarehouseId,
+  quantity: number,
+): WarehouseAvailabilityDto {
+  return {
+    warehouseId,
+    quantity,
+    deliveryWorkDays: warehouseId === 'CENTRAL' ? 0 : 1,
+    orderCutoffTime: '17:00',
+    cutoffAt: '2026-08-23T14:00:00.000Z',
+    pickup: { earliestAt: '2026-08-23T15:00:00.000Z', granularity: 'DAY' },
+    courier: { earliestAt: '2026-08-24T06:00:00.000Z', granularity: 'DAY' },
+  };
+}
+
+function availabilityOf(
+  entries: Record<string, WarehouseAvailabilityDto[]>,
+): Map<string, ArticleInventoryDetailDto> {
+  return new Map(
+    Object.entries(entries).map(([articleNumber, warehouses]) => [
+      articleIdentityKey(WIX, articleNumber),
+      {
+        ...IN_STOCK,
+        available: warehouses.some((entry) => entry.quantity > 0),
+        availabilityByWarehouse: warehouses,
+      },
+    ]),
+  );
+}
+
+function scopesOf(stored: unknown, index: number) {
+  return (stored as { stockScopes?: string[] }[])[index].stockScopes;
+}
+
 describe('ArticleOrderCache', () => {
   let order: ArticleOrderCache;
 
@@ -119,8 +155,18 @@ describe('ArticleOrderCache', () => {
       expect(writeMemoMock).toHaveBeenCalledWith(
         KEY,
         [
-          { brandId: WIX, articleNumber: 'B-STOCKED', legacyArticleIds: [22] },
-          { brandId: WIX, articleNumber: 'A-NO-STOCK', legacyArticleIds: [11] },
+          {
+            brandId: WIX,
+            articleNumber: 'B-STOCKED',
+            legacyArticleIds: [22],
+            stockScopes: ['central'],
+          },
+          {
+            brandId: WIX,
+            articleNumber: 'A-NO-STOCK',
+            legacyArticleIds: [11],
+            stockScopes: [],
+          },
         ],
         ORDER_TTL,
       );
@@ -128,15 +174,18 @@ describe('ArticleOrderCache', () => {
 
     // Everything a row renders is read back through the row cache, so a stored
     // order must not carry a copy of it going stale alongside.
-    it('stores identities alone, not the rows they came from', async () => {
+    it('stores identities and origins alone, not the rows they came from', async () => {
       availabilityMock.mockResolvedValue(stocked('WL6340'));
 
       await order.ordered(KEY, [
         candidate('WL6340', { brandName: 'WIX Filters' }),
       ]);
 
-      expect(writeMemoMock.mock.calls[0][1]).toEqual([
-        { brandId: WIX, articleNumber: 'WL6340', legacyArticleIds: [1] },
+      expect(Object.keys(writeMemoMock.mock.calls[0][1][0]).sort()).toEqual([
+        'articleNumber',
+        'brandId',
+        'legacyArticleIds',
+        'stockScopes',
       ]);
     });
 
@@ -156,6 +205,91 @@ describe('ArticleOrderCache', () => {
         'WL6341',
       ]);
       expect(writeMemoMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // Recorded here rather than read again by whoever narrows the list: the stock
+  // is already in hand at this point, and a second read would answer a fresher
+  // question than the positions it narrows.
+  describe('the stock origins it records', () => {
+    it('records our own shelf as central', async () => {
+      availabilityMock.mockResolvedValue(
+        availabilityOf({ A: [warehouse('CENTRAL', 3)] }),
+      );
+
+      await order.ordered(KEY, [candidate('A')]);
+
+      expect(scopesOf(writeMemoMock.mock.calls[0][1], 0)).toEqual(['central']);
+    });
+
+    it('records every other warehouse as external', async () => {
+      availabilityMock.mockResolvedValue(
+        availabilityOf({
+          A: [warehouse('REGIONAL_1', 1)],
+          B: [warehouse('ROMANIA', 1)],
+          C: [warehouse('POLAND', 1)],
+        }),
+      );
+
+      await order.ordered(KEY, [
+        candidate('A'),
+        candidate('B'),
+        candidate('C'),
+      ]);
+
+      const stored = writeMemoMock.mock.calls[0][1];
+      expect([0, 1, 2].map((index) => scopesOf(stored, index))).toEqual([
+        ['external'],
+        ['external'],
+        ['external'],
+      ]);
+    });
+
+    // The origins are predicates over one article, not a partition of it.
+    it('records both when both hold the part', async () => {
+      availabilityMock.mockResolvedValue(
+        availabilityOf({
+          A: [warehouse('CENTRAL', 2), warehouse('POLAND', 9)],
+        }),
+      );
+
+      await order.ordered(KEY, [candidate('A')]);
+
+      expect(scopesOf(writeMemoMock.mock.calls[0][1], 0)).toEqual([
+        'central',
+        'external',
+      ]);
+    });
+
+    // A filter that listed these would offer parts nobody can ship.
+    it('ignores a warehouse holding none of it', async () => {
+      availabilityMock.mockResolvedValue(
+        availabilityOf({ A: [warehouse('CENTRAL', 0)] }),
+      );
+
+      await order.ordered(KEY, [candidate('A')]);
+
+      expect(scopesOf(writeMemoMock.mock.calls[0][1], 0)).toEqual([]);
+    });
+
+    // A successful read reports a part nobody stocks by having no warehouses for
+    // it, so "no origin" is the answer — distinct from the unknown below.
+    it('records an article the read had no row for as shipped from nowhere', async () => {
+      availabilityMock.mockResolvedValue(availabilityOf({}));
+
+      await order.ordered(KEY, [candidate('MISSING')]);
+
+      expect(scopesOf(writeMemoMock.mock.calls[0][1], 0)).toEqual([]);
+    });
+
+    // Nothing is pinned in this case, so this is about what the caller is handed:
+    // absent origins are what tell a stock control it cannot be offered.
+    it('leaves the origins unknown when stock could not be read', async () => {
+      availabilityMock.mockResolvedValue(null);
+
+      const ordered = await order.ordered(KEY, [candidate('A')]);
+
+      expect(ordered[0].stockScopes).toBeUndefined();
     });
   });
 

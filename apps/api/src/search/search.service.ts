@@ -68,11 +68,18 @@ export class SearchService {
     return {
       query,
       results: items,
-      total: enumeration.total,
+      // The narrowed count, from the read: a stock filter removes matches from
+      // the set being paged, and a pager sized on the enumeration would offer
+      // pages that no longer exist. How wide the set is without it travels
+      // separately, as the counts.
+      total: result.total,
       page,
       pageSize,
       maxPage: result.maxPage,
       ordering: result.ordering,
+      ...(result.stockScopeCounts && {
+        stockScopeCounts: result.stockScopeCounts,
+      }),
       ...(facets.length > 0 && { facets }),
       // The attribute block describes the whole match set, so every later page
       // would repeat page 1's verbatim; the client keeps the one it was given
@@ -105,6 +112,12 @@ export class SearchService {
     }
   }
 
+  /**
+   * Alternatives for a query that found nothing — taken from the enumeration's
+   * total, never the narrowed one. A search emptied by its own stock filter
+   * matched perfectly well, and offering to correct the spelling of a query that
+   * worked sends the visitor away from the one click that would fix it.
+   */
   private suggestionsFor(
     total: number,
     query: string,

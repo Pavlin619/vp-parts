@@ -4,6 +4,7 @@ import { Minus, Plus, ShoppingCart } from "lucide-react";
 import { formatPrice } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
 import type { BuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
+import { usePricesIncludeVat } from "@/hooks/use-price-display";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 
 interface ArticleRowBuyProps {
@@ -25,11 +26,15 @@ export function ArticleRowBuy({
   articleName,
   onAddToCart,
 }: ArticleRowBuyProps) {
+  const includesVat = usePricesIncludeVat();
+
   if (availability === undefined) {
     return <BuySkeleton />;
   }
 
-  const price = availability?.bestPriceIncVat ?? null;
+  const price = includesVat
+    ? (availability?.bestPriceIncVat ?? null)
+    : (availability?.bestPriceExVat ?? null);
   const canBuy = availability?.available === true;
 
   return (
@@ -42,7 +47,9 @@ export function ArticleRowBuy({
         <p className="font-display text-lg font-semibold text-ink-3">—</p>
       )}
 
-      <p className="text-[10.5px] text-ink-3">с ДДС · за брой</p>
+      <p className="text-[10.5px] text-ink-3">
+        {includesVat ? "с ДДС" : "без ДДС"} · за брой
+      </p>
 
       {canBuy && (
         <div className="mt-1 flex items-center gap-1.5">

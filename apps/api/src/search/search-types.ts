@@ -1,6 +1,7 @@
 import {
   AttributeFacetRole,
   DimensionScope,
+  StockScope,
   hasCoherentDimensions,
 } from '@vp-parts-shop/shared';
 
@@ -112,8 +113,12 @@ export interface CriteriaFilter {
  * - `criteria` — technical-attribute selections (criteriaId + rawValue).
  * Groups are AND-combined; ids within a multi-select group are OR-combined.
  *
- * `categoryHasChildren` is not a filter but a performance hint about
- * `categoryNodeId` — see {@link shouldRequestCriteriaFacets}.
+ * Two members are not TecDoc narrowings and never reach the catalogue:
+ * `categoryHasChildren` is a performance hint about `categoryNodeId` (see
+ * {@link shouldRequestCriteriaFacets}), and `stockScope` is ours alone — see
+ * below. Neither belongs in a cache key as it stands: `matchSetIdentity` picks
+ * the members that change which articles TecDoc matches, one by one, precisely
+ * so a member like these cannot fragment the entry by being added here.
  */
 export interface SearchFilters {
   brandIds?: number[];
@@ -121,6 +126,14 @@ export interface SearchFilters {
   categoryNodeId?: number;
   categoryHasChildren?: boolean;
   criteria?: CriteriaFilter[];
+  /**
+   * Narrow to the parts one stock origin can ship. Nothing TecDoc can filter on
+   * knows what we hold, so this is applied to the ranked set after it has been
+   * enumerated — which also means it is honoured only where a ranking exists.
+   * A match set too wide to rank is served unnarrowed, and says so by returning
+   * no stock counts.
+   */
+  stockScope?: StockScope;
 }
 
 /**

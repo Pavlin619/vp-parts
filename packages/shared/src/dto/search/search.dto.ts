@@ -116,6 +116,21 @@ export interface CategoryNavigationDto {
  */
 export type SearchOrdering = 'availability' | 'catalogue';
 
+/**
+ * How much of the match set each stock origin can ship, counted over the set as
+ * it stands *before* any `stockScope` narrowing — so the control offering the
+ * narrowing keeps saying what dropping it would restore. A control counting the
+ * narrowed set would answer its own filter.
+ *
+ * `central` and `external` overlap by design and do not sum to `all`; see
+ * {@link StockScope}.
+ */
+export interface StockScopeCountsDto {
+  all: number;
+  central: number;
+  external: number;
+}
+
 export type PaginatedSearchArticlesDto = PaginatedCatalogArticlesDto & {
   /**
    * The highest page this query can be paged to, which is **not** always
@@ -144,6 +159,12 @@ export type PaginatedSearchArticlesDto = PaginatedCatalogArticlesDto & {
 export interface SearchResponseDto {
   query: string;
   results: ArticleSummaryDto[];
+  /**
+   * Matches **after** any `stockScope` narrowing, because this is what the pager
+   * and the result count describe. How wide the set is without that narrowing is
+   * {@link stockScopeCounts}, which is the only number the stock control may be
+   * labelled from.
+   */
   total: number;
   page: number;
   pageSize: number;
@@ -151,6 +172,13 @@ export interface SearchResponseDto {
   maxPage: number;
   /** Always sent: what the result order means is not optional. */
   ordering: SearchOrdering;
+  /**
+   * Sent only when the whole match set was enumerated *and* its stock read — an
+   * `availability` ordering that reached the inventory database. Absent means
+   * the breakdown is unknown rather than zero, and that a `stockScope` on the
+   * request was not applied: a client must not narrow a list it cannot count.
+   */
+  stockScopeCounts?: StockScopeCountsDto;
   facets?: SearchFacetDto[];
   attributes?: AttributeFacetDto[];
   categoryNavigation?: CategoryNavigationDto;

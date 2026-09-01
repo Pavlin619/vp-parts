@@ -3,7 +3,12 @@ import {
   articleIdentityKey,
   type ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared'
+import { parseSearchUrl } from '@/lib/catalog/search-url'
 import { SearchResults, type SearchResultRow } from './search-results'
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}))
 
 function resultItem(
   overrides: Partial<SearchResultRow> = {},
@@ -21,6 +26,8 @@ function resultItem(
   }
 }
 
+const STATE = parseSearchUrl({ q: 'WL634' })
+
 const WIX = '268'
 
 const availability: ArticlesAvailabilityDto = {
@@ -34,32 +41,31 @@ const availability: ArticlesAvailabilityDto = {
 }
 
 describe('SearchResults', () => {
-  it('renders the query and result count', () => {
+  it('renders the result count', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={2}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
     )
 
-    expect(screen.getByText(/Резултати за „WL634/)).toBeInTheDocument()
-    expect(screen.getByText(/2 намерени части/)).toBeInTheDocument()
+    expect(screen.getByText(/артикула/)).toHaveTextContent('2 артикула')
   })
 
   // The API pages the hits, so the rows on screen are not the match count.
   it('counts every match, not just the hits on this page', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={87}
         results={[resultItem()]}
       />,
     )
 
-    expect(screen.getByText(/87 намерени части/)).toBeInTheDocument()
+    expect(screen.getByText(/артикула/)).toHaveTextContent('87 артикула')
   })
 
   // Which slice of the matches is on screen is the pager's line; repeating it
@@ -67,7 +73,7 @@ describe('SearchResults', () => {
   it('leaves the on-screen range to the pager', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={87}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
@@ -82,7 +88,7 @@ describe('SearchResults', () => {
   it('renders the pager it was given beside the match count', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={87}
         results={[resultItem()]}
@@ -90,38 +96,14 @@ describe('SearchResults', () => {
       />,
     )
 
-    expect(screen.getByText(/87 намерени части/)).toBeInTheDocument()
+    expect(screen.getByText(/артикула/)).toHaveTextContent('87 артикула')
     expect(screen.getByText('1/5')).toBeInTheDocument()
-  })
-
-  // What the order of the rows means is part of reading the list, so it is
-  // stated above it rather than left to be inferred from the first few rows.
-  it('says what the row order means', () => {
-    const { rerender } = render(
-      <SearchResults
-        query="WL634"
-        ordering="availability"
-        total={87}
-        results={[resultItem()]}
-      />,
-    )
-    expect(screen.getByText(/Първо частите в наличност/)).toBeInTheDocument()
-
-    rerender(
-      <SearchResults
-        query="WL634"
-        ordering="catalogue"
-        total={87}
-        results={[resultItem()]}
-      />,
-    )
-    expect(screen.getByText(/Уточнете търсенето/)).toBeInTheDocument()
   })
 
   it('links each result to its article detail page', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem()]}
@@ -137,7 +119,7 @@ describe('SearchResults', () => {
   it('renders the hits before availability arrives', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem()]}
@@ -152,7 +134,7 @@ describe('SearchResults', () => {
   it('shows the formatted price once availability is passed in', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem()]}
@@ -167,7 +149,7 @@ describe('SearchResults', () => {
   it('treats a hit missing from the availability map as unavailable', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem({ articleNumber: 'OC115' })]}
@@ -182,7 +164,7 @@ describe('SearchResults', () => {
   it('shows a neutral unknown state when the availability read failed', () => {
     render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem()]}
@@ -199,7 +181,7 @@ describe('SearchResults', () => {
   it('shows no fit verdict, whichever way the API resolves it', () => {
     const { rerender } = render(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem({ fitsVehicle: true })]}
@@ -209,7 +191,7 @@ describe('SearchResults', () => {
 
     rerender(
       <SearchResults
-        query="WL634"
+        state={STATE}
         ordering="availability"
         total={1}
         results={[resultItem({ fitsVehicle: false })]}

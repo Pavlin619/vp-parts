@@ -158,6 +158,30 @@ describe('SearchQueryDto categoryHasChildren', () => {
   });
 });
 
+describe('SearchQueryDto stock', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query);
+
+  it('is undefined when the param is absent, which means every origin', () => {
+    expect(toDto({ q: 'WL6340' }).stock).toBeUndefined();
+  });
+
+  it.each(['central', 'external'])('accepts %s', (scope) => {
+    const dto = toDto({ q: 'WL6340', stock: scope });
+
+    expect(dto.stock).toBe(scope);
+    expect(validateSync(dto)).toHaveLength(0);
+  });
+
+  // Unlike the facet params this is not an id we served back, so widening it
+  // quietly would serve an unnarrowed list under a control saying otherwise.
+  it('rejects an origin it does not recognise', () => {
+    const errors = validateSync(toDto({ q: 'WL6340', stock: 'warehouse-3' }));
+
+    expect(errors.some((error) => error.property === 'stock')).toBe(true);
+  });
+});
+
 describe('AutocompleteQueryDto searchMode', () => {
   const toDto = (query: Record<string, unknown>) =>
     plainToInstance(AutocompleteQueryDto, query);

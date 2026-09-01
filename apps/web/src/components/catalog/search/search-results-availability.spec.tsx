@@ -8,7 +8,12 @@ import {
   type ArticlesAvailabilityDto,
   type ArticleSummaryDto,
 } from '@vp-parts-shop/shared'
+import { parseSearchUrl } from '@/lib/catalog/search-url'
 import { SearchResultsAvailability } from './search-results-availability'
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}))
 
 const availabilityMock = jest.fn()
 
@@ -67,7 +72,7 @@ function renderResults(pager?: ReactNode) {
   render(
     <QueryClientProvider client={queryClient}>
       <SearchResultsAvailability
-        query="WL634"
+        state={parseSearchUrl({ q: 'WL634' })}
         ordering="availability"
         results={results}
         total={results.length}
