@@ -14,6 +14,11 @@
 #        -v shop_db_password="$SHOP_DB_PASSWORD" \
 #        -f infra/db/01-shop-provisioning.sql
 services:
+  # REDIS_MAXMEMORY caps the *dataset*, not the process: allocator fragmentation
+  # and per-connection output buffers sit on top of it. Set it to ~60-65% of the
+  # container's memory limit wherever one applies, or the container kills Redis
+  # before Redis starts evicting. The 192mb default suits an unconstrained local
+  # container; a 256 MB one wants 160mb.
   redis:
     image: redis:7-alpine
     container_name: vp-parts-redis
