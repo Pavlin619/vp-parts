@@ -4,8 +4,8 @@ import {
   deliveryBand,
   deliveryBandRank,
 } from '@vp-parts-shop/shared';
-import { AvailabilityByArticle } from '../../inventory';
-import { ArticleStatus } from '../../tecdoc';
+import { AvailabilityByArticle } from '../../../inventory';
+import { ArticleStatus } from '../../../tecdoc';
 
 /**
  * What ordering a list of articles by availability needs to know about each row,

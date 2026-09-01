@@ -1,5 +1,5 @@
 import { ArticleStatus, CrossReferenceCandidate } from '../../../tecdoc';
-import { dropViewedPart, keepCandidatesCiting, pageOf } from './candidate-set';
+import { dropViewedPart, keepCandidatesCiting } from './candidate-set';
 
 const A_B_S = '220';
 const MANN = '4';
@@ -141,35 +141,5 @@ describe('dropViewedPart', () => {
 
   it('answers an empty read with an empty list', () => {
     expect(dropViewedPart([], viewed)).toEqual([]);
-  });
-});
-
-describe('pageOf', () => {
-  const candidates = Array.from({ length: 45 }, (_, index) =>
-    candidate(`A${index}`),
-  );
-
-  it('reports the whole set beside the requested slice', () => {
-    const page = pageOf(candidates, 2, 20);
-
-    expect(page.total).toBe(45);
-    expect(page.page).toBe(2);
-    expect(page.pageSize).toBe(20);
-    expect(numbersOf(page.items)).toEqual(
-      Array.from({ length: 20 }, (_, index) => `A${index + 20}`),
-    );
-  });
-
-  it('answers a page past the end with no items', () => {
-    expect(pageOf(candidates, 9, 20).items).toEqual([]);
-  });
-
-  it('answers an empty set with an empty first page', () => {
-    expect(pageOf([], 1, 20)).toEqual({
-      total: 0,
-      page: 1,
-      pageSize: 20,
-      items: [],
-    });
   });
 });

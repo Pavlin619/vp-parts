@@ -1,19 +1,8 @@
-import { TecDocArticleRecord, legacyArticleIdsOf } from './article-mapper';
-
-/**
- * `misc.articleStatusId`, from the Article Status key table. Only `Normal` says
- * a supplier still ships the part; the rest are ordering inputs, never filters —
- * a part out of production that we hold in stock is a part we can sell, and
- * filtering it out upstream would hide it.
- */
-export enum ArticleStatus {
-  InPreparation = 0,
-  Normal = 1,
-  NotSupplied = 2,
-  OutOfProduction = 8,
-  NoLongerSupplied = 9,
-  OnRequest = 11,
-}
+import {
+  ArticleCandidate,
+  TecDocArticleRecord,
+  mapArticleCandidate,
+} from './article-mapper';
 
 /**
  * One cross-reference a candidate cites: whose number it declared its part
@@ -27,23 +16,10 @@ export interface CrossReferenceCitation {
 }
 
 /**
- * A part that may replace another, before anything is known about it beyond its
- * identity.
- *
- * Deliberately not an `ArticleSummaryDto`: the cross-reference index is read
- * whole (hundreds of rows), so a candidate carries only what filtering, ordering
- * and the alternative-number chips need. The specs, thumbnail and OE numbers a
- * rendered row also wants cost ten times as much per row and are fetched by
- * `legacyArticleIds` for the page a visitor actually reaches.
+ * A part that may replace another: an {@link ArticleCandidate} plus the one
+ * thing only a comparable-number search can say about it.
  */
-export interface CrossReferenceCandidate {
-  brandId: string;
-  brandName: string;
-  articleNumber: string;
-  description: string;
-  legacyArticleIds: number[];
-  /** Null when TecDoc files no status, which is not the same as `Normal`. */
-  articleStatusId: number | null;
+export interface CrossReferenceCandidate extends ArticleCandidate {
   /**
    * The references this row matched the search on, which is what decides whether
    * it replaces the viewed part or merely shares its digits — see
@@ -54,20 +30,14 @@ export interface CrossReferenceCandidate {
 }
 
 /**
- * Maps a `getArticles` row from the cheap cross-reference read: the light
- * includes only (`includeGenericArticles`, `includeComparableNumbers`,
- * `includeMisc`), so nothing here may depend on criteria, images or OE numbers.
+ * Maps a `getArticles` row from the cheap cross-reference read: the candidate
+ * includes plus `includeComparableNumbers`.
  */
 export function mapCrossReferenceCandidate(
   article: TecDocArticleRecord,
 ): CrossReferenceCandidate {
   return {
-    brandId: String(article.dataSupplierId),
-    brandName: article.mfrName,
-    articleNumber: article.articleNumber,
-    description: article.genericArticles?.[0]?.genericArticleDescription ?? '',
-    legacyArticleIds: legacyArticleIdsOf(article),
-    articleStatusId: article.misc?.articleStatusId ?? null,
+    ...mapArticleCandidate(article),
     citedNumbers: citedNumbersOf(article),
   };
 }

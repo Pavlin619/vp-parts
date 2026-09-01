@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 import type {
   ArticleSummaryDto,
   ArticlesAvailabilityDto,
+  SearchOrdering,
 } from "@vp-parts-shop/shared";
 import { ArticleRow } from "@/components/catalog/article-row";
 import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
+import { SearchOrderingNote } from "./search-ordering-note";
 
 /** A search hit — the catalog metadata TecDoc owns, with no live inventory. */
 export type SearchResultRow = ArticleSummaryDto;
@@ -17,6 +19,11 @@ interface SearchResultsProps {
    * endpoint pages its hits.
    */
   total: number;
+  /**
+   * What the row order means — whether the match set was narrow enough for the
+   * API to rank it by what we can ship.
+   */
+  ordering: SearchOrdering;
   /**
    * The compact pager shown beside the count. Passed in as a slot rather than
    * built here so it renders on the server: this component's caller is a client
@@ -44,6 +51,7 @@ export function SearchResults({
   query,
   results,
   total,
+  ordering,
   pager,
   availability,
 }: SearchResultsProps) {
@@ -53,14 +61,19 @@ export function SearchResults({
         Резултати за „{query}“
       </h1>
 
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
         {/* The match count only; which slice of it is on screen is the pager's
             line, so the two never disagree. */}
         <p className="text-sm text-muted">{total} намерени части</p>
         {pager}
       </div>
 
-      <ul className="flex flex-col gap-2" aria-busy={availability === undefined}>
+      <SearchOrderingNote ordering={ordering} />
+
+      <ul
+        className="flex flex-col gap-2"
+        aria-busy={availability === undefined}
+      >
         {results.map((result) => (
           <li key={`${result.brandId}-${result.articleNumber}`}>
             <ArticleRow

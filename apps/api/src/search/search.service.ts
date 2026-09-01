@@ -5,26 +5,34 @@ import {
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
 import { BrandsService } from '../catalog/brands';
-import { DEFAULT_SEARCH_MODE, SearchFilters, SearchMode } from './search-types';
-import { buildSearchPlan } from './search-plan';
-import { SearchLaneResolver } from './search-lane-resolver';
+import {
+  DEFAULT_SEARCH_MODE,
+  SearchFilters,
+  SearchMode,
+  isFacetPage,
+} from './search-types';
+import { searchCallFor, setRequestFor } from './search-call';
+import { SearchCache } from './search-cache';
+import { SearchResults } from './search-results';
 import { AutocompleteService } from './autocomplete.service';
 import { buildBrandTokenSet } from './brand-dictionary';
 import { parseQuery, ParsedQuery } from './query-parser';
 import { SEARCH_DEFAULT_PAGE, SEARCH_DEFAULT_PAGE_SIZE } from './search.dto';
 
 /**
- * Orchestrates a search: parse the query, expand it into a TecDoc call plan,
- * hand that to the lane resolver, and assemble the response. The TecDoc calls,
- * their caching and the suggestion surfaces each live behind their own
- * collaborator so this reads as the sequence of steps and nothing else.
+ * Orchestrates a search: parse the query, resolve the TecDoc call that answers
+ * it, enumerate the whole match set, read the page in whichever order that set
+ * allows, and assemble the response. The TecDoc calls, their caching, the
+ * ordering and the suggestion surfaces each live behind their own collaborator
+ * so this reads as the sequence of steps and nothing else.
  */
 @Injectable()
 export class SearchService {
   private readonly logger = new Logger(SearchService.name);
 
   constructor(
-    private readonly lanes: SearchLaneResolver,
+    private readonly cache: SearchCache,
+    private readonly results: SearchResults,
     private readonly autocompleteService: AutocompleteService,
     private readonly brands: BrandsService,
   ) {}
@@ -39,35 +47,42 @@ export class SearchService {
   ): Promise<SearchResponseDto> {
     const rawQuery = query.trim();
     const parsed = await this.parse(rawQuery);
-    const plan = buildSearchPlan(parsed, searchMode);
+    const call = searchCallFor(parsed, searchMode);
+    const scope = { vehicleId, page, pageSize, filters };
 
-    const result = await this.lanes.execute(plan, {
-      vehicleId,
-      page,
-      pageSize,
-      filters,
-    });
+    const enumeration = await this.cache.enumerate(setRequestFor(call, scope));
+    const result = await this.results.read(enumeration, call, scope);
 
-    if (result.total === 0) {
+    if (enumeration.total === 0) {
       this.logZeroResult(rawQuery, parsed.brandStripped, vehicleId);
     }
 
-    const suggestions = await this.suggestionsFor(result.total, rawQuery);
+    const [{ items, facets }, suggestions] = await Promise.all([
+      this.brands.attachSearchLogos({
+        items: result.items,
+        facets: enumeration.facets,
+      }),
+      this.suggestionsFor(enumeration.total, rawQuery),
+    ]);
 
-    // Results keep TecDoc's native article order — no client-side ranking.
-    // [VERIFY-TC] Re-evaluate ordering against the Test Client (see the Phase
-    // 3.5 plan checklist) before adding any internal sort.
     return {
       query,
-      results: result.items,
-      total: result.total,
-      page: result.page,
-      pageSize: result.pageSize,
+      results: items,
+      total: enumeration.total,
+      page,
+      pageSize,
       maxPage: result.maxPage,
-      ...(result.facets.length > 0 && { facets: result.facets }),
-      ...(result.attributes.length > 0 && { attributes: result.attributes }),
-      ...(this.hasCategoryNavigation(result.categoryNavigation) && {
-        categoryNavigation: result.categoryNavigation,
+      ordering: result.ordering,
+      ...(facets.length > 0 && { facets }),
+      // The attribute block describes the whole match set, so every later page
+      // would repeat page 1's verbatim; the client keeps the one it was given
+      // while paginating.
+      ...(isFacetPage(page) &&
+        enumeration.attributes.length > 0 && {
+          attributes: enumeration.attributes,
+        }),
+      ...(this.hasCategoryNavigation(enumeration.categoryNavigation) && {
+        categoryNavigation: enumeration.categoryNavigation,
       }),
       ...(suggestions.length > 0 && { suggestions }),
     };

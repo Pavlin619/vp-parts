@@ -82,6 +82,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               query={state.query}
               results={response.results}
               total={response.total}
+              ordering={response.ordering}
               pager={
                 <SearchPaginationCompact
                   state={state}

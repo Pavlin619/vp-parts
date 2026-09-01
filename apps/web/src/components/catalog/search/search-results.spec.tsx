@@ -38,6 +38,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={2}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
@@ -49,7 +50,14 @@ describe('SearchResults', () => {
 
   // The API pages the hits, so the rows on screen are not the match count.
   it('counts every match, not just the hits on this page', () => {
-    render(<SearchResults query="WL634" total={87} results={[resultItem()]} />)
+    render(
+      <SearchResults
+        query="WL634"
+        ordering="availability"
+        total={87}
+        results={[resultItem()]}
+      />,
+    )
 
     expect(screen.getByText(/87 намерени части/)).toBeInTheDocument()
   })
@@ -60,6 +68,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={87}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
@@ -74,6 +83,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={87}
         results={[resultItem()]}
         pager={<span>1/5</span>}
@@ -84,8 +94,39 @@ describe('SearchResults', () => {
     expect(screen.getByText('1/5')).toBeInTheDocument()
   })
 
+  // What the order of the rows means is part of reading the list, so it is
+  // stated above it rather than left to be inferred from the first few rows.
+  it('says what the row order means', () => {
+    const { rerender } = render(
+      <SearchResults
+        query="WL634"
+        ordering="availability"
+        total={87}
+        results={[resultItem()]}
+      />,
+    )
+    expect(screen.getByText(/Първо частите в наличност/)).toBeInTheDocument()
+
+    rerender(
+      <SearchResults
+        query="WL634"
+        ordering="catalogue"
+        total={87}
+        results={[resultItem()]}
+      />,
+    )
+    expect(screen.getByText(/Уточнете търсенето/)).toBeInTheDocument()
+  })
+
   it('links each result to its article detail page', () => {
-    render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
+    render(
+      <SearchResults
+        query="WL634"
+        ordering="availability"
+        total={1}
+        results={[resultItem()]}
+      />,
+    )
 
     expect(screen.getByRole('link', { name: 'WL6340' })).toHaveAttribute(
       'href',
@@ -94,7 +135,14 @@ describe('SearchResults', () => {
   })
 
   it('renders the hits before availability arrives', () => {
-    render(<SearchResults query="WL634" total={1} results={[resultItem()]} />)
+    render(
+      <SearchResults
+        query="WL634"
+        ordering="availability"
+        total={1}
+        results={[resultItem()]}
+      />,
+    )
 
     expect(screen.getByRole('link', { name: 'WL6340' })).toBeInTheDocument()
     expect(screen.getByTestId('article-row-buy-skeleton')).toBeInTheDocument()
@@ -105,6 +153,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={1}
         results={[resultItem()]}
         availability={availability}
@@ -119,6 +168,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={1}
         results={[resultItem({ articleNumber: 'OC115' })]}
         availability={availability}
@@ -133,6 +183,7 @@ describe('SearchResults', () => {
     render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={1}
         results={[resultItem()]}
         availability={null}
@@ -149,6 +200,7 @@ describe('SearchResults', () => {
     const { rerender } = render(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={1}
         results={[resultItem({ fitsVehicle: true })]}
       />,
@@ -158,6 +210,7 @@ describe('SearchResults', () => {
     rerender(
       <SearchResults
         query="WL634"
+        ordering="availability"
         total={1}
         results={[resultItem({ fitsVehicle: false })]}
       />,

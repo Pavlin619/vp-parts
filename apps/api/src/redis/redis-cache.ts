@@ -22,6 +22,17 @@ export interface CachedManyRequest<Item, Value> {
 }
 
 /**
+ * A shorter TTL for an answer the caller judges empty, so a hopeless query is
+ * not pinned for the full hit-TTL. Optional on {@link RedisCache.cached}
+ * because most values have no such notion — a brand list is a brand list —
+ * while only the caller knows which field carries the emptiness.
+ */
+export interface EmptyAnswerTtl<T> {
+  missTtl: number;
+  isEmpty: (value: T) => boolean;
+}
+
+/**
  * Thin, reusable Redis read-through cache. Each caller owns its own cache keys
  * and TTLs and wraps one of these helpers around the loader that produces the
  * data, so the key/TTL live next to the call rather than in a per-feature cache
@@ -37,6 +48,7 @@ export class RedisCache {
     key: string,
     ttl: number,
     loader: () => Promise<T>,
+    emptyAnswer?: EmptyAnswerTtl<T>,
   ): Promise<T> {
     const cached = await this.read<T>(key);
     if (cached !== undefined) {
@@ -44,7 +56,7 @@ export class RedisCache {
     }
 
     const value = await loader();
-    await this.write(key, value, ttl);
+    await this.write(key, value, this.ttlFor(value, ttl, emptyAnswer));
 
     return value;
   }
@@ -62,28 +74,6 @@ export class RedisCache {
 
     const value = await loader();
     const ttl = value.length > 0 ? hitTtl : missTtl;
-    await this.write(key, value, ttl);
-
-    return value;
-  }
-
-  /**
-   * Caches a paginated result, picking the shorter miss-TTL when the page holds
-   * no items so a hopeless query is not pinned in Redis for the full hit-TTL.
-   */
-  async cachedPaginated<T extends { items: unknown[] }>(
-    key: string,
-    hitTtl: number,
-    missTtl: number,
-    loader: () => Promise<T>,
-  ): Promise<T> {
-    const cached = await this.read<T>(key);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const value = await loader();
-    const ttl = value.items.length > 0 ? hitTtl : missTtl;
     await this.write(key, value, ttl);
 
     return value;
@@ -193,6 +183,18 @@ export class RedisCache {
     } catch (error) {
       this.logger.warn(`Cache write failed: ${this.errorMessage(error)}`);
     }
+  }
+
+  private ttlFor<T>(
+    value: T,
+    hitTtl: number,
+    emptyAnswer: EmptyAnswerTtl<T> | undefined,
+  ): number {
+    if (emptyAnswer === undefined) {
+      return hitTtl;
+    }
+
+    return emptyAnswer.isEmpty(value) ? emptyAnswer.missTtl : hitTtl;
   }
 
   private async read<T>(key: string): Promise<T | undefined> {

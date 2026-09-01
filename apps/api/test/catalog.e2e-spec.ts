@@ -7,6 +7,7 @@ import {
   ArticlesTecDoc,
   BrandsTecDoc,
   CrossReferencesTecDoc,
+  ArticleRowsTecDoc,
   LinkedVehiclesTecDoc,
   ArticleNotFoundException,
   AVAILABILITY_MAX_ARTICLES,
@@ -241,6 +242,7 @@ describe('CatalogController (e2e)', () => {
       builder
         .overrideProvider(CrossReferencesTecDoc)
         .useValue(mockTecDocClient);
+      builder.overrideProvider(ArticleRowsTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(LinkedVehiclesTecDoc).useValue(mockTecDocClient);
     });
     redisClient = app.get<Redis>(REDIS_CLIENT);

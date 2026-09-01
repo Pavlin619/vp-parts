@@ -1,10 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ArticleSummaryDto } from '@vp-parts-shop/shared';
 import {
   CrossReferenceCandidate,
   TecDocTransport,
   TecDocArticleRecord,
-  mapArticleSummary,
   mapCrossReferenceCandidate,
 } from '../../../tecdoc';
 
@@ -36,11 +34,10 @@ interface CandidateResponse {
 }
 
 /**
- * The two TecDoc reads behind the cross-reference surfaces: the search that finds
- * every candidate, and the hydration read that turns the candidates on one page
- * into rendered rows. Both are `getArticles` calls; they differ in how the
- * articles are selected and — the point of the split — in how much of each one is
- * asked for.
+ * The search that finds every candidate. Rendering the page a visitor reached is
+ * the other half and belongs to no one surface, so it lives in
+ * `ArticleRowsTecDoc` — the point of that split being how much of each article
+ * is asked for, not which articles.
  */
 @Injectable()
 export class CrossReferencesTecDoc {
@@ -89,45 +86,6 @@ export class CrossReferencesTecDoc {
     this.warnIfTruncated(articleNumber, records.length, data);
 
     return records.map(mapCrossReferenceCandidate);
-  }
-
-  /**
-   * Turns candidates into rendered rows, by the `legacyArticleId`s they carry.
-   *
-   * This is the expensive half of the cross-reference read, so it is paid for one
-   * page of rows at a time: the same 25 rows cost 611 KB with images and criteria
-   * against 24 KB as candidates. `includeAll` is deliberately not used — `pdfs`,
-   * `links`, `linkages`, `partsList`, `accessoryList`, `gtins` and `prices` all
-   * ride along in it and none is rendered.
-   *
-   * The includes are exactly what {@link mapArticleSummary} reads, which is why
-   * OE numbers are not among them: they are the bulkiest field on an article and
-   * the numbers section fetches them on demand instead.
-   *
-   * TecDoc may answer with fewer rows than there were ids, so the caller pairs
-   * the answer back onto what it asked for rather than assuming positions.
-   */
-  async getArticleRowsByLegacyIds(
-    legacyArticleIds: number[],
-  ): Promise<ArticleSummaryDto[]> {
-    if (legacyArticleIds.length === 0) {
-      return [];
-    }
-
-    const data = await this.transport.call<{
-      articles?: TecDocArticleRecord[];
-    }>('getArticles', {
-      articleCountry: 'BG',
-      lang: 'bg',
-      legacyArticleIds,
-      perPage: legacyArticleIds.length,
-      page: 1,
-      includeGenericArticles: true,
-      includeArticleCriteria: true,
-      includeImages: true,
-    });
-
-    return (data.articles ?? []).map((article) => mapArticleSummary(article));
   }
 
   /**

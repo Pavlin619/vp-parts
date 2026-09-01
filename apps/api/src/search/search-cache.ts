@@ -1,57 +1,71 @@
 import { Injectable } from '@nestjs/common';
-import {
-  AutocompleteItemDto,
-  PaginatedSearchArticlesDto,
-} from '@vp-parts-shop/shared';
+import { AutocompleteItemDto } from '@vp-parts-shop/shared';
 import { RedisCache } from '../redis';
-import { BrandsService } from '../catalog/brands';
 import { SearchExecution } from './search-types';
-import { SearchRequest } from './search-plan';
-import { SearchTecDoc } from './search.tecdoc';
+import { SearchRequest, SearchSetRequest } from './search-call';
+import {
+  SearchEnumeration,
+  isSortableSet,
+  withoutCandidates,
+} from './search-enumeration';
+import { SearchRowsPage, SearchTecDoc } from './search.tecdoc';
 import {
   autocompleteArticlesCacheKey,
   autocompleteTermsCacheKey,
-  searchCacheKey,
+  searchPageCacheKey,
+  searchSetCacheKey,
 } from './search-cache-keys';
 
 const SEARCH_TTL = 60 * 60;
 const SEARCH_MISS_TTL = 5 * 60;
-/**
- * How long a resolved lane stays pinned. Matches {@link SEARCH_TTL} so a memo
- * and the search entries it points at age out together.
- */
-const SEARCH_LANE_TTL = SEARCH_TTL;
 const AUTOCOMPLETE_TTL = 15 * 60;
 const AUTOCOMPLETE_MISS_TTL = 5 * 60;
 
 /**
- * The Redis-cached view of {@link SearchTecDoc}. Every TecDoc read the search
- * surfaces make goes through here, so the TTLs and the cache keys live in one
- * place rather than being restated by each caller.
+ * The Redis layer of the search: every TecDoc read the search surfaces make goes
+ * through here, so the TTLs and the cache keys live in one place rather than
+ * being restated by each caller. The order a ranked set is served in is pinned
+ * by `ArticleOrderCache`, shared with the other list surfaces.
+ *
+ * Brand logos are joined per request by the caller rather than cached with the
+ * payloads, so a logo change never needs a search-cache bust.
  */
 @Injectable()
 export class SearchCache {
   constructor(
     private readonly searchTecDoc: SearchTecDoc,
-    private readonly brands: BrandsService,
     private readonly cache: RedisCache,
   ) {}
 
   /**
-   * Cached (1h hit / 5m empty-miss) TecDoc search, with brand logos joined onto
-   * the article rows and brand facet from the same cached brand read. The
-   * cached payload is the raw TecDoc result (no logos); the logo join is
-   * applied per request so a brand-logo change never needs a search-cache bust.
+   * Cached (1h hit / 5m empty-miss) enumeration of a whole match set.
+   *
+   * A set too wide to order is stored without its candidates: they were read
+   * because TecDoc will not count a set without naming articles from it, and
+   * nothing downstream reads them, so pinning several hundred kilobytes of them
+   * would be the one avoidable cost on this path. What is left is the entry the
+   * fallback path needs — the total, the facets and the navigation — which is
+   * also what makes a second request for a wide search skip the enumeration's
+   * TecDoc call entirely.
    */
-  async searchArticles(
-    request: SearchRequest,
-  ): Promise<PaginatedSearchArticlesDto> {
-    const raw = await this.cache.cachedPaginated(
-      searchCacheKey(request),
+  enumerate(request: SearchSetRequest): Promise<SearchEnumeration> {
+    return this.cache.cached(
+      searchSetCacheKey(request),
       SEARCH_TTL,
-      SEARCH_MISS_TTL,
+      () => this.readEnumeration(request),
+      // A set with no matches is worth forgetting sooner: TecDoc data changes
+      // under us, and a hopeless query should not be pinned for the full hour.
+      { missTtl: SEARCH_MISS_TTL, isEmpty: (value) => value.total === 0 },
+    );
+  }
+
+  /** Cached (1h hit / 5m empty-miss) page of rows in TecDoc's native order. */
+  readRowsPage(request: SearchRequest): Promise<SearchRowsPage> {
+    return this.cache.cached(
+      searchPageCacheKey(request),
+      SEARCH_TTL,
       () =>
-        this.searchTecDoc.searchArticles(
+        this.searchTecDoc.readRowsPage(
           request.query,
           request.vehicleId,
           request.execution,
@@ -59,9 +73,11 @@ export class SearchCache {
           request.pageSize,
           request.filters,
         ),
+      {
+        missTtl: SEARCH_MISS_TTL,
+        isEmpty: (value) => value.items.length === 0,
+      },
     );
-
-    return this.brands.applyLogosToSearchResults(raw);
   }
 
   autocompleteArticles(
@@ -85,11 +101,18 @@ export class SearchCache {
     );
   }
 
-  readLane(key: string): Promise<string | undefined> {
-    return this.cache.readMemo<string>(key);
-  }
+  private async readEnumeration(
+    request: SearchSetRequest,
+  ): Promise<SearchEnumeration> {
+    const enumeration = await this.searchTecDoc.enumerate(
+      request.query,
+      request.vehicleId,
+      request.execution,
+      request.filters,
+    );
 
-  writeLane(key: string, token: string): Promise<void> {
-    return this.cache.writeMemo(key, token, SEARCH_LANE_TTL);
+    return isSortableSet(enumeration.total)
+      ? enumeration
+      : withoutCandidates(enumeration);
   }
 }

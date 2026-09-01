@@ -6,7 +6,6 @@ import { AutocompleteService } from './autocomplete.service';
 import { SearchCache } from './search-cache';
 import { SearchTecDoc } from './search.tecdoc';
 import { SearchMode } from './search-types';
-import { BrandsService } from '../catalog/brands';
 import { RedisCache } from '../redis';
 
 const getAutocompleteArticlesMock = jest.fn();
@@ -17,8 +16,6 @@ const mockSearchTecDoc = {
   getAutocompleteArticles: getAutocompleteArticlesMock,
   getAutocompleteTerms: getAutocompleteTermsMock,
 } as unknown as SearchTecDoc;
-
-const mockBrands = {} as unknown as BrandsService;
 
 // Transparent cache: each helper runs its loader, so the assertions observe the
 // real SearchTecDoc calls. The cache key and TTLs are still asserted directly
@@ -66,7 +63,7 @@ describe('AutocompleteService', () => {
     );
 
     service = new AutocompleteService(
-      new SearchCache(mockSearchTecDoc, mockBrands, mockCache),
+      new SearchCache(mockSearchTecDoc, mockCache),
     );
   });
 
