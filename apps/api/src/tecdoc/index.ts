@@ -3,22 +3,22 @@ export { TecDocTransport } from './tecdoc-transport';
 export { TecDocMockClient } from './tecdoc-mock-client';
 export { tecDocSourceProvider } from './tecdoc-source.provider';
 export {
+  ArticleStatus,
   genericArticleIdsOf,
   legacyArticleIdsOf,
   linkageRolesOf,
+  mapArticleCandidate,
   mapArticleSummary,
   mapOemNumbers,
 } from './article-mapper';
 export type {
+  ArticleCandidate,
   ArticleDetailRead,
   ArticleLinkageRoles,
   CatalogArticlesPage,
   TecDocArticleRecord,
 } from './article-mapper';
-export {
-  ArticleStatus,
-  mapCrossReferenceCandidate,
-} from './cross-reference-mapper';
+export { mapCrossReferenceCandidate } from './cross-reference-mapper';
 export type {
   CrossReferenceCandidate,
   CrossReferenceCitation,

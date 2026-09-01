@@ -7,14 +7,6 @@ export interface ViewedArticle {
   articleNumber: string;
 }
 
-/** A slice of an ordered candidate set, plus the size of the whole. */
-export interface CandidatePage {
-  total: number;
-  page: number;
-  pageSize: number;
-  items: CrossReferenceCandidate[];
-}
-
 /**
  * Keeps the candidates that declared *this* part interchangeable, dropping those
  * that merely share its digits.
@@ -64,21 +56,6 @@ export function dropViewedPart(
   const dropped = identityOf(viewed);
 
   return candidates.filter((candidate) => identityOf(candidate) !== dropped);
-}
-
-export function pageOf(
-  candidates: CrossReferenceCandidate[],
-  page: number,
-  pageSize: number,
-): CandidatePage {
-  const start = (page - 1) * pageSize;
-
-  return {
-    total: candidates.length,
-    page,
-    pageSize,
-    items: candidates.slice(start, start + pageSize),
-  };
 }
 
 function identityOf(article: ViewedArticle): string {

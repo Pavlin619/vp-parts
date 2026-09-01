@@ -4,7 +4,7 @@ import {
   shouldRequestCriteriaFacets,
   TecDocSearchType,
 } from './search-types';
-import { SearchPlanStep, SearchRequest } from './search-plan';
+import { SearchRequest, SearchSetRequest } from './search-call';
 
 /**
  * Folds a query to one case so the same number typed differently shares a cache
@@ -21,19 +21,54 @@ export function normaliseCacheQuery(query: string, searchType: number): string {
 }
 
 /**
- * Cache key for one search page. Everything that changes the TecDoc payload is
- * folded into the digest, and the collection members are sorted so two callers
- * that selected the same facets in a different order share one entry.
+ * Cache key for the enumeration of a whole match set. Everything that changes
+ * which articles match is folded into the digest, and the collection members are
+ * sorted so two callers that selected the same facets in a different order share
+ * one entry.
+ *
+ * Deliberately page-free: the enumeration describes the set rather than a slice
+ * of it, so one entry answers every page of a search.
  */
-export function searchCacheKey(request: SearchRequest): string {
-  const { query, vehicleId, execution, page, pageSize, filters } = request;
+export function searchSetCacheKey(request: SearchSetRequest): string {
+  return `tecdoc:search:set:${digest(matchSetIdentity(request))}`;
+}
 
+/**
+ * Cache key for a whole match set already ranked by what we can ship.
+ *
+ * Page-free for the same reason the enumeration's key is, and load-bearing here
+ * rather than merely economical: the pages of one search are cut from one
+ * ranking precisely because they share this key.
+ *
+ * It is a separate namespace from the enumeration rather than a field in it
+ * because the two age at completely different rates — the set is TecDoc
+ * catalogue data, the order is our stock minutes ago.
+ */
+export function searchOrderCacheKey(request: SearchSetRequest): string {
+  return `search:order:${digest(matchSetIdentity(request))}`;
+}
+
+/**
+ * Cache key for one page of rows in TecDoc's native order — the fallback path's
+ * read, and the only search read a page number belongs in.
+ */
+export function searchPageCacheKey(request: SearchRequest): string {
   const identity = {
+    ...matchSetIdentity(request),
+    page: request.page,
+    pageSize: request.pageSize,
+  };
+
+  return `tecdoc:search:page:${digest(identity)}`;
+}
+
+function matchSetIdentity(request: SearchSetRequest): Record<string, unknown> {
+  const { query, vehicleId, execution, filters } = request;
+
+  return {
     query: normaliseCacheQuery(query, execution.type),
     vehicleId: vehicleId ?? null,
     execution,
-    page,
-    pageSize,
     // Numeric comparator: the default sort is lexicographic, which would order
     // [4, 30] as [30, 4] and make the key needlessly hard to reason about.
     brandIds: [...(filters.brandIds ?? [])].sort((a, b) => a - b),
@@ -43,7 +78,7 @@ export function searchCacheKey(request: SearchRequest): string {
     // actually changes the TecDoc payload, so hints that resolve the same way
     // (absent and "has children") share one entry while an opted-in leaf gets
     // its own.
-    criteriaFacets: shouldRequestCriteriaFacets(filters, page),
+    criteriaFacets: shouldRequestCriteriaFacets(filters),
     criteria: [...(filters.criteria ?? [])].sort((left, right) => {
       const leftKey = `${left.criteriaId}:${left.rawValue}`;
       const rightKey = `${right.criteriaId}:${right.rawValue}`;
@@ -51,37 +86,6 @@ export function searchCacheKey(request: SearchRequest): string {
       return leftKey.localeCompare(rightKey);
     }),
   };
-
-  return `tecdoc:search:${digest(identity)}`;
-}
-
-/**
- * Cache key for the lane memo. It deliberately leaves out the filters, the
- * page and the page size: the lane is a property of the query itself, so one
- * entry serves every refinement and every page of that search. The vehicle
- * scope is part of it because it changes which lane has matches.
- */
-export function laneCacheKey(
-  plan: SearchPlanStep[],
-  vehicleId: number | undefined,
-): string {
-  const identity = {
-    plan: plan.map((step) => ({
-      query: laneToken(step),
-      execution: step.execution,
-    })),
-    vehicleId: vehicleId ?? null,
-  };
-
-  return `tecdoc:search:lane:${digest(identity)}`;
-}
-
-/**
- * A lane's stored identity: its query in the same normalised form the search
- * cache key uses, so the same number typed in different cases shares one memo.
- */
-export function laneToken(step: SearchPlanStep): string {
-  return normaliseCacheQuery(step.query, step.execution.type);
 }
 
 /**

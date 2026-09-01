@@ -27,64 +27,77 @@ describe('TecDocMockClient', () => {
     mock = new TecDocMockClient();
   });
 
-  describe('searchArticles', () => {
+  describe('enumerate', () => {
     it('matches on article number (number search) and returns brand facets', async () => {
-      const result = await mock.searchArticles('OX 982D');
+      const result = await mock.enumerate('OX 982D');
 
       expect(result.total).toBeGreaterThan(0);
       expect(
-        result.items.some((item) => item.articleNumber === 'OX 982D'),
+        result.candidates.some(
+          (candidate) => candidate.articleNumber === 'OX 982D',
+        ),
       ).toBe(true);
       expect(result.facets[0]?.id).toBe('brands');
     });
 
     it('matches on shared OE number so one query returns multiple brands', async () => {
-      const result = await mock.searchArticles('06J 115 403 Q');
+      const result = await mock.enumerate('06J 115 403 Q');
 
-      const numbers = result.items.map((item) => item.articleNumber);
+      const numbers = result.candidates.map(
+        (candidate) => candidate.articleNumber,
+      );
       expect(numbers).toEqual(
         expect.arrayContaining(['OF-OC115', 'OF-WL7090']),
       );
     });
 
     it('matches on description words for a free-text search', async () => {
-      const result = await mock.searchArticles('oil filter mann', undefined, {
+      const result = await mock.enumerate('oil filter mann', undefined, {
         type: TecDocSearchType.FreeText,
       });
 
       expect(result.total).toBeGreaterThan(0);
       expect(
-        result.items.every((item) =>
-          item.description.toLowerCase().includes('oil filter'),
+        result.candidates.every((candidate) =>
+          candidate.description.toLowerCase().includes('oil filter'),
         ),
       ).toBe(true);
     });
 
+    // Every candidate is hydrated into a row by legacy id, so a set that named
+    // one without an id would silently render short.
+    it('names a legacy article id on every candidate', async () => {
+      const { candidates } = await mock.enumerate('OF-', undefined, {
+        type: TecDocSearchType.AnyNumber,
+      });
+
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(
+        candidates.every((candidate) => candidate.legacyArticleIds.length > 0),
+      ).toBe(true);
+    });
+
     it('surfaces attribute facets only once a leaf category is selected', async () => {
-      const broad = await mock.searchArticles('Brake Pad');
+      const broad = await mock.enumerate('Brake Pad');
       expect(broad.attributes).toEqual([]);
 
-      const scoped = await mock.searchArticles('Brake Pad', undefined, {
+      const scoped = await mock.enumerate('Brake Pad', undefined, {
         type: TecDocSearchType.FreeText,
         matchType: undefined,
       });
       // Selecting a category is not enough on its own: dimensions are opt-in, so
       // the client must also declare the node a leaf.
-      const unhinted = await mock.searchArticles(
+      const unhinted = await mock.enumerate(
         'Brake Pad',
         undefined,
         { type: TecDocSearchType.FreeText },
-        1,
-        50,
         { categoryNodeId: BRAKE_PAD_LEAF },
       );
 
-      const leaf = await mock.searchArticles(
+      const leaf = await mock.enumerate(
         'Brake Pad',
         undefined,
         { type: TecDocSearchType.FreeText },
-        1,
-        50,
         { categoryNodeId: BRAKE_PAD_LEAF, categoryHasChildren: false },
       );
 
@@ -97,7 +110,7 @@ describe('TecDocMockClient', () => {
     // at its boundary, so a mock that minted labels would round-trip here and be
     // rejected in front of the real service.
     it('identifies facets by numeric ids that round-trip as filters', async () => {
-      const unfiltered = await mock.searchArticles('Brake Pad', undefined, {
+      const unfiltered = await mock.enumerate('Brake Pad', undefined, {
         type: TecDocSearchType.FreeText,
       });
       const brandFacet = unfiltered.facets.find(
@@ -108,18 +121,18 @@ describe('TecDocMockClient', () => {
       expect(brand).toBeDefined();
       expect(brand!.id).toMatch(/^[1-9][0-9]*$/);
 
-      const filtered = await mock.searchArticles(
+      const filtered = await mock.enumerate(
         'Brake Pad',
         undefined,
         { type: TecDocSearchType.FreeText },
-        1,
-        50,
         { brandIds: [Number(brand!.id)] },
       );
 
       expect(filtered.total).toBeGreaterThan(0);
       expect(
-        filtered.items.every((item) => item.brandName === brand!.label),
+        filtered.candidates.every(
+          (candidate) => candidate.brandName === brand!.label,
+        ),
       ).toBe(true);
     });
   });
@@ -133,12 +146,10 @@ describe('TecDocMockClient', () => {
       categoryHasChildren?: boolean;
       productTypeIds?: number[];
     }) {
-      return mock.searchArticles(
+      return mock.enumerate(
         OIL_FILTER_QUERY,
         undefined,
         { type: TecDocSearchType.AnyNumber },
-        1,
-        50,
         filters,
       );
     }
@@ -228,7 +239,9 @@ describe('TecDocMockClient', () => {
 
       expect(housings.total).toBeLessThan(leaf.total);
       expect(
-        housings.items.every((item) => item.description.includes('Housing')),
+        housings.candidates.every((candidate) =>
+          candidate.description.includes('Housing'),
+        ),
       ).toBe(true);
       // A leaf's criteria are the union of four unrelated parts'; one generic
       // article's are coherent, which is the whole reason for the level.
@@ -262,12 +275,10 @@ describe('TecDocMockClient', () => {
   // leaves the state nearly every visitor sees unreachable in dev.
   describe('sidebar breadth at the oil-filter leaf', () => {
     function atLeaf() {
-      return mock.searchArticles(
+      return mock.enumerate(
         'filter',
         undefined,
         { type: TecDocSearchType.FreeText },
-        1,
-        50,
         { categoryNodeId: OIL_FILTER_LEAF, categoryHasChildren: false },
       );
     }
@@ -302,12 +313,14 @@ describe('TecDocMockClient', () => {
   // seen in dev at all, whatever you searched for.
   describe('breadth for pagination', () => {
     const DEFAULT_PAGE_SIZE = 20;
+    const AIR_FILTERS = 'въздушен филтър';
+    const FREE_TEXT = { type: TecDocSearchType.FreeText };
 
-    function airFilters(page = 1) {
-      return mock.searchArticles(
-        'въздушен филтър',
+    function airFilterPage(page: number) {
+      return mock.readRowsPage(
+        AIR_FILTERS,
         undefined,
-        { type: TecDocSearchType.FreeText },
+        FREE_TEXT,
         page,
         DEFAULT_PAGE_SIZE,
       );
@@ -316,21 +329,30 @@ describe('TecDocMockClient', () => {
     // Three pages is the smallest fixture that reaches a middle page, where
     // "previous" and "next" are both live.
     it('matches enough articles to reach a middle page', async () => {
-      const { total, maxPage } = await airFilters();
+      const [{ total }, { maxAllowedPage }] = await Promise.all([
+        mock.enumerate(AIR_FILTERS, undefined, FREE_TEXT),
+        airFilterPage(1),
+      ]);
 
       expect(total).toBeGreaterThan(2 * DEFAULT_PAGE_SIZE);
-      expect(maxPage).toBeGreaterThanOrEqual(3);
+      expect(maxAllowedPage).toBeGreaterThanOrEqual(3);
     });
 
     it('fills the first page and still answers the last', async () => {
-      const [first, last] = await Promise.all([airFilters(1), airFilters(3)]);
+      const [first, last] = await Promise.all([
+        airFilterPage(1),
+        airFilterPage(3),
+      ]);
 
       expect(first.items).toHaveLength(DEFAULT_PAGE_SIZE);
       expect(last.items.length).toBeGreaterThan(0);
     });
 
     it('serves a different slice on each page', async () => {
-      const [first, second] = await Promise.all([airFilters(1), airFilters(2)]);
+      const [first, second] = await Promise.all([
+        airFilterPage(1),
+        airFilterPage(2),
+      ]);
       const firstNumbers = first.items.map((item) => item.articleNumber);
       const secondNumbers = second.items.map((item) => item.articleNumber);
 

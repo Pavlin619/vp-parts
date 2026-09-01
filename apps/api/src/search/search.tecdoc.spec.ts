@@ -1,11 +1,15 @@
 import { TecDocTransport } from '../tecdoc';
+import { SEARCH_SORTABLE_LIMIT } from './search-enumeration';
 import { SearchTecDoc } from './search.tecdoc';
 
 function record(articleNumber: string, mfrName = 'WIX') {
   return {
     articleNumber,
+    dataSupplierId: 268,
     mfrName,
-    genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
+    genericArticles: [
+      { genericArticleDescription: 'Oil Filter', legacyArticleId: 777 },
+    ],
   };
 }
 
@@ -18,8 +22,8 @@ describe('SearchTecDoc', () => {
     tecdoc = new SearchTecDoc({ call } as unknown as TecDocTransport);
   });
 
-  describe('searchArticles', () => {
-    it('sends a number search with match type and maps items + brand facets', async () => {
+  describe('enumerate', () => {
+    it('sends a number search with match type and maps candidates + brand facets', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 1,
         articles: [record('WL6340')],
@@ -28,7 +32,7 @@ describe('SearchTecDoc', () => {
         },
       });
 
-      const result = await tecdoc.searchArticles('WL634', undefined, {
+      const result = await tecdoc.enumerate('WL634', undefined, {
         type: 10,
         matchType: 'prefix_or_suffix',
       });
@@ -43,19 +47,23 @@ describe('SearchTecDoc', () => {
       });
       // No category selected → criteria facets are not requested.
       expect(params).not.toHaveProperty('includeCriteriaFacets');
-      expect(result.items.map((i) => i.articleNumber)).toEqual(['WL6340']);
+      expect(result.candidates.map((c) => c.articleNumber)).toEqual(['WL6340']);
       expect(result.facets[0]).toMatchObject({ id: 'brands' });
       expect(result.attributes).toEqual([]);
     });
 
-    // `includeAll` also carries PDFs, links, linkages, parts lists, accessory
-    // lists, GTINs, prices and trade numbers, none of which a result row shows.
-    // OE numbers are excluded too — the row reads them from the part-numbers
-    // endpoint when a visitor opens that section.
-    it('asks only for the fields a result row renders', async () => {
+    /**
+     * The whole basis of the split: a set is read whole so it can be ranked, so
+     * it must be read cheaply. Images and criteria are what a *rendered* row
+     * needs and cost roughly ten times as much per article — they are bought for
+     * the page a visitor reached instead. `includeAll` would add PDFs, links,
+     * linkages, parts lists, accessory lists, GTINs, prices and trade numbers on
+     * top of that.
+     */
+    it('asks only for the fields a candidate carries', async () => {
       call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-      await tecdoc.searchArticles('WL634', undefined, {
+      await tecdoc.enumerate('WL634', undefined, {
         type: 10,
         matchType: 'prefix_or_suffix',
       });
@@ -63,23 +71,73 @@ describe('SearchTecDoc', () => {
       const [, params] = call.mock.calls[0];
       expect(params).toMatchObject({
         includeGenericArticles: true,
-        includeImages: true,
-        includeArticleCriteria: true,
+        includeMisc: true,
       });
-      for (const flag of ['includeAll', 'includeOEMNumbers', 'includeMisc']) {
+      for (const flag of [
+        'includeAll',
+        'includeImages',
+        'includeArticleCriteria',
+        'includeOEMNumbers',
+      ]) {
         expect(params).not.toHaveProperty(flag);
       }
     });
 
-    // TecDoc omits a field rather than sending a zero, and the lane resolver
-    // reads `total > 0` to decide a lane matched — so an absent total would
-    // discard a page that did come back with articles.
-    it('falls back to the page size when TecDoc omits the total', async () => {
+    // TecDoc's own `perPage` ceiling, which is also the widest set we are
+    // willing to rank — so the whole set arrives in one call or not at all.
+    it('reads the whole set in one call at the sortable limit', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+      await tecdoc.enumerate('WL634', undefined, { type: 10 });
+
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(call.mock.calls[0][1]).toMatchObject({
+        perPage: SEARCH_SORTABLE_LIMIT,
+        page: 1,
+      });
+    });
+
+    it('maps each row into a candidate the page can be hydrated from', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [
+          {
+            articleNumber: 'WL6340',
+            dataSupplierId: 268,
+            mfrName: 'WIX',
+            genericArticles: [
+              {
+                genericArticleId: 7,
+                genericArticleDescription: 'Маслен филтър',
+                legacyArticleId: 777,
+              },
+            ],
+            misc: { articleStatusId: 8 },
+          },
+        ],
+      });
+
+      const result = await tecdoc.enumerate('WL6340', undefined, { type: 10 });
+
+      expect(result.candidates[0]).toEqual({
+        brandId: '268',
+        brandName: 'WIX',
+        articleNumber: 'WL6340',
+        description: 'Маслен филтър',
+        legacyArticleIds: [777],
+        articleStatusId: 8,
+      });
+    });
+
+    // TecDoc omits a field rather than sending a zero, and `total` is what
+    // decides whether a search found anything — so an absent one would discard
+    // a set that did come back with articles.
+    it('falls back to the candidate count when TecDoc omits the total', async () => {
       call.mockResolvedValueOnce({
         articles: [record('WL6340'), record('WL6341')],
       });
 
-      const result = await tecdoc.searchArticles('WL634', undefined, {
+      const result = await tecdoc.enumerate('WL634', undefined, {
         type: 10,
         matchType: 'prefix_or_suffix',
       });
@@ -87,87 +145,16 @@ describe('SearchTecDoc', () => {
       expect(result.total).toBe(2);
     });
 
-    it('reports a zero total for an empty page with no total', async () => {
+    it('reports a zero total for an empty response', async () => {
       call.mockResolvedValueOnce({});
 
-      const result = await tecdoc.searchArticles('WL634', undefined, {
+      const result = await tecdoc.enumerate('WL634', undefined, {
         type: 10,
         matchType: 'prefix_or_suffix',
       });
 
       expect(result.total).toBe(0);
-      expect(result.items).toEqual([]);
-    });
-
-    // TecDoc serves only the first ~10,000 results of a match set, so a broad
-    // query's page count is its `maxAllowedPage` and not `total / pageSize`.
-    describe('maxPage', () => {
-      it("takes TecDoc's cap when it is below the match count", async () => {
-        call.mockResolvedValueOnce({
-          totalMatchingArticles: 50_000,
-          maxAllowedPage: 500,
-          articles: [record('WL6340')],
-        });
-
-        const result = await tecdoc.searchArticles(
-          'филтър',
-          undefined,
-          { type: 99 },
-          1,
-          20,
-        );
-
-        expect(result.maxPage).toBe(500);
-      });
-
-      it('takes the match count when it is below the cap', async () => {
-        call.mockResolvedValueOnce({
-          totalMatchingArticles: 87,
-          maxAllowedPage: 500,
-          articles: [record('WL6340')],
-        });
-
-        const result = await tecdoc.searchArticles(
-          'филтър',
-          undefined,
-          { type: 99 },
-          1,
-          20,
-        );
-
-        expect(result.maxPage).toBe(5);
-      });
-
-      it('falls back to the match count when TecDoc omits the cap', async () => {
-        call.mockResolvedValueOnce({
-          totalMatchingArticles: 87,
-          articles: [record('WL6340')],
-        });
-
-        const result = await tecdoc.searchArticles(
-          'филтър',
-          undefined,
-          { type: 99 },
-          1,
-          20,
-        );
-
-        expect(result.maxPage).toBe(5);
-      });
-
-      it('reports no pages at all for an empty match set', async () => {
-        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
-
-        const result = await tecdoc.searchArticles(
-          'филтър',
-          undefined,
-          { type: 99 },
-          1,
-          20,
-        );
-
-        expect(result.maxPage).toBe(0);
-      });
+      expect(result.candidates).toEqual([]);
     });
 
     it('omits the match type for a free-text search', async () => {
@@ -176,7 +163,7 @@ describe('SearchTecDoc', () => {
         articles: [],
       });
 
-      await tecdoc.searchArticles('oil filter', undefined, { type: 99 });
+      await tecdoc.enumerate('oil filter', undefined, { type: 99 });
 
       const params = call.mock.calls[0][1];
       expect(params.searchType).toBe(99);
@@ -189,12 +176,10 @@ describe('SearchTecDoc', () => {
         articles: [],
       });
 
-      await tecdoc.searchArticles(
+      await tecdoc.enumerate(
         'WL634',
         1,
         { type: 10, matchType: 'exact' },
-        1,
-        50,
         {
           brandIds: [4, 7],
           categoryNodeId: 100,
@@ -220,7 +205,7 @@ describe('SearchTecDoc', () => {
       it('covers the universal tree too when the search is catalogue-wide', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('масло', undefined, { type: 99 });
+        await tecdoc.enumerate('масло', undefined, { type: 99 });
 
         expect(call.mock.calls[0][1]).toMatchObject({
           assemblyGroupFacetOptions: {
@@ -238,7 +223,7 @@ describe('SearchTecDoc', () => {
       it('leaves the tree to TecDoc when the search is scoped to a vehicle', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('масло', 20154, { type: 99 });
+        await tecdoc.enumerate('масло', 20154, { type: 99 });
 
         const payload = call.mock.calls[0][1] as {
           assemblyGroupFacetOptions: Record<string, unknown>;
@@ -260,9 +245,14 @@ describe('SearchTecDoc', () => {
       it('asks for the complete tree once a category narrows the search', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('масло', undefined, { type: 99 }, 1, 50, {
-          categoryNodeId: 100,
-        });
+        await tecdoc.enumerate(
+          'масло',
+          undefined,
+          { type: 99 },
+          {
+            categoryNodeId: 100,
+          },
+        );
 
         expect(call.mock.calls[0][1]).toMatchObject({
           assemblyGroupFacetOptions: { includeCompleteTree: true },
@@ -274,7 +264,7 @@ describe('SearchTecDoc', () => {
       it('leaves it off while no category is selected', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('масло', undefined, { type: 99 });
+        await tecdoc.enumerate('масло', undefined, { type: 99 });
 
         expect(call.mock.calls[0][1]).toMatchObject({
           assemblyGroupFacetOptions: { includeCompleteTree: false },
@@ -284,9 +274,14 @@ describe('SearchTecDoc', () => {
       it('asks for it under a vehicle scope too', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('масло', 20154, { type: 99 }, 1, 50, {
-          categoryNodeId: 100,
-        });
+        await tecdoc.enumerate(
+          'масло',
+          20154,
+          { type: 99 },
+          {
+            categoryNodeId: 100,
+          },
+        );
 
         expect(call.mock.calls[0][1]).toMatchObject({
           assemblyGroupFacetOptions: {
@@ -318,7 +313,7 @@ describe('SearchTecDoc', () => {
           },
         });
 
-        const result = await tecdoc.searchArticles('филтър', undefined, {
+        const result = await tecdoc.enumerate('филтър', undefined, {
           type: 99,
         });
 
@@ -337,9 +332,14 @@ describe('SearchTecDoc', () => {
       it('forwards a selection as genericArticleIds', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
-          productTypeIds: [7, 9],
-        });
+        await tecdoc.enumerate(
+          'филтър',
+          undefined,
+          { type: 99 },
+          {
+            productTypeIds: [7, 9],
+          },
+        );
 
         expect(call.mock.calls[0][1]).toMatchObject({
           genericArticleIds: [7, 9],
@@ -369,13 +369,13 @@ describe('SearchTecDoc', () => {
           },
         });
 
-        const result = await tecdoc.searchArticles(
+        const result = await tecdoc.enumerate(
           'филтър',
           undefined,
           { type: 99 },
-          1,
-          50,
-          { productTypeIds: [7] },
+          {
+            productTypeIds: [7],
+          },
         );
 
         expect(call.mock.calls[0][1]).toMatchObject({
@@ -390,9 +390,14 @@ describe('SearchTecDoc', () => {
       it('leaves the criteria gate shut when several are selected', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
-          productTypeIds: [7, 9],
-        });
+        await tecdoc.enumerate(
+          'филтър',
+          undefined,
+          { type: 99 },
+          {
+            productTypeIds: [7, 9],
+          },
+        );
 
         expect(call.mock.calls[0][1]).not.toHaveProperty(
           'includeCriteriaFacets',
@@ -404,9 +409,14 @@ describe('SearchTecDoc', () => {
       it('asks TecDoc to drop impermissible criteria values', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
-          productTypeIds: [7],
-        });
+        await tecdoc.enumerate(
+          'филтър',
+          undefined,
+          { type: 99 },
+          {
+            productTypeIds: [7],
+          },
+        );
 
         expect(call.mock.calls[0][1]).toMatchObject({ applyDqmRules: true });
       });
@@ -416,9 +426,14 @@ describe('SearchTecDoc', () => {
       it('withholds the DQM rules when several types are selected', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-        await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
-          productTypeIds: [7, 9],
-        });
+        await tecdoc.enumerate(
+          'филтър',
+          undefined,
+          { type: 99 },
+          {
+            productTypeIds: [7, 9],
+          },
+        );
 
         expect(call.mock.calls[0][1]).not.toHaveProperty('applyDqmRules');
       });
@@ -429,10 +444,15 @@ describe('SearchTecDoc', () => {
     it('withholds the DQM rules for a leaf category alone', async () => {
       call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
-      await tecdoc.searchArticles('филтър', undefined, { type: 99 }, 1, 50, {
-        categoryNodeId: 100,
-        categoryHasChildren: false,
-      });
+      await tecdoc.enumerate(
+        'филтър',
+        undefined,
+        { type: 99 },
+        {
+          categoryNodeId: 100,
+          categoryHasChildren: false,
+        },
+      );
 
       const params = call.mock.calls[0][1];
       expect(params).toMatchObject({ includeCriteriaFacets: true });
@@ -445,9 +465,14 @@ describe('SearchTecDoc', () => {
         articles: [],
       });
 
-      await tecdoc.searchArticles('WL634', undefined, { type: 10 }, 1, 50, {
-        categoryNodeId: 100,
-      });
+      await tecdoc.enumerate(
+        'WL634',
+        undefined,
+        { type: 10 },
+        {
+          categoryNodeId: 100,
+        },
+      );
 
       const params = call.mock.calls[0][1];
       expect(params).toMatchObject({ assemblyGroupNodeIds: [100] });
@@ -486,12 +511,10 @@ describe('SearchTecDoc', () => {
         },
       });
 
-      const result = await tecdoc.searchArticles(
+      const result = await tecdoc.enumerate(
         'WL634',
         undefined,
         { type: 10, matchType: 'prefix_or_suffix' },
-        1,
-        50,
         { categoryNodeId: 100, categoryHasChildren: false },
       );
 
@@ -506,10 +529,15 @@ describe('SearchTecDoc', () => {
         articles: [],
       });
 
-      await tecdoc.searchArticles('brake', undefined, { type: 99 }, 1, 50, {
-        categoryNodeId: 100,
-        categoryHasChildren: true,
-      });
+      await tecdoc.enumerate(
+        'brake',
+        undefined,
+        { type: 99 },
+        {
+          categoryNodeId: 100,
+          categoryHasChildren: true,
+        },
+      );
 
       const params = call.mock.calls[0][1];
       expect(params).toMatchObject({ assemblyGroupNodeIds: [100] });
@@ -549,13 +577,14 @@ describe('SearchTecDoc', () => {
 
       // The client asked for dimensions, but TecDoc reports the node has
       // children — the response gate must win over the hint.
-      const result = await tecdoc.searchArticles(
+      const result = await tecdoc.enumerate(
         'brake',
         undefined,
         { type: 99 },
-        1,
-        50,
-        { categoryNodeId: 100, categoryHasChildren: false },
+        {
+          categoryNodeId: 100,
+          categoryHasChildren: false,
+        },
       );
 
       expect(call.mock.calls[0][1]).toMatchObject({
@@ -565,26 +594,6 @@ describe('SearchTecDoc', () => {
         hasChildren: true,
       });
       expect(result.attributes).toEqual([]);
-    });
-
-    it('does not re-request criteria facets beyond the first page', async () => {
-      call.mockResolvedValueOnce({
-        totalMatchingArticles: 0,
-        articles: [],
-      });
-
-      await tecdoc.searchArticles(
-        'WL634',
-        undefined,
-        { type: 10, matchType: 'prefix_or_suffix' },
-        2,
-        50,
-        { categoryNodeId: 100, categoryHasChildren: false },
-      );
-
-      const params = call.mock.calls[0][1];
-      expect(params.page).toBe(2);
-      expect(params).not.toHaveProperty('includeCriteriaFacets');
     });
 
     it('builds root-level category options when nothing is selected', async () => {
@@ -608,13 +617,111 @@ describe('SearchTecDoc', () => {
         },
       });
 
-      const result = await tecdoc.searchArticles('brake', undefined, {
+      const result = await tecdoc.enumerate('brake', undefined, {
         type: 99,
       });
 
       expect(result.categoryNavigation.current).toBeNull();
       expect(result.categoryNavigation.options.map((o) => o.id)).toEqual(['1']);
       expect(result.categoryNavigation.options[0].hasChildren).toBe(true);
+    });
+  });
+
+  /**
+   * The fallback read, reached only for a match set too wide to rank. It renders
+   * rows and nothing else — the enumeration of the same set owns the facets, and
+   * it is cached per search rather than per page.
+   */
+  describe('readRowsPage', () => {
+    it('reads the requested page and maps it into rendered rows', async () => {
+      call.mockResolvedValueOnce({
+        maxAllowedPage: 500,
+        articles: [record('WL6340')],
+      });
+
+      const page = await tecdoc.readRowsPage(
+        'филтър',
+        undefined,
+        { type: 99 },
+        3,
+        20,
+      );
+
+      expect(call.mock.calls[0][1]).toMatchObject({
+        searchQuery: 'филтър',
+        searchType: 99,
+        page: 3,
+        perPage: 20,
+        includeGenericArticles: true,
+        includeImages: true,
+        includeArticleCriteria: true,
+      });
+      expect(page.items.map((item) => item.articleNumber)).toEqual(['WL6340']);
+      expect(page.maxAllowedPage).toBe(500);
+    });
+
+    // Facets describe the whole match set, which the enumeration already read
+    // and cached — recomputing them here would be paid for on every page turn
+    // of exactly the queries that can least afford it.
+    it('asks for no facets at all', async () => {
+      call.mockResolvedValueOnce({ articles: [] });
+
+      await tecdoc.readRowsPage('филтър', undefined, { type: 99 }, 2, 20);
+
+      const [, params] = call.mock.calls[0];
+      for (const flag of [
+        'includeAll',
+        'includeDataSupplierFacets',
+        'includeGenericArticleFacets',
+        'includeCriteriaFacets',
+        'assemblyGroupFacetOptions',
+      ]) {
+        expect(params).not.toHaveProperty(flag);
+      }
+    });
+
+    // Both reads describe the same match set, which is the whole basis for one
+    // of them owning the facets on the other's behalf.
+    it('narrows the page exactly as the enumeration was narrowed', async () => {
+      call.mockResolvedValueOnce({ articles: [] });
+
+      await tecdoc.readRowsPage(
+        'WL634',
+        20154,
+        { type: 10, matchType: 'exact' },
+        1,
+        20,
+        {
+          brandIds: [4],
+          productTypeIds: [7],
+          categoryNodeId: 100,
+          criteria: [{ criteriaId: 20, rawValue: '106.4' }],
+        },
+      );
+
+      expect(call.mock.calls[0][1]).toMatchObject({
+        searchMatchType: 'exact',
+        linkageTargetId: 20154,
+        dataSupplierIds: [4],
+        genericArticleIds: [7],
+        applyDqmRules: true,
+        assemblyGroupNodeIds: [100],
+        criteriaFilters: [{ criteriaId: 20, rawValue: '106.4' }],
+      });
+    });
+
+    it('reports no ceiling when TecDoc omits one', async () => {
+      call.mockResolvedValueOnce({ articles: [record('WL6340')] });
+
+      const page = await tecdoc.readRowsPage(
+        'филтър',
+        undefined,
+        { type: 99 },
+        1,
+        20,
+      );
+
+      expect(page.maxAllowedPage).toBeUndefined();
     });
   });
 

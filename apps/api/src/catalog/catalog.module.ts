@@ -6,6 +6,7 @@ import { BrandsModule } from './brands';
 import { VehiclesTecDoc } from './vehicles/vehicles.tecdoc';
 import { VehiclesService } from './vehicles/vehicles.service';
 import { VehiclesController } from './vehicles/vehicles.controller';
+import { ArticleListModule } from './articles/article-list';
 import { ArticleReadCache } from './articles/article-read';
 import { ArticlesTecDoc } from './articles/articles.tecdoc';
 import { ArticlesService } from './articles/articles.service';
@@ -22,7 +23,13 @@ import {
 } from './articles/linked-vehicles';
 
 @Module({
-  imports: [TecDocModule, RedisModule, BrandsModule, InventoryModule],
+  imports: [
+    TecDocModule,
+    RedisModule,
+    BrandsModule,
+    InventoryModule,
+    ArticleListModule,
+  ],
   controllers: [
     VehiclesController,
     ArticlesController,

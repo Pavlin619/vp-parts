@@ -3,15 +3,16 @@ import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { SearchTecDoc } from '../src/search';
+import { SearchEnumeration } from '../src/search/search-enumeration';
 import { SEARCH_MAX_PAGE } from '../src/search/search.dto';
-import { BrandsTecDoc } from '../src/catalog';
+import { ArticleRowsTecDoc, BrandsTecDoc } from '../src/catalog';
+import { ArticleCandidate, ArticleStatus } from '../src/tecdoc';
 import { REDIS_CLIENT } from '../src/redis';
 import {
   ArticleSummaryDto,
   ArticleAutocompleteItemDto,
   AttributeFacetDto,
   CategoryNavigationDto,
-  PaginatedSearchArticlesDto,
   SearchFacetDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
@@ -30,15 +31,37 @@ const makeArticle = (
   fitsVehicle: null,
 });
 
-const pageOf = (
+const makeArticles = (count: number): ArticleSummaryDto[] =>
+  Array.from({ length: count }, (_unused, index) =>
+    makeArticle(`WL${6000 + index}`),
+  );
+
+// The row each minted legacy id hydrates back to, so a search reads its page
+// the way production does: enumerate identities, then buy the rows for the page
+// a visitor reached. Cleared per test alongside the Redis cache.
+const rowByLegacyId = new Map<number, ArticleSummaryDto>();
+let nextLegacyId = 1;
+
+const candidateOf = (row: ArticleSummaryDto): ArticleCandidate => {
+  const legacyArticleId = nextLegacyId++;
+  rowByLegacyId.set(legacyArticleId, row);
+
+  return {
+    brandId: row.brandId,
+    brandName: row.brandName,
+    articleNumber: row.articleNumber,
+    description: row.description,
+    legacyArticleIds: [legacyArticleId],
+    articleStatusId: ArticleStatus.Normal,
+  };
+};
+
+const enumerationOf = (
   items: ArticleSummaryDto[],
-  overrides: Partial<PaginatedSearchArticlesDto> = {},
-): PaginatedSearchArticlesDto => ({
+  overrides: Partial<SearchEnumeration> = {},
+): SearchEnumeration => ({
   total: items.length,
-  page: 1,
-  pageSize: 20,
-  maxPage: Math.ceil(items.length / 20),
-  items,
+  candidates: items.map(candidateOf),
   facets: [],
   attributes: [],
   categoryNavigation: { current: null, ancestors: [], options: [] },
@@ -55,7 +78,7 @@ const NO_FILTERS = {
   criteria: [],
 };
 
-// The execution objects each searchMode resolves to (see buildSearchPlan):
+// The execution objects each searchMode resolves to (see searchCallFor):
 // part_number → number search / prefix_or_suffix; part_number_exact → exact
 // number match; generic → free-text (type 99).
 const PART = { type: 10, matchType: 'prefix_or_suffix' };
@@ -88,7 +111,9 @@ const mockTecDocClient = {
   getBrands: jest.fn(),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
-  searchArticles: jest.fn(),
+  enumerate: jest.fn(),
+  readRowsPage: jest.fn(),
+  getArticleRowsByLegacyIds: jest.fn(),
   getAutocompleteArticles: jest.fn(),
   getAutocompleteTerms: jest.fn(),
 };
@@ -101,6 +126,7 @@ describe('SearchController (e2e)', () => {
     app = await createTestApp((builder) => {
       builder.overrideProvider(SearchTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(BrandsTecDoc).useValue(mockTecDocClient);
+      builder.overrideProvider(ArticleRowsTecDoc).useValue(mockTecDocClient);
     });
     redisClient = app.get<Redis>(REDIS_CLIENT);
   });
@@ -115,13 +141,24 @@ describe('SearchController (e2e)', () => {
     // The search flow joins brand logos via getBrands on every non-empty result
     // set; give every test a default so the enrichment resolves.
     mockTecDocClient.getBrands.mockResolvedValue([]);
+    // Hydration answers each candidate with the row it was minted from, so a
+    // test states its fixture once, as articles.
+    rowByLegacyId.clear();
+    mockTecDocClient.getArticleRowsByLegacyIds.mockImplementation(
+      (legacyArticleIds: number[]) =>
+        Promise.resolve(
+          legacyArticleIds
+            .map((legacyArticleId) => rowByLegacyId.get(legacyArticleId))
+            .filter((row): row is ArticleSummaryDto => row !== undefined),
+        ),
+    );
     await redisClient.flushall();
   });
 
   describe('GET /search', () => {
     it('returns a one-item list (no redirect) for a single part-number match', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
       );
 
       const res = await request(app.getHttpServer())
@@ -133,20 +170,18 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results[0].articleNumber).toBe('WL6340');
       expect(res.body.total).toBe(1);
       // A part-number query is a single prefix_or_suffix number call.
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL6340',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('returns a paginated result list when a part-number query matches multiple articles', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340'), makeArticle('WL6341')]),
       );
 
       const res = await request(app.getHttpServer())
@@ -164,63 +199,57 @@ describe('SearchController (e2e)', () => {
       expect(res.body.results[1].fitsVehicle).toBeNull();
     });
 
-    it('does not fall back to free-text in part-number mode when the number lane misses', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
+    it('does not fall back to free-text in part-number mode when the number misses', async () => {
+      mockTecDocClient.enumerate.mockResolvedValue(enumerationOf([]));
       mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
 
       await request(app.getHttpServer())
         .get('/search?q=oil%20filter%20bosch')
         .expect(200);
 
-      // No brand dictionary in e2e, so brand-stripped == raw: a single number
+      // No brand dictionary here, so brand-stripped == raw: a single number
       // call, and no free-text fallback in the default mode.
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'oil filter bosch',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('issues a single free-text (type 99) call in generic mode', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('OF1')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('OF1')]),
       );
 
       await request(app.getHttpServer())
         .get('/search?q=oil%20filter%20bosch&searchMode=generic')
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'oil filter bosch',
         undefined,
         TERM,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('routes to an exact number match when searchMode is part_number_exact', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
       );
 
       await request(app.getHttpServer())
         .get('/search?q=WL6340&searchMode=part_number_exact')
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL6340',
         undefined,
         EXACT,
-        1,
-        20,
         NO_FILTERS,
       );
     });
@@ -230,12 +259,12 @@ describe('SearchController (e2e)', () => {
         .get('/search?q=WL6340&searchMode=fuzzy')
         .expect(400);
 
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
-    it('echoes the requested page and pageSize', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')], { total: 55, page: 2, pageSize: 10 }),
+    it('serves the requested slice of the ranked set and echoes the paging', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf(makeArticles(55)),
       );
 
       const res = await request(app.getHttpServer())
@@ -245,22 +274,30 @@ describe('SearchController (e2e)', () => {
       expect(res.body.total).toBe(55);
       expect(res.body.page).toBe(2);
       expect(res.body.pageSize).toBe(10);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(res.body.maxPage).toBe(6);
+      expect(res.body.results).toHaveLength(10);
+      expect(res.body.ordering).toBe('availability');
+      // The set is read once, page-free, and cut into pages here.
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL634',
         undefined,
         PART,
-        2,
-        10,
         NO_FILTERS,
       );
+      expect(mockTecDocClient.readRowsPage).not.toHaveBeenCalled();
     });
 
-    // The client sizes its pager from this, and it is not derivable from the
-    // total: TecDoc stops serving pages well before a broad match set runs out.
-    it('reports how far the results can be paged', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')], { total: 50_000, maxPage: 500 }),
+    // Past the sortable limit the set is served in TecDoc's own order, and the
+    // pager is sized from what TecDoc will actually serve — which is not
+    // derivable from the total: it stops well before a broad match set runs out.
+    it('falls back to the catalogue order for a set too wide to rank', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([], { total: 50_000 }),
       );
+      mockTecDocClient.readRowsPage.mockResolvedValueOnce({
+        items: [makeArticle('WL6340')],
+        maxAllowedPage: 500,
+      });
 
       const res = await request(app.getHttpServer())
         .get('/search?q=филтър&searchMode=generic')
@@ -268,11 +305,21 @@ describe('SearchController (e2e)', () => {
 
       expect(res.body.total).toBe(50_000);
       expect(res.body.maxPage).toBe(500);
+      expect(res.body.ordering).toBe('catalogue');
+      expect(res.body.results).toHaveLength(1);
+      expect(mockTecDocClient.readRowsPage).toHaveBeenCalledWith(
+        'филтър',
+        undefined,
+        TERM,
+        1,
+        20,
+        NO_FILTERS,
+      );
     });
 
     it('scopes the search to the vehicle when a vehicleId is supplied', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340'), makeArticle('WL6341')]),
       );
 
       const res = await request(app.getHttpServer())
@@ -283,13 +330,11 @@ describe('SearchController (e2e)', () => {
       expect(results.map((r) => r.articleNumber)).toEqual(['WL6340', 'WL6341']);
 
       // A single number call, scoped to the vehicle — no separate fit lookup.
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL634',
         10001,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
@@ -327,8 +372,8 @@ describe('SearchController (e2e)', () => {
           { id: '300', label: 'Накладки', count: 2, hasChildren: false },
         ],
       };
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340'), makeArticle('WL6341')], {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340'), makeArticle('WL6341')], {
           facets,
           attributes,
           categoryNavigation,
@@ -360,8 +405,8 @@ describe('SearchController (e2e)', () => {
     });
 
     it('forwards brandIds, categoryNodeId and attr query params as filters', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340'), makeArticle('WL6341')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340'), makeArticle('WL6341')]),
       );
 
       await request(app.getHttpServer())
@@ -370,12 +415,10 @@ describe('SearchController (e2e)', () => {
         )
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL634',
         undefined,
         PART,
-        1,
-        20,
         {
           brandIds: [4, 30],
           categoryNodeId: 200,
@@ -385,20 +428,18 @@ describe('SearchController (e2e)', () => {
     });
 
     it('forwards productTypeIds as a filter', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
       );
 
       await request(app.getHttpServer())
         .get('/search?q=филтър&productTypeIds=7&productTypeIds=9')
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'филтър',
         undefined,
         PART,
-        1,
-        20,
         expect.objectContaining({ productTypeIds: [7, 9] }),
       );
     });
@@ -406,8 +447,8 @@ describe('SearchController (e2e)', () => {
     // Product types have no logo, so the brand join must leave them alone —
     // even though their ids live in the same `facets` array.
     it('returns the product-type facet without stamping a brand logo on it', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')], {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')], {
           facets: [
             {
               id: 'productTypes',
@@ -433,20 +474,18 @@ describe('SearchController (e2e)', () => {
     });
 
     it('forwards the categoryHasChildren leaf hint as a filter', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
       );
 
       await request(app.getHttpServer())
         .get('/search?q=WL634&categoryNodeId=200&categoryHasChildren=true')
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL634',
         undefined,
         PART,
-        1,
-        20,
         expect.objectContaining({
           categoryNodeId: 200,
           categoryHasChildren: true,
@@ -455,27 +494,32 @@ describe('SearchController (e2e)', () => {
     });
 
     it('ignores an unparseable leaf hint rather than rejecting the search', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WL6340')]),
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
       );
 
       await request(app.getHttpServer())
         .get('/search?q=WL634&categoryNodeId=200&categoryHasChildren=maybe')
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
         'WL634',
         undefined,
         PART,
-        1,
-        20,
         expect.objectContaining({ categoryHasChildren: undefined }),
       );
     });
 
-    it('preserves TecDoc native result order (no client-side ranking)', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('B1'), makeArticle('A2'), makeArticle('C3')]),
+    // A set we can rank is re-ordered rather than served as TecDoc sorted it.
+    // Nothing is in stock in this suite, so what is asserted here is the last
+    // tiebreak — catalogue order, which is what makes paging deterministic.
+    it('ranks a set it can rank instead of keeping TecDoc order', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([
+          makeArticle('B1'),
+          makeArticle('A2'),
+          makeArticle('C3'),
+        ]),
       );
 
       const res = await request(app.getHttpServer())
@@ -485,12 +529,13 @@ describe('SearchController (e2e)', () => {
       const numbers = (
         res.body.results as Array<{ articleNumber: string }>
       ).map((r) => r.articleNumber);
-      expect(numbers).toEqual(['B1', 'A2', 'C3']);
+      expect(numbers).toEqual(['A2', 'B1', 'C3']);
+      expect(res.body.ordering).toBe('availability');
     });
 
     it('returns a single filtered result as a list rather than a redirect', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('OF-WL7090')], {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('OF-WL7090')], {
           facets: [
             {
               id: 'brands',
@@ -518,7 +563,7 @@ describe('SearchController (e2e)', () => {
     });
 
     it('includes autocomplete suggestions when the search returns no results', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValue(pageOf([]));
+      mockTecDocClient.enumerate.mockResolvedValue(enumerationOf([]));
       mockTecDocClient.getAutocompleteArticles.mockResolvedValueOnce([
         makeSuggestion('XY001'),
         makeSuggestion('XY002'),
@@ -541,13 +586,13 @@ describe('SearchController (e2e)', () => {
     it('returns 400 when the q param is missing', async () => {
       await request(app.getHttpServer()).get('/search').expect(400);
 
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
     it('returns 400 when the q param is blank', async () => {
       await request(app.getHttpServer()).get('/search?q=%20%20').expect(400);
 
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
     it('returns 400 when the q param exceeds 200 characters', async () => {
@@ -556,7 +601,7 @@ describe('SearchController (e2e)', () => {
         .get(`/search?q=${longQuery}`)
         .expect(400);
 
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
     // The ids reach TecDoc as numbers, so an unparseable one would serialise to
@@ -571,7 +616,7 @@ describe('SearchController (e2e)', () => {
     ])('returns 400 for an unparseable %s', async (_property, url) => {
       await request(app.getHttpServer()).get(url).expect(400);
 
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
     // Past TecDoc's own ~10,000-result paging ceiling the call can only come
@@ -586,31 +631,26 @@ describe('SearchController (e2e)', () => {
         .get(`/search?q=WL634&page=${page}`)
         .expect(400);
 
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
     it('accepts the highest page TecDoc can serve', async () => {
-      mockTecDocClient.searchArticles.mockResolvedValue(
-        pageOf([makeArticle('WL6340')], {
-          total: 1,
-          page: SEARCH_MAX_PAGE,
-          maxPage: SEARCH_MAX_PAGE,
-        }),
+      mockTecDocClient.enumerate.mockResolvedValue(
+        enumerationOf([makeArticle('WL6340')]),
       );
 
       await request(app.getHttpServer())
         .get(`/search?q=WL634&page=${SEARCH_MAX_PAGE}`)
         .expect(200);
 
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalled();
+      expect(mockTecDocClient.enumerate).toHaveBeenCalled();
     });
   });
 
-  // A two-lane plan only exists for a part-number query whose brand token was
-  // stripped, so these tests give the app a brand dictionary and search
-  // "WIX WA5432": lane 1 is the bare number, lane 2 the raw query.
-  describe('GET /search — lane resolution', () => {
-    const RAW_QUERY = 'WIX WA5432';
+  // The rest of the suite runs without a brand dictionary, so the parser has
+  // nothing to strip and the query reaches TecDoc as typed. These give the app
+  // a dictionary and search "WIX WA5432" to cover the rewrite end to end.
+  describe('GET /search — brand stripping', () => {
     const STRIPPED_QUERY = 'WA5432';
     const SEARCH_URL = '/search?q=WIX%20WA5432';
 
@@ -620,167 +660,58 @@ describe('SearchController (e2e)', () => {
       ]);
     });
 
-    async function primeLaneWithRawQueryWinner(): Promise<void> {
-      mockTecDocClient.searchArticles
-        .mockResolvedValueOnce(pageOf([])) // WA5432 misses
-        .mockResolvedValueOnce(pageOf([makeArticle('WA5432')])); // raw wins
-
-      await request(app.getHttpServer()).get(SEARCH_URL).expect(200);
-
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(2);
-      mockTecDocClient.searchArticles.mockReset();
-    }
-
-    /**
-     * Answers each lane independently, and separately for the unnarrowed probe
-     * and the narrowed request, so a test can state exactly which combination
-     * has matches — the only way to tell a resolved lane from a crossed one.
-     */
-    function respondPerLane(
-      unnarrowed: Record<string, ArticleSummaryDto[]>,
-      narrowed: Record<string, ArticleSummaryDto[]> = {},
-    ): void {
-      // Authoritative: drops any queued one-shot answers so the lane tables
-      // below are the only thing deciding what a call returns.
-      mockTecDocClient.searchArticles.mockReset();
-      mockTecDocClient.searchArticles.mockImplementation(
-        (
-          query: string,
-          _vehicleId: string | undefined,
-          _execution: unknown,
-          _page: number,
-          _pageSize: number,
-          filters: { brandIds?: number[]; categoryNodeId?: number },
-        ) => {
-          const isNarrowed = Boolean(
-            filters.brandIds?.length ?? filters.categoryNodeId,
-          );
-
-          return Promise.resolve(
-            pageOf((isNarrowed ? narrowed : unnarrowed)[query] ?? []),
-          );
-        },
+    it('searches the bare number when the query carries a brand token', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WA5432')]),
       );
-    }
-
-    /**
-     * Drops the cached search pages but keeps the lane memo, reproducing the
-     * real stale window: a lane's pages are held under the five-minute miss TTL
-     * (or evicted under memory pressure) while the memo is pinned for an hour.
-     */
-    async function expireSearchPagesKeepingLaneMemo(): Promise<void> {
-      const keys = await redisClient.keys('tecdoc:search:*');
-      const pages = keys.filter(
-        (key) => !key.startsWith('tecdoc:search:lane:'),
-      );
-
-      if (pages.length > 0) {
-        await redisClient.del(...pages);
-      }
-    }
-
-    it('pins the winning lane so a faceted refinement costs one catalogue call', async () => {
-      await primeLaneWithRawQueryWinner();
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WA5432')]),
-      );
-
-      await request(app.getHttpServer())
-        .get(`${SEARCH_URL}&brandIds=4`)
-        .expect(200);
-
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
-        RAW_QUERY,
-        undefined,
-        PART,
-        1,
-        20,
-        { ...NO_FILTERS, brandIds: [4] },
-      );
-    });
-
-    it('pins the winning lane across pages', async () => {
-      await primeLaneWithRawQueryWinner();
-      mockTecDocClient.searchArticles.mockResolvedValueOnce(
-        pageOf([makeArticle('WA5432')], { total: 87, page: 3 }),
-      );
-
-      await request(app.getHttpServer())
-        .get(`${SEARCH_URL}&page=3`)
-        .expect(200);
-
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledWith(
-        RAW_QUERY,
-        undefined,
-        PART,
-        3,
-        20,
-        NO_FILTERS,
-      );
-    });
-
-    // The facets came from the pinned lane, so a combination that empties it is
-    // genuinely empty — answering from the other lane would show articles the
-    // user's selection was never derived from.
-    it('answers an emptied lane with no results rather than crossing lanes', async () => {
-      await primeLaneWithRawQueryWinner();
-      respondPerLane(
-        { [RAW_QUERY]: [makeArticle('WA5432')] },
-        { [STRIPPED_QUERY]: [makeArticle('OTHER-LANE')] },
-      );
-      mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
-
-      const res = await request(app.getHttpServer())
-        .get(`${SEARCH_URL}&brandIds=4&categoryNodeId=100`)
-        .expect(200);
-
-      expect(mockTecDocClient.searchArticles).toHaveBeenCalledTimes(1);
-      expect(res.body.results).toEqual([]);
-      expect(res.body.total).toBe(0);
-    });
-
-    // Which lane a query belongs to must not depend on what Redis happens to
-    // hold. A narrowed request arriving cold — a shared link, a fresh deploy,
-    // an eviction — has to resolve the same lane an unnarrowed one would,
-    // otherwise it answers from a lane the user's facets never came from.
-    it('resolves the lane from an unnarrowed probe when a narrowed request arrives cold', async () => {
-      respondPerLane(
-        { [RAW_QUERY]: [makeArticle('WA5432')] },
-        { [STRIPPED_QUERY]: [makeArticle('WRONG-LANE')] },
-      );
-      mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
-
-      const res = await request(app.getHttpServer())
-        .get(`${SEARCH_URL}&brandIds=4`)
-        .expect(200);
-
-      expect(res.body.results).toEqual([]);
-      expect(res.body.total).toBe(0);
-      expect(mockTecDocClient.searchArticles).not.toHaveBeenCalledWith(
-        STRIPPED_QUERY,
-        undefined,
-        PART,
-        1,
-        20,
-        { ...NO_FILTERS, brandIds: [4] },
-      );
-    });
-
-    // A memo outliving the matches it was written for must cost a slower probe,
-    // never a wrong answer.
-    it('re-resolves the lane when the memoised one has stopped matching', async () => {
-      await primeLaneWithRawQueryWinner();
-      await expireSearchPagesKeepingLaneMemo();
-      respondPerLane({ [STRIPPED_QUERY]: [makeArticle('BACK-ON-LANE-ONE')] });
 
       const res = await request(app.getHttpServer())
         .get(SEARCH_URL)
         .expect(200);
 
-      expect(res.body.results).toEqual([makeArticle('BACK-ON-LANE-ONE')]);
-      expect(res.body.total).toBe(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
+        STRIPPED_QUERY,
+        undefined,
+        PART,
+        NO_FILTERS,
+      );
+      expect(res.body.results).toEqual([makeArticle('WA5432')]);
+    });
+
+    // TecDoc reads a whole number query as one number, so the query as typed
+    // matches nothing a stripped one would not. A miss is a miss.
+    it('does not retry the query as typed when the bare number misses', async () => {
+      mockTecDocClient.enumerate.mockResolvedValue(enumerationOf([]));
+      mockTecDocClient.getAutocompleteArticles.mockResolvedValue([]);
+
+      const res = await request(app.getHttpServer())
+        .get(SEARCH_URL)
+        .expect(200);
+
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('keeps searching the bare number when the visitor narrows the results', async () => {
+      mockTecDocClient.enumerate.mockResolvedValue(
+        enumerationOf([makeArticle('WA5432')]),
+      );
+
+      await request(app.getHttpServer()).get(SEARCH_URL).expect(200);
+      mockTecDocClient.enumerate.mockClear();
+
+      await request(app.getHttpServer())
+        .get(`${SEARCH_URL}&brandIds=4`)
+        .expect(200);
+
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
+        STRIPPED_QUERY,
+        undefined,
+        PART,
+        { ...NO_FILTERS, brandIds: [4] },
+      );
     });
   });
 

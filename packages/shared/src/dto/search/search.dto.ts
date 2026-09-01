@@ -100,6 +100,22 @@ export interface CategoryNavigationDto {
   options: CategoryOptionDto[];
 }
 
+/**
+ * Which order a result page is in, and therefore what the page means.
+ *
+ * - `availability` — ranked by what we can ship: in stock first, then fastest
+ *   delivery band and lowest price. The whole match set was read and ranked, so
+ *   the first page really does hold the parts most likely to be dispatched.
+ * - `catalogue` — TecDoc's own order, because the match set was too wide to
+ *   rank (see `SEARCH_SORTABLE_LIMIT` in the API). Narrowing by brand, product
+ *   type or category brings a search back into `availability`, which is what the
+ *   client tells the visitor.
+ *
+ * A client that ignores this renders a correct list; one that reads it can stop
+ * implying an in-stock-first ordering that a broad search does not have.
+ */
+export type SearchOrdering = 'availability' | 'catalogue';
+
 export type PaginatedSearchArticlesDto = PaginatedCatalogArticlesDto & {
   /**
    * The highest page this query can be paged to, which is **not** always
@@ -133,6 +149,8 @@ export interface SearchResponseDto {
   pageSize: number;
   /** See {@link PaginatedSearchArticlesDto.maxPage} — size the pager from this. */
   maxPage: number;
+  /** Always sent: what the result order means is not optional. */
+  ordering: SearchOrdering;
   facets?: SearchFacetDto[];
   attributes?: AttributeFacetDto[];
   categoryNavigation?: CategoryNavigationDto;

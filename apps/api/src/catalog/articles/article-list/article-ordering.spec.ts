@@ -3,7 +3,7 @@ import {
   WarehouseAvailabilityDto,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
-import { ArticleStatus } from '../../tecdoc';
+import { ArticleStatus } from '../../../tecdoc';
 import { OrderableArticle, orderByAvailability } from './article-ordering';
 
 const BOSCH = '30';

@@ -1,62 +1,81 @@
 import { Logger } from '@nestjs/common';
 import {
+  ArticleInventoryDetailDto,
   ArticleSummaryDto,
   ArticleAutocompleteItemDto,
   AttributeFacetDto,
   BrandDto,
   CategoryAutocompleteItemDto,
   CategoryNavigationDto,
-  PaginatedSearchArticlesDto,
   SearchFacetDto,
+  articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
 import { SearchTecDoc } from './search.tecdoc';
 import { SearchCache } from './search-cache';
-import { SearchLaneResolver } from './search-lane-resolver';
+import { SearchResults } from './search-results';
+import { SearchEnumeration } from './search-enumeration';
 import { AutocompleteService } from './autocomplete.service';
-import { hasActiveFilters, SearchFilters, SearchMode } from './search-types';
+import { SearchMode } from './search-types';
 import { BrandsService } from '../catalog/brands';
+import {
+  ArticleOrderCache,
+  ArticleRowsCache,
+  HydratableArticle,
+} from '../catalog/articles/article-list';
+import { InventoryService } from '../inventory';
+import { ArticleCandidate, ArticleStatus } from '../tecdoc';
 import { RedisCache } from '../redis';
 
-const searchArticlesMock = jest.fn();
+const enumerateMock = jest.fn();
+const readRowsPageMock = jest.fn();
 const getAutocompleteArticlesMock = jest.fn();
 const getAutocompleteTermsMock = jest.fn();
 const getBrandsMock = jest.fn();
-const applyLogosMock = jest.fn();
-const cachedPaginatedMock = jest.fn();
+const attachSearchLogosMock = jest.fn();
+const hydrateMock = jest.fn();
+const availabilityMock = jest.fn();
+const cachedMock = jest.fn();
 const cachedArrayMock = jest.fn();
 const readMemoMock = jest.fn();
 const writeMemoMock = jest.fn();
 
 const mockSearchTecDoc = {
-  searchArticles: searchArticlesMock,
+  enumerate: enumerateMock,
+  readRowsPage: readRowsPageMock,
   getAutocompleteArticles: getAutocompleteArticlesMock,
   getAutocompleteTerms: getAutocompleteTermsMock,
 } as unknown as SearchTecDoc;
 
 const mockBrands = {
   getBrands: getBrandsMock,
-  applyLogosToSearchResults: applyLogosMock,
+  attachSearchLogos: attachSearchLogosMock,
 } as unknown as BrandsService;
+
+// The row cache and the stock read are units of their own with their own specs
+// (article-rows.cache.spec.ts, article-ordering.spec.ts), so they are stubbed
+// here alongside TecDoc and Redis.
+const mockRows = { hydrate: hydrateMock } as unknown as ArticleRowsCache;
+
+const mockInventory = {
+  getAvailabilityForOrdering: availabilityMock,
+} as unknown as InventoryService;
 
 // The cache is transparent in unit tests: each helper simply runs its loader so
 // the assertions below observe the real SearchTecDoc calls and their arguments.
-// A consequence worth keeping in mind while reading the lane tests: the lane
-// probe, which in production almost always answers from Redis, shows up here as
-// a real searchArticles call.
 const mockCache = {
-  cachedPaginated: cachedPaginatedMock,
+  cached: cachedMock,
   cachedArray: cachedArrayMock,
   readMemo: readMemoMock,
   writeMemo: writeMemoMock,
 } as unknown as RedisCache;
 
-// search() defaults its filters param to an empty object, so every
-// searchArticles call carries this as its final argument unless a test supplies
-// explicit facet selections.
+// search() defaults its filters param to an empty object, so every enumerate
+// call carries this as its final argument unless a test supplies explicit facet
+// selections.
 const NO_FILTERS = {};
 
-// The execution objects each SearchMode resolves to (see buildSearchPlan):
+// The execution objects each SearchMode resolves to (see searchCallFor):
 // part_number → prefix_or_suffix number search; part_number_exact → exact
 // number match; generic → free-text (type 99).
 const PART = { type: 10, matchType: 'prefix_or_suffix' } as const;
@@ -66,6 +85,12 @@ const TERM = { type: 99 } as const;
 // The article-autocomplete execution the zero-result recovery always uses,
 // regardless of the search mode.
 const AC_PREFIX = { type: 10, matchType: 'prefix' } as const;
+
+const EMPTY_NAVIGATION: CategoryNavigationDto = {
+  current: null,
+  ancestors: [],
+  options: [],
+};
 
 function articleItem(
   articleNumber: string,
@@ -84,20 +109,91 @@ function articleItem(
   };
 }
 
-function pageOf(
+function articleItems(count: number): ArticleSummaryDto[] {
+  return Array.from({ length: count }, (_unused, index) =>
+    articleItem(`WL${6000 + index}`),
+  );
+}
+
+/**
+ * The rows TecDoc would answer for the articles a test put in its match set,
+ * keyed the way hydration asks for them.
+ *
+ * Hydration is given an identity and nothing else — a stored ordering carries
+ * nothing else — so a row's own fields have to come from the set the test
+ * declared rather than from what `hydrate` was handed.
+ */
+const rowsByIdentity = new Map<string, ArticleSummaryDto>();
+
+/**
+ * The candidate TecDoc's whole-set read would answer with for a row — the
+ * identity-only shape the ordering ranks and the row cache hydrates from.
+ */
+function candidateOf(item: ArticleSummaryDto): ArticleCandidate {
+  rowsByIdentity.set(
+    articleIdentityKey(item.brandId, item.articleNumber),
+    item,
+  );
+
+  return {
+    brandId: item.brandId,
+    brandName: item.brandName,
+    articleNumber: item.articleNumber,
+    description: item.description,
+    legacyArticleIds: [1],
+    articleStatusId: ArticleStatus.Normal,
+  };
+}
+
+function enumerationOf(
   items: ArticleSummaryDto[],
-  overrides: Partial<PaginatedSearchArticlesDto> = {},
-): PaginatedSearchArticlesDto {
+  overrides: Partial<SearchEnumeration> = {},
+): SearchEnumeration {
   return {
     total: items.length,
-    page: 1,
-    pageSize: 20,
-    maxPage: Math.ceil(items.length / 20),
-    items,
+    candidates: items.map(candidateOf),
     facets: [],
     attributes: [],
-    categoryNavigation: { current: null, ancestors: [], options: [] },
+    categoryNavigation: EMPTY_NAVIGATION,
     ...overrides,
+  };
+}
+
+/**
+ * A match set too wide to rank, as the enumeration stores it: the total, the
+ * facets and the navigation, with the candidates dropped.
+ */
+function wideEnumerationOf(
+  total: number,
+  overrides: Partial<SearchEnumeration> = {},
+): SearchEnumeration {
+  return {
+    total,
+    candidates: [],
+    facets: [],
+    attributes: [],
+    categoryNavigation: EMPTY_NAVIGATION,
+    ...overrides,
+  };
+}
+
+function inStock(bestPriceIncVat: number): ArticleInventoryDetailDto {
+  return {
+    available: true,
+    bestPriceExVat: Math.round(bestPriceIncVat / 1.2),
+    bestPriceIncVat,
+    availabilityByWarehouse: [
+      {
+        warehouseId: 'CENTRAL',
+        quantity: 2,
+        deliveryWorkDays: 0,
+        orderCutoffTime: '17:00',
+        cutoffAt: '2026-08-23T14:00:00.000Z',
+        pickup: { earliestAt: '2026-08-23T15:00:00.000Z', granularity: 'HOUR' },
+        courier: { earliestAt: '2026-08-24T06:00:00.000Z', granularity: 'DAY' },
+      },
+    ],
+    computedAt: '2026-08-23T12:00:00.000Z',
   };
 }
 
@@ -130,13 +226,14 @@ const BRANDS: BrandDto[] = [
   { brandId: '72', brandName: 'MANN-FILTER', logoUrl: null },
 ];
 
-// SearchService is exercised over its real collaborators (cache → lane resolver
-// → autocomplete) rather than mocks of them: the seams between those four are
-// pure plumbing, so mocking them would assert the plumbing instead of the
-// behaviour. Only the edges — TecDoc, brands and Redis — are stubbed, which is
-// what lets these tests assert the actual TecDoc calls a search produces. The
-// units with logic of their own are covered directly in search-plan.spec.ts,
-// search-cache-keys.spec.ts and autocomplete.service.spec.ts.
+// SearchService is exercised over its real collaborators (cache → results →
+// autocomplete) rather than mocks of them: the seams between those are pure
+// plumbing, so mocking them would assert the plumbing instead of the behaviour.
+// Only the edges — TecDoc, brands, stock, the row cache and Redis — are
+// stubbed, which is what lets these tests assert the actual TecDoc calls a
+// search produces. The units with logic of their own are covered directly in
+// search-call.spec.ts, search-cache-keys.spec.ts, search-enumeration.spec.ts,
+// search-results.spec.ts and autocomplete.service.spec.ts.
 describe('SearchService', () => {
   let service: SearchService;
 
@@ -145,81 +242,91 @@ describe('SearchService', () => {
     // The cache helpers are transparent (run the loader) and the brand-logo join
     // is an identity passthrough, so tests observe the raw SearchTecDoc results
     // and calls.
-    cachedPaginatedMock.mockImplementation(
-      (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
-        loader(),
+    cachedMock.mockImplementation(
+      (_key: string, _ttl: number, loader: () => unknown) => loader(),
     );
     cachedArrayMock.mockImplementation(
       (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
         loader(),
     );
-    applyLogosMock.mockImplementation((results: unknown) =>
-      Promise.resolve(results),
+    attachSearchLogosMock.mockImplementation((join: unknown) =>
+      Promise.resolve(join),
     );
-    // Default: a cold lane memo, so every search probes the plan in its natural
-    // order.
+    // Hydration answers each identity with the row the test's match set declared
+    // for it, so a set built from articleItem() round-trips back to the same
+    // rows.
+    rowsByIdentity.clear();
+    hydrateMock.mockImplementation((articles: HydratableArticle[]) =>
+      Promise.resolve(
+        articles.map(
+          (article) =>
+            rowsByIdentity.get(
+              articleIdentityKey(article.brandId, article.articleNumber),
+            ) ??
+            articleItem(article.articleNumber, { brandId: article.brandId }),
+        ),
+      ),
+    );
+    // Default: no stock read, so the ordering degrades to catalogue data and the
+    // fixtures come back in the order they were written.
+    availabilityMock.mockResolvedValue(null);
+    // Default: a cold order memo, so every search ranks its set afresh.
     readMemoMock.mockResolvedValue(undefined);
     writeMemoMock.mockResolvedValue(undefined);
     // Default: no brand dictionary, so the query is searched as typed unless a
     // test opts into brand stripping by returning brands.
     getBrandsMock.mockResolvedValue([]);
 
-    const searchCache = new SearchCache(
-      mockSearchTecDoc,
-      mockBrands,
-      mockCache,
-    );
+    const searchCache = new SearchCache(mockSearchTecDoc, mockCache);
     service = new SearchService(
-      new SearchLaneResolver(searchCache),
+      searchCache,
+      new SearchResults(
+        searchCache,
+        new ArticleOrderCache(mockCache, mockInventory),
+        mockRows,
+      ),
       new AutocompleteService(searchCache),
       mockBrands,
     );
   });
 
   describe('search — part-number mode (default)', () => {
-    it('resolves a query that hits the number lane in a single call', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')]),
+    it('answers the query with a single number call', async () => {
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
       await service.search('WL634');
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WL634',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
-    it('does not fall back to free-text when the number lane misses', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+    // A descriptive query belongs in generic mode. Answering it here from
+    // free-text would serve two visitors on the same mode from different
+    // relations depending only on whether their query looked like a number.
+    it('does not fall back to free-text when the number misses', async () => {
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search('oil filter');
 
-      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([PART]);
-      expect(executions).not.toContainEqual(TERM);
-    });
-
-    it('does not fall back to free-text once the number lane hits', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
-
-      await service.search('WL6340');
-
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
       expect(executions).not.toContainEqual(TERM);
     });
   });
 
   describe('search — exact mode (part_number_exact)', () => {
     it('issues a single exact number call over the raw query', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340')]),
+      );
 
       await service.search(
         'WL6340',
@@ -230,20 +337,20 @@ describe('SearchService', () => {
         SearchMode.PartNumberExact,
       );
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WL6340',
         undefined,
         EXACT,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('does not strip the brand token in exact mode', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WA5432')]));
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WA5432')]),
+      );
 
       await service.search(
         'WA5432 WIX',
@@ -254,19 +361,17 @@ describe('SearchService', () => {
         SearchMode.PartNumberExact,
       );
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432 WIX',
         undefined,
         EXACT,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('never issues a free-text fallback in exact mode, even when it misses', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search(
@@ -278,14 +383,14 @@ describe('SearchService', () => {
         SearchMode.PartNumberExact,
       );
 
-      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([EXACT]);
     });
   });
 
   describe('search — generic mode (free-text)', () => {
     it('issues a single free-text (type 99) call over the raw query', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+      enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
       await service.search(
         'oil filter',
@@ -296,19 +401,17 @@ describe('SearchService', () => {
         SearchMode.Generic,
       );
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'oil filter',
         undefined,
         TERM,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
-    it('does not run the number lane in generic mode', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+    it('never runs a number search in generic mode', async () => {
+      enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
       await service.search(
         'oil filter',
@@ -319,13 +422,13 @@ describe('SearchService', () => {
         SearchMode.Generic,
       );
 
-      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
+      const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([TERM]);
     });
 
     it('does not strip the brand token in generic mode', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+      enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
       await service.search(
         'oil filter bosch',
@@ -336,19 +439,17 @@ describe('SearchService', () => {
         SearchMode.Generic,
       );
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'oil filter bosch',
         undefined,
         TERM,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('issues no fallback when the free-text call misses', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search(
@@ -360,25 +461,23 @@ describe('SearchService', () => {
         SearchMode.Generic,
       );
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('search — brand stripping for number searches', () => {
     it('strips a trailing brand token and searches the bare number', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
       );
 
       const result = await service.search('WA5432 WIX');
 
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
       expect(result.results).toEqual([
@@ -388,405 +487,197 @@ describe('SearchService', () => {
 
     it('strips a leading brand token', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
       );
 
       await service.search('WIX WA5432');
 
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('never strips punctuation from inside the number', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL-6340/A', { brandName: 'WIX Filters' })]),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL-6340/A', { brandName: 'WIX Filters' })]),
       );
 
       await service.search('WL-6340/A WIX');
 
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WL-6340/A',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
-    it('falls back to the raw query when the brand-stripped query misses', async () => {
+    // The stripped token could have been part of the number, and a second call
+    // over the raw query used to cover that. It never answered anything the
+    // stripped call could not — `prefix_or_suffix` matches a number by its tail
+    // — so a miss is now a miss.
+    it('does not retry the raw query when the stripped one misses', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
-        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw prefix_or_suffix
+      enumerateMock.mockResolvedValue(enumerationOf([]));
+      getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      await service.search('WIX WA5432');
+      const result = await service.search('WIX WA5432');
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        1,
+      expect(result.total).toBe(0);
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432',
         undefined,
         PART,
-        1,
-        20,
-        NO_FILTERS,
-      );
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        2,
-        'WIX WA5432',
-        undefined,
-        PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
-    it('runs both number candidates and does not fall back to free-text when everything misses', async () => {
+    it('does not fall back to free-text when the number misses', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
       await service.search('WIX WA5432');
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
-      const executions = searchArticlesMock.mock.calls.map((call) => call[2]);
-      expect(executions).toEqual([PART, PART]);
+      const executions = enumerateMock.mock.calls.map((call) => call[2]);
+      expect(executions).toEqual([PART]);
       expect(executions).not.toContainEqual(TERM);
-    });
-
-    it('preserves TecDoc native order (no ranking)', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([
-          articleItem('B1', { brandName: 'Bosch' }),
-          articleItem('W1', { brandName: 'WIX Filters' }),
-          articleItem('W2', { brandName: 'WIX Filters' }),
-        ]),
-      );
-
-      const result = await service.search('WA5432');
-
-      expect(result.results?.map((r) => r.articleNumber)).toEqual([
-        'B1',
-        'W1',
-        'W2',
-      ]);
     });
   });
 
-  // Only a part-number search whose brand token was stripped produces a
-  // two-lane plan, so every test here searches "WIX WA5432" against the brand
-  // dictionary: lane 1 is the bare number, lane 2 the raw query.
-  describe('search — lane resolution', () => {
-    const STRIPPED_LANE = 'WA5432';
-    const RAW_LANE = 'WIX WA5432';
-    const LANE_KEY = expect.stringMatching(/^tecdoc:search:lane:[a-f0-9]{64}$/);
-    const LANE_TTL = 3600;
-
-    beforeEach(() => {
-      getBrandsMock.mockResolvedValue(BRANDS);
-    });
-
-    /**
-     * Answers each lane independently, and separately for the unnarrowed probe
-     * and the narrowed request. Stating both halves is the only way to tell a
-     * correctly resolved lane from a crossed one: a crossing shows up as the
-     * narrowed answer coming from a lane the unnarrowed probe never picked.
-     */
-    function respondPerLane(
-      unnarrowed: Record<string, ArticleSummaryDto[]>,
-      narrowed: Record<string, ArticleSummaryDto[]> = {},
-    ): void {
-      searchArticlesMock.mockImplementation(
-        (
-          query: string,
-          _vehicleId: number | undefined,
-          _execution: unknown,
-          _page: number,
-          _pageSize: number,
-          filters: SearchFilters,
-        ) =>
-          Promise.resolve(
-            pageOf(
-              (hasActiveFilters(filters) ? narrowed : unnarrowed)[query] ?? [],
-            ),
-          ),
+  // The point of enumerating a set whole: a visitor searching for a part is
+  // shown what we can actually ship first. Which rows outrank which is settled
+  // in article-ordering.spec.ts — what matters here is that a search goes
+  // through it and says so in the response.
+  describe('search — ordering a set we can rank', () => {
+    it('ranks what is in stock ahead of what is not', async () => {
+      const wanted = articleItem('W-STOCKED');
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('A-NO-STOCK'), wanted]),
       );
-    }
-
-    function callsFor(query: string): unknown[][] {
-      return (searchArticlesMock.mock.calls as unknown[][]).filter(
-        (call) => call[0] === query,
-      );
-    }
-
-    it('probes both lanes and answers from the first with matches', async () => {
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // WA5432 misses
-        .mockResolvedValueOnce(pageOf([articleItem(RAW_LANE)]));
-
-      const result = await service.search(RAW_LANE);
-
-      expect(result.results).toEqual([articleItem(RAW_LANE)]);
-      expect(writeMemoMock).toHaveBeenCalledWith(LANE_KEY, RAW_LANE, LANE_TTL);
-    });
-
-    // The probe fetches exactly the unnarrowed first page, so a request for
-    // that page is already answered and must not pay for a second lookup.
-    it('answers an unnarrowed first page from the probe itself', async () => {
-      searchArticlesMock.mockResolvedValue(
-        pageOf([articleItem(STRIPPED_LANE)]),
+      availabilityMock.mockResolvedValue(
+        new Map([
+          [
+            articleIdentityKey(wanted.brandId, wanted.articleNumber),
+            inStock(42),
+          ],
+        ]),
       );
 
-      const result = await service.search(RAW_LANE);
+      const result = await service.search('WL634');
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(result.results).toEqual([articleItem(STRIPPED_LANE)]);
-      expect(writeMemoMock).toHaveBeenCalledWith(
-        LANE_KEY,
-        STRIPPED_LANE,
-        LANE_TTL,
-      );
-    });
-
-    it('pins the winning lane so the losing call is never repeated', async () => {
-      readMemoMock.mockResolvedValue(RAW_LANE);
-      respondPerLane({ [RAW_LANE]: [articleItem(RAW_LANE)] });
-
-      await service.search(RAW_LANE);
-
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(callsFor(STRIPPED_LANE)).toHaveLength(0);
-      expect(writeMemoMock).not.toHaveBeenCalled();
-    });
-
-    it('narrows only the lane the probe resolved', async () => {
-      readMemoMock.mockResolvedValue(RAW_LANE);
-      respondPerLane(
-        { [RAW_LANE]: [articleItem(RAW_LANE)] },
-        { [RAW_LANE]: [articleItem(RAW_LANE)] },
-      );
-
-      const filters = { brandIds: [4] };
-      await service.search(RAW_LANE, undefined, 1, 20, filters);
-
-      expect(callsFor(STRIPPED_LANE)).toHaveLength(0);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
-        RAW_LANE,
-        undefined,
-        PART,
-        1,
-        20,
-        filters,
-      );
-    });
-
-    // The lane must be a property of the query, not of whatever Redis happens
-    // to hold: a narrowed request arriving on a cold memo — a shared link, a
-    // fresh deploy, an eviction — has to resolve the same lane an unnarrowed
-    // one would, or it answers from a lane the user never saw.
-    it('resolves the lane from an unnarrowed probe when a narrowed request arrives cold', async () => {
-      respondPerLane(
-        { [RAW_LANE]: [articleItem(RAW_LANE)] },
-        { [STRIPPED_LANE]: [articleItem('WRONG-LANE')] },
-      );
-      getAutocompleteArticlesMock.mockResolvedValue([]);
-
-      const result = await service.search(RAW_LANE, undefined, 1, 20, {
-        brandIds: [4],
-      });
-
-      expect(result.total).toBe(0);
-      expect(result.results).toEqual([]);
-      expect(callsFor(STRIPPED_LANE)).toEqual([
-        [STRIPPED_LANE, undefined, PART, 1, 20, NO_FILTERS],
+      expect(result.results?.map((row) => row.articleNumber)).toEqual([
+        'W-STOCKED',
+        'A-NO-STOCK',
       ]);
+      expect(result.ordering).toBe('availability');
     });
 
-    it('keeps the caller page, page size and filters out of the probe', async () => {
-      respondPerLane(
-        { [STRIPPED_LANE]: [articleItem(STRIPPED_LANE)] },
-        { [STRIPPED_LANE]: [articleItem(STRIPPED_LANE)] },
-      );
+    it('reads stock for the whole enumerated set, not just the page', async () => {
+      enumerateMock.mockResolvedValueOnce(enumerationOf(articleItems(30)));
 
-      await service.search(RAW_LANE, undefined, 2, 50, {
-        brandIds: [4],
-        categoryNodeId: 100,
+      await service.search('WL634', undefined, 1, 20);
+
+      expect(availabilityMock).toHaveBeenCalledWith(
+        expect.arrayContaining([{ brandId: '268', articleNumber: 'WL6029' }]),
+      );
+      expect(availabilityMock.mock.calls[0][0]).toHaveLength(30);
+    });
+
+    // The hydrated row is roughly ten times a candidate, so only the page a
+    // visitor reached is paid for.
+    it('hydrates only the page it serves', async () => {
+      enumerateMock.mockResolvedValueOnce(enumerationOf(articleItems(30)));
+
+      await service.search('WL634', undefined, 1, 20);
+
+      expect(hydrateMock.mock.calls[0][0]).toHaveLength(20);
+    });
+
+    // Two page turns ranked against two stock reads are not two pages of one
+    // list: a part whose last unit sold in between drops a place, and the
+    // visitor sees the row above it twice and the row below it never. So the
+    // order the first page was cut from is what the second page is cut from too,
+    // even once stock has moved under it.
+    it('cuts the next page from the order the first one was served in', async () => {
+      const memos = new Map<string, unknown>();
+      readMemoMock.mockImplementation((key: string) =>
+        Promise.resolve(memos.get(key)),
+      );
+      writeMemoMock.mockImplementation((key: string, value: unknown) => {
+        memos.set(key, value);
+        return Promise.resolve();
       });
-
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        1,
-        STRIPPED_LANE,
-        undefined,
-        PART,
-        1,
-        20,
-        NO_FILTERS,
+      const set = [
+        articleItem('FIRST'),
+        articleItem('SECOND'),
+        articleItem('THIRD'),
+      ];
+      enumerateMock.mockResolvedValue(enumerationOf(set));
+      availabilityMock.mockResolvedValue(
+        new Map([[articleIdentityKey('268', 'THIRD'), inStock(42)]]),
       );
+
+      const first = await service.search('WL634', undefined, 1, 1);
+      // The part that ranked first has since sold out, and another came in.
+      availabilityMock.mockResolvedValue(
+        new Map([[articleIdentityKey('268', 'SECOND'), inStock(42)]]),
+      );
+      const second = await service.search('WL634', undefined, 2, 1);
+
+      expect(first.results?.map((row) => row.articleNumber)).toEqual(['THIRD']);
+      expect(second.results?.map((row) => row.articleNumber)).toEqual([
+        'FIRST',
+      ]);
+      expect(availabilityMock).toHaveBeenCalledTimes(1);
     });
+  });
 
-    // The user picked their facets from the resolved lane's result set, so a
-    // combination that empties it must read as "no results" — not as articles
-    // from a lane they never saw.
-    it('reports no results instead of crossing lanes when a filter empties the resolved lane', async () => {
-      readMemoMock.mockResolvedValue(STRIPPED_LANE);
-      respondPerLane(
-        { [STRIPPED_LANE]: [articleItem(STRIPPED_LANE)] },
-        { [RAW_LANE]: [articleItem('WRONG-LANE')] },
-      );
-      getAutocompleteArticlesMock.mockResolvedValue([]);
-
-      const result = await service.search(RAW_LANE, undefined, 1, 20, {
-        brandIds: [4],
-        categoryNodeId: 100,
+  // Ranking a truncated set would promise "in stock first" over an arbitrary
+  // thousand of a million matches, so a set this wide is served in TecDoc's own
+  // order from a page read instead.
+  describe('search — a match set too wide to rank', () => {
+    beforeEach(() => {
+      enumerateMock.mockResolvedValue(wideEnumerationOf(5000));
+      readRowsPageMock.mockResolvedValue({
+        items: [articleItem('WL6340')],
+        maxAllowedPage: 200,
       });
-
-      expect(result.total).toBe(0);
-      expect(result.results).toEqual([]);
-      expect(callsFor(RAW_LANE)).toHaveLength(0);
     });
 
-    // A memo outliving the matches it was written for must cost a slower probe,
-    // never a wrong answer.
-    it('falls back to the other lane when the memoised one has gone empty', async () => {
-      readMemoMock.mockResolvedValue(STRIPPED_LANE);
-      respondPerLane({ [RAW_LANE]: [articleItem(RAW_LANE)] });
+    it('reads the requested page and labels it as the catalogue order', async () => {
+      const result = await service.search('филтър', undefined, 3, 20);
 
-      const result = await service.search(RAW_LANE);
-
-      expect(result.results).toEqual([articleItem(RAW_LANE)]);
-      expect(writeMemoMock).toHaveBeenCalledWith(LANE_KEY, RAW_LANE, LANE_TTL);
-    });
-
-    it('paginates the resolved lane without touching the other one', async () => {
-      readMemoMock.mockResolvedValue(RAW_LANE);
-      searchArticlesMock.mockImplementation(
-        (
-          query: string,
-          _vehicleId: number | undefined,
-          _execution: unknown,
-          page: number,
-        ) =>
-          Promise.resolve(
-            query === RAW_LANE
-              ? pageOf([articleItem(RAW_LANE)], { total: 87, page })
-              : pageOf([]),
-          ),
-      );
-
-      await service.search(RAW_LANE, undefined, 3, 20);
-
-      expect(callsFor(STRIPPED_LANE)).toHaveLength(0);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
-        RAW_LANE,
+      expect(readRowsPageMock).toHaveBeenCalledWith(
+        'филтър',
         undefined,
         PART,
         3,
         20,
         NO_FILTERS,
       );
+      expect(result.results).toEqual([articleItem('WL6340')]);
+      expect(result.ordering).toBe('catalogue');
     });
 
-    it('uses one lane key across pages and filter combinations', async () => {
-      searchArticlesMock.mockResolvedValue(
-        pageOf([articleItem(STRIPPED_LANE)]),
-      );
+    it('takes maxPage from TecDoc\u2019s own paging ceiling', async () => {
+      const result = await service.search('филтър', undefined, 3, 20);
 
-      await service.search(RAW_LANE, undefined, 1, 20, { brandIds: [4] });
-      await service.search(RAW_LANE, undefined, 3, 50, {
-        categoryNodeId: 100,
-      });
-
-      expect(readMemoMock.mock.calls[0][0]).toBe(readMemoMock.mock.calls[1][0]);
+      expect(result.total).toBe(5000);
+      expect(result.maxPage).toBe(200);
     });
 
-    it('shares one lane key between equivalent query casings', async () => {
-      searchArticlesMock.mockResolvedValue(
-        pageOf([articleItem(STRIPPED_LANE)]),
-      );
+    it('neither reads stock nor hydrates rows of its own', async () => {
+      await service.search('филтър');
 
-      await service.search(RAW_LANE);
-      await service.search('wix wa5432');
-
-      expect(readMemoMock.mock.calls[0][0]).toBe(readMemoMock.mock.calls[1][0]);
-    });
-
-    it('keys the lane per vehicle scope', async () => {
-      searchArticlesMock.mockResolvedValue(
-        pageOf([articleItem(STRIPPED_LANE)]),
-      );
-
-      await service.search(RAW_LANE);
-      await service.search(RAW_LANE, 10042);
-
-      expect(readMemoMock.mock.calls[0][0]).not.toBe(
-        readMemoMock.mock.calls[1][0],
-      );
-    });
-
-    it('probes the whole plan when the memo no longer matches it', async () => {
-      readMemoMock.mockResolvedValue('AN-OLD-LANE');
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([]))
-        .mockResolvedValueOnce(pageOf([articleItem(RAW_LANE)]));
-
-      await service.search(RAW_LANE);
-
-      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
-    });
-
-    // The probe is unnarrowed whatever the request carried, so the lane it
-    // resolves is the query's own and is safe to pin for everyone else.
-    it('memoises the query lane even when the request that resolved it was narrowed', async () => {
-      respondPerLane({ [RAW_LANE]: [articleItem(RAW_LANE)] });
-      getAutocompleteArticlesMock.mockResolvedValue([]);
-
-      await service.search(RAW_LANE, undefined, 1, 20, { brandIds: [4] });
-
-      expect(writeMemoMock).toHaveBeenCalledWith(LANE_KEY, RAW_LANE, LANE_TTL);
-    });
-
-    it('does not memoise when every lane misses', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
-      getAutocompleteArticlesMock.mockResolvedValue([]);
-
-      await service.search(RAW_LANE);
-
-      expect(writeMemoMock).not.toHaveBeenCalled();
-    });
-
-    it('leaves the lane cache untouched for a single-lane plan', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
-
-      await service.search('WL634');
-
-      expect(readMemoMock).not.toHaveBeenCalled();
-      expect(writeMemoMock).not.toHaveBeenCalled();
-    });
-
-    it('leaves the lane cache untouched in generic mode', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
-
-      await service.search(
-        'oil filter bosch',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.Generic,
-      );
-
-      expect(readMemoMock).not.toHaveBeenCalled();
-      expect(writeMemoMock).not.toHaveBeenCalled();
+      expect(availabilityMock).not.toHaveBeenCalled();
+      expect(hydrateMock).not.toHaveBeenCalled();
     });
   });
 
@@ -823,9 +714,9 @@ describe('SearchService', () => {
       ],
     };
 
-    it('surfaces the winning tier facets, attributes and category navigation', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')], {
+    it('surfaces the enumerated facets, attributes and category navigation', async () => {
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')], {
           facets,
           attributes,
           categoryNavigation,
@@ -839,9 +730,9 @@ describe('SearchService', () => {
       expect(result.categoryNavigation).toEqual(categoryNavigation);
     });
 
-    it('omits facets, attributes and category navigation when the winning tier has none', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')]),
+    it('omits facets, attributes and category navigation when the set has none', async () => {
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
       const result = await service.search('WL634');
@@ -851,9 +742,24 @@ describe('SearchService', () => {
       expect(result).not.toHaveProperty('categoryNavigation');
     });
 
+    // The attribute block describes the whole match set, so page 2 would repeat
+    // page 1's verbatim; the client keeps the one it was given while paging.
+    it('omits the attributes once the visitor has paged past the first page', async () => {
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf(articleItems(30), { facets, attributes }),
+      );
+
+      const result = await service.search('WL634', undefined, 2, 20);
+
+      expect(result.facets).toEqual(facets);
+      expect(result).not.toHaveProperty('attributes');
+    });
+
     it('forwards the active brand/category/criteria selections to the catalog', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')], { facets }),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')], {
+          facets,
+        }),
       );
 
       const filters = {
@@ -863,19 +769,17 @@ describe('SearchService', () => {
       };
       await service.search('WL634', undefined, 1, 20, filters);
 
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WL634',
         undefined,
         PART,
-        1,
-        20,
         filters,
       );
     });
 
     it('returns the single filtered result as a list', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340')], { facets }),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340')], { facets }),
       );
 
       const result = await service.search('WL6340', undefined, 1, 20, {
@@ -889,7 +793,9 @@ describe('SearchService', () => {
 
   describe('search — single result stays on the list', () => {
     it('returns a one-item list for a single match on the typed query', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340')]),
+      );
 
       const result = await service.search('WL6340');
 
@@ -899,7 +805,7 @@ describe('SearchService', () => {
     });
 
     it('returns a one-item list for a single free-text hit in generic mode', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('OF1')]));
+      enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
       const result = await service.search(
         'oil filter mann',
@@ -913,11 +819,11 @@ describe('SearchService', () => {
       expect(result.results).toHaveLength(1);
     });
 
-    it('returns a one-item list when the single hit comes from the raw-query fallback', async () => {
+    it('returns a one-item list when the single hit came from a stripped query', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
-        .mockResolvedValueOnce(pageOf([articleItem('WIX WA5432')])); // raw prefix_or_suffix
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
+      );
 
       const result = await service.search('WIX WA5432');
 
@@ -926,66 +832,58 @@ describe('SearchService', () => {
   });
 
   describe('search — pagination', () => {
-    it('passes page and pageSize through and echoes them in the response', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')], {
-          total: 87,
-          page: 2,
-          pageSize: 10,
-        }),
-      );
+    it('serves the requested slice of the ranked set and echoes the paging', async () => {
+      enumerateMock.mockResolvedValueOnce(enumerationOf(articleItems(25)));
 
       const result = await service.search('WL634', undefined, 2, 10);
 
-      expect(searchArticlesMock).toHaveBeenCalledWith(
-        'WL634',
-        undefined,
-        PART,
-        2,
-        10,
-        NO_FILTERS,
-      );
-      expect(result.total).toBe(87);
+      expect(result.total).toBe(25);
       expect(result.page).toBe(2);
       expect(result.pageSize).toBe(10);
-      expect(result.results).toHaveLength(2);
+      expect(result.maxPage).toBe(3);
+      expect(result.results?.map((row) => row.articleNumber)).toEqual(
+        articleItems(20)
+          .slice(10)
+          .map((row) => row.articleNumber),
+      );
     });
 
-    it('uses the shorter empty-page TTL', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([]));
+    it('uses the shorter empty-set TTL', async () => {
+      enumerateMock.mockResolvedValueOnce(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValueOnce([]);
 
       await service.search('NO-MATCH');
 
-      expect(cachedPaginatedMock).toHaveBeenCalledWith(
-        expect.stringMatching(/^tecdoc:search:[a-f0-9]{64}$/),
+      expect(cachedMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^tecdoc:search:set:[a-f0-9]{64}$/),
         3600,
-        300,
         expect.any(Function),
+        { missTtl: 300, isEmpty: expect.any(Function) },
       );
     });
   });
 
   describe('search — query handling', () => {
     it('sends the query to TecDoc as typed, only trimming whitespace', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('06J 115 403 Q'), articleItem('06J 115 403 C')]),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([
+          articleItem('06J 115 403 Q'),
+          articleItem('06J 115 403 C'),
+        ]),
       );
 
       await service.search('  06J 115 403 Q  ');
 
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledWith(
         '06J 115 403 Q',
         undefined,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('uses one cache key for equivalent query and filter ordering', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
+      enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
 
       await service.search('wl634', undefined, 1, 20, {
         brandIds: [8, 4],
@@ -1002,15 +900,24 @@ describe('SearchService', () => {
         ],
       });
 
-      expect(cachedPaginatedMock.mock.calls[0][0]).toBe(
-        cachedPaginatedMock.mock.calls[1][0],
-      );
+      expect(cachedMock.mock.calls[0][0]).toBe(cachedMock.mock.calls[1][0]);
+    });
+
+    // One enumeration answers every page of a search, so the page must not
+    // reach the key at all.
+    it('uses one cache key across the pages of one search', async () => {
+      enumerateMock.mockResolvedValue(enumerationOf(articleItems(30)));
+
+      await service.search('WL634', undefined, 1, 20);
+      await service.search('WL634', undefined, 2, 20);
+
+      expect(cachedMock.mock.calls[0][0]).toBe(cachedMock.mock.calls[1][0]);
     });
 
     // The hint changes which facets TecDoc is asked for, so the two payloads are
     // not interchangeable and must not share a cache entry.
     it('keys a leaf and a non-leaf category search separately', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
+      enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
 
       await service.search('WL634', undefined, 1, 20, {
         categoryNodeId: 100,
@@ -1021,15 +928,13 @@ describe('SearchService', () => {
         categoryHasChildren: true,
       });
 
-      expect(cachedPaginatedMock.mock.calls[0][0]).not.toBe(
-        cachedPaginatedMock.mock.calls[1][0],
-      );
+      expect(cachedMock.mock.calls[0][0]).not.toBe(cachedMock.mock.calls[1][0]);
     });
 
     // Both resolve to "do not request the criteria facets", so they produce
     // identical payloads and should share one entry rather than double-caching.
     it('shares one cache key between an absent hint and a non-leaf hint', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([articleItem('WL6340')]));
+      enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
 
       await service.search('WL634', undefined, 1, 20, {
         categoryNodeId: 100,
@@ -1039,14 +944,12 @@ describe('SearchService', () => {
         categoryHasChildren: true,
       });
 
-      expect(cachedPaginatedMock.mock.calls[0][0]).toBe(
-        cachedPaginatedMock.mock.calls[1][0],
-      );
+      expect(cachedMock.mock.calls[0][0]).toBe(cachedMock.mock.calls[1][0]);
     });
 
     it('returns a paginated result list when multiple articles match', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([
           articleItem('WL6340'),
           articleItem('WL6341', { description: 'Oil Filter Heavy Duty' }),
         ]),
@@ -1064,7 +967,7 @@ describe('SearchService', () => {
     });
 
     it('returns an empty result list and suggestions when nothing matches', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValueOnce([
         suggestionItem('XXXX900'),
       ]);
@@ -1077,8 +980,8 @@ describe('SearchService', () => {
     });
 
     it('omits suggestions when results are found', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')]),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
       const result = await service.search('WL634');
@@ -1087,19 +990,17 @@ describe('SearchService', () => {
     });
 
     it('scopes the main search to the vehicle and does not run a second lookup', async () => {
-      searchArticlesMock.mockResolvedValueOnce(
-        pageOf([articleItem('WL6340'), articleItem('WL6341')]),
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
       const result = await service.search('WL634', 10042);
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(1);
-      expect(searchArticlesMock).toHaveBeenCalledWith(
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WL634',
         10042,
         PART,
-        1,
-        20,
         NO_FILTERS,
       );
       expect(result.results?.map((r) => r.articleNumber)).toEqual([
@@ -1108,39 +1009,27 @@ describe('SearchService', () => {
       ]);
     });
 
-    it('keeps the vehicle scope across the raw-query fallback', async () => {
+    it('keeps the vehicle scope on a brand-stripped query', async () => {
       getBrandsMock.mockResolvedValue(BRANDS);
-      searchArticlesMock
-        .mockResolvedValueOnce(pageOf([])) // WA5432 prefix_or_suffix
-        .mockResolvedValueOnce(
-          pageOf([articleItem('WL6340'), articleItem('WL6341')]),
-        ); // raw prefix_or_suffix
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
+      );
 
       await service.search('WIX WA5432', 10042);
 
-      expect(searchArticlesMock).toHaveBeenCalledTimes(2);
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        1,
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432',
         10042,
         PART,
-        1,
-        20,
-        NO_FILTERS,
-      );
-      expect(searchArticlesMock).toHaveBeenNthCalledWith(
-        2,
-        'WIX WA5432',
-        10042,
-        PART,
-        1,
-        20,
         NO_FILTERS,
       );
     });
 
     it('returns a one-item list on a single match even when a vehicleId is provided', async () => {
-      searchArticlesMock.mockResolvedValueOnce(pageOf([articleItem('WL6340')]));
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340')]),
+      );
 
       const result = await service.search('WL6340', 10042);
 
@@ -1151,7 +1040,7 @@ describe('SearchService', () => {
 
   describe('search — zero-result suggestions', () => {
     it('fetches suggestions using the first 5 chars of the query', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValueOnce([]);
 
       await service.search('WL6340');
@@ -1163,7 +1052,7 @@ describe('SearchService', () => {
     });
 
     it('does not fetch suggestions when the query is shorter than 3 chars', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
 
       await service.search('WL');
 
@@ -1171,7 +1060,7 @@ describe('SearchService', () => {
     });
 
     it('logs a structured zero-result entry recording the vehicle scope', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
       const logSpy = jest
         .spyOn(Logger.prototype, 'log')
@@ -1190,7 +1079,7 @@ describe('SearchService', () => {
     });
 
     it('keeps only article suggestions on the zero-result recovery path', async () => {
-      searchArticlesMock.mockResolvedValue(pageOf([]));
+      enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValueOnce([
         suggestionItem('WL630'),
         categorySuggestionItem('1'),

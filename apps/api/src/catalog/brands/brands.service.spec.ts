@@ -1,8 +1,4 @@
-import {
-  BrandDto,
-  PaginatedSearchArticlesDto,
-  ArticleSummaryDto,
-} from '@vp-parts-shop/shared';
+import { BrandDto, ArticleSummaryDto } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { BrandsTecDoc } from './brands.tecdoc';
 import { BrandsService } from './brands.service';
@@ -76,29 +72,19 @@ describe('BrandsService', () => {
     });
   });
 
-  describe('applyLogosToSearchResults', () => {
-    const emptyResults: PaginatedSearchArticlesDto = {
-      total: 0,
-      page: 1,
-      pageSize: 20,
-      maxPage: 0,
-      items: [],
-      facets: [],
-      attributes: [],
-      categoryNavigation: { current: null, ancestors: [], options: [] },
-    };
+  describe('attachSearchLogos', () => {
+    it('skips the getBrands read for a result with neither rows nor facets', async () => {
+      const result = await service.attachSearchLogos({
+        items: [],
+        facets: [],
+      });
 
-    it('skips the getBrands read for a fully empty result', async () => {
-      const result = await service.applyLogosToSearchResults(emptyResults);
-
-      expect(result).toBe(emptyResults);
+      expect(result).toEqual({ items: [], facets: [] });
       expect(getBrandsMock).not.toHaveBeenCalled();
     });
 
     it('joins logos onto items and brand facet values', async () => {
-      const results: PaginatedSearchArticlesDto = {
-        ...emptyResults,
-        total: 1,
+      const result = await service.attachSearchLogos({
         items: [articleItem({ brandId: BOSCH })],
         facets: [
           {
@@ -109,9 +95,7 @@ describe('BrandsService', () => {
             ],
           },
         ],
-      };
-
-      const result = await service.applyLogosToSearchResults(results);
+      });
 
       expect(result.items[0].brandLogoUrl).toBe('https://logo/bosch.png');
       expect(result.facets[0].values[0].imageUrl).toBe(
@@ -120,13 +104,23 @@ describe('BrandsService', () => {
       expect(result.facets[0].values[1].imageUrl).toBeNull();
     });
 
+    // The rows and the facets come from two different reads, so each side has to
+    // stand on its own: a page of an ordered set carries no facets of its own,
+    // and a page past the first carries rows against facets read once.
+    it('joins the rows when there are no facets to join', async () => {
+      const result = await service.attachSearchLogos({
+        items: [articleItem({ brandId: BOSCH })],
+        facets: [],
+      });
+
+      expect(result.items[0].brandLogoUrl).toBe('https://logo/bosch.png');
+    });
+
     // Facet value ids are only unique within their own facet, so a product type
     // whose genericArticleId equals some dataSupplierId must not inherit that
     // brand's logo.
     it('leaves a non-brand facet untouched even when its ids collide with brand ids', async () => {
-      const productTypes: PaginatedSearchArticlesDto = {
-        ...emptyResults,
-        total: 1,
+      const result = await service.attachSearchLogos({
         items: [articleItem({ brandId: BOSCH })],
         facets: [
           {
@@ -134,9 +128,7 @@ describe('BrandsService', () => {
             values: [{ id: BOSCH, label: 'Маслен филтър', count: 1 }],
           },
         ],
-      };
-
-      const result = await service.applyLogosToSearchResults(productTypes);
+      });
 
       expect(result.facets[0].values[0]).not.toHaveProperty('imageUrl');
     });

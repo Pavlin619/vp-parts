@@ -1,15 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
   PaginatedCatalogArticlesDto,
-  ArticleIdentityDto,
   ArticlePartNumbersDto,
-  ArticleSummaryDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
-import { InventoryService } from '../../../inventory';
 import { CrossReferenceCandidate } from '../../../tecdoc';
 import { BrandsService } from '../../brands';
-import { orderByAvailability } from '../article-ordering';
+import { ArticleOrderCache, ArticleRowsCache, pageOf } from '../article-list';
 import { ArticleReadCache } from '../article-read';
 import {
   ARTICLE_DEFAULT_PAGE,
@@ -19,15 +16,11 @@ import {
   ViewedArticle,
   dropViewedPart,
   keepCandidatesCiting,
-  pageOf,
 } from './candidate-set';
 import { CrossReferencesTecDoc } from './cross-references.tecdoc';
 
 const CROSS_REFERENCE_TTL = 24 * 60 * 60;
 const CROSS_REFERENCE_MISS_TTL = 60 * 60;
-
-/** A hydrated row is TecDoc catalog data, so it ages like the rest of it. */
-const ARTICLE_ROW_TTL = 24 * 60 * 60;
 
 /**
  * Which parts replace a part, in the two shapes the frontend asks for: whole
@@ -44,19 +37,25 @@ export class CrossReferencesService {
     private readonly tecdoc: CrossReferencesTecDoc,
     private readonly cache: RedisCache,
     private readonly brands: BrandsService,
-    private readonly inventory: InventoryService,
     private readonly articleRead: ArticleReadCache,
+    private readonly order: ArticleOrderCache,
+    private readonly rows: ArticleRowsCache,
   ) {}
 
   /**
    * One page of the parts that replace this one, ordered by what we can ship.
    *
-   * The whole cross-reference set is resolved and ordered per request, and only
-   * the rows on the requested page are then hydrated into renderable metadata —
-   * a candidate costs under a kilobyte where a rendered row costs ten to thirty,
-   * so paying for detail per page is what makes showing *all* the alternatives
-   * affordable. `total` is the size of the whole set, which is what lets the
-   * section offer more until they are exhausted.
+   * The whole cross-reference set is resolved and ordered before a page is cut
+   * from it, and only the rows on that page are then hydrated into renderable
+   * metadata — a candidate costs under a kilobyte where a rendered row costs ten
+   * to thirty, so paying for detail per page is what makes showing *all* the
+   * alternatives affordable. `total` is the size of the whole set, which is what
+   * lets the section offer more until they are exhausted.
+   *
+   * The ordering is pinned for the length of a paging session, because this
+   * section pages by appending: re-ranked against a later stock read, "show
+   * more" would append a row the visitor is already looking at and silently drop
+   * another. {@link ArticleOrderCache} holds it.
    *
    * Vehicle-independent by design: if the viewed part fits the selected vehicle,
    * so does anything replacing it, so no per-substitute fit check is done. Live
@@ -70,13 +69,13 @@ export class CrossReferencesService {
     pageSize: number = ARTICLE_DEFAULT_PAGE_SIZE,
   ): Promise<PaginatedCatalogArticlesDto> {
     const candidates = await this.loadCrossReferences(brandId, articleNumber);
-    const ordered = orderByAvailability(
+    const ordered = await this.order.ordered(
+      crossReferenceOrderKey(brandId, articleNumber),
       candidates,
-      await this.inventory.getAvailabilityForOrdering(identitiesOf(candidates)),
     );
 
     const requested = pageOf(ordered, page, pageSize);
-    const rows = await this.hydrateRows(requested.items);
+    const rows = await this.rows.hydrate(requested.items);
 
     return { ...requested, items: await this.brands.attachLogos(rows) };
   }
@@ -123,9 +122,10 @@ export class CrossReferencesService {
    * which part a number means depends on who filed it, and two suppliers sharing
    * a number have different parts, hence different replacements.
    *
-   * The *set* is cached and its *order* is not: the ordering is decided per
-   * request from live stock, so a page-shaped entry would serve yesterday's
-   * ordering. The hydrated rows are cached separately, one per row.
+   * The set is cached whole and unordered, for a day. Its ordering is a separate,
+   * far shorter entry because it is decided from live stock, and the hydrated
+   * rows are a third, one per row — three lifetimes, because catalogue data,
+   * what we can ship, and a rendered row all go stale at different rates.
    */
   private loadCrossReferences(
     brandId: number,
@@ -171,55 +171,15 @@ export class CrossReferencesService {
 
     return dropViewedPart(keepCandidatesCiting(candidates, viewed), viewed);
   }
-
-  /**
-   * Turns the candidates on one page into rows a list can render.
-   *
-   * Cached per row rather than per page, because the ordering is live: a
-   * page-number key would serve yesterday's ordering, and an id-set key would
-   * miss whenever stock moved a row across a page boundary. Per-row entries also
-   * mean a part appearing in two different lists is fetched once.
-   */
-  private hydrateRows(
-    candidates: CrossReferenceCandidate[],
-  ): Promise<ArticleSummaryDto[]> {
-    return this.cache.cachedMany<CrossReferenceCandidate, ArticleSummaryDto>({
-      items: candidates,
-      ttl: ARTICLE_ROW_TTL,
-      keyOf: articleRowKey,
-      keyOfLoaded: articleRowKey,
-      loadMissing: (missing) =>
-        this.tecdoc.getArticleRowsByLegacyIds(hydrationIdsOf(missing)),
-    });
-  }
-}
-
-function articleRowKey(article: {
-  brandId: string;
-  articleNumber: string;
-}): string {
-  return `tecdoc:article-row:${article.brandId}:${article.articleNumber}`;
-}
-
-function identitiesOf(
-  candidates: CrossReferenceCandidate[],
-): ArticleIdentityDto[] {
-  return candidates.map((candidate) => ({
-    brandId: candidate.brandId,
-    articleNumber: candidate.articleNumber,
-  }));
 }
 
 /**
- * One hydration id per candidate. A part catalogued in two roles carries one id
- * per role, and both resolve to the same article, so the second would buy a
- * duplicate row.
+ * Page-free, like the key the set itself is cached under: the ordering is a
+ * property of the whole set, so one entry serves every page of it.
  */
-function hydrationIdsOf(candidates: CrossReferenceCandidate[]): number[] {
-  return candidates
-    .map((candidate) => candidate.legacyArticleIds[0])
-    .filter(
-      (legacyArticleId): legacyArticleId is number =>
-        legacyArticleId !== undefined,
-    );
+function crossReferenceOrderKey(
+  brandId: number,
+  articleNumber: string,
+): string {
+  return `crossrefs:order:${brandId}:${articleNumber}`;
 }

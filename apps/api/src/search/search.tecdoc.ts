@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
-  PaginatedSearchArticlesDto,
   ArticleAutocompleteItemDto,
+  ArticleSummaryDto,
   AutocompleteItemDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
@@ -10,6 +10,7 @@ import {
   LinkageTargetType,
   TecDocTransport,
   TecDocArticleRecord,
+  mapArticleCandidate,
   mapArticleSummary,
 } from '../tecdoc';
 import {
@@ -21,6 +22,7 @@ import {
   hasSingleProductType,
   shouldRequestCriteriaFacets,
 } from './search-types';
+import { SEARCH_SORTABLE_LIMIT, SearchEnumeration } from './search-enumeration';
 import {
   buildCategoryNavigation,
   buildCategorySuggestions,
@@ -82,23 +84,43 @@ function assemblyGroupFacetOptionsFor(
   };
 }
 
+/** One page of rendered rows, in TecDoc's own order. */
+export interface SearchRowsPage {
+  items: ArticleSummaryDto[];
+  /**
+   * TecDoc's paging ceiling for the page size it was asked with, so it is
+   * already in the caller's units. Absent when TecDoc omitted it, which the
+   * schema says cannot happen but the untyped JSON transport cannot promise.
+   */
+  maxAllowedPage?: number;
+}
+
 /**
- * TecDoc source for the search surfaces: number/free-text article search (with
- * brand, technical-attribute, and single-level category-navigation facets) and
- * autocomplete. Both are `getArticles` calls; the shared
+ * TecDoc source for the search surfaces: the two reads behind a result page and
+ * the two behind autocomplete. All are `getArticles` calls; the shared
  * {@link mapArticleSummary} maps the article rows and the pure mappers in
  * `search-facet-mappers` turn the TecDoc facet blocks into the shared DTOs.
+ *
+ * The result page is split in two because the two halves are wanted at
+ * different granularities. {@link enumerate} reads the *whole* match set
+ * cheaply, which is what the availability ranking needs and what every page of
+ * one search shares; {@link readRowsPage} reads *one page* of rendered rows, and
+ * is only ever reached for a set too wide to rank.
  */
 @Injectable()
 export class SearchTecDoc {
   constructor(private readonly transport: TecDocTransport) {}
 
   /**
-   * Free-text/number search (searchType 10 — "any number"). Always asks TecDoc
-   * for the brand (`dataSupplier`) and product-type (`genericArticle`) facets
-   * and the hierarchical category (`assemblyGroup`) tree over the whole match
-   * set, and forwards any active selections as `dataSupplierIds` /
-   * `genericArticleIds` / `assemblyGroupNodeIds` / `criteriaFilters`.
+   * The whole match set of a search, read as cheaply as TecDoc allows: what it
+   * measures, what it can be narrowed by, and every article in it as an
+   * identity.
+   *
+   * Always asks for the brand (`dataSupplier`) and product-type
+   * (`genericArticle`) facets and the hierarchical category (`assemblyGroup`)
+   * tree over the whole match set, and forwards any active selections as
+   * `dataSupplierIds` / `genericArticleIds` / `assemblyGroupNodeIds` /
+   * `criteriaFilters`.
    *
    * Technical-attribute (`criteria`) facets are **gated on a homogeneous result
    * set**, on both sides of the call: the request asks for them only when
@@ -108,30 +130,53 @@ export class SearchTecDoc {
    * block spanning unrelated product types — while the response gate is the
    * correctness backstop.
    *
-   * Results keep TecDoc's native article order — no client-side ranking.
+   * A set wider than {@link SEARCH_SORTABLE_LIMIT} answers with candidates that
+   * are then discarded, because TecDoc will not count a set without also
+   * naming its first page of it. That is the deliberate cost of one entry call
+   * per search: a candidate is a fraction of a rendered row, and the entry is
+   * cached without them.
    */
-  async searchArticles(
+  async enumerate(
     query: string,
     vehicleId?: number,
     execution: SearchExecution = DEFAULT_SEARCH_EXECUTION,
-    page = 1,
-    pageSize = 50,
     filters?: SearchFilters,
-  ): Promise<PaginatedSearchArticlesDto> {
+  ): Promise<SearchEnumeration> {
     const data = await this.transport.call<{
       // Optional like the collections below: TecDoc omits a field rather than
       // sending a zero or an empty one.
       totalMatchingArticles?: number;
-      maxAllowedPage?: number;
       articles?: TecDocArticleRecord[];
       dataSupplierFacets?: { counts: TecDocBrandFacetCount[] };
       genericArticleFacets?: { counts: TecDocGenericArticleFacetCount[] };
       criteriaFacets?: { counts: TecDocCriteriaFacetCount[] };
       assemblyGroupFacets?: { counts: TecDocAssemblyGroupFacetCount[] };
-    }>(
-      'getArticles',
-      this.searchPayload(query, vehicleId, execution, page, pageSize, filters),
-    );
+    }>('getArticles', {
+      ...this.matchSetPayload(query, vehicleId, execution, filters),
+      perPage: SEARCH_SORTABLE_LIMIT,
+      page: 1,
+      // The candidate includes: what a part is called and the id it is hydrated
+      // by (`includeGenericArticles`), and whether it is still supplied
+      // (`includeMisc`). Its identity — number, `dataSupplierId`, `mfrName` —
+      // comes back unasked. Images and criteria are what a *rendered* row needs
+      // and cost ten times as much, so they are bought per page instead.
+      includeGenericArticles: true,
+      includeMisc: true,
+      includeDataSupplierFacets: true,
+      includeGenericArticleFacets: true,
+      // TODO(search-ux): auto-surface dimensions when a precise query (e.g. a
+      // full part number) collapses to a single leaf category, so the user need
+      // not click to reveal them. Preferred approach: keep this broad call cheap
+      // and, when categoryNavigation resolves to exactly one leaf option, fire
+      // one follow-up scoped getArticles for its criteria (Redis-cached).
+      ...(shouldRequestCriteriaFacets(filters) && {
+        includeCriteriaFacets: true,
+      }),
+      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(
+        vehicleId,
+        filters?.categoryNodeId !== undefined,
+      ),
+    });
 
     const categoryNavigation = buildCategoryNavigation(
       data.assemblyGroupFacets?.counts,
@@ -139,21 +184,15 @@ export class SearchTecDoc {
     );
 
     const isHomogeneous = this.hasCoherentCriteria(categoryNavigation, filters);
-    const items = (data.articles ?? []).map((article) =>
-      mapArticleSummary(article),
-    );
-
-    // The lane resolver reads `total > 0` to decide a lane matched, so an
-    // absent total must not read as "no matches" for a page that did return
-    // articles. Falling back to the page keeps the two consistent.
-    const total = data.totalMatchingArticles ?? items.length;
+    const candidates = (data.articles ?? []).map(mapArticleCandidate);
 
     return {
-      total,
-      page,
-      pageSize,
-      maxPage: this.resolveMaxPage(data.maxAllowedPage, total, pageSize),
-      items,
+      // `total` is what decides both "no results" and which tier the set is
+      // served in, so an absent one must not read as "no matches" for a call
+      // that did return articles. Falling back to the candidates keeps the two
+      // consistent.
+      total: data.totalMatchingArticles ?? candidates.length,
+      candidates,
       facets: [
         ...mapBrandFacets(data.dataSupplierFacets?.counts),
         ...mapProductTypeFacets(data.genericArticleFacets?.counts),
@@ -162,6 +201,45 @@ export class SearchTecDoc {
         ? mapAttributeFacets(data.criteriaFacets?.counts)
         : [],
       categoryNavigation,
+    };
+  }
+
+  /**
+   * One page of rendered rows in TecDoc's native order — the answer for a match
+   * set too wide to rank by availability.
+   *
+   * Asks for no facets: the enumeration of the same set already carries them,
+   * and it is cached per search rather than per page, so recomputing them here
+   * would be paid for on every page turn of exactly the queries that can least
+   * afford it.
+   */
+  async readRowsPage(
+    query: string,
+    vehicleId: number | undefined,
+    execution: SearchExecution,
+    page: number,
+    pageSize: number,
+    filters?: SearchFilters,
+  ): Promise<SearchRowsPage> {
+    const data = await this.transport.call<{
+      maxAllowedPage?: number;
+      articles?: TecDocArticleRecord[];
+    }>('getArticles', {
+      ...this.matchSetPayload(query, vehicleId, execution, filters),
+      perPage: pageSize,
+      page,
+      // Exactly what `mapArticleSummary` reads, and nothing more. `includeAll`
+      // would add PDFs, links, linkages, parts and accessory lists, GTINs,
+      // prices, trade numbers and OE numbers that no row renders, for a
+      // measured 25–58% of the response.
+      includeGenericArticles: true,
+      includeImages: true,
+      includeArticleCriteria: true,
+    });
+
+    return {
+      items: (data.articles ?? []).map((article) => mapArticleSummary(article)),
+      maxAllowedPage: data.maxAllowedPage,
     };
   }
 
@@ -264,16 +342,17 @@ export class SearchTecDoc {
   }
 
   /**
-   * The `getArticles` request body for a search. Kept separate from the
-   * response handling above so the (long) list of TecDoc params reads as one
-   * thing.
+   * Everything that decides *which* articles a search matches: the query, the
+   * vehicle scope and the active narrowings. Shared by the two reads above, so
+   * they cannot drift into describing different match sets — the whole basis for
+   * one of them owning the facets on the other's behalf.
+   *
+   * What each read adds to it is how much of each article it wants, and how many.
    */
-  private searchPayload(
+  private matchSetPayload(
     query: string,
     vehicleId: number | undefined,
     execution: SearchExecution,
-    page: number,
-    pageSize: number,
     filters: SearchFilters | undefined,
   ): Record<string, unknown> {
     return {
@@ -285,36 +364,12 @@ export class SearchTecDoc {
       ...(execution.matchType != null && {
         searchMatchType: execution.matchType,
       }),
-      perPage: pageSize,
-      page,
-      // Exactly what `mapArticleSummary` reads, and nothing more. The identity
-      // it also needs — number, `dataSupplierId`, `mfrName` — comes back
-      // unasked. `includeAll` would add PDFs, links, linkages, parts and
-      // accessory lists, GTINs, prices, trade numbers and OE numbers that no
-      // row renders, for a measured 25–58% of the response.
-      includeGenericArticles: true,
-      includeImages: true,
-      includeArticleCriteria: true,
-      includeDataSupplierFacets: true,
-      includeGenericArticleFacets: true,
-      // TODO(search-ux): auto-surface dimensions when a precise query (e.g. a
-      // full part number) collapses to a single leaf category, so the user need
-      // not click to reveal them. Preferred approach: keep this broad call cheap
-      // and, when categoryNavigation resolves to exactly one leaf option, fire
-      // one follow-up scoped getArticles for its criteria (Redis-cached).
-      ...(shouldRequestCriteriaFacets(filters, page) && {
-        includeCriteriaFacets: true,
-      }),
       // Makes TecDoc rule on whether each key-table criteria value is
       // permissible for the selected product type. It marks rather than
       // filters: the verdict lands on each value's `permittedKeyValue`, which
       // `mapAttributeFacets` is what actually drops. Gated on exactly one
       // genericArticleId, as the schema requires for the flag to be populated.
       ...(hasSingleProductType(filters) && { applyDqmRules: true }),
-      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(
-        vehicleId,
-        filters?.categoryNodeId !== undefined,
-      ),
       ...(vehicleId != null && {
         linkageTargetType: LinkageTargetType.Vehicle,
         linkageTargetId: vehicleId,
@@ -332,32 +387,6 @@ export class SearchTecDoc {
         criteriaFilters: filters.criteria,
       }),
     };
-  }
-
-  /**
-   * The highest page this query can actually be paged to.
-   *
-   * TecDoc serves only the first ~10,000 results of any match set and reports
-   * the resulting bound as `maxAllowedPage`, which shrinks as `perPage` grows.
-   * A broad free-text query can therefore report millions of matches while
-   * refusing anything past page 500, so `total / pageSize` would size a pager
-   * out of pages TecDoc will not serve.
-   *
-   * Taking the lower of the two is belt and braces: TecDoc already factors the
-   * result count into its cap, so the minimum only guards against it not doing
-   * so. The fallback covers the field being absent, which the schema says
-   * cannot happen but the untyped JSON transport cannot promise.
-   */
-  private resolveMaxPage(
-    maxAllowedPage: number | undefined,
-    total: number,
-    pageSize: number,
-  ): number {
-    const pageCount = Math.ceil(total / pageSize);
-
-    return maxAllowedPage === undefined
-      ? pageCount
-      : Math.min(maxAllowedPage, pageCount);
   }
 
   /**

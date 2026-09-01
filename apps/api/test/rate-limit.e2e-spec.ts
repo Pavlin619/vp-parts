@@ -1,12 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import {
-  ArticleSummaryDto,
-  PaginatedSearchArticlesDto,
-} from '@vp-parts-shop/shared';
+import { ArticleSummaryDto } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { SearchTecDoc } from '../src/search';
-import { BrandsTecDoc } from '../src/catalog';
+import { SearchEnumeration } from '../src/search/search-enumeration';
+import { ArticleRowsTecDoc, BrandsTecDoc } from '../src/catalog';
+import { ArticleStatus } from '../src/tecdoc';
 
 const WEB_ORIGIN_TOKEN = 'web-origin-secret-for-tests';
 
@@ -24,13 +23,21 @@ const ARTICLE: ArticleSummaryDto = {
   fitsVehicle: null,
 };
 
+const LEGACY_ARTICLE_ID = 777;
+
 // A hit, since a miss would take the did-you-mean path and need its own mocks.
-const ONE_HIT: PaginatedSearchArticlesDto = {
+const ONE_HIT: SearchEnumeration = {
   total: 1,
-  page: 1,
-  pageSize: 20,
-  maxPage: 1,
-  items: [ARTICLE],
+  candidates: [
+    {
+      brandId: ARTICLE.brandId,
+      brandName: ARTICLE.brandName,
+      articleNumber: ARTICLE.articleNumber,
+      description: ARTICLE.description,
+      legacyArticleIds: [LEGACY_ARTICLE_ID],
+      articleStatusId: ArticleStatus.Normal,
+    },
+  ],
   facets: [],
   attributes: [],
   categoryNavigation: { current: null, ancestors: [], options: [] },
@@ -44,7 +51,9 @@ const mockTecDocClient = {
   getBrands: jest.fn().mockResolvedValue([]),
   getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
-  searchArticles: jest.fn().mockResolvedValue(ONE_HIT),
+  enumerate: jest.fn().mockResolvedValue(ONE_HIT),
+  readRowsPage: jest.fn(),
+  getArticleRowsByLegacyIds: jest.fn().mockResolvedValue([ARTICLE]),
   getAutocompleteArticles: jest.fn(),
   getAutocompleteTerms: jest.fn(),
 };
@@ -77,6 +86,7 @@ describe('Rate limiting (e2e)', () => {
     app = await createTestApp((builder) => {
       builder.overrideProvider(SearchTecDoc).useValue(mockTecDocClient);
       builder.overrideProvider(BrandsTecDoc).useValue(mockTecDocClient);
+      builder.overrideProvider(ArticleRowsTecDoc).useValue(mockTecDocClient);
     });
   });
 

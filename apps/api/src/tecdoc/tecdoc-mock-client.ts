@@ -4,7 +4,6 @@ import {
   VehicleVariantDto,
   AssemblyGroupDto,
   BrandDto,
-  PaginatedSearchArticlesDto,
   SearchFacetDto,
   FacetValueDto,
   AttributeFacetDto,
@@ -21,12 +20,13 @@ import {
   AutocompleteItemDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
+import { ArticleStatus } from './article-mapper';
 import type {
+  ArticleCandidate,
   ArticleDetailRead,
   ArticleLinkageRoles,
   CatalogArticlesPage,
 } from './article-mapper';
-import { ArticleStatus } from './cross-reference-mapper';
 import type {
   CrossReferenceCandidate,
   CrossReferenceCitation,
@@ -42,6 +42,8 @@ import {
   hasSingleProductType,
   shouldRequestCriteriaFacets,
 } from '../search/search-types';
+import type { SearchEnumeration } from '../search/search-enumeration';
+import type { SearchRowsPage } from '../search/search.tecdoc';
 
 // TODO: delete this class ones we have finished the contract with TECDOC
 
@@ -629,6 +631,21 @@ const TAXONOMY_BY_ARTICLE = new Map<string, MockTaxonomy>(
       { categoryNodeId, productTypeId: entry.productTypeId },
     ]),
   ),
+);
+
+/**
+ * Every catalogued row, keyed the way TecDoc identifies a part. A search
+ * enumerates candidates and hydrates them back into rows in a second step, so
+ * the hydration has to be able to answer for a catalogued article that has no
+ * detail fixture of its own — most of them.
+ */
+const CATALOG_ENTRY_BY_KEY = new Map<string, MockCatalogEntry>(
+  Object.values(ARTICLES_BY_CATEGORY)
+    .flat()
+    .map((entry): [string, MockCatalogEntry] => [
+      articleKeyForBrandName(entry.brandName, entry.articleNumber),
+      entry,
+    ]),
 );
 
 function taxonomyOf(item: ArticleSummaryDto): MockTaxonomy | undefined {
@@ -1227,6 +1244,7 @@ const LEGACY_ARTICLE_ID_BY_KEY: Record<string, number> = Object.fromEntries(
     ...new Set([
       ...Object.keys(ARTICLE_DETAILS),
       ...Object.keys(LINKED_VEHICLES_BY_ARTICLE),
+      ...CATALOG_ENTRY_BY_KEY.keys(),
     ]),
   ]
     .sort()
@@ -1350,29 +1368,27 @@ export class TecDocMockClient {
     });
   }
 
-  searchArticles(
+  /**
+   * The whole match set of a search, as candidates plus facets — the mock's
+   * stand-in for the identity-only `getArticles` read every search starts with.
+   *
+   * A fixture this small is always inside the sortable limit, so mock mode
+   * exercises the ordered path; the fallback path is reached only by the unit
+   * tests that stub a wide total.
+   */
+  enumerate(
     query: string,
     vehicleId?: number,
     execution?: SearchExecution,
-    page = 1,
-    pageSize = 50,
     filters?: SearchFilters,
-  ): Promise<PaginatedSearchArticlesDto> {
-    // Free-text (type 99) matches on description/brand words; number searches
-    // (type 10) match on article/OE numbers — mirroring the real client's split.
-    const baseMatches =
-      execution?.type === TecDocSearchType.FreeText
-        ? this.findByDescription(query)
-        : this.findMatchingArticles(query);
+  ): Promise<SearchEnumeration> {
+    const matches = this.findSearchMatches(
+      query,
+      vehicleId,
+      execution,
+      filters,
+    );
 
-    const matches = baseMatches
-      // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
-      // returns every other match so fit indicators show both states.
-      .filter((_, index) => vehicleId == null || index % 2 === 0)
-      .map((base) => this.toSummary(base))
-      .filter((item) => this.matchesFilters(item, filters));
-
-    const facets = this.buildFacets(matches);
     const categoryNavigation = this.buildCategoryNavigation(matches, filters);
 
     // Attribute facets only make sense once the search has narrowed to one
@@ -1387,25 +1403,44 @@ export class TecDocMockClient {
         ? categoryNavigation.current.hasChildren === false
         : categoryNavigation.options.length === 0);
     const isHomogeneous = hasSingleProductType(filters) || atLeaf;
-    const attributes =
-      isHomogeneous && shouldRequestCriteriaFacets(filters, page)
-        ? this.buildAttributeFacets(matches)
-        : [];
-
-    const start = (page - 1) * pageSize;
-    const items = matches.slice(start, start + pageSize);
 
     return Promise.resolve({
       total: matches.length,
-      page,
-      pageSize,
+      candidates: matches.map((item) => this.toSearchCandidate(item)),
+      facets: this.buildFacets(matches),
+      attributes:
+        isHomogeneous && shouldRequestCriteriaFacets(filters)
+          ? this.buildAttributeFacets(matches)
+          : [],
+      categoryNavigation,
+    });
+  }
+
+  /**
+   * One page of rendered rows in the fixture's own order — the fallback read,
+   * for a match set too wide to order.
+   */
+  readRowsPage(
+    query: string,
+    vehicleId: number | undefined,
+    execution: SearchExecution | undefined,
+    page: number,
+    pageSize: number,
+    filters?: SearchFilters,
+  ): Promise<SearchRowsPage> {
+    const matches = this.findSearchMatches(
+      query,
+      vehicleId,
+      execution,
+      filters,
+    );
+    const start = (page - 1) * pageSize;
+
+    return Promise.resolve({
+      items: matches.slice(start, start + pageSize),
       // The real cap is TecDoc's ~10,000-result paging limit, which a dataset
       // this small can never reach, so the honest mock value is the page count.
-      maxPage: Math.ceil(matches.length / pageSize),
-      items,
-      facets,
-      attributes,
-      categoryNavigation,
+      maxAllowedPage: Math.ceil(matches.length / pageSize),
     });
   }
 
@@ -1588,11 +1623,9 @@ export class TecDocMockClient {
   ): Promise<ArticleSummaryDto[]> {
     const rows = legacyArticleIds
       .map((legacyArticleId) => ARTICLE_KEY_BY_LEGACY_ID.get(legacyArticleId))
-      .map((key) => (key === undefined ? undefined : ARTICLE_DETAILS[key]))
-      .filter(
-        (detail): detail is ArticleCatalogDetailDto => detail !== undefined,
-      )
-      .map((detail) => this.toSummary(detail));
+      .map((key) => (key === undefined ? undefined : this.rowFixtureFor(key)))
+      .filter((base): base is MockArticleBase => base !== undefined)
+      .map((base) => this.toSummary(base));
 
     return Promise.resolve(rows);
   }
@@ -1667,6 +1700,16 @@ export class TecDocMockClient {
    * brands layer joins logos from getBrands, exactly as it does for the real
    * client.
    */
+  /**
+   * The fixture a hydration id resolves to: a detail row where one exists, and
+   * otherwise the catalogued row. Most catalogued articles have no detail
+   * fixture, and dropping them would leave a search page short of the rows its
+   * own enumeration promised.
+   */
+  private rowFixtureFor(key: string): MockArticleBase | undefined {
+    return ARTICLE_DETAILS[key] ?? CATALOG_ENTRY_BY_KEY.get(key);
+  }
+
   private toSummary(base: MockArticleBase): ArticleSummaryDto {
     const brandId = brandIdFor(base.brandName);
     const detail = ARTICLE_DETAILS[articleKey(brandId, base.articleNumber)];
@@ -1725,6 +1768,53 @@ export class TecDocMockClient {
       brandId,
       articleNumber: base.articleNumber,
       legacyArticleIds: legacyArticleId === undefined ? [] : [legacyArticleId],
+    };
+  }
+
+  /**
+   * The rows a search matches, before any paging: the shared half of the two
+   * reads above, so an enumerated set and a page read from it can never
+   * disagree about which articles matched.
+   */
+  private findSearchMatches(
+    query: string,
+    vehicleId: number | undefined,
+    execution: SearchExecution | undefined,
+    filters: SearchFilters | undefined,
+  ): ArticleSummaryDto[] {
+    // Free-text (type 99) matches on description/brand words; number searches
+    // (type 10) match on article/OE numbers — mirroring the real client's split.
+    const baseMatches =
+      execution?.type === TecDocSearchType.FreeText
+        ? this.findByDescription(query)
+        : this.findMatchingArticles(query);
+
+    return (
+      baseMatches
+        // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
+        // returns every other match so fit indicators show both states.
+        .filter((_, index) => vehicleId == null || index % 2 === 0)
+        .map((base) => this.toSummary(base))
+        .filter((item) => this.matchesFilters(item, filters))
+    );
+  }
+
+  /**
+   * A matched row as the candidate a search enumerates. The legacy id is the
+   * same one {@link getArticleRowsByLegacyIds} hydrates by, so the two halves of
+   * a search round-trip in mock mode as they do in production.
+   */
+  private toSearchCandidate(item: ArticleSummaryDto): ArticleCandidate {
+    const legacyArticleId =
+      LEGACY_ARTICLE_ID_BY_KEY[articleKey(item.brandId, item.articleNumber)];
+
+    return {
+      brandId: item.brandId,
+      brandName: item.brandName,
+      articleNumber: item.articleNumber,
+      description: item.description,
+      legacyArticleIds: legacyArticleId === undefined ? [] : [legacyArticleId],
+      articleStatusId: ArticleStatus.Normal,
     };
   }
 

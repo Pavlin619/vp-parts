@@ -313,30 +313,50 @@ describe('RedisCache', () => {
     });
   });
 
-  describe('cachedPaginated', () => {
-    it('uses the miss TTL when the page has no items', async () => {
-      redis.get.mockResolvedValueOnce(null);
-      const loader = jest.fn().mockResolvedValue({ total: 0, items: [] });
+  describe('cached with an empty-answer TTL', () => {
+    const emptyAnswer = {
+      missTtl: 600,
+      isEmpty: (value: { total: number }) => value.total === 0,
+    };
 
-      await cache.cachedPaginated('k', 3600, 600, loader);
+    it('uses the miss TTL when the caller judges the answer empty', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      const loader = jest.fn().mockResolvedValue({ total: 0 });
+
+      await cache.cached('k', 3600, loader, emptyAnswer);
 
       expect(redis.set).toHaveBeenCalledWith(
         'k',
-        JSON.stringify({ total: 0, items: [] }),
+        JSON.stringify({ total: 0 }),
         'EX',
         600,
       );
     });
 
-    it('uses the hit TTL when the page has items', async () => {
+    it('uses the hit TTL when it does not', async () => {
       redis.get.mockResolvedValueOnce(null);
-      const loader = jest.fn().mockResolvedValue({ total: 1, items: [{}] });
+      const loader = jest.fn().mockResolvedValue({ total: 1 });
 
-      await cache.cachedPaginated('k', 3600, 600, loader);
+      await cache.cached('k', 3600, loader, emptyAnswer);
 
       expect(redis.set).toHaveBeenCalledWith(
         'k',
-        JSON.stringify({ total: 1, items: [{}] }),
+        JSON.stringify({ total: 1 }),
+        'EX',
+        3600,
+      );
+    });
+
+    // Most values have no notion of emptiness, and those callers pass nothing.
+    it('uses the hit TTL when no verdict was given', async () => {
+      redis.get.mockResolvedValueOnce(null);
+      const loader = jest.fn().mockResolvedValue({ total: 0 });
+
+      await cache.cached('k', 3600, loader);
+
+      expect(redis.set).toHaveBeenCalledWith(
+        'k',
+        JSON.stringify({ total: 0 }),
         'EX',
         3600,
       );

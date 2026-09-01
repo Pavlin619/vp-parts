@@ -1,12 +1,14 @@
 import {
   ArticleSummaryDto,
   ArticleInventoryDetailDto,
+  PaginatedCatalogArticlesDto,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
-import { RedisCache, CachedManyRequest } from '../../../redis';
+import { RedisCache } from '../../../redis';
 import { InventoryService } from '../../../inventory';
 import { ArticleStatus, CrossReferenceCandidate } from '../../../tecdoc';
 import { BrandsService } from '../../brands';
+import { ArticleOrderCache, ArticleRowsCache } from '../article-list';
 import { ArticleReadCache } from '../article-read';
 import { CrossReferencesService } from './cross-references.service';
 import { CrossReferencesTecDoc } from './cross-references.tecdoc';
@@ -57,32 +59,38 @@ const OUT_OF_STOCK: ArticleInventoryDetailDto = {
   computedAt: null,
 };
 
+const IN_STOCK: ArticleInventoryDetailDto = {
+  ...OUT_OF_STOCK,
+  available: true,
+  bestPriceExVat: 3500,
+  bestPriceIncVat: 4200,
+};
+
 describe('CrossReferencesService', () => {
-  let tecdoc: {
-    getCrossReferenceCandidates: jest.Mock;
-    getArticleRowsByLegacyIds: jest.Mock;
+  let tecdoc: { getCrossReferenceCandidates: jest.Mock };
+  let cache: {
+    cachedArray: jest.Mock;
+    readMemo: jest.Mock;
+    writeMemo: jest.Mock;
   };
-  let cache: { cachedArray: jest.Mock; cachedMany: jest.Mock };
+  let rows: { hydrate: jest.Mock };
   let brands: { attachLogos: jest.Mock };
   let inventory: { getAvailabilityForOrdering: jest.Mock };
   let articleRead: { read: jest.Mock };
   let service: CrossReferencesService;
 
   beforeEach(() => {
-    tecdoc = {
-      getCrossReferenceCandidates: jest.fn().mockResolvedValue([]),
-      getArticleRowsByLegacyIds: jest.fn().mockResolvedValue([]),
-    };
+    tecdoc = { getCrossReferenceCandidates: jest.fn().mockResolvedValue([]) };
     cache = {
       cachedArray: jest.fn(
         (_key: string, _hit: number, _miss: number, loader: () => unknown) =>
           loader(),
       ),
-      // Every row a miss, so the tests see what the hydration read is asked for.
-      cachedMany: jest.fn((request: CachedManyRequest<unknown, unknown>) =>
-        request.loadMissing(request.items),
-      ),
+      // The ordering memo starts cold, so each test ranks its own set.
+      readMemo: jest.fn().mockResolvedValue(undefined),
+      writeMemo: jest.fn().mockResolvedValue(undefined),
     };
+    rows = { hydrate: jest.fn().mockResolvedValue([]) };
     // attachLogos is an identity passthrough here; the join itself is covered
     // in the BrandsService spec.
     brands = {
@@ -97,8 +105,15 @@ describe('CrossReferencesService', () => {
       tecdoc as unknown as CrossReferencesTecDoc,
       cache as unknown as RedisCache,
       brands as unknown as BrandsService,
-      inventory as unknown as InventoryService,
       articleRead as unknown as ArticleReadCache,
+      // The real order cache over the mocked Redis: its rules are settled in
+      // article-order.cache.spec.ts, and what matters here is that this list
+      // ranks and pages through it.
+      new ArticleOrderCache(
+        cache as unknown as RedisCache,
+        inventory as unknown as InventoryService,
+      ),
+      rows as unknown as ArticleRowsCache,
     );
   });
 
@@ -127,16 +142,44 @@ describe('CrossReferencesService', () => {
     });
   }
 
-  /** Hydration answers with a row per id, so the page can be asserted on. */
+  /** Hydration answers with a row per candidate, so a page can be asserted on. */
   function givenHydratedRows(): void {
-    tecdoc.getArticleRowsByLegacyIds.mockImplementation(
-      (legacyArticleIds: number[]) =>
-        Promise.resolve(
-          legacyArticleIds.map((id) =>
-            item(`ROW-${id}`, { brandId: '101', brandName: 'Ferodo' }),
-          ),
+    rows.hydrate.mockImplementation((candidates: CrossReferenceCandidate[]) =>
+      Promise.resolve(
+        candidates.map((entry) =>
+          item(entry.articleNumber, {
+            brandId: entry.brandId,
+            brandName: entry.brandName,
+          }),
         ),
+      ),
     );
+  }
+
+  /** Which candidates the page paid for a rendered row for. */
+  function hydratedNumbers(): string[] {
+    const [candidates] = rows.hydrate.mock.calls[0] as [
+      CrossReferenceCandidate[],
+    ];
+
+    return candidates.map((entry) => entry.articleNumber);
+  }
+
+  function numbersOf(page: PaginatedCatalogArticlesDto): string[] {
+    return page.items.map((entry) => entry.articleNumber);
+  }
+
+  /** A memo that remembers, so two requests can share one pinned ordering. */
+  function givenPinnedMemo(): void {
+    const memo = new Map<string, unknown>();
+
+    cache.readMemo.mockImplementation((key: string) =>
+      Promise.resolve(memo.get(key)),
+    );
+    cache.writeMemo.mockImplementation((key: string, value: unknown) => {
+      memo.set(key, value);
+      return Promise.resolve();
+    });
   }
 
   function crossReferenceCacheKeys() {
@@ -215,25 +258,12 @@ describe('CrossReferencesService', () => {
       expect(page.total).toBe(45);
       expect(page.page).toBe(2);
       expect(page.items).toHaveLength(20);
-      expect(tecdoc.getArticleRowsByLegacyIds).toHaveBeenCalledWith(
-        Array.from({ length: 20 }, (_, index) => index + 20),
+      expect(hydratedNumbers()).toEqual(
+        Array.from(
+          { length: 20 },
+          (_, index) => `A${String(index + 20).padStart(2, '0')}`,
+        ),
       );
-    });
-
-    it('caches each hydrated row under its own key for 24h', async () => {
-      givenArticle('SRC');
-      givenHydratedRows();
-      tecdoc.getCrossReferenceCandidates.mockResolvedValueOnce([
-        candidate('A1', { legacyArticleIds: [777] }),
-      ]);
-
-      await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
-
-      const [request] = cache.cachedMany.mock.calls[0] as [
-        CachedManyRequest<CrossReferenceCandidate, ArticleSummaryDto>,
-      ];
-      expect(request.ttl).toBe(24 * 60 * 60);
-      expect(request.keyOf(candidate('A1'))).toBe('tecdoc:article-row:101:A1');
     });
 
     /**
@@ -264,8 +294,43 @@ describe('CrossReferencesService', () => {
         { brandId: FERODO, articleNumber: 'OUT-OF-STOCK' },
         { brandId: FERODO, articleNumber: 'IN-STOCK' },
       ]);
-      expect(tecdoc.getArticleRowsByLegacyIds).toHaveBeenCalledWith([2]);
+      expect(hydratedNumbers()).toEqual(['IN-STOCK']);
       expect(page.items).toHaveLength(1);
+    });
+
+    /**
+     * The section pages by appending, so an order re-ranked between two clicks
+     * of "show more" would append a row the visitor is already looking at and
+     * silently drop another. The ranking the first page was cut from is pinned
+     * and every later page comes out of it — even after the stock it ranked on
+     * has moved.
+     */
+    it('cuts a later page out of the order the first one was ranked in', async () => {
+      givenArticle('SRC');
+      givenHydratedRows();
+      givenPinnedMemo();
+      tecdoc.getCrossReferenceCandidates.mockResolvedValue([
+        candidate('A1-SOLD-OUT-LATER', { legacyArticleIds: [1] }),
+        candidate('A2-IN-STOCK', { legacyArticleIds: [2] }),
+      ]);
+      inventory.getAvailabilityForOrdering.mockResolvedValue(
+        new Map([[articleIdentityKey(FERODO, 'A2-IN-STOCK'), IN_STOCK]]),
+      );
+
+      const first = await service.getSubstitutes(BOSCH, 'SRC', 1, 1);
+
+      // The last unit of the row that ranked first sells between the two clicks.
+      inventory.getAvailabilityForOrdering.mockResolvedValue(
+        new Map([
+          [articleIdentityKey(FERODO, 'A1-SOLD-OUT-LATER'), IN_STOCK],
+          [articleIdentityKey(FERODO, 'A2-IN-STOCK'), OUT_OF_STOCK],
+        ]),
+      );
+      const second = await service.getSubstitutes(BOSCH, 'SRC', 2, 1);
+
+      expect(numbersOf(first)).toEqual(['A2-IN-STOCK']);
+      expect(numbersOf(second)).toEqual(['A1-SOLD-OUT-LATER']);
+      expect(inventory.getAvailabilityForOrdering).toHaveBeenCalledTimes(1);
     });
 
     /**
@@ -450,7 +515,7 @@ describe('CrossReferencesService', () => {
 
       await service.getPartNumbers(BOSCH, 'SRC');
 
-      expect(tecdoc.getArticleRowsByLegacyIds).not.toHaveBeenCalled();
+      expect(rows.hydrate).not.toHaveBeenCalled();
       expect(inventory.getAvailabilityForOrdering).not.toHaveBeenCalled();
     });
 

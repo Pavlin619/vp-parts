@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ArticleSummaryDto } from "@vp-parts-shop/shared";
+import type { ArticleSummaryDto, SearchOrdering } from "@vp-parts-shop/shared";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { SearchResults } from "./search-results";
@@ -13,6 +13,8 @@ interface SearchResultsAvailabilityProps {
   results: ArticleSummaryDto[];
   /** Every match the API found, not just the hits on this page. */
   total: number;
+  /** What the row order means; passed straight through to the results. */
+  ordering: SearchOrdering;
   /** Server-rendered compact pager, passed straight through to the results. */
   pager?: ReactNode;
 }
@@ -34,9 +36,12 @@ export function SearchResultsAvailability({
   query,
   results,
   total,
+  ordering,
   pager,
 }: SearchResultsAvailabilityProps) {
-  const { data, isError, refetch } = useQuery(availabilityQueryOptions(results));
+  const { data, isError, refetch } = useQuery(
+    availabilityQueryOptions(results),
+  );
 
   return (
     <>
@@ -56,6 +61,7 @@ export function SearchResultsAvailability({
         query={query}
         results={results}
         total={total}
+        ordering={ordering}
         pager={pager}
         availability={data ?? (isError ? null : undefined)}
       />

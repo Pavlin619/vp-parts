@@ -242,20 +242,37 @@ works if the sort sees every candidate; today's design merges five arbitrary
 pages and truncates at 20, so a part we stock may never be among the rows
 considered.
 
-The read is live and uncached, exactly as availability is treated everywhere
-else — the cached artifact is the candidate set, and the ordering happens per
-request. **`getAvailability` fails closed by design, and ordering is the one
-reason not to**: a stock-DB outage has to degrade to catalogue order with a
-`warn`, not take out the cross-reference list. That single exception is
-`InventoryService.getAvailabilityForOrdering`, which answers null instead of
-throwing, so no surface has to catch the exception itself. The rows' own price and
-stock are hydrated separately by the client, and *that* read keeps failing closed,
-so no buy box ever renders a guess.
+The stock read is live: availability is never cached anywhere in this system, and
+1.7 ms for 500 identities is not worth avoiding. **`getAvailability` fails closed
+by design, and ordering is the one reason not to**: a stock-DB outage has to
+degrade to catalogue order with a `warn`, not take out the cross-reference list.
+That single exception is `InventoryService.getAvailabilityForOrdering`, which
+answers null instead of throwing, so no surface has to catch the exception itself.
+The rows' own price and stock are hydrated separately by the client, and *that*
+read keeps failing closed, so no buy box ever renders a guess.
 
 The ranking itself is `orderByAvailability` in
-`catalog/articles/article-ordering.ts`, structural over `OrderableArticle` rather
-than tied to a candidate, because the search results are ordered by the same rule
-and two definitions of it would be two answers to which part we show first.
+`catalog/articles/article-list/article-ordering.ts`, structural over
+`OrderableArticle` rather than tied to a candidate, because the search results are
+ordered by the same rule and two definitions of it would be two answers to which
+part we show first. The search reaches it through the same package, which also
+owns the hydration read below and the paging.
+
+**The resulting order is pinned for five minutes, under
+`crossrefs:order:<brandId>:<articleNumber>`.** Ranking live and *paging* live are
+different things, and this section pages by appending: ranked again between two
+clicks of "show more", a part whose last unit sold in between drops a place, so
+the next page appends a row already on screen and skips another with no sign
+anything went wrong. `ArticleOrderCache` in the same package holds the ranked
+identities — brand, number and `legacyArticleIds`, nothing a row renders — so the
+rows themselves still come from the per-row cache below rather than from a
+five-minute-old copy. A ranking made *without* stock is deliberately not pinned:
+it is already deterministic from catalogue data, so paging needs no help, and
+pinning it would hold the degraded order for minutes after the database came
+back.
+
+Three lifetimes, because three things go stale at different rates: the candidate
+set for a day, its ordering for five minutes, a hydrated row for a day.
 
 ### 4. Hydrate the rendered page
 
@@ -290,6 +307,12 @@ Rows are returned in candidate order, not TecDoc's; ids that resolve to nothing
 are dropped rather than left as holes. One id per candidate is sent: a part
 catalogued in two roles carries one per role and both resolve to the same article,
 so the second would buy a duplicate row.
+
+This step is not the cross-references' own: it is `ArticleRowsCache` in
+`catalog/articles/article-list/`, which the search hydrates its ranked page
+through as well. The cache is keyed per row rather than per page, so a part
+appearing in two lists is bought once, and re-ranking a set — which shuffles
+which rows land on page one — costs nothing for the rows already held.
 
 ### 5. A thin answer is the answer
 
@@ -347,7 +370,13 @@ availability read, which is what keeps a batch inside
 | Key | Holds | TTL |
 |---|---|---|
 | `tecdoc:crossrefs:{brandId}:{articleNumber}` | the step-2 candidate set | 24 h hit / 1 h empty |
+| `crossrefs:order:{brandId}:{articleNumber}` | the step-3 ranked identities | 5 min |
 | `tecdoc:article-row:{brandId}:{articleNumber}` | one hydrated row | 24 h |
+
+The ordering key carries no `tecdoc:` prefix because it is not a copy of TecDoc
+data — it is our answer about our own stock — and no page, because the ordering
+is a property of the whole set. The search pins its own orderings the same way,
+under `search:order:…`.
 
 The candidate key replaced `tecdoc:substitutes:{brandId}:{articleNumber}` and
 still serves both endpoints, so opening either surface warms the other. The
@@ -357,12 +386,13 @@ cross-reference resolution needs the same response's generic article and OE
 numbers: opening the substitutes tab on a page already rendered costs only the
 cross-reference search itself.
 
-Hydrated rows are cached **per row, not per page**, because the ordering is live:
-a page-number key would serve yesterday's ordering, and an id-set key would miss
-whenever stock moved a row across a page boundary. Per-row caching also means a
-part appearing in two different lists is fetched once. This needed one new
-primitive on `RedisCache` — `cachedMany`, an `mget` followed by a pipelined
-write — which is also what the listing grid will want later.
+Hydrated rows are cached **per row, not per page**, because the ordering outlives
+no more than five minutes: a page-number key would serve the ordering the rows
+were first cut into, and an id-set key would miss whenever stock moved a row
+across a page boundary. Per-row caching also means a part appearing in two
+different lists is fetched once. This needed one new primitive on `RedisCache` —
+`cachedMany`, an `mget` followed by a pipelined write — which is also what the
+listing grid will want later.
 
 ---
 
@@ -378,7 +408,8 @@ too) and the article read it starts from (shared with the detail page).
 | The two routes | `cross-references/cross-references.controller.ts` |
 | Orchestration and caching | `cross-references/cross-references.service.ts` |
 | The candidate search and the hydration read | `cross-references/cross-references.tecdoc.ts` |
-| Provenance filter, self-drop, ordering, paging (pure) | `cross-references/candidate-set.ts` |
+| Provenance filter and self-drop (pure) | `cross-references/candidate-set.ts` |
+| The ranking rule, and the pin that keeps paging consistent | `apps/api/src/catalog/articles/article-list/article-ordering.ts`, `article-order.cache.ts` |
 | Candidate shape and mapping | `apps/api/src/tecdoc/cross-reference-mapper.ts` |
 | The article read step 1 starts from, shared with the detail page | `apps/api/src/catalog/articles/article-read.ts` |
 | The delivery band the ordering ranks by, shared with the web's dot colour | `packages/shared/src/delivery.ts` |
@@ -435,10 +466,12 @@ equivalence — the right source for a "superseded by" notice, unrelated to this
   aftermarket article and drop out of the ordering entirely; see
   `TODO(inventory-oe-parts)`. They were never sorted correctly before either — they
   were quoted for whichever aftermarket part happened to share the number.
-- **Live ordering versus paging.** Page 2 can shift if stock changes between
-  requests. The `(brandName, articleNumber)` tiebreak bounds the drift; if it
-  becomes visible, the answer is a snapshot token on the first page rather than
-  caching the order.
+- **Live ordering versus paging, past the pin.** The ranked order is held for five
+  minutes (step 3), which covers a paging session. A visitor who leaves the
+  section open longer and then clicks "show more" is ranked afresh and can cross
+  one page boundary — the `(brandName, articleNumber)` tiebreak bounds how far a
+  row can move. The complete fix is a snapshot token on the first page, which is a
+  contract change we decided not to make for a window measured in minutes.
 - **A candidate set above 1000** would be truncated, and only a `warn` says so.
   Three times the widest of 418 parts measured, but the ceiling is TecDoc's own
   `perPage` maximum, so the fix if it ever fires is a second call, not a larger

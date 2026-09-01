@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ArticleSummaryDto,
   BrandDto,
-  PaginatedSearchArticlesDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { BrandsTecDoc } from './brands.tecdoc';
 
 const BRAND_TTL = 7 * 24 * 60 * 60;
+
+/** The two halves of a search response that carry a brand logo. */
+interface SearchLogoJoin {
+  items: ArticleSummaryDto[];
+  facets: SearchFacetDto[];
+}
 
 /**
  * Reusable brand feature: the Redis-cached TecDoc data-supplier list plus the
@@ -70,33 +76,31 @@ export class BrandsService {
 
   /**
    * Joins logos onto a search result's article rows AND its brand facet values
-   * from a single (cached) getBrands read. A fully empty result skips the read
+   * from a single (cached) getBrands read. A result with neither skips the read
    * so a hopeless search never fetches the brand list. Brands are the only
    * facet with a logo — product types have none, categories ride on the
    * category navigation and technical attributes on their own facets.
+   *
+   * Takes the two pieces rather than the response, because they come from two
+   * different reads: the rows from whichever order the page was served in, the
+   * facets from the enumeration of the whole match set.
    */
-  async applyLogosToSearchResults(
-    results: PaginatedSearchArticlesDto,
-  ): Promise<PaginatedSearchArticlesDto> {
-    const isEmpty =
-      results.items.length === 0 &&
-      results.facets.length === 0 &&
-      results.attributes.length === 0 &&
-      results.categoryNavigation.options.length === 0 &&
-      results.categoryNavigation.current === null;
-    if (isEmpty) {
-      return results;
+  async attachSearchLogos(results: SearchLogoJoin): Promise<SearchLogoJoin> {
+    const { items, facets } = results;
+
+    if (items.length === 0 && facets.length === 0) {
+      return { items, facets };
     }
 
     const logoByBrand = await this.getBrandLogoMap();
 
-    const items = results.items.map((item) => ({
-      ...item,
-      brandLogoUrl: logoByBrand.get(item.brandId) ?? null,
-    }));
-    const facets = this.attachFacetLogos(results.facets, logoByBrand);
-
-    return { ...results, items, facets };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        brandLogoUrl: logoByBrand.get(item.brandId) ?? null,
+      })),
+      facets: this.attachFacetLogos(facets, logoByBrand),
+    };
   }
 
   /**

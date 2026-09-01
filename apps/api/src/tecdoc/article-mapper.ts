@@ -79,6 +79,58 @@ export interface TecDocArticleRecord {
 }
 
 /**
+ * `misc.articleStatusId`, from the Article Status key table. Only `Normal` says
+ * a supplier still ships the part; the rest are ordering inputs, never filters —
+ * a part out of production that we hold in stock is a part we can sell, and
+ * filtering it out upstream would hide it.
+ */
+export enum ArticleStatus {
+  InPreparation = 0,
+  Normal = 1,
+  NotSupplied = 2,
+  OutOfProduction = 8,
+  NoLongerSupplied = 9,
+  OnRequest = 11,
+}
+
+/**
+ * An article as it comes back from a cheap, whole-set read: its identity, what
+ * it is, whether it is still supplied, and the id it can be hydrated by.
+ *
+ * Deliberately not an `ArticleSummaryDto`. A set read whole — every match of a
+ * search, every cross-reference of a part — costs under a kilobyte per row this
+ * way against ten times that hydrated, so the set is enumerated as candidates,
+ * ranked and paged, and only the page a visitor reached is turned into rendered
+ * rows by `ArticleRowsCache`.
+ *
+ * The three includes that fill it are `includeGenericArticles` (the description
+ * and the legacy ids) and `includeMisc` (the status). Nothing here may depend on
+ * criteria, images or OE numbers.
+ */
+export interface ArticleCandidate {
+  brandId: string;
+  brandName: string;
+  articleNumber: string;
+  description: string;
+  legacyArticleIds: number[];
+  /** Null when TecDoc files no status, which is not the same as `Normal`. */
+  articleStatusId: number | null;
+}
+
+export function mapArticleCandidate(
+  article: TecDocArticleRecord,
+): ArticleCandidate {
+  return {
+    brandId: String(article.dataSupplierId),
+    brandName: article.mfrName,
+    articleNumber: article.articleNumber,
+    description: article.genericArticles?.[0]?.genericArticleDescription ?? '',
+    legacyArticleIds: legacyArticleIdsOf(article),
+    articleStatusId: article.misc?.articleStatusId ?? null,
+  };
+}
+
+/**
  * The `legacyArticleId`s one article resolves to, alongside the identity they
  * belong to.
  *

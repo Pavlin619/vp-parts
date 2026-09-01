@@ -79,7 +79,7 @@ export const EXACT_AUTOCOMPLETE_EXECUTION: SearchExecution = {
  * The client-selected search intent. Defined in `@vp-parts-shop/shared` because
  * it is the wire contract — the web app puts it in the `/search` URL — and
  * re-exported here so the search module's own files keep importing it from one
- * place. Each mode maps to a distinct call plan in `buildSearchPlan`.
+ * place. Each mode maps to a distinct TecDoc call in `searchCallFor`.
  */
 export { DEFAULT_SEARCH_MODE, SearchMode } from '@vp-parts-shop/shared';
 
@@ -124,30 +124,16 @@ export interface SearchFilters {
 }
 
 /**
- * Whether a search carries any facet narrowing at all. `categoryHasChildren` is
- * deliberately not counted: it is a hint describing `categoryNodeId`, not a
- * selection of its own, so on its own it narrows nothing.
- */
-export function hasActiveFilters(filters: SearchFilters | undefined): boolean {
-  if (!filters) {
-    return false;
-  }
-
-  return (
-    (filters.brandIds?.length ?? 0) > 0 ||
-    (filters.productTypeIds?.length ?? 0) > 0 ||
-    filters.categoryNodeId !== undefined ||
-    (filters.criteria?.length ?? 0) > 0
-  );
-}
-
-/**
  * The only page whose response carries the attribute (dimension) facets. They
  * describe the whole match set, so every later page would repeat page 1's block
  * verbatim; the client keeps the page-1 set while paginating. The cheap brand
  * and category blocks are still sent on every page.
  */
 export const SEARCH_FACET_PAGE = 1;
+
+export function isFacetPage(page: number): boolean {
+  return page === SEARCH_FACET_PAGE;
+}
 
 /**
  * Whether exactly one product type is selected — which is what TecDoc requires
@@ -179,23 +165,19 @@ function dimensionScopeOf(filters: SearchFilters | undefined): DimensionScope {
 }
 
 /**
- * Whether a search should ask TecDoc for the technical-attribute (`criteria`)
- * facets that become the response's `attributes` — the single place that
- * decides, so the TecDoc request and the Redis cache key never disagree.
+ * Whether the enumeration should ask TecDoc for the technical-attribute
+ * (`criteria`) facets that become the response's `attributes` — the single place
+ * that decides, so the TecDoc request and the Redis cache key never disagree.
  *
  * Which narrowings qualify is {@link hasCoherentDimensions}, shared with the web
- * app so the two cannot drift. Added on top of it is the **first page**, because
- * facets are computed over the whole match set and every later page would
- * re-ship a block identical to page 1's.
+ * app so the two cannot drift. No page comes into it: the enumeration describes
+ * the whole match set and is read once per search, so which page a visitor is on
+ * changes neither the request nor its cache entry. Whether the block is *sent*
+ * is {@link isFacetPage}'s decision, made where the response is assembled.
  */
 export function shouldRequestCriteriaFacets(
   filters: SearchFilters | undefined,
-  page: number,
 ): boolean {
-  if (page !== SEARCH_FACET_PAGE) {
-    return false;
-  }
-
   return hasCoherentDimensions(dimensionScopeOf(filters));
 }
 

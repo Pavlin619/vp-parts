@@ -68,6 +68,7 @@ function renderResults(pager?: ReactNode) {
     <QueryClientProvider client={queryClient}>
       <SearchResultsAvailability
         query="WL634"
+        ordering="availability"
         results={results}
         total={results.length}
         pager={pager}

@@ -1,24 +1,33 @@
 import {
   autocompleteArticlesCacheKey,
   autocompleteTermsCacheKey,
-  laneCacheKey,
-  laneToken,
   normaliseCacheQuery,
-  searchCacheKey,
+  searchOrderCacheKey,
+  searchPageCacheKey,
+  searchSetCacheKey,
 } from './search-cache-keys';
-import { SearchRequest } from './search-plan';
+import { SearchRequest, SearchSetRequest } from './search-call';
 import { SearchFilters, TecDocSearchType } from './search-types';
 
 const PART = { type: TecDocSearchType.AnyNumber, matchType: 'prefix' } as const;
 const TERM = { type: TecDocSearchType.FreeText } as const;
 
-function request(overrides: Partial<SearchRequest> = {}): SearchRequest {
+function setRequest(
+  overrides: Partial<SearchSetRequest> = {},
+): SearchSetRequest {
   return {
     query: 'WL6340',
     execution: PART,
+    filters: {},
+    ...overrides,
+  };
+}
+
+function request(overrides: Partial<SearchRequest> = {}): SearchRequest {
+  return {
+    ...setRequest(),
     page: 1,
     pageSize: 20,
-    filters: {},
     ...overrides,
   };
 }
@@ -37,35 +46,41 @@ describe('normaliseCacheQuery', () => {
   });
 });
 
-describe('searchCacheKey', () => {
+describe('searchSetCacheKey', () => {
   it('is stable for an identical request', () => {
-    expect(searchCacheKey(request())).toBe(searchCacheKey(request()));
+    expect(searchSetCacheKey(setRequest())).toBe(
+      searchSetCacheKey(setRequest()),
+    );
   });
 
   it('ignores the case a number query was typed in', () => {
-    expect(searchCacheKey(request({ query: 'wl6340' }))).toBe(
-      searchCacheKey(request({ query: 'WL6340' })),
+    expect(searchSetCacheKey(setRequest({ query: 'wl6340' }))).toBe(
+      searchSetCacheKey(setRequest({ query: 'WL6340' })),
     );
   });
 
   // Two callers who picked the same brands in a different order are asking the
   // same question, so they must not each pay for a TecDoc call.
   it('ignores the order brand ids were selected in', () => {
-    expect(searchCacheKey(request({ filters: { brandIds: [30, 4] } }))).toBe(
-      searchCacheKey(request({ filters: { brandIds: [4, 30] } })),
-    );
+    expect(
+      searchSetCacheKey(setRequest({ filters: { brandIds: [30, 4] } })),
+    ).toBe(searchSetCacheKey(setRequest({ filters: { brandIds: [4, 30] } })));
   });
 
   it('ignores the order product type ids were selected in', () => {
     expect(
-      searchCacheKey(request({ filters: { productTypeIds: [30, 4] } })),
-    ).toBe(searchCacheKey(request({ filters: { productTypeIds: [4, 30] } })));
+      searchSetCacheKey(setRequest({ filters: { productTypeIds: [30, 4] } })),
+    ).toBe(
+      searchSetCacheKey(setRequest({ filters: { productTypeIds: [4, 30] } })),
+    );
   });
 
   it('separates two searches narrowed to different product types', () => {
     expect(
-      searchCacheKey(request({ filters: { productTypeIds: [7] } })),
-    ).not.toBe(searchCacheKey(request({ filters: { productTypeIds: [9] } })));
+      searchSetCacheKey(setRequest({ filters: { productTypeIds: [7] } })),
+    ).not.toBe(
+      searchSetCacheKey(setRequest({ filters: { productTypeIds: [9] } })),
+    );
   });
 
   it('ignores the order criteria selections were made in', () => {
@@ -82,81 +97,103 @@ describe('searchCacheKey', () => {
       ],
     };
 
-    expect(searchCacheKey(request({ filters: first }))).toBe(
-      searchCacheKey(request({ filters: second })),
+    expect(searchSetCacheKey(setRequest({ filters: first }))).toBe(
+      searchSetCacheKey(setRequest({ filters: second })),
     );
   });
 
   // The hint only matters through the decision it drives, so hints that resolve
   // the same way must share an entry.
   it('folds a categoryHasChildren hint into the request it produces', () => {
-    const absent = request({ filters: { categoryNodeId: 5 } });
-    const hasChildren = request({
+    const absent = setRequest({ filters: { categoryNodeId: 5 } });
+    const hasChildren = setRequest({
       filters: { categoryNodeId: 5, categoryHasChildren: true },
     });
-    const isLeaf = request({
+    const isLeaf = setRequest({
       filters: { categoryNodeId: 5, categoryHasChildren: false },
     });
 
-    expect(searchCacheKey(absent)).toBe(searchCacheKey(hasChildren));
-    expect(searchCacheKey(isLeaf)).not.toBe(searchCacheKey(absent));
+    expect(searchSetCacheKey(absent)).toBe(searchSetCacheKey(hasChildren));
+    expect(searchSetCacheKey(isLeaf)).not.toBe(searchSetCacheKey(absent));
+  });
+
+  it.each([
+    ['vehicle scope', setRequest({ vehicleId: 10042 })],
+    ['execution', setRequest({ execution: TERM })],
+    ['query', setRequest({ query: 'WL6341' })],
+    ['brand selection', setRequest({ filters: { brandIds: [4] } })],
+    ['category selection', setRequest({ filters: { categoryNodeId: 5 } })],
+  ])('separates entries that differ by %s', (_label, variant) => {
+    expect(searchSetCacheKey(variant)).not.toBe(
+      searchSetCacheKey(setRequest()),
+    );
+  });
+});
+
+describe('searchPageCacheKey', () => {
+  it('is stable for an identical request', () => {
+    expect(searchPageCacheKey(request())).toBe(searchPageCacheKey(request()));
+  });
+
+  it('narrows a page exactly as the set it slices was narrowed', () => {
+    expect(
+      searchPageCacheKey(request({ filters: { brandIds: [30, 4] } })),
+    ).toBe(searchPageCacheKey(request({ filters: { brandIds: [4, 30] } })));
   });
 
   it.each([
     ['page', request({ page: 2 })],
     ['page size', request({ pageSize: 50 })],
-    ['vehicle scope', request({ vehicleId: 10042 })],
-    ['execution', request({ execution: TERM })],
     ['query', request({ query: 'WL6341' })],
-    ['brand selection', request({ filters: { brandIds: [4] } })],
-    ['category selection', request({ filters: { categoryNodeId: 5 } })],
+    ['vehicle scope', request({ vehicleId: 10042 })],
   ])('separates entries that differ by %s', (_label, variant) => {
-    expect(searchCacheKey(variant)).not.toBe(searchCacheKey(request()));
-  });
-});
-
-describe('laneCacheKey', () => {
-  const plan = [
-    { query: 'WA5432', execution: PART },
-    { query: 'WA5432 WIX', execution: PART },
-  ];
-
-  it('is stable for the same plan and vehicle scope', () => {
-    expect(laneCacheKey(plan, undefined)).toBe(laneCacheKey(plan, undefined));
+    expect(searchPageCacheKey(variant)).not.toBe(searchPageCacheKey(request()));
   });
 
-  // A lane is a property of the query, so one memo serves every refinement and
-  // every page — the key never sees filters or paging at all.
-  it('ignores the case the plan queries were typed in', () => {
-    const lowercased = [
-      { query: 'wa5432', execution: PART },
-      { query: 'wa5432 wix', execution: PART },
-    ];
-
-    expect(laneCacheKey(lowercased, undefined)).toBe(
-      laneCacheKey(plan, undefined),
-    );
-  });
-
-  it('separates the vehicle-scoped memo from the unscoped one', () => {
-    expect(laneCacheKey(plan, 10042)).not.toBe(laneCacheKey(plan, undefined));
-  });
-
-  it('separates plans whose steps are ordered differently', () => {
-    expect(laneCacheKey([...plan].reverse(), undefined)).not.toBe(
-      laneCacheKey(plan, undefined),
+  // The two reads answer different questions about the same match set, so a
+  // page must never be served an enumeration or the other way round.
+  it('never collides with the enumeration of the same set', () => {
+    expect(searchPageCacheKey(request())).not.toBe(
+      searchSetCacheKey(setRequest()),
     );
   });
 });
 
-describe('laneToken', () => {
-  it('normalises the step query the same way the search key does', () => {
-    expect(laneToken({ query: '  wa5432 ', execution: PART })).toBe('WA5432');
+describe('searchOrderCacheKey', () => {
+  it('is stable for an identical request', () => {
+    expect(searchOrderCacheKey(setRequest())).toBe(
+      searchOrderCacheKey(setRequest()),
+    );
   });
 
-  it('lowercases a free-text step', () => {
-    expect(laneToken({ query: 'Oil Filter', execution: TERM })).toBe(
-      'oil filter',
+  it('narrows an order exactly as the set it ranks was narrowed', () => {
+    expect(
+      searchOrderCacheKey(setRequest({ filters: { brandIds: [30, 4] } })),
+    ).toBe(searchOrderCacheKey(setRequest({ filters: { brandIds: [4, 30] } })));
+  });
+
+  it.each([
+    ['query', setRequest({ query: 'WL6341' })],
+    ['vehicle scope', setRequest({ vehicleId: 10042 })],
+    ['brand selection', setRequest({ filters: { brandIds: [4] } })],
+  ])('separates entries that differ by %s', (_label, variant) => {
+    expect(searchOrderCacheKey(variant)).not.toBe(
+      searchOrderCacheKey(setRequest()),
+    );
+  });
+
+  // The order covers the whole set, so the slice taken out of it is not part of
+  // its identity — that is what lets page 2 be cut from the ranking page 1 saw.
+  it('is page-free', () => {
+    expect(searchOrderCacheKey(setRequest())).not.toContain('page');
+    expect(searchOrderCacheKey(request({ page: 2, pageSize: 50 }))).toBe(
+      searchOrderCacheKey(setRequest()),
+    );
+  });
+
+  it('never collides with the enumeration of the same set', () => {
+    expect(searchOrderCacheKey(setRequest())).not.toBe(
+      searchSetCacheKey(setRequest()),
     );
   });
 });
