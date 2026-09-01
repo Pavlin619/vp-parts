@@ -195,7 +195,10 @@ export class SearchTecDoc {
       candidates,
       facets: [
         ...mapBrandFacets(data.dataSupplierFacets?.counts),
-        ...mapProductTypeFacets(data.genericArticleFacets?.counts),
+        ...mapProductTypeFacets(
+          data.genericArticleFacets?.counts,
+          filters?.productTypeIds,
+        ),
       ],
       attributes: isHomogeneous
         ? mapAttributeFacets(data.criteriaFacets?.counts)

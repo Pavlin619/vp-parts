@@ -124,21 +124,65 @@ export interface TecDocGenericArticleFacetCount {
 }
 
 /**
+ * How many product types a search offers. TecDoc files roughly 7,600 generic
+ * articles and counts every one a broad query touches — measured at 7,541
+ * values (721 KB of a 786 KB cache entry, and the same again on the wire) for a
+ * single-character query. The sidebar only offers this list once the assembly
+ * group tree runs out of levels, where the widest measured set was four, so the
+ * cap is far above what any visitor reaches and the tail it drops is a tail
+ * nothing renders.
+ */
+export const PRODUCT_TYPE_FACET_LIMIT = 60;
+
+/**
  * Turns the raw TecDoc generic-article counts into the shared product-type
- * facet group. Unlike the brand values these carry no `imageUrl` at all: a
- * product type has no logo to join, and an explicit `null` would invite the
- * brands layer to fill one in.
+ * facet group, most-matched first and capped at
+ * {@link PRODUCT_TYPE_FACET_LIMIT}. Unlike the brand values these carry no
+ * `imageUrl` at all: a product type has no logo to join, and an explicit `null`
+ * would invite the brands layer to fill one in.
+ *
+ * `selectedIds` are kept whatever their count, because TecDoc counts the
+ * product types of the set *before* its own `genericArticleIds` filter — so
+ * this list is where a page reached by deep link finds the name of its own
+ * selection, for the sidebar heading and the breadcrumb both.
  */
 export function mapProductTypeFacets(
   genericArticleCounts: TecDocGenericArticleFacetCount[] = [],
+  selectedIds: number[] = [],
 ): SearchFacetDto[] {
-  const values: FacetValueDto[] = genericArticleCounts.map((c) => ({
+  const byCount = [...genericArticleCounts].sort(
+    (left, right) => right.count - left.count,
+  );
+
+  const capped = byCount.slice(0, PRODUCT_TYPE_FACET_LIMIT);
+  const values: FacetValueDto[] = [
+    ...capped,
+    ...selectedBeyond(byCount, capped, selectedIds),
+  ].map((c) => ({
     id: String(c.genericArticleId),
     label: c.genericArticleDescription,
     count: c.count,
   }));
 
   return values.length > 0 ? [{ id: 'productTypes', values }] : [];
+}
+
+function selectedBeyond(
+  counts: TecDocGenericArticleFacetCount[],
+  kept: TecDocGenericArticleFacetCount[],
+  selectedIds: number[],
+): TecDocGenericArticleFacetCount[] {
+  if (selectedIds.length === 0) {
+    return [];
+  }
+
+  const keptIds = new Set(kept.map((count) => count.genericArticleId));
+
+  return counts.filter(
+    (count) =>
+      selectedIds.includes(count.genericArticleId) &&
+      !keptIds.has(count.genericArticleId),
+  );
 }
 
 /**

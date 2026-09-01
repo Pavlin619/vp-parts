@@ -4,12 +4,23 @@ import {
   mapAttributeFacets,
   mapBrandFacets,
   mapProductTypeFacets,
+  PRODUCT_TYPE_FACET_LIMIT,
   TecDocAssemblyGroupFacetCount,
   TecDocCriteriaFacetCount,
   TecDocCriteriaInfo,
   TecDocCriteriaValueCount,
+  TecDocGenericArticleFacetCount,
 } from './search-facet-mappers';
 import { FITTING_POSITION_CRITERIA_ID } from './search-types';
+
+/** `count` descends with the id, so the widest type is the highest id. */
+function productTypeCounts(howMany: number): TecDocGenericArticleFacetCount[] {
+  return Array.from({ length: howMany }, (_, index) => ({
+    genericArticleId: index + 1,
+    genericArticleDescription: `Type ${index + 1}`,
+    count: index + 1,
+  }));
+}
 
 function node(
   assemblyGroupNodeId: number,
@@ -97,6 +108,53 @@ describe('mapProductTypeFacets', () => {
   it('drops the group entirely when there are no counts', () => {
     expect(mapProductTypeFacets([])).toEqual([]);
     expect(mapProductTypeFacets()).toEqual([]);
+  });
+
+  it('keeps the most-matched types when the count list is wider than the cap', () => {
+    const [facet] = mapProductTypeFacets(productTypeCounts(200));
+
+    expect(facet.values).toHaveLength(PRODUCT_TYPE_FACET_LIMIT);
+    expect(facet.values[0]).toEqual({
+      id: '200',
+      label: 'Type 200',
+      count: 200,
+    });
+    expect(facet.values.at(-1)?.count).toBe(200 - PRODUCT_TYPE_FACET_LIMIT + 1);
+  });
+
+  it('orders by count even when the list fits under the cap', () => {
+    const [facet] = mapProductTypeFacets([
+      { genericArticleId: 1, genericArticleDescription: 'Rare', count: 3 },
+      { genericArticleId: 2, genericArticleDescription: 'Common', count: 90 },
+    ]);
+
+    expect(facet.values.map((value) => value.label)).toEqual([
+      'Common',
+      'Rare',
+    ]);
+  });
+
+  // TecDoc counts the product types of the *unfiltered* set, so a page reached
+  // by deep link resolves its own heading and breadcrumb out of this list. Cap
+  // it away and the selection loses its name.
+  it('keeps a selected type the cap would otherwise drop', () => {
+    const [facet] = mapProductTypeFacets(productTypeCounts(200), [7]);
+
+    expect(facet.values).toHaveLength(PRODUCT_TYPE_FACET_LIMIT + 1);
+    expect(facet.values.at(-1)).toEqual({ id: '7', label: 'Type 7', count: 7 });
+  });
+
+  it('does not repeat a selected type that is already within the cap', () => {
+    const [facet] = mapProductTypeFacets(productTypeCounts(200), [200]);
+
+    expect(facet.values).toHaveLength(PRODUCT_TYPE_FACET_LIMIT);
+    expect(facet.values.filter((value) => value.id === '200')).toHaveLength(1);
+  });
+
+  it('ignores a selected type the search never counted', () => {
+    const [facet] = mapProductTypeFacets(productTypeCounts(3), [999]);
+
+    expect(facet.values.map((value) => value.id)).toEqual(['3', '2', '1']);
   });
 });
 

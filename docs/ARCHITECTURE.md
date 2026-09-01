@@ -452,7 +452,39 @@ Cache lookup: **Redis hit → return. Redis miss → call TecDoc API → store i
 Redis is a disposable cache with persistence disabled. Its dataset is capped at
 192 MB by default (configurable through `REDIS_MAXMEMORY`) and uses
 `allkeys-lfu`, preserving frequently reused campaign and first-page searches
-while evicting cold query/filter/page combinations.
+while evicting cold query/filter/page combinations. LFU rather than LRU is what
+makes a crawl survivable: a bot walking vehicle trees touches each key once, so
+its entries stay near the initial frequency counter and are evicted ahead of the
+hot human traffic.
+
+**`REDIS_MAXMEMORY` caps the dataset, not the process.** Allocator fragmentation
+and per-connection output buffers sit on top of it, so the value has to be set
+against the container's memory limit rather than copied: ~60–65% of it. On a
+256 MB container that is `160mb` — leaving 192 MB there would let the dataset
+alone reach the limit at a normal fragmentation ratio, and the container would
+kill Redis before Redis started evicting. Persistence being off removes the fork
+copy-on-write spike that usually forces a wider margin.
+
+Measured per-entry costs, live TecDoc through the API with `MEMORY USAGE` per
+key (1 Sep 2026): a hydrated article row 902 B; a cross-reference candidate set
+27 KB; a search enumeration 179 B per candidate; a pinned order 79 B per
+identity; an assembly-group tree 33.7 KB per vehicle. One part opened costs
+about 65 KB across all families and one sortable search about 100 KB, so the
+192 MB cap holds roughly 3,000 distinct parts or 2,000 distinct
+search-and-filter combinations before anything is evicted. Reads and writes in
+`RedisCache` both fail soft, so pressure costs a TecDoc call on a miss rather
+than an error.
+
+**Facet value lists are capped where they are unbounded.** TecDoc counts every
+one of its ~7,600 generic articles that a query touches — 7,541 values, 721 KB,
+for a single-character query — while the sidebar only offers that list once the
+assembly-group tree runs out of levels, where the widest measured set was four.
+`PRODUCT_TYPE_FACET_LIMIT` keeps the 60 most-matched plus whatever is selected;
+see `search-facet-mappers.ts` for why the selection has to survive the cap. The
+brand facet is deliberately uncapped: it is bounded by the number of TecDoc data
+suppliers (525 values at its widest, 32 KB) and the sidebar sorts it
+alphabetically behind a search box, so dropping its tail would remove brands
+from both.
 
 **Future:** Add circuit breaker for TecDoc incidents — return stale Redis value rather than failing the request. Add Postgres `tecdoc_cache` schema when Redis memory pressure becomes measurable.
 

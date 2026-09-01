@@ -1,5 +1,6 @@
 import { TecDocTransport } from '../tecdoc';
 import { SEARCH_SORTABLE_LIMIT } from './search-enumeration';
+import { PRODUCT_TYPE_FACET_LIMIT } from './search-facet-mappers';
 import { SearchTecDoc } from './search.tecdoc';
 
 function record(articleNumber: string, mfrName = 'WIX') {
@@ -344,6 +345,35 @@ describe('SearchTecDoc', () => {
         expect(call.mock.calls[0][1]).toMatchObject({
           genericArticleIds: [7, 9],
         });
+      });
+
+      // TecDoc counts every type the query touches — 7,541 of them on a
+      // one-character query — so the mapped group is capped. The selection has
+      // to survive the cap: it is where the page reads its own heading.
+      it('caps the mapped group but keeps whatever is selected', async () => {
+        call.mockResolvedValueOnce({
+          totalMatchingArticles: 1,
+          articles: [record('WL6340')],
+          genericArticleFacets: {
+            counts: Array.from({ length: 500 }, (_, index) => ({
+              genericArticleId: index + 1,
+              genericArticleDescription: `Type ${index + 1}`,
+              count: index + 1,
+            })),
+          },
+        });
+
+        const result = await tecdoc.enumerate(
+          'филтър',
+          undefined,
+          { type: 99 },
+          { productTypeIds: [3] },
+        );
+
+        const [productTypes] = result.facets;
+
+        expect(productTypes.values).toHaveLength(PRODUCT_TYPE_FACET_LIMIT + 1);
+        expect(productTypes.values.at(-1)?.id).toBe('3');
       });
 
       // The point of the whole facet: one product type is a homogeneous set, so
