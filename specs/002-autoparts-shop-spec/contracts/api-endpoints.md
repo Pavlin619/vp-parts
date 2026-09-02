@@ -611,13 +611,18 @@ it runs `searchType: 10` / `searchMatchType: exact` over the same
 brand-stripped→raw candidates, with **no** free-text fallback (an exact-phrase
 request is a precise number lookup).
 
-`[VERIFY-TC]` `searchType: 99` (free-text) is implemented from the Pegasus 3.0
-docs but not yet verified against the Test Client — confirm its response shape
-matches the number-search shape (see the plan's verification checklist).
+`searchType: 99` (free-text) is verified against the live endpoint: its response
+carries the same top-level keys as a number search (`articles`,
+`dataSupplierFacets`, `genericArticleFacets`, `maxAllowedPage`, `status`,
+`totalMatchingArticles`) and the same per-article keys, so one mapper serves
+both.
 
-**Native order, no ranking:** results are returned in TecDoc's native `getArticles`
-order — there is no client-side re-ranking. `[VERIFY-TC]` Re-evaluate against the
-Test Client before adding any internal sort (see the Phase 3.5 plan checklist).
+**Superseded — the results are ranked.** This section described TecDoc's native
+`getArticles` order with no re-ranking. A match set at or under
+`SEARCH_SORTABLE_LIMIT` is now enumerated whole and ranked by what we can ship
+(`orderArticles`), with the ranking pinned for five minutes; only a set too wide
+to enumerate is served in TecDoc's own order, and the response says which it was
+via `ordering` and `isRankable`. See the search section of `CLAUDE.md`.
 
 **No redirects:** the search endpoint always returns a result list — even for a
 single hit — so the user stays on the search screen. (A single part number
@@ -673,9 +678,10 @@ zero-result response:
   `type` (`N` numeric, `A` alphanumeric, `K` key/lookup), `isInterval`,
   `values` (each a `{ value, label, count }`; send `value` back via `attr`), and
   an optional **`role`** — a semantic hint (`fitting-position`, `axle`, `side`)
-  assigned on the backend from a known criteriaId map (`[VERIFY-TC]` for the
-  exact ids) so the client can render a bespoke control (e.g. a front/rear car
-  diagram) instead of a plain value list; `null`/absent means "render normally".
+  assigned on the backend from a known criteriaId map (`100` "страна на монтаж"
+  → `fitting-position`, `273` "ос" → `axle`, both read off the live catalogue)
+  so the client can render a bespoke control (e.g. a front/rear car diagram)
+  instead of a plain value list; `null`/absent means "render normally".
   **Only present once the search has narrowed to one product type or one leaf
   category.** Criteria are defined per product type, so a broad result spanning
   unrelated types would return an incoherent union of every criteria set. Either
@@ -702,21 +708,22 @@ zero-result response:
   - **`options`** — the level to choose from: the top-level roots when no
     `categoryNodeId` is selected, otherwise the selected node's immediate
     children (empty once at a leaf). Each is `{ id` (sent back as
-    `categoryNodeId`)`, label, count` (**null** when TecDoc omits it —
-    `[VERIFY-TC]`)`, hasChildren }`.
+    `categoryNodeId`)`, label, count` (**null** when TecDoc omits it, which the
+    schema says happens outside a linkage filter's own tree but which has never
+    been observed — counts came back on every node of both trees)`, hasChildren }`.
   - **`current`** — the selected node (same shape as an option), or `null` on a
     broad/unscoped search. Its `hasChildren` drives the leaf gate for
-    `attributes`; its `label`/`count` feed the results heading. `[VERIFY-TC]`
-    whether the match-scoped facet returns the selected node so `current` can be
-    resolved for a deep selection.
+    `attributes`; its `label`/`count` feed the results heading. A facet filtered
+    to a node does return that node, so `current` resolves for a deep selection.
   - **`ancestors`** — the selected node's ancestors, outermost first and
     excluding `current`, which is what the client renders the breadcrumb from.
     It is the **tree's** path, not the path that was clicked: a category
     suggestion in the autocomplete jumps straight to a deep leaf, so the search
     URL alone cannot say what sits above it. Best-effort for the same reason as
     `current` — the facet is match-scoped, so an ancestor TecDoc omits cannot be
-    named and the trail simply comes back shorter. `[VERIFY-TC]` whether
-    `includeCompleteTree: false` keeps the ancestors of a filtered node.
+    named and the trail simply comes back shorter. In practice the chain is
+    always complete: a facet filtered to one node carries its full ancestry
+    without `includeCompleteTree`, measured over 17 nodes at depths 2 to 4.
 
   The whole-catalogue tree is `GET /catalog/assembly-groups`'s job; this block is
   strictly match-scoped.

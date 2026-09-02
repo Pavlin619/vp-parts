@@ -219,10 +219,12 @@ function selectedValueCount(
  * (fitting position, axle, side) outranks even that — a mechanic reaches for it
  * before any dimension.
  *
- * TecDoc can rank the criteria itself via `includeCriteriaFacetsSorting`, but
- * only for a search filtered to one `linkageTargetId` and one
- * `genericArticleId`. Until the search is vehicle-scoped that call is
- * unavailable, so this ordering stands in for it.
+ * This orders the criteria; what order the *values* inside one come in is the
+ * API's decision, in `dimension-facets.ts`, so they are rendered as given.
+ *
+ * TecDoc's own ranking, `includeCriteriaFacetsSorting`, is not an option: it is
+ * refused on our account ("Sorting of criteria facets is not enabled"), so a
+ * vehicle-scoped search would not unlock it either.
  */
 function orderedFacets(facets: AttributeFacetDto[]): AttributeFacetDto[] {
   const rank = (facet: AttributeFacetDto): number => {

@@ -91,13 +91,13 @@ export { DEFAULT_SEARCH_MODE, SearchMode };
  * A single technical-attribute (criteria) narrowing: the TecDoc `criteriaId`
  * plus the machine `rawValue` echoed back from an `AttributeFacetValueDto`.
  *
- * [VERIFY-TC] How TecDoc combines two entries carrying the **same**
- * `criteriaId` is undocumented — the schema gives the pair and no semantics.
- * The web app offers the values of one criterion as a multi-select, which only
- * works if they are OR-combined; if they are AND-combined instead, picking two
- * values of one criterion returns nothing every time. Confirm on the Test
- * Client before trusting the multi-select, and make the control single-select
- * if it turns out to be AND.
+ * **Two entries sharing a `criteriaId` are OR-combined, and two different ids
+ * are AND-combined.** The schema states neither, so it was measured against the
+ * live endpoint: on one product type, `форма`=Правоъгълен matched 3,201 and
+ * `форма`=кръгъл 1,341, and the two together matched exactly 4,542; adding a
+ * second criterion instead narrowed 3,201 to 3,022. Both the multi-select and
+ * the merged-value token in `dimension-facets.ts` depend on the OR half — under
+ * AND, picking two values of one criterion would return nothing every time.
  */
 export interface CriteriaFilter {
   criteriaId: number;
@@ -215,20 +215,35 @@ export function shouldRequestCriteriaFacets(
 
 /**
  * Maps a TecDoc criteriaId (or, in dev, the mock's attribute label) to a
- * semantic {@link AttributeFacetRole} the client can render with a bespoke
- * control (e.g. a front/rear car diagram) instead of a plain value list.
+ * semantic {@link AttributeFacetRole}. Today the web reads it only to rank a
+ * criterion to the top of the sidebar (`orderedFacets`) — a mechanic reaches
+ * for "which corner of the car" before any dimension. It is also the hook for
+ * rendering a bespoke control, e.g. a front/rear diagram, in place of a value
+ * list.
  *
- * [VERIFY-TC] The numeric TecDoc criteriaId(s) below are best-effort candidates
- * and MUST be confirmed against the Pegasus 3.0 Test Client — a wrong id would
- * mislabel an unrelated criterion. The Bulgarian label entry only exists so the
- * mock client surfaces the role in dev; live data is matched by criteriaId.
+ * Both ids are read off the live catalogue. `100` is the criterion that says
+ * where a part goes — its values mix side, axle and height ("отпред", "ляво",
+ * "задна ос", "вътрешен", "от двете страни на предната ос"), which is one
+ * control's worth of meaning rather than three. `273` is the axle on its own.
+ *
+ * A previous `'2'` was a guess and is not a criterion TecDoc files at all: it
+ * appeared in none of 320 distinct criteria measured across brake discs, pads,
+ * shock absorbers, control arms, headlights and filters, so no facet was ever
+ * role-tagged in production. Do not add an id here without reading it out of a
+ * `criteriaFacets` response first.
+ *
+ * The Bulgarian label entry only exists so the mock client surfaces the role in
+ * dev; live data is matched by criteriaId.
  */
-export const FITTING_POSITION_CRITERIA_ID = '2';
+export const FITTING_POSITION_CRITERIA_ID = '100';
+
+export const AXLE_CRITERIA_ID = '273';
 
 export const ATTRIBUTE_ROLE_BY_ID: Readonly<
   Record<string, AttributeFacetRole>
 > = {
   [FITTING_POSITION_CRITERIA_ID]: 'fitting-position',
+  [AXLE_CRITERIA_ID]: 'axle',
   'Позиция на монтаж': 'fitting-position',
 };
 

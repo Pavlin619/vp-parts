@@ -8,6 +8,7 @@ import {
   SearchQueryDto,
 } from './search.dto';
 import { SearchMode } from './search-types';
+import { MERGED_VALUE_SEPARATOR } from './dimension-facets';
 
 describe('parseCriteriaFilters', () => {
   it('returns an empty array when the param is absent or empty', () => {
@@ -54,6 +55,22 @@ describe('parseCriteriaFilters', () => {
         '30:ok',
       ]),
     ).toEqual([{ criteriaId: 30, rawValue: 'ok' }]);
+  });
+
+  // One pill can stand for several raw spellings of one measurement, and the
+  // filter has to name every one of them or it narrows to the fraction of
+  // articles filed under the spelling that happened to win the label.
+  it('expands a merged value into one filter per raw spelling', () => {
+    expect(
+      parseCriteriaFilters([`206:193${MERGED_VALUE_SEPARATOR}193,0`]),
+    ).toEqual([
+      { criteriaId: 206, rawValue: '193' },
+      { criteriaId: 206, rawValue: '193,0' },
+    ]);
+  });
+
+  it('drops an entry that is nothing but separators', () => {
+    expect(parseCriteriaFilters([`206:${MERGED_VALUE_SEPARATOR}`])).toEqual([]);
   });
 });
 

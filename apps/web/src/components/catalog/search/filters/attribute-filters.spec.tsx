@@ -46,10 +46,10 @@ const MATERIAL: AttributeFacetDto = {
 }
 
 const FITTING_POSITION: AttributeFacetDto = {
-  id: '2',
+  id: '100',
   label: 'Позиция на монтаж',
   unit: null,
-  type: 'A',
+  type: 'K',
   isInterval: false,
   isMandatory: true,
   role: 'fitting-position',

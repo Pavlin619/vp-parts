@@ -15,6 +15,10 @@ describe('classifyTecDocStatus', () => {
     expect(classifyTecDocStatus(status)).toBe(TecDocFailure.Denied);
   });
 
+  // 400 is confirmed against the live endpoint rather than inferred from the
+  // HTTP meaning: it names the offending field in `statusText` (`Field 'page'
+  // must be > 0`) and also covers an unentitled feature. 404 and 422 have never
+  // been seen and rest on the status class alone.
   it.each([400, 404, 422])('classifies %i as a rejected request', (status) => {
     expect(classifyTecDocStatus(status)).toBe(TecDocFailure.Rejected);
   });
