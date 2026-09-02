@@ -127,16 +127,19 @@ export function parseSearchUrl(input: SearchParamsInput): SearchUrlState {
  * A fresh, unnarrowed search — what submitting the header search box means.
  * Filters are never carried over: they were picked from the facets of a
  * different query's results.
+ *
+ * Nor is the saved vehicle, which is why this takes no id to scope by. A
+ * visitor who picked a car once does not expect every later search to answer
+ * only for it; the results page offers that narrowing where it can be seen.
  */
 export function newSearch(params: {
   query: string;
   mode: SearchMode;
-  vehicleId?: string;
 }): SearchUrlState {
   return {
     query: params.query,
     mode: params.mode,
-    vehicleId: params.vehicleId,
+    vehicleId: undefined,
     page: FIRST_PAGE,
     brandIds: [],
     productTypeId: undefined,
@@ -239,6 +242,18 @@ export function hasActiveFilters(state: SearchUrlState): boolean {
     state.attributes.length > 0 ||
     state.stockScope !== undefined
   );
+}
+
+/**
+ * Whether anything beyond the query is narrowing the results — what an empty
+ * result set has to know before it blames the query itself.
+ *
+ * The vehicle counts here and not in {@link hasActiveFilters}, which answers the
+ * narrower question of whether the sidebar's facet controls are holding
+ * anything back.
+ */
+export function isNarrowedSearch(state: SearchUrlState): boolean {
+  return hasActiveFilters(state) || state.vehicleId !== undefined;
 }
 
 /**
@@ -345,6 +360,15 @@ export function withVehicle(
   vehicleId: string,
 ): SearchUrlState {
   return { ...clearAllFilters(state), vehicleId };
+}
+
+/**
+ * Widens the search back to every vehicle, and drops the selections for the
+ * same reason {@link withVehicle} does — the result set is replaced either way,
+ * so the ids the filters were picked from need not appear in the new one.
+ */
+export function withoutVehicle(state: SearchUrlState): SearchUrlState {
+  return { ...clearAllFilters(state), vehicleId: undefined };
 }
 
 export function toggleBrand(

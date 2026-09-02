@@ -30,4 +30,20 @@ describe('SearchNoMatches', () => {
     expect(href).not.toContain('brand=')
     expect(href).not.toContain('cat=')
   })
+
+  // A reset that leaves the results scoped to a car is a link to the same empty
+  // page — the vehicle is the strongest narrowing of the ones on offer.
+  it('drops the vehicle scope too', () => {
+    render(<SearchNoMatches state={{ ...narrowed, vehicleId: '10042' }} />)
+
+    expect(
+      screen.getByRole('link', { name: /Изчисти всички филтри/ }),
+    ).toHaveAttribute('href', expect.not.stringContaining('vehicleId'))
+  })
+
+  it('names the vehicle among the narrowings to drop when one is applied', () => {
+    render(<SearchNoMatches state={{ ...narrowed, vehicleId: '10042' }} />)
+
+    expect(screen.getByText(/премахнете автомобила/)).toBeInTheDocument()
+  })
 })

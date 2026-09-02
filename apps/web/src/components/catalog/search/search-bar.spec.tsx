@@ -184,7 +184,13 @@ describe('SearchBar', () => {
     expect(pushMock).toHaveBeenCalledWith('/catalog/articles/268/WL6341')
   })
 
-  it('includes the selected vehicle in the search navigation', async () => {
+  /**
+   * A saved vehicle is a preference, not a filter on everything typed after it.
+   * Scoping a search to it silently is the behaviour visitors do not expect and
+   * cannot see: the results page offers the narrowing instead, where it is
+   * visible and reversible.
+   */
+  it('searches every vehicle even when one is saved', async () => {
     setVehicleContext('v-320d')
     usePartNumberScope()
     const user = userEvent.setup()
@@ -192,7 +198,21 @@ describe('SearchBar', () => {
 
     await user.type(screen.getByRole('combobox'), 'WL6340{Enter}')
 
-    expect(pushedUrl()).toBe('/search?q=WL6340&vehicleId=v-320d')
+    expect(pushedUrl()).toBe('/search?q=WL6340')
+  })
+
+  it('follows a suggestion unscoped too', async () => {
+    setVehicleContext('v-320d')
+    getAutocompleteMock.mockResolvedValue([
+      { kind: 'term', term: 'маслен филтър' },
+    ])
+    const user = userEvent.setup()
+    renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), 'масл')
+    await user.click(await screen.findByRole('option', { name: /маслен филтър/ }))
+
+    expect(pushedUrl()).not.toContain('vehicleId')
   })
 
   describe('search mode', () => {

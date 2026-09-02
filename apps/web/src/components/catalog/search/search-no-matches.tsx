@@ -2,7 +2,7 @@ import Link from "next/link";
 import { FilterX } from "lucide-react";
 import {
   buildSearchUrl,
-  clearAllFilters,
+  withoutVehicle,
   type SearchUrlState,
 } from "@/lib/catalog/search-url";
 
@@ -28,12 +28,12 @@ export function SearchNoMatches({ state }: SearchNoMatchesProps) {
         Няма артикули за избраните филтри
       </h2>
       <p className="mb-5 text-sm text-muted">
-        Опитайте с по-малко ограничения — премахнете марка, категория или
-        размер.
+        Опитайте с по-малко ограничения — премахнете{" "}
+        {state.vehicleId ? "автомобила, марка" : "марка"}, категория или размер.
       </p>
 
       <Link
-        href={buildSearchUrl(clearAllFilters(state))}
+        href={buildSearchUrl(withoutVehicle(state))}
         prefetch={false}
         className="inline-flex h-10 items-center rounded-lg bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/90"
       >

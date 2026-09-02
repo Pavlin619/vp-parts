@@ -7,7 +7,6 @@ import { buildSearchUrl, drillIntoCategory, newSearch } from "./search-url";
 
 interface SuggestionContext {
   mode: SearchMode;
-  vehicleId?: string;
 }
 
 /**
@@ -31,21 +30,13 @@ export function suggestionHref(
 
   if (suggestion.kind === "term") {
     return buildSearchUrl(
-      newSearch({
-        query: suggestion.term,
-        mode: SearchMode.Generic,
-        vehicleId: context.vehicleId,
-      }),
+      newSearch({ query: suggestion.term, mode: SearchMode.Generic }),
     );
   }
 
   return buildSearchUrl(
     drillIntoCategory(
-      newSearch({
-        query: suggestion.term,
-        mode: context.mode,
-        vehicleId: context.vehicleId,
-      }),
+      newSearch({ query: suggestion.term, mode: context.mode }),
       { id: suggestion.categoryNodeId, hasChildren: false },
     ),
   );
