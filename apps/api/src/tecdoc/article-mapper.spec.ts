@@ -1,4 +1,5 @@
 import {
+  mapArticleImages,
   mapArticleSummary,
   mapOemNumbers,
   TecDocArticleRecord,
@@ -144,5 +145,34 @@ describe('mapArticleSummary', () => {
       technicalSpecs: [],
       fitsVehicle: null,
     });
+  });
+});
+
+describe('mapArticleImages', () => {
+  it('keeps one entry per distinct image, in the order TecDoc filed them', () => {
+    const images: TecDocArticleRecord['images'] = [
+      { imageURL800: 'https://img/oc115-a.jpg' },
+      { imageURL800: 'https://img/oc115-b.jpg' },
+      { imageURL800: 'https://img/oc115-a.jpg' },
+    ];
+
+    expect(mapArticleImages(images)).toEqual([
+      'https://img/oc115-a.jpg',
+      'https://img/oc115-b.jpg',
+    ]);
+  });
+
+  it('drops an image TecDoc files without a URL', () => {
+    const images: TecDocArticleRecord['images'] = [
+      {},
+      { imageURL800: '' },
+      { imageURL800: 'https://img/oc115-a.jpg' },
+    ];
+
+    expect(mapArticleImages(images)).toEqual(['https://img/oc115-a.jpg']);
+  });
+
+  it('answers empty when the read asked for no images', () => {
+    expect(mapArticleImages(undefined)).toEqual([]);
   });
 });

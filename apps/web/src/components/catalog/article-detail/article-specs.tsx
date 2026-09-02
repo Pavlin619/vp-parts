@@ -20,9 +20,11 @@ export function ArticleSpecs({ technicalSpecs }: ArticleSpecsProps) {
         Технически характеристики
       </h2>
       <dl>
-        {technicalSpecs.map((spec) => (
+        {/* The label is not a unique identity — TecDoc repeats it whenever a part
+            carries several values for one criterion, notes especially. */}
+        {technicalSpecs.map((spec, index) => (
           <div
-            key={spec.key}
+            key={`${spec.key}-${index}`}
             className="flex items-baseline justify-between gap-4 py-2"
           >
             <dt className="text-sm text-muted">{spec.key}</dt>
