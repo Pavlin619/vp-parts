@@ -61,6 +61,30 @@ describe('ArticleRow — catalog metadata', () => {
     expect(screen.getByText('WIX')).toBeInTheDocument()
   })
 
+  // Counter staff paste these into supplier systems all day, so the number is
+  // copyable from the list without opening the part.
+  it('copies the article number to the clipboard', async () => {
+    const user = userEvent.setup()
+    render(<ArticleRow article={article()} />)
+
+    await user.click(
+      screen.getByRole('button', { name: 'Копирай номер WL6340' }),
+    )
+
+    expect(await navigator.clipboard.readText()).toBe('WL6340')
+  })
+
+  // A logo is a mark, not a name, and the row has no room to print one beside it.
+  it('names the brand on hovering its logo', () => {
+    render(
+      <ArticleRow
+        article={article({ brandLogoUrl: 'https://img.example/wix.png' })}
+      />,
+    )
+
+    expect(screen.getByTitle('WIX')).toBeInTheDocument()
+  })
+
   it('summarises the technical specs under the description', () => {
     render(
       <ArticleRow
@@ -111,6 +135,31 @@ describe('ArticleRow — catalog metadata', () => {
 // A thumbnail or logo URL can 404, be served by a host that is not registered
 // in `next.config.ts`, or simply fail on a flaky CDN. The row must degrade to
 // the placeholder it already has rather than leave a broken image box.
+// TecDoc photos are white-backed and rarely square, so `object-contain` leaves
+// the slot's own backdrop showing beside them. A photo therefore sits on the
+// card colour; only the empty slot is the sunken grey.
+describe('ArticleRow — the thumbnail slot', () => {
+  it('drops the sunken fill behind a photo', () => {
+    render(
+      <ArticleRow
+        article={article({ thumbnailUrl: 'https://img.example/oc115.jpg' })}
+      />,
+    )
+
+    expect(screen.getByTestId('article-row-thumbnail')).not.toHaveClass(
+      'bg-bg-sunken',
+    )
+  })
+
+  it('keeps the sunken fill when there is no photo', () => {
+    render(<ArticleRow article={article()} />)
+
+    expect(screen.getByTestId('article-row-thumbnail')).toHaveClass(
+      'bg-bg-sunken',
+    )
+  })
+})
+
 describe('ArticleRow — images that fail to load', () => {
   it('falls back to the placeholder when the thumbnail fails', () => {
     const { container } = render(
@@ -122,6 +171,9 @@ describe('ArticleRow — images that fail to load', () => {
     fireEvent.error(container.querySelector('img')!)
 
     expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByTestId('article-row-thumbnail')).toHaveClass(
+      'bg-bg-sunken',
+    )
   })
 
   it('falls back to the brand name when the logo fails', () => {

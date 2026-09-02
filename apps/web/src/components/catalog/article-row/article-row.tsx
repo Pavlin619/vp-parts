@@ -9,6 +9,7 @@ import type {
   TechnicalSpecDto,
   WarehouseAvailabilityDto,
 } from "@vp-parts-shop/shared";
+import { CopyButton } from "@/components/common/copy-button";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { articleDetailHref } from "@/lib/catalog/article-href";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
@@ -101,13 +102,28 @@ export function ArticleRow({
           <ArticleThumbnail href={href} thumbnailUrl={article.thumbnailUrl} />
 
           <div className="flex min-w-0 flex-col gap-[3px]">
-            <Link
-              href={href}
-              className="font-mono text-[14.5px] font-semibold tracking-[-0.01em] text-ink hover:underline"
+            <div className="flex min-w-0 items-center gap-1">
+              <Link
+                href={href}
+                className="truncate font-mono text-[14.5px] font-semibold tracking-[-0.01em] text-ink hover:underline"
+              >
+                {articleNumber}
+              </Link>
+              <CopyButton
+                value={articleNumber}
+                label={`Копирай номер ${articleNumber}`}
+                size="sm"
+                className="-my-1"
+              />
+            </div>
+            {/* Clamped rather than wrapped freely: the row's height is pinned by
+                the buy column, and a third description line would push past it. */}
+            <p
+              className="line-clamp-2 text-[12.5px] font-medium text-ink-2"
+              title={description}
             >
-              {articleNumber}
-            </Link>
-            <p className="text-[12.5px] font-medium text-ink-2">{description}</p>
+              {description}
+            </p>
             {specSummary && (
               <p className="truncate font-mono text-[11px] text-ink-3">
                 {specSummary}
@@ -150,6 +166,17 @@ export function ArticleRow({
   );
 }
 
+/**
+ * The row's part photo, in a square slot the whole list shares.
+ *
+ * Supplier photos are almost never square — the tall ones are filters, the wide
+ * ones brake discs — so `object-contain` letterboxes most of them rather than
+ * crop a part a mechanic is trying to recognise. That makes the slot's own
+ * backdrop visible down the sides of the image, which is why it is the card
+ * colour behind a photo and framed like the brand cell beside it: TecDoc images
+ * are white-backed, so they read edge to edge instead of sitting in grey bands.
+ * The sunken fill belongs to the empty state, where there is nothing to letterbox.
+ */
 function ArticleThumbnail({
   href,
   thumbnailUrl,
@@ -158,6 +185,7 @@ function ArticleThumbnail({
   thumbnailUrl: string | null;
 }) {
   const [hasFailed, setHasFailed] = useState(false);
+  const photoUrl = hasFailed ? null : thumbnailUrl;
 
   return (
     <Link
@@ -166,11 +194,15 @@ function ArticleThumbnail({
       // this one is decorative, so keep it out of the tab order.
       tabIndex={-1}
       aria-hidden="true"
-      className="relative block h-11 w-11 shrink-0 overflow-hidden rounded-md bg-bg-sunken"
+      data-testid="article-row-thumbnail"
+      className={cn(
+        "relative block h-11 w-11 shrink-0 overflow-hidden rounded-md",
+        photoUrl ? "border border-line bg-bg-card" : "bg-bg-sunken",
+      )}
     >
-      {thumbnailUrl && !hasFailed ? (
+      {photoUrl ? (
         <Image
-          src={thumbnailUrl}
+          src={photoUrl}
           alt=""
           fill
           className="object-contain"
@@ -192,6 +224,9 @@ function ArticleThumbnail({
  * The brand cell. A logo that fails to load is treated as no logo at all — the
  * wordmark fallback says more than an empty frame, and a TecDoc image host we
  * have not registered in `next.config.ts` fails exactly this way.
+ *
+ * The logo carries the brand name as a hover title: a mark alone is not a name,
+ * and the row has no room to print one beside it.
  */
 function BrandLogo({
   brandName,
@@ -204,7 +239,10 @@ function BrandLogo({
 
   if (brandLogoUrl && !hasFailed) {
     return (
-      <span className="relative block h-[42px] w-[68px] rounded-md border border-line bg-bg-card">
+      <span
+        title={brandName}
+        className="relative block h-[42px] w-[68px] rounded-md border border-line bg-bg-card"
+      >
         <Image
           src={brandLogoUrl}
           alt={brandName}
