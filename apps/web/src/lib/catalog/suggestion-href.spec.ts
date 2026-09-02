@@ -3,7 +3,6 @@ import { suggestionHref } from './suggestion-href'
 
 interface Context {
   mode: SearchMode
-  vehicleId?: string
 }
 
 const PART_NUMBER_CONTEXT: Context = { mode: SearchMode.PartNumber }
@@ -46,10 +45,10 @@ describe('suggestionHref', () => {
       expect(href(term)).toBe('/search?q=маслен+филтър&mode=generic')
     })
 
-    it('keeps the selected vehicle', () => {
-      expect(href(term, { ...PART_NUMBER_CONTEXT, vehicleId: 'v-1' })).toContain(
-        'vehicleId=v-1',
-      )
+    // A saved vehicle scopes a search only where the visitor asked it to, on
+    // the results page. Following a suggestion is not that ask.
+    it('leaves the search unscoped by any vehicle', () => {
+      expect(href(term)).not.toContain('vehicleId')
     })
   })
 

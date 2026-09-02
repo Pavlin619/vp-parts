@@ -16,6 +16,7 @@ import {
   hasActiveFilters,
   hasDimensions,
   isAttributeSelected,
+  isNarrowedSearch,
   isPageOutOfRange,
   newSearch,
   parseSearchUrl,
@@ -28,6 +29,7 @@ import {
   withMode,
   withPage,
   withSort,
+  withoutVehicle,
   withStockScope,
   withVehicle,
   type SearchUrlState,
@@ -823,6 +825,68 @@ describe('withVehicle', () => {
 
     expect(scoped.query).toBe('WL6340')
     expect(scoped.mode).toBe(SearchMode.Generic)
+  })
+})
+
+describe('withoutVehicle', () => {
+  it('widens the search back to every vehicle', () => {
+    expect(withoutVehicle(state({ vehicleId: '10042' })).vehicleId).toBeUndefined()
+  })
+
+  // Symmetric with `withVehicle`, and for the same reason: leaving the vehicle
+  // replaces the result set, so the facet ids the filters were picked from may
+  // not appear in the wider one at all.
+  it('drops every narrowing picked from the scoped set', () => {
+    const widened = withoutVehicle(
+      state({
+        vehicleId: '10042',
+        brandIds: ['268'],
+        productTypeId: '7',
+        categoryPath: ['100'],
+        attributes: [{ criteriaId: '20', value: '106.4' }],
+        stockScope: 'central',
+        page: 3,
+      }),
+    )
+
+    expect(widened).toMatchObject({
+      brandIds: [],
+      productTypeId: undefined,
+      categoryPath: [],
+      attributes: [],
+      stockScope: undefined,
+      page: 1,
+    })
+  })
+
+  it('keeps the query and the mode', () => {
+    const widened = withoutVehicle(
+      state({ vehicleId: '10042', query: 'WL6340', mode: SearchMode.Generic }),
+    )
+
+    expect(widened.query).toBe('WL6340')
+    expect(widened.mode).toBe(SearchMode.Generic)
+  })
+})
+
+/**
+ * The vehicle is a narrowing but not one `clearAllFilters` removes, so it is
+ * counted here and not in `hasActiveFilters`. Left out of both, a vehicle-scoped
+ * search that matches nothing would be read as a query that matches nothing and
+ * sent to the dead-end empty state — losing the sidebar, and with it the only
+ * control that can widen it again.
+ */
+describe('isNarrowedSearch', () => {
+  it('is false for a bare query', () => {
+    expect(isNarrowedSearch(state())).toBe(false)
+  })
+
+  it('is true when the search is scoped to a vehicle', () => {
+    expect(isNarrowedSearch(state({ vehicleId: '10042' }))).toBe(true)
+  })
+
+  it('is true for any filter that clearing removes', () => {
+    expect(isNarrowedSearch(state({ brandIds: ['268'] }))).toBe(true)
   })
 })
 

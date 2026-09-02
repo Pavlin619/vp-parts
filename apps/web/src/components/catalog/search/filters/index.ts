@@ -5,3 +5,4 @@ export { FilterBlock } from "./filter-block";
 export { SearchFiltersSidebar } from "./search-filters-sidebar";
 export { SearchPagination } from "./search-pagination";
 export { SearchPaginationCompact } from "./search-pagination-compact";
+export { SearchVehicleFilter } from "./search-vehicle-filter";

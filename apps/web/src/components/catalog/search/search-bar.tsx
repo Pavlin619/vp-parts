@@ -8,7 +8,7 @@ import type { AutocompleteItemDto } from "@vp-parts-shop/shared";
 import { autocompleteQueryOptions } from "@/lib/api/catalog";
 import { buildSearchUrl, newSearch } from "@/lib/catalog/search-url";
 import { suggestionHref } from "@/lib/catalog/suggestion-href";
-import { useHydration, useVehicleContext } from "@/hooks/use-vehicle-context";
+import { useHydration } from "@/hooks/use-vehicle-context";
 import {
   looksLikeDescription,
   looksLikePartNumber,
@@ -46,7 +46,6 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  const selectedVehicle = useVehicleContext((state) => state.selectedVehicle);
   const { scope, isExact } = usePersistedSearchMode();
   const setScope = useSearchModeStore((state) => state.setScope);
   const setExact = useSearchModeStore((state) => state.setExact);
@@ -87,19 +86,13 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
         newSearch({
           query: trimmedQuery,
           mode: resolveSearchMode(searchScope, isExact),
-          vehicleId: selectedVehicle?.vehicleId,
         }),
       ),
     );
   }
 
   function selectSuggestion(suggestion: AutocompleteItemDto) {
-    navigateTo(
-      suggestionHref(suggestion, {
-        mode,
-        vehicleId: selectedVehicle?.vehicleId,
-      }),
-    );
+    navigateTo(suggestionHref(suggestion, { mode }));
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {

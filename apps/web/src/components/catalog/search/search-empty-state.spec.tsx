@@ -62,14 +62,18 @@ describe('SearchEmptyState', () => {
       },
     )
 
-    it('keeps the selected vehicle on the retry', () => {
+    // Changing lane re-runs the same search, so a scope the visitor applied to
+    // it is not theirs to drop on the way.
+    it('keeps the vehicle the search was scoped to', () => {
       render(
         <SearchEmptyState
-          state={newSearch({
-            query: 'въздушен филтър',
-            mode: SearchMode.PartNumber,
+          state={{
+            ...newSearch({
+              query: 'въздушен филтър',
+              mode: SearchMode.PartNumber,
+            }),
             vehicleId: '20154',
-          })}
+          }}
         />,
       )
 

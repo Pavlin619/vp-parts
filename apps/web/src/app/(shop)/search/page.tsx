@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { searchArticles } from "@/lib/api/search";
 import {
   buildSearchUrl,
-  hasActiveFilters,
+  isNarrowedSearch,
   isPageOutOfRange,
   parseSearchUrl,
   SEARCH_PAGE_SIZE,
@@ -43,9 +43,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const response = await searchArticles(toSearchRequest(state));
 
   // A query that matches nothing at all is a dead end worth its own recovery
-  // page. A query emptied by the filters is not — that one keeps the sidebar,
-  // because the way out is to drop a narrowing rather than retype.
-  if (response.total === 0 && !hasActiveFilters(state)) {
+  // page. A query emptied by a narrowing is not — that one keeps the sidebar,
+  // because the way out is to drop the narrowing rather than retype.
+  if (response.total === 0 && !isNarrowedSearch(state)) {
     return (
       <div className="page-container py-8">
         <SearchEmptyState state={state} suggestions={response.suggestions} />
@@ -71,6 +71,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
         <SearchFiltersSidebar
           state={state}
+          total={response.total}
           facets={response.facets}
           attributes={response.attributes}
           categoryNavigation={response.categoryNavigation}
