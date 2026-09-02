@@ -8,6 +8,7 @@ export {
   legacyArticleIdsOf,
   linkageRolesOf,
   mapArticleCandidate,
+  mapArticleImages,
   mapArticleSummary,
   mapOemNumbers,
 } from './article-mapper';

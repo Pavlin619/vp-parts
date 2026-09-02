@@ -7,6 +7,7 @@ import {
   TecDocArticleRecord,
   genericArticleIdsOf,
   linkageRolesOf,
+  mapArticleImages,
   mapArticleSummary,
   mapOemNumbers,
 } from '../../tecdoc';
@@ -99,9 +100,7 @@ export class ArticlesTecDoc {
         // shared with every list surface; the detail adds the image gallery and
         // the OE numbers, which are too bulky for a list to carry per row.
         ...mapArticleSummary(article),
-        images: (article.images ?? [])
-          .map((img) => img.imageURL800 ?? '')
-          .filter(Boolean),
+        images: mapArticleImages(article.images),
         oemNumbers: mapOemNumbers(article.oemNumbers),
       },
       genericArticleIds: genericArticleIdsOf(article),

@@ -253,6 +253,21 @@ function mapTechnicalSpecs(
 }
 
 /**
+ * The gallery images, deduped on the URL. One URL is one photograph, so a
+ * repeat — and TecDoc does file them, the same way it repeats a criterion — is a
+ * duplicate thumbnail rather than a second view of the part.
+ */
+export function mapArticleImages(
+  images: TecDocArticleRecord['images'],
+): string[] {
+  const urls = (images ?? [])
+    .map((image) => image.imageURL800 ?? '')
+    .filter(Boolean);
+
+  return dedupeBy(urls, (url) => [url]);
+}
+
+/**
  * TecDoc files an OE number once per vehicle manufacturer that uses it, so the
  * pair is the identity: one make listed twice is a repeat, two makes sharing a
  * number are two separate facts worth showing.
