@@ -3,6 +3,7 @@ import {
   ArticleAutocompleteItemDto,
   ArticleSummaryDto,
   AutocompleteItemDto,
+  SearchSort,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
@@ -23,6 +24,7 @@ import {
   shouldRequestCriteriaFacets,
 } from './search-types';
 import { SEARCH_SORTABLE_LIMIT, SearchEnumeration } from './search-enumeration';
+import { SearchRequest } from './search-call';
 import {
   buildCategoryNavigation,
   buildCategorySuggestions,
@@ -82,6 +84,32 @@ function assemblyGroupFacetOptionsFor(
     includeCompleteTree: hasCategorySelection,
     ...(vehicleId == null && { assemblyGroupType: CATALOGUE_WIDE_TREES }),
   };
+}
+
+/**
+ * The TecDoc `sort` fields each catalogue axis maps to, in the order they are
+ * applied. Only these two sorts reach TecDoc: the availability and price orders
+ * rank on stock it knows nothing about, and `catalogue` *is* its own order, so
+ * all four send no `sort` and take the relevance ranking as it comes.
+ *
+ * Two fields rather than one so a page boundary cannot fall inside a run of ties
+ * and reshuffle on the next request — the same reason our own comparators end on
+ * brand and number.
+ */
+const TECDOC_SORT_FIELDS: Partial<Record<SearchSort, readonly string[]>> = {
+  [SearchSort.Brand]: ['mfrName', 'articleNumber'],
+  [SearchSort.ArticleNumber]: ['articleNumber', 'mfrName'],
+};
+
+export interface TecDocSortField {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
+export function tecDocSortFor(sort: SearchSort): TecDocSortField[] | undefined {
+  const fields = TECDOC_SORT_FIELDS[sort];
+
+  return fields?.map((field) => ({ field, direction: 'asc' as const }));
 }
 
 /** One page of rendered rows, in TecDoc's own order. */
@@ -208,29 +236,35 @@ export class SearchTecDoc {
   }
 
   /**
-   * One page of rendered rows in TecDoc's native order — the answer for a match
-   * set too wide to rank by availability.
+   * One page of rendered rows in a catalogue order — the answer for a match set
+   * too wide to rank by what we can ship.
+   *
+   * Whether that order is TecDoc's own relevance or one of its alphabetical axes
+   * is {@link tecDocSortFor}'s decision; either way TecDoc applies it across the
+   * whole match set before paging, which is what makes an alphabetical sort
+   * meaningful here at all while an availability one is not.
    *
    * Asks for no facets: the enumeration of the same set already carries them,
    * and it is cached per search rather than per page, so recomputing them here
    * would be paid for on every page turn of exactly the queries that can least
    * afford it.
    */
-  async readRowsPage(
-    query: string,
-    vehicleId: number | undefined,
-    execution: SearchExecution,
-    page: number,
-    pageSize: number,
-    filters?: SearchFilters,
-  ): Promise<SearchRowsPage> {
+  async readRowsPage(request: SearchRequest): Promise<SearchRowsPage> {
+    const sort = tecDocSortFor(request.sort);
+
     const data = await this.transport.call<{
       maxAllowedPage?: number;
       articles?: TecDocArticleRecord[];
     }>('getArticles', {
-      ...this.matchSetPayload(query, vehicleId, execution, filters),
-      perPage: pageSize,
-      page,
+      ...this.matchSetPayload(
+        request.query,
+        request.vehicleId,
+        request.execution,
+        request.filters,
+      ),
+      perPage: request.pageSize,
+      page: request.page,
+      ...(sort && { sort }),
       // Exactly what `mapArticleSummary` reads, and nothing more. `includeAll`
       // would add PDFs, links, linkages, parts and accessory lists, GTINs,
       // prices, trade numbers and OE numbers that no row renders, for a

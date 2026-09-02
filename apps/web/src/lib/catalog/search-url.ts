@@ -1,11 +1,14 @@
 import {
   DEFAULT_SEARCH_MODE,
+  DEFAULT_SEARCH_SORT,
   hasCoherentDimensions,
   isSearchMode,
+  isSearchSort,
   isStockScope,
   type AttributeSelectionDto,
   type CategoryOptionDto,
   type SearchMode,
+  type SearchSort,
   type StockScope,
 } from "@vp-parts-shop/shared";
 
@@ -28,6 +31,7 @@ export const SEARCH_PARAM = {
   categoryHasChildren: "catHasChildren",
   attribute: "attr",
   stock: "stock",
+  sort: "sort",
 } as const;
 
 export const SEARCH_PATH = "/search";
@@ -80,6 +84,17 @@ export interface SearchUrlState {
    * rank.
    */
   stockScope?: StockScope;
+  /**
+   * Which order the results are asked for. Always set, because there is no such
+   * thing as an unordered list — an absent `sort` param means the default, not
+   * "no preference".
+   *
+   * Asking for an order a set turns out to be too wide for is not an error: the
+   * API answers with the one it fell back to, in `ordering`. Which options are
+   * *offered* is decided from the response's `isRankable`, which the URL cannot
+   * know before the search has run.
+   */
+  sort: SearchSort;
 }
 
 type SearchParamsInput =
@@ -104,6 +119,7 @@ export function parseSearchUrl(input: SearchParamsInput): SearchUrlState {
     ),
     attributes: parseAttributes(read.all(SEARCH_PARAM.attribute)),
     stockScope: parseStockScope(read.one(SEARCH_PARAM.stock)),
+    sort: parseSort(read.one(SEARCH_PARAM.sort)),
   };
 }
 
@@ -128,6 +144,7 @@ export function newSearch(params: {
     categoryHasChildren: undefined,
     attributes: [],
     stockScope: undefined,
+    sort: DEFAULT_SEARCH_SORT,
   };
 }
 
@@ -174,6 +191,10 @@ export function buildSearchUrl(state: SearchUrlState): string {
     params.set(SEARCH_PARAM.stock, state.stockScope);
   }
 
+  if (state.sort !== DEFAULT_SEARCH_SORT) {
+    params.set(SEARCH_PARAM.sort, state.sort);
+  }
+
   if (state.page > FIRST_PAGE) {
     params.set(SEARCH_PARAM.page, String(state.page));
   }
@@ -206,6 +227,7 @@ export function toSearchRequest(state: SearchUrlState) {
     categoryHasChildren: state.categoryHasChildren,
     attributes: state.attributes,
     stockScope: state.stockScope,
+    sort: state.sort,
   };
 }
 
@@ -262,7 +284,9 @@ export function isPageOutOfRange(
  * Attribute selections are deliberately excluded — they always return to page 1
  * and so are answered by a fresh block anyway. So is the stock scope, which
  * narrows the ranked set rather than the match set: the facets describe what
- * TecDoc matched, and that is the same list whichever origin is selected.
+ * TecDoc matched, and that is the same list whichever origin is selected. The
+ * sort is excluded for the stronger version of that reason — it narrows nothing
+ * at all, so re-ordering a list cannot change what its facets count.
  */
 export function facetScopeKey(state: SearchUrlState): string {
   return [
@@ -447,6 +471,21 @@ export function withStockScope(
   return { ...state, stockScope, page: FIRST_PAGE };
 }
 
+/**
+ * Re-orders the results. Back to page 1 like every narrowing, and for a stronger
+ * reason than most: the rows do not merely shrink, they move, so page 3 of the
+ * previous order describes nothing in the new one.
+ *
+ * The filters all survive — an order is not a narrowing, and re-picking a brand
+ * after sorting by price is exactly the friction the control exists to remove.
+ */
+export function withSort(
+  state: SearchUrlState,
+  sort: SearchSort,
+): SearchUrlState {
+  return { ...state, sort, page: FIRST_PAGE };
+}
+
 /** Clears every narrowing but keeps the query, the vehicle and the mode. */
 export function clearAllFilters(state: SearchUrlState): SearchUrlState {
   return {
@@ -507,6 +546,11 @@ function parseMode(raw: string | undefined): SearchMode {
  */
 function parseStockScope(raw: string | undefined): StockScope | undefined {
   return isStockScope(raw) ? raw : undefined;
+}
+
+/** Falls back to the default for the same reason a bad `stock` is dropped. */
+function parseSort(raw: string | undefined): SearchSort {
+  return isSearchSort(raw) ? raw : DEFAULT_SEARCH_SORT;
 }
 
 /**

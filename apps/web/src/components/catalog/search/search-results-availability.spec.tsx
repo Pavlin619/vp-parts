@@ -74,6 +74,7 @@ function renderResults(pager?: ReactNode) {
       <SearchResultsAvailability
         state={parseSearchUrl({ q: 'WL634' })}
         ordering="availability"
+        isRankable
         results={results}
         total={results.length}
         pager={pager}

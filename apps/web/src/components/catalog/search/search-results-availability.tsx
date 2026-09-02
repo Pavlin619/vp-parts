@@ -19,8 +19,10 @@ interface SearchResultsAvailabilityProps {
   results: ArticleSummaryDto[];
   /** Every match the API found, not just the hits on this page. */
   total: number;
-  /** What the row order means; passed straight through to the results. */
+  /** The order actually applied; passed straight through to the results. */
   ordering: SearchOrdering;
+  /** Whether the set could be ranked at all; passed straight through. */
+  isRankable: boolean;
   /** Per-origin stock over the whole set; passed straight through. */
   stockScopeCounts?: StockScopeCountsDto;
   /** Server-rendered compact pager, passed straight through to the results. */
@@ -45,6 +47,7 @@ export function SearchResultsAvailability({
   results,
   total,
   ordering,
+  isRankable,
   stockScopeCounts,
   pager,
 }: SearchResultsAvailabilityProps) {
@@ -71,6 +74,7 @@ export function SearchResultsAvailability({
         results={results}
         total={total}
         ordering={ordering}
+        isRankable={isRankable}
         stockScopeCounts={stockScopeCounts}
         pager={pager}
         availability={data ?? (isError ? null : undefined)}

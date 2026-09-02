@@ -30,12 +30,14 @@ export class SearchController {
     default: { limit: SEARCH_RATE_LIMIT, ttl: SEARCH_RATE_LIMIT_WINDOW_MS },
   })
   searchByPartNumber(@Query() dto: SearchQueryDto): Promise<SearchResponseDto> {
-    return this.search.search(
-      dto.q,
-      dto.vehicleId,
-      dto.page,
-      dto.pageSize,
-      {
+    return this.search.search({
+      query: dto.q,
+      vehicleId: dto.vehicleId,
+      page: dto.page,
+      pageSize: dto.pageSize,
+      searchMode: dto.searchMode,
+      sort: dto.sort,
+      filters: {
         brandIds: dto.brandIds,
         productTypeIds: dto.productTypeIds,
         categoryNodeId: dto.categoryNodeId,
@@ -43,8 +45,7 @@ export class SearchController {
         criteria: parseCriteriaFilters(dto.attr),
         stockScope: dto.stock,
       },
-      dto.searchMode,
-    );
+    });
   }
 
   @Get('autocomplete')

@@ -13,7 +13,12 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { STOCK_SCOPES, type StockScope } from '@vp-parts-shop/shared';
+import {
+  SEARCH_SORTS,
+  STOCK_SCOPES,
+  type SearchSort,
+  type StockScope,
+} from '@vp-parts-shop/shared';
 import { CriteriaFilter, SearchMode } from './search-types';
 
 export const SEARCH_DEFAULT_PAGE = 1;
@@ -192,6 +197,19 @@ export class SearchQueryDto {
   @IsOptional()
   @IsIn(STOCK_SCOPES)
   stock?: StockScope;
+
+  /**
+   * Which order to serve the results in. Rejected rather than ignored when it is
+   * not one we offer, for the same reason as `stock`: falling back to the
+   * default would answer a different question from the one asked.
+   *
+   * Asking for an order a set is too wide to be served in is *not* an error —
+   * the response says which order it fell back to. Whether the control offers
+   * the option is the client's business, and it has `isRankable` to decide with.
+   */
+  @IsOptional()
+  @IsIn(SEARCH_SORTS)
+  sort?: SearchSort;
 }
 
 /**

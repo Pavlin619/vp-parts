@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { SEARCH_SORTS, SearchSort } from '@vp-parts-shop/shared';
 import {
   AutocompleteQueryDto,
   parseCriteriaFilters,
@@ -179,6 +180,43 @@ describe('SearchQueryDto stock', () => {
     const errors = validateSync(toDto({ q: 'WL6340', stock: 'warehouse-3' }));
 
     expect(errors.some((error) => error.property === 'stock')).toBe(true);
+  });
+});
+
+describe('SearchQueryDto sort', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query);
+
+  it('is undefined when the param is absent (service applies the default)', () => {
+    expect(toDto({ q: 'WL6340' }).sort).toBeUndefined();
+  });
+
+  it.each(SEARCH_SORTS)('accepts %s', (sort) => {
+    const dto = toDto({ q: 'WL6340', sort });
+
+    expect(dto.sort).toBe(sort);
+    expect(validateSync(dto)).toHaveLength(0);
+  });
+
+  // Falling back to the default would answer a different question from the one
+  // asked, under a control saying otherwise.
+  it('rejects an order it does not offer', () => {
+    const errors = validateSync(toDto({ q: 'WL6340', sort: 'cheapest' }));
+
+    expect(errors.some((error) => error.property === 'sort')).toBe(true);
+  });
+
+  /**
+   * Asking a wide set for an order it cannot be served in is not a client error
+   * — the response reports which order it fell back to. Rejecting it here would
+   * make the tier something the client had to know before it could ask.
+   */
+  it('accepts a stock-based order without knowing how wide the set is', () => {
+    const errors = validateSync(
+      toDto({ q: 'филтър', sort: SearchSort.PriceAscending }),
+    );
+
+    expect(errors).toHaveLength(0);
   });
 });
 

@@ -1,6 +1,9 @@
 import {
   AttributeFacetRole,
+  DEFAULT_SEARCH_MODE,
   DimensionScope,
+  SearchMode,
+  SearchSort,
   StockScope,
   hasCoherentDimensions,
 } from '@vp-parts-shop/shared';
@@ -82,7 +85,7 @@ export const EXACT_AUTOCOMPLETE_EXECUTION: SearchExecution = {
  * re-exported here so the search module's own files keep importing it from one
  * place. Each mode maps to a distinct TecDoc call in `searchCallFor`.
  */
-export { DEFAULT_SEARCH_MODE, SearchMode } from '@vp-parts-shop/shared';
+export { DEFAULT_SEARCH_MODE, SearchMode };
 
 /**
  * A single technical-attribute (criteria) narrowing: the TecDoc `criteriaId`
@@ -134,6 +137,22 @@ export interface SearchFilters {
    * no stock counts.
    */
   stockScope?: StockScope;
+}
+
+/**
+ * Everything a search is run with. An object rather than a parameter list
+ * because all but the query are optional and several are adjacent numbers —
+ * positionally, `('WL634', undefined, 1, 20)` says nothing about which number
+ * is the page.
+ */
+export interface SearchInput {
+  query: string;
+  vehicleId?: number;
+  page?: number;
+  pageSize?: number;
+  filters?: SearchFilters;
+  searchMode?: SearchMode;
+  sort?: SearchSort;
 }
 
 /**

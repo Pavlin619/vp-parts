@@ -10,7 +10,7 @@ export {
   ArticleListModule,
   ArticleRowsCache,
   ArticleRowsTecDoc,
-  orderByAvailability,
+  orderArticles,
   pageOf,
 } from './articles/article-list';
 export type {

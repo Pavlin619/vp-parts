@@ -1,5 +1,6 @@
 import {
   ArticleInventoryDetailDto,
+  SearchSort,
   articleIdentityKey,
   deliveryBand,
   deliveryBandRank,
@@ -31,41 +32,99 @@ export interface OrderableArticle {
  */
 export type OrderingAvailability = AvailabilityByArticle | null;
 
+/** One row paired with the live stock the ordering reads it by. */
+interface RankedArticle<T> {
+  article: T;
+  stock: ArticleInventoryDetailDto | undefined;
+}
+
+type Ranking<T> = (left: RankedArticle<T>, right: RankedArticle<T>) => number;
+
 /**
- * Orders articles by what we can actually ship: in stock first, fastest delivery
- * band and then cheapest within that, and a part still in supply ahead of a
- * discontinued one among the rest.
+ * Orders a whole set of articles the way a visitor asked for — the one place a
+ * {@link SearchSort} becomes a comparator, so every paged surface answers a
+ * given sort identically.
  *
- * This is why a set is read whole rather than a page at a time — a sort on stock
- * is only meaningful if the sort sees every row. The last tiebreak is on
- * catalogue data alone so that paging is deterministic: page 2 must not reshuffle
- * against page 1 on the next request.
- *
- * `availability` is null when the stock read failed, which degrades the ordering
- * to catalogue data and leaves the list itself intact.
+ * `availability` is null when the stock read failed, which degrades the two
+ * orders that depend on it to catalogue data and leaves the list itself intact.
+ * The catalogue axes never consult it at all.
  */
-export function orderByAvailability<T extends OrderableArticle>(
+export function orderArticles<T extends OrderableArticle>(
   articles: T[],
   availability: OrderingAvailability,
+  sort: SearchSort,
 ): T[] {
+  if (sort === SearchSort.Catalogue) {
+    return [...articles];
+  }
+
   const ranked = articles.map((article) => ({
     article,
     stock: availability?.get(identityOf(article)),
   }));
 
-  ranked.sort((left, right) => {
+  ranked.sort(rankingFor<T>(sort));
+
+  return ranked.map((entry) => entry.article);
+}
+
+function rankingFor<T extends OrderableArticle>(sort: SearchSort): Ranking<T> {
+  switch (sort) {
+    case SearchSort.PriceAscending:
+      return byPrice('asc');
+    case SearchSort.PriceDescending:
+      return byPrice('desc');
+    case SearchSort.Brand:
+      return (left, right) => catalogueOrder(left.article, right.article);
+    case SearchSort.ArticleNumber:
+      return (left, right) => numberOrder(left.article, right.article);
+    default:
+      return byAvailability;
+  }
+}
+
+/**
+ * What we can actually ship: in stock first, fastest delivery band and then
+ * cheapest within that, and a part still in supply ahead of a discontinued one
+ * among the rest.
+ *
+ * This is why a set is read whole rather than a page at a time — a sort on stock
+ * is only meaningful if the sort sees every row. The last tiebreak is on
+ * catalogue data alone so that paging is deterministic: page 2 must not reshuffle
+ * against page 1 on the next request.
+ */
+function byAvailability<T extends OrderableArticle>(
+  left: RankedArticle<T>,
+  right: RankedArticle<T>,
+): number {
+  const byStock =
+    stockRank(left.stock) - stockRank(right.stock) ||
+    deliverySpeed(left.stock) - deliverySpeed(right.stock) ||
+    comparePrice(left.stock, right.stock, 'asc') ||
+    supplyRank(left.article) - supplyRank(right.article);
+
+  return byStock !== 0 ? byStock : catalogueOrder(left.article, right.article);
+}
+
+/**
+ * Cheapest or dearest first — but still what we can ship first, because a part
+ * nobody can send has no price to be cheapest at, and putting it above a stocked
+ * one sorts the list by a price nobody can pay.
+ */
+function byPrice<T extends OrderableArticle>(
+  direction: 'asc' | 'desc',
+): Ranking<T> {
+  return (left, right) => {
     const byStock =
       stockRank(left.stock) - stockRank(right.stock) ||
+      comparePrice(left.stock, right.stock, direction) ||
       deliverySpeed(left.stock) - deliverySpeed(right.stock) ||
-      price(left.stock) - price(right.stock) ||
       supplyRank(left.article) - supplyRank(right.article);
 
     return byStock !== 0
       ? byStock
       : catalogueOrder(left.article, right.article);
-  });
-
-  return ranked.map((entry) => entry.article);
+  };
 }
 
 function stockRank(stock: ArticleInventoryDetailDto | undefined): number {
@@ -94,8 +153,25 @@ function deliverySpeed(stock: ArticleInventoryDetailDto | undefined): number {
   return bands.length === 0 ? Number.MAX_SAFE_INTEGER : Math.min(...bands);
 }
 
-function price(stock: ArticleInventoryDetailDto | undefined): number {
-  return stock?.bestPriceIncVat ?? Number.MAX_SAFE_INTEGER;
+/**
+ * Unpriced rows sort last whichever way the list runs, which is why this is not
+ * a subtraction against a sentinel: treating a missing price as infinity puts it
+ * last ascending and *first* descending, heading "dearest first" with the rows
+ * carrying no price at all.
+ */
+function comparePrice(
+  left: ArticleInventoryDetailDto | undefined,
+  right: ArticleInventoryDetailDto | undefined,
+  direction: 'asc' | 'desc',
+): number {
+  const leftPrice = left?.bestPriceIncVat ?? null;
+  const rightPrice = right?.bestPriceIncVat ?? null;
+
+  if (leftPrice === null || rightPrice === null) {
+    return (leftPrice === null ? 1 : 0) - (rightPrice === null ? 1 : 0);
+  }
+
+  return direction === 'asc' ? leftPrice - rightPrice : rightPrice - leftPrice;
 }
 
 /** A part a supplier still ships, ahead of one nobody does. */
@@ -120,6 +196,19 @@ function catalogueOrder(
   }
 
   return left.articleNumber < right.articleNumber ? -1 : 1;
+}
+
+/** The same two axes as {@link catalogueOrder}, with the number leading. */
+function numberOrder(left: OrderableArticle, right: OrderableArticle): number {
+  if (left.articleNumber !== right.articleNumber) {
+    return left.articleNumber < right.articleNumber ? -1 : 1;
+  }
+
+  if (left.brandName === right.brandName) {
+    return 0;
+  }
+
+  return left.brandName < right.brandName ? -1 : 1;
 }
 
 function identityOf(article: OrderableArticle): string {

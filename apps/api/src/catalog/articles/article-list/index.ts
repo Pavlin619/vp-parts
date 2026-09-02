@@ -4,7 +4,7 @@ export type { HydratableArticle } from './article-rows.cache';
 export { ArticleRowsTecDoc } from './article-rows.tecdoc';
 export { ArticleOrderCache } from './article-order.cache';
 export type { OrderedArticle, RankableArticle } from './article-order.cache';
-export { orderByAvailability } from './article-ordering';
+export { orderArticles } from './article-ordering';
 export type {
   OrderableArticle,
   OrderingAvailability,

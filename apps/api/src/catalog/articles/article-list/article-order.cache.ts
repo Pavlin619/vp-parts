@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
   ArticleIdentityDto,
+  DEFAULT_SEARCH_SORT,
+  SearchSort,
   articleIdentityKey,
   stockScopesOf,
 } from '@vp-parts-shop/shared';
@@ -9,7 +11,7 @@ import { InventoryService } from '../../../inventory';
 import {
   OrderableArticle,
   OrderingAvailability,
-  orderByAvailability,
+  orderArticles,
 } from './article-ordering';
 import { HydratableArticle } from './article-rows.cache';
 import { ScopedArticle } from './stock-scope-selection';
@@ -32,7 +34,7 @@ export type RankableArticle = OrderableArticle & HydratableArticle;
  *
  * Those origins are a by-product, not a second read. Ranking already resolves
  * every warehouse behind every candidate — see `deliverySpeed` in
- * {@link orderByAvailability} — and used to discard it. Keeping two bits of it
+ * {@link orderArticles} — and used to discard it. Keeping two bits of it
  * is what lets a list be counted and narrowed by origin for free, and pairs
  * those numbers with the same snapshot the row *positions* came from. Reading
  * stock again instead would answer a fresher question than the order beneath it.
@@ -75,10 +77,16 @@ export class ArticleOrderCache {
    * hold a degraded order for minutes after the stock database came back. This
    * is the one caller of `getAvailabilityForOrdering`, the only fail-soft
    * availability read — everywhere else an outage must fail closed.
+   *
+   * Stock is read whatever the sort, including the catalogue axes that do not
+   * rank on it: the origins it yields are what the stock filter narrows and
+   * counts by, and those are offered over any order. The caller's key is what
+   * separates one sort's pin from another's.
    */
   async ordered(
     key: string,
     candidates: RankableArticle[],
+    sort: SearchSort = DEFAULT_SEARCH_SORT,
   ): Promise<OrderedArticle[]> {
     const pinned = await this.cache.readMemo<OrderedArticle[]>(key);
 
@@ -90,7 +98,7 @@ export class ArticleOrderCache {
       identitiesOf(candidates),
     );
 
-    const ordered = orderByAvailability(candidates, availability).map(
+    const ordered = orderArticles(candidates, availability, sort).map(
       (candidate) => orderedOf(candidate, availability),
     );
 

@@ -1,4 +1,10 @@
-import { searchCallFor, requestFor } from './search-call';
+import { SearchSort } from '@vp-parts-shop/shared';
+import {
+  SearchScope,
+  searchCallFor,
+  requestFor,
+  setRequestFor,
+} from './search-call';
 import { SearchMode } from './search-types';
 
 const PART = { type: 10, matchType: 'prefix_or_suffix' } as const;
@@ -7,6 +13,16 @@ const TERM = { type: 99 } as const;
 
 function parsed(raw: string, brandStripped = raw) {
   return { raw, brandStripped };
+}
+
+function scope(): SearchScope {
+  return {
+    vehicleId: 10042,
+    page: 2,
+    pageSize: 20,
+    sort: SearchSort.PriceAscending,
+    filters: { brandIds: [4] },
+  };
 }
 
 describe('searchCallFor', () => {
@@ -62,20 +78,43 @@ describe('searchCallFor', () => {
 
 describe('requestFor', () => {
   it('combines a call with a scope into one request', () => {
-    const scope = {
-      vehicleId: 10042,
-      page: 2,
-      pageSize: 20,
-      filters: { brandIds: [4] },
-    };
-
-    expect(requestFor({ query: 'WL6340', execution: PART }, scope)).toEqual({
+    expect(requestFor({ query: 'WL6340', execution: PART }, scope())).toEqual({
       query: 'WL6340',
       execution: PART,
       vehicleId: 10042,
       page: 2,
       pageSize: 20,
+      sort: SearchSort.PriceAscending,
       filters: { brandIds: [4] },
     });
+  });
+});
+
+describe('setRequestFor', () => {
+  /**
+   * The sort travels with the set because the ranking of a whole set is what it
+   * describes — the order key is derived from this, and one dropped here would
+   * pin every sort of a search under one entry.
+   */
+  it('keeps everything that identifies a whole ranked set', () => {
+    expect(
+      setRequestFor({ query: 'WL6340', execution: PART }, scope()),
+    ).toEqual({
+      query: 'WL6340',
+      execution: PART,
+      vehicleId: 10042,
+      sort: SearchSort.PriceAscending,
+      filters: { brandIds: [4] },
+    });
+  });
+
+  it('drops the page, which no whole set has', () => {
+    const request = setRequestFor(
+      { query: 'WL6340', execution: PART },
+      scope(),
+    );
+
+    expect(request).not.toHaveProperty('page');
+    expect(request).not.toHaveProperty('pageSize');
   });
 });

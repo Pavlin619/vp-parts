@@ -3,6 +3,7 @@ import type {
   PaginatedCatalogArticlesDto,
 } from '../catalog/articles.dto';
 import type { AutocompleteItemDto } from './autocomplete.dto';
+import type { SearchSort } from './search-sort';
 
 export interface FacetValueDto {
   id: string;
@@ -101,20 +102,17 @@ export interface CategoryNavigationDto {
 }
 
 /**
- * Which order a result page is in, and therefore what the page means.
+ * Which order a result page is actually in, and therefore what the page means.
  *
- * - `availability` — ranked by what we can ship: in stock first, then fastest
- *   delivery band and lowest price. The whole match set was read and ranked, so
- *   the first page really does hold the parts most likely to be dispatched.
- * - `catalogue` — TecDoc's own order, because the match set was too wide to
- *   rank (see `SEARCH_SORTABLE_LIMIT` in the API). Narrowing by brand, product
- *   type or category brings a search back into `availability`, which is what the
- *   client tells the visitor.
+ * The same vocabulary the request asks in — see {@link SearchSort} — because
+ * the two can differ: a sort needing the whole set's stock cannot be honoured
+ * over a set too wide to enumerate, and the response says so by echoing the
+ * order it fell back to rather than the one it was asked for.
  *
  * A client that ignores this renders a correct list; one that reads it can stop
  * implying an in-stock-first ordering that a broad search does not have.
  */
-export type SearchOrdering = 'availability' | 'catalogue';
+export type SearchOrdering = SearchSort;
 
 /**
  * How much of the match set each stock origin can ship, counted over the set as
@@ -172,6 +170,17 @@ export interface SearchResponseDto {
   maxPage: number;
   /** Always sent: what the result order means is not optional. */
   ordering: SearchOrdering;
+  /**
+   * Whether the whole match set was enumerated, and so whether the sorts that
+   * need it are available at all.
+   *
+   * Separate from {@link ordering} because the two answer different questions
+   * once relevance is something a visitor can *choose*: a narrow set sorted by
+   * `catalogue` on request reports that ordering while remaining perfectly
+   * rankable. Inferring the tier from the ordering would hide the stock filter
+   * and raise the "too many results" notice on a set of fifty.
+   */
+  isRankable: boolean;
   /**
    * Sent only when the whole match set was enumerated *and* its stock read — an
    * `availability` ordering that reached the inventory database. Absent means

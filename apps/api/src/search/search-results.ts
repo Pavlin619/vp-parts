@@ -3,6 +3,7 @@ import {
   ArticleSummaryDto,
   SearchOrdering,
   StockScopeCountsDto,
+  sortForUnrankableSet,
 } from '@vp-parts-shop/shared';
 import {
   ArticleOrderCache,
@@ -34,7 +35,10 @@ export interface SearchResultPage {
    */
   total: number;
   maxPage: number;
+  /** The order actually applied, which is not always the one asked for. */
   ordering: SearchOrdering;
+  /** Whether the set was enumerated, and so whether it could be ranked at all. */
+  isRankable: boolean;
   /** Over the set *before* narrowing; null when stock could not be read. */
   stockScopeCounts: StockScopeCountsDto | null;
 }
@@ -86,6 +90,7 @@ export class SearchResults {
     const ordered = await this.order.ordered(
       searchOrderCacheKey(setRequestFor(call, scope)),
       enumeration.candidates,
+      scope.sort,
     );
 
     const selection = selectStockScope(ordered, scope.filters.stockScope);
@@ -97,7 +102,8 @@ export class SearchResults {
       items: await this.rows.hydrate(requested.items),
       total,
       maxPage: resolveMaxPage(total, scope.pageSize),
-      ordering: 'availability',
+      ordering: scope.sort,
+      isRankable: true,
       stockScopeCounts: selection.counts,
     };
   }
@@ -114,6 +120,11 @@ export class SearchResults {
    * return would answer "what can we ship" over an arbitrary slice of a million
    * matches; the null counts are what tell the client the control is not on
    * offer for this set.
+   *
+   * Nor can a sort that ranks on stock, for the same reason — the response says
+   * which order it fell back to rather than claiming the one it was asked for.
+   * The alphabetical axes survive: TecDoc applies those itself, over the whole
+   * match set, inside this very read.
    */
   private async readCataloguePage(
     enumeration: SearchEnumeration,
@@ -130,7 +141,8 @@ export class SearchResults {
         scope.pageSize,
         page.maxAllowedPage,
       ),
-      ordering: 'catalogue',
+      ordering: sortForUnrankableSet(scope.sort),
+      isRankable: false,
       stockScopeCounts: null,
     };
   }

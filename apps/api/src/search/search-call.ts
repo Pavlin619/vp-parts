@@ -1,3 +1,4 @@
+import { SearchSort } from '@vp-parts-shop/shared';
 import {
   SearchExecution,
   SearchFilters,
@@ -18,15 +19,16 @@ export interface SearchCall {
 
 /**
  * Everything about a search that is *not* decided by the query: which vehicle
- * it is scoped to, which page is wanted, and how it is narrowed. A call is run
- * against a scope to make one concrete {@link SearchRequest}, which is what
- * keeps the enumeration, the cache key and the page read from each
- * re-declaring the same six parameters.
+ * it is scoped to, which page is wanted, which order it is asked for, and how it
+ * is narrowed. A call is run against a scope to make one concrete
+ * {@link SearchRequest}, which is what keeps the enumeration, the cache key and
+ * the page read from each re-declaring the same six parameters.
  */
 export interface SearchScope {
   vehicleId?: number;
   page: number;
   pageSize: number;
+  sort: SearchSort;
   filters: SearchFilters;
 }
 
@@ -52,6 +54,7 @@ export function setRequestFor(
   return {
     ...call,
     vehicleId: scope.vehicleId,
+    sort: scope.sort,
     filters: scope.filters,
   };
 }
