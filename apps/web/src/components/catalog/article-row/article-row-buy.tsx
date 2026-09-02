@@ -7,6 +7,17 @@ import type { BuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { usePricesIncludeVat } from "@/hooks/use-price-display";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 
+/**
+ * The buy column is the tallest cell in a catalog row, so its height is the
+ * row's. Pinned to the height of its fullest state — price, stepper and cart
+ * button — because otherwise a back-ordered part, or one whose availability has
+ * not landed yet, renders a visibly shorter row than the one above it and the
+ * list ripples as prices arrive. A floor rather than a fixed height, so a cell
+ * that outgrows it is never clipped.
+ */
+const BUY_COLUMN_CLASS_NAME =
+  "flex min-h-[88px] flex-col items-end gap-1 text-right";
+
 interface ArticleRowBuyProps {
   availability: RowAvailability;
   /** Shared with the stock cell so the dialog dims what it cannot fulfil. */
@@ -38,7 +49,7 @@ export function ArticleRowBuy({
   const canBuy = availability?.available === true;
 
   return (
-    <div className="flex flex-col items-end gap-1 text-right">
+    <div className={BUY_COLUMN_CLASS_NAME} data-testid="article-row-buy">
       {price != null ? (
         <p className="whitespace-nowrap font-display text-lg font-semibold tracking-[-0.01em] tabular-nums text-ink">
           {formatPrice(price)}
@@ -101,7 +112,7 @@ export function ArticleRowBuy({
 /** Placeholder while the separate availability read resolves the price. */
 function BuySkeleton() {
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className={BUY_COLUMN_CLASS_NAME} data-testid="article-row-buy">
       <span
         data-testid="article-row-buy-skeleton"
         className="block h-[22px] w-[76px] animate-pulse rounded bg-bg-sunken"

@@ -129,6 +129,24 @@ describe('ArticleRowBuy — resolved', () => {
   })
 })
 
+// The buy column is the tallest cell in a catalog row, so its height is the
+// row's. A state reserving less would leave a back-ordered part — or one whose
+// price has not landed yet — visibly shorter than the row above it.
+describe('ArticleRowBuy — the row height it pins', () => {
+  const states: [string, ArticleInventoryDetailDto | null | undefined][] = [
+    ['pending', undefined],
+    ['buyable', detail()],
+    ['unavailable', detail({ available: false })],
+    ['failed', null],
+  ]
+
+  it.each(states)('reserves the full height in the %s state', (_, availability) => {
+    renderBuy(availability)
+
+    expect(screen.getByTestId('article-row-buy')).toHaveClass('min-h-[88px]')
+  })
+})
+
 describe('ArticleRowBuy — the VAT preference', () => {
   it('shows the net price and says so when VAT is switched off', () => {
     usePriceDisplay.setState({ includesVat: false })
