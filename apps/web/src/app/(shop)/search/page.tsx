@@ -13,6 +13,7 @@ import { SearchResultsAvailability } from "@/components/catalog/search/search-re
 import { SearchBreadcrumbs } from "@/components/catalog/search/search-breadcrumbs";
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";
 import { SearchNoMatches } from "@/components/catalog/search/search-no-matches";
+import { SearchResultsTitle } from "@/components/catalog/search/search-results-title";
 import {
   SearchFiltersSidebar,
   SearchPagination,
@@ -78,6 +79,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         />
 
         <main className="min-w-0">
+          {/* Above both branches: a narrowing that empties the list is exactly
+              when the term is worth restating. */}
+          <SearchResultsTitle query={state.query} />
+
           {response.results.length > 0 ? (
             <SearchResultsAvailability
               state={state}

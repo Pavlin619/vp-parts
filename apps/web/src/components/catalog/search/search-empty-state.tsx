@@ -46,7 +46,7 @@ export function SearchEmptyState({ state, suggestions }: SearchEmptyStateProps) 
 
       <h1 className="text-xl font-semibold text-ink mb-2">
         {query
-          ? `Няма намерени части за „${query}"`
+          ? `Няма намерени части за „${query}“`
           : "Въведете номер на част, за да търсите"}
       </h1>
 

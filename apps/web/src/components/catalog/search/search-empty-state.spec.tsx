@@ -18,7 +18,7 @@ describe('SearchEmptyState', () => {
     render(<SearchEmptyState state={numberSearch('XXXX999')} />)
 
     expect(
-      screen.getByText(/Няма намерени части за „XXXX999"/),
+      screen.getByText(/Няма намерени части за „XXXX999“/),
     ).toBeInTheDocument()
   })
 
