@@ -1,6 +1,7 @@
 import {
   ArticleInventoryDetailDto,
   ArticleSummaryDto,
+  SearchSort,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { SearchResults } from './search-results';
@@ -52,7 +53,13 @@ const CALL: SearchCall = {
 };
 
 function scope(overrides: Partial<SearchScope> = {}): SearchScope {
-  return { page: 1, pageSize: 20, filters: {}, ...overrides };
+  return {
+    page: 1,
+    pageSize: 20,
+    sort: SearchSort.Availability,
+    filters: {},
+    ...overrides,
+  };
 }
 
 function candidate(
@@ -160,6 +167,75 @@ describe('SearchResults', () => {
         'A-NO-STOCK',
       ]);
       expect(page.ordering).toBe('availability');
+      expect(page.isRankable).toBe(true);
+    });
+
+    it('ranks the set in the order it was asked for', async () => {
+      availabilityMock.mockResolvedValue(
+        new Map([
+          ...stocked('DEAR'),
+          [
+            articleIdentityKey(WIX, 'CHEAP'),
+            { ...IN_STOCK, bestPriceIncVat: 9 },
+          ],
+        ]),
+      );
+
+      const page = await results.read(
+        enumeration([candidate('DEAR'), candidate('CHEAP')]),
+        CALL,
+        scope({ sort: SearchSort.PriceAscending }),
+      );
+
+      expect(page.items.map((item) => item.articleNumber)).toEqual([
+        'CHEAP',
+        'DEAR',
+      ]);
+      expect(page.ordering).toBe(SearchSort.PriceAscending);
+    });
+
+    /**
+     * The two sorts TecDoc could answer itself are still answered from our own
+     * ranking here, because we already hold the set — and a second source for
+     * the same order is a second answer to it.
+     */
+    it('answers a catalogue axis from the set it holds', async () => {
+      const page = await results.read(
+        enumeration([
+          candidate('Z1', { brandName: 'ZF' }),
+          candidate('A1', { brandName: 'ATE' }),
+        ]),
+        CALL,
+        scope({ sort: SearchSort.Brand }),
+      );
+
+      expect(page.items.map((item) => item.articleNumber)).toEqual([
+        'A1',
+        'Z1',
+      ]);
+      expect(page.ordering).toBe(SearchSort.Brand);
+      expect(readRowsPageMock).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Two sorts of one search must not share a pinned ranking — served the other
+     * one's order, the list would simply not move when the control changed.
+     */
+    it('pins each order under its own key', async () => {
+      availabilityMock.mockResolvedValue(stocked('A1'));
+      const set = enumeration([candidate('A1'), candidate('A2')]);
+
+      await results.read(set, CALL, scope({ sort: SearchSort.Availability }));
+      await results.read(
+        set,
+        CALL,
+        scope({ sort: SearchSort.PriceDescending }),
+      );
+
+      const [firstKey] = writeMemoMock.mock.calls[0];
+      const [secondKey] = writeMemoMock.mock.calls[1];
+
+      expect(firstKey).not.toBe(secondKey);
     });
 
     // The ranking is only meaningful if it saw every match, which is the whole
@@ -405,11 +481,52 @@ describe('SearchResults', () => {
         vehicleId: 10042,
         page: 3,
         pageSize: 20,
+        sort: SearchSort.Availability,
         filters: {},
       });
       expect(page.items).toEqual([row('WL6340')]);
       expect(page.ordering).toBe('catalogue');
+      expect(page.isRankable).toBe(false);
     });
+
+    /**
+     * The response must not claim an order it did not apply. A visitor told "in
+     * stock first" over a list that is not in that order has been made a promise
+     * we had no way to keep.
+     */
+    it.each([
+      SearchSort.Availability,
+      SearchSort.PriceAscending,
+      SearchSort.PriceDescending,
+    ])('reports %s as the catalogue order it fell back to', async (sort) => {
+      const page = await results.read(
+        enumeration([], { total: WIDE_TOTAL }),
+        CALL,
+        scope({ sort }),
+      );
+
+      expect(page.ordering).toBe(SearchSort.Catalogue);
+    });
+
+    /**
+     * The alphabetical axes survive a set this wide, because TecDoc applies them
+     * itself across every match before it pages.
+     */
+    it.each([SearchSort.Brand, SearchSort.ArticleNumber])(
+      'keeps %s, which TecDoc sorts inside the page read',
+      async (sort) => {
+        const page = await results.read(
+          enumeration([], { total: WIDE_TOTAL }),
+          CALL,
+          scope({ sort }),
+        );
+
+        expect(readRowsPageMock).toHaveBeenCalledWith(
+          expect.objectContaining({ sort }),
+        );
+        expect(page.ordering).toBe(sort);
+      },
+    );
 
     // Ranking a truncated set would read as a promise about the whole result.
     it('neither reads stock nor hydrates rows of its own', async () => {

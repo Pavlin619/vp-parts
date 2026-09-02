@@ -1,4 +1,6 @@
+import { SearchSort } from '@vp-parts-shop/shared';
 import { TecDocTransport } from '../tecdoc';
+import { SearchRequest } from './search-call';
 import { SEARCH_SORTABLE_LIMIT } from './search-enumeration';
 import { PRODUCT_TYPE_FACET_LIMIT } from './search-facet-mappers';
 import { SearchTecDoc } from './search.tecdoc';
@@ -663,19 +665,27 @@ describe('SearchTecDoc', () => {
    * it is cached per search rather than per page.
    */
   describe('readRowsPage', () => {
+    function pageRequest(
+      overrides: Partial<SearchRequest> = {},
+    ): SearchRequest {
+      return {
+        query: 'филтър',
+        execution: { type: 99 },
+        page: 3,
+        pageSize: 20,
+        sort: SearchSort.Catalogue,
+        filters: {},
+        ...overrides,
+      };
+    }
+
     it('reads the requested page and maps it into rendered rows', async () => {
       call.mockResolvedValueOnce({
         maxAllowedPage: 500,
         articles: [record('WL6340')],
       });
 
-      const page = await tecdoc.readRowsPage(
-        'филтър',
-        undefined,
-        { type: 99 },
-        3,
-        20,
-      );
+      const page = await tecdoc.readRowsPage(pageRequest());
 
       expect(call.mock.calls[0][1]).toMatchObject({
         searchQuery: 'филтър',
@@ -696,7 +706,7 @@ describe('SearchTecDoc', () => {
     it('asks for no facets at all', async () => {
       call.mockResolvedValueOnce({ articles: [] });
 
-      await tecdoc.readRowsPage('филтър', undefined, { type: 99 }, 2, 20);
+      await tecdoc.readRowsPage(pageRequest({ page: 2 }));
 
       const [, params] = call.mock.calls[0];
       for (const flag of [
@@ -716,17 +726,18 @@ describe('SearchTecDoc', () => {
       call.mockResolvedValueOnce({ articles: [] });
 
       await tecdoc.readRowsPage(
-        'WL634',
-        20154,
-        { type: 10, matchType: 'exact' },
-        1,
-        20,
-        {
-          brandIds: [4],
-          productTypeIds: [7],
-          categoryNodeId: 100,
-          criteria: [{ criteriaId: 20, rawValue: '106.4' }],
-        },
+        pageRequest({
+          query: 'WL634',
+          vehicleId: 20154,
+          execution: { type: 10, matchType: 'exact' },
+          page: 1,
+          filters: {
+            brandIds: [4],
+            productTypeIds: [7],
+            categoryNodeId: 100,
+            criteria: [{ criteriaId: 20, rawValue: '106.4' }],
+          },
+        }),
       );
 
       expect(call.mock.calls[0][1]).toMatchObject({
@@ -743,15 +754,45 @@ describe('SearchTecDoc', () => {
     it('reports no ceiling when TecDoc omits one', async () => {
       call.mockResolvedValueOnce({ articles: [record('WL6340')] });
 
-      const page = await tecdoc.readRowsPage(
-        'филтър',
-        undefined,
-        { type: 99 },
-        1,
-        20,
-      );
+      const page = await tecdoc.readRowsPage(pageRequest({ page: 1 }));
 
       expect(page.maxAllowedPage).toBeUndefined();
+    });
+
+    /**
+     * The one thing this read can order that our own ranking cannot reach: a set
+     * too wide to enumerate is still alphabetised across every match, because
+     * TecDoc sorts before it pages.
+     */
+    it.each([
+      [SearchSort.Brand, ['mfrName', 'articleNumber']],
+      [SearchSort.ArticleNumber, ['articleNumber', 'mfrName']],
+    ])('asks TecDoc to sort a %s page', async (sort, fields) => {
+      call.mockResolvedValueOnce({ articles: [] });
+
+      await tecdoc.readRowsPage(pageRequest({ sort }));
+
+      expect(call.mock.calls[0][1]).toMatchObject({
+        sort: fields.map((field) => ({ field, direction: 'asc' })),
+      });
+    });
+
+    /**
+     * Sending `sort` at all would replace TecDoc's relevance ranking, and the
+     * two stock-based orders have no field here to be expressed in — the caller
+     * has already decided they cannot be honoured over a set this wide.
+     */
+    it.each([
+      SearchSort.Catalogue,
+      SearchSort.Availability,
+      SearchSort.PriceAscending,
+      SearchSort.PriceDescending,
+    ])('sends no sort for %s, taking the catalogue order', async (sort) => {
+      call.mockResolvedValueOnce({ articles: [] });
+
+      await tecdoc.readRowsPage(pageRequest({ sort }));
+
+      expect(call.mock.calls[0][1]).not.toHaveProperty('sort');
     });
   });
 

@@ -22,11 +22,13 @@ interface SearchResultsProps {
    * `results.length` — the search endpoint pages its hits.
    */
   total: number;
-  /**
-   * What the row order means — whether the match set was narrow enough for the
-   * API to rank it by what we can ship.
-   */
+  /** The order actually applied, which is not always the one asked for. */
   ordering: SearchOrdering;
+  /**
+   * Whether the match set was narrow enough for the API to enumerate, and so
+   * which orders the sort control may offer.
+   */
+  isRankable: boolean;
   /** Per-origin stock, when the API had the whole set and its stock to count. */
   stockScopeCounts?: StockScopeCountsDto;
   /**
@@ -57,6 +59,7 @@ export function SearchResults({
   results,
   total,
   ordering,
+  isRankable,
   stockScopeCounts,
   pager,
   availability,
@@ -67,6 +70,7 @@ export function SearchResults({
         state={state}
         total={total}
         ordering={ordering}
+        isRankable={isRankable}
         stockScopeCounts={stockScopeCounts}
         pager={pager}
       />

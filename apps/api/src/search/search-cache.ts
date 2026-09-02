@@ -59,20 +59,12 @@ export class SearchCache {
     );
   }
 
-  /** Cached (1h hit / 5m empty-miss) page of rows in TecDoc's native order. */
+  /** Cached (1h hit / 5m empty-miss) page of rows in a catalogue order. */
   readRowsPage(request: SearchRequest): Promise<SearchRowsPage> {
     return this.cache.cached(
       searchPageCacheKey(request),
       SEARCH_TTL,
-      () =>
-        this.searchTecDoc.readRowsPage(
-          request.query,
-          request.vehicleId,
-          request.execution,
-          request.page,
-          request.pageSize,
-          request.filters,
-        ),
+      () => this.searchTecDoc.readRowsPage(request),
       {
         missTtl: SEARCH_MISS_TTL,
         isEmpty: (value) => value.items.length === 0,

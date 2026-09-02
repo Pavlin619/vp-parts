@@ -28,38 +28,50 @@ export function normaliseCacheQuery(query: string, searchType: number): string {
  *
  * Deliberately page-free: the enumeration describes the set rather than a slice
  * of it, so one entry answers every page of a search.
+ *
+ * Sort-free for the stronger reason that the same articles match whichever order
+ * they are read in. Keyed on it, changing the sort would re-fetch a set of up to
+ * a thousand candidates from TecDoc to hand back the rows already in hand.
  */
 export function searchSetCacheKey(request: SearchSetRequest): string {
   return `tecdoc:search:set:${digest(matchSetIdentity(request))}`;
 }
 
 /**
- * Cache key for a whole match set already ranked by what we can ship.
+ * Cache key for a whole match set already ranked into the order it was asked
+ * for.
  *
  * Page-free for the same reason the enumeration's key is, and load-bearing here
  * rather than merely economical: the pages of one search are cut from one
- * ranking precisely because they share this key.
+ * ranking precisely because they share this key. Which is also why the sort
+ * *is* in it — one ranking per order, or switching sorts would page on through
+ * the pinned copy of the previous one and appear to do nothing.
  *
  * It is a separate namespace from the enumeration rather than a field in it
  * because the two age at completely different rates — the set is TecDoc
  * catalogue data, the order is our stock minutes ago.
  */
 export function searchOrderCacheKey(request: SearchSetRequest): string {
-  return `search:order:${digest(matchSetIdentity(request))}`;
+  return `search:order:${digest(sortedIdentity(request))}`;
 }
 
 /**
- * Cache key for one page of rows in TecDoc's native order — the fallback path's
- * read, and the only search read a page number belongs in.
+ * Cache key for one page of rows in a catalogue order — the fallback path's
+ * read, and the only search read a page number belongs in. The sort is TecDoc's
+ * own here, applied inside the page read, so two sorts are two different pages.
  */
 export function searchPageCacheKey(request: SearchRequest): string {
   const identity = {
-    ...matchSetIdentity(request),
+    ...sortedIdentity(request),
     page: request.page,
     pageSize: request.pageSize,
   };
 
   return `tecdoc:search:page:${digest(identity)}`;
+}
+
+function sortedIdentity(request: SearchSetRequest): Record<string, unknown> {
+  return { ...matchSetIdentity(request), sort: request.sort };
 }
 
 function matchSetIdentity(request: SearchSetRequest): Record<string, unknown> {

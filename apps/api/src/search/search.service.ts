@@ -2,15 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ArticleAutocompleteItemDto,
   CategoryNavigationDto,
+  DEFAULT_SEARCH_SORT,
   SearchResponseDto,
 } from '@vp-parts-shop/shared';
 import { BrandsService } from '../catalog/brands';
-import {
-  DEFAULT_SEARCH_MODE,
-  SearchFilters,
-  SearchMode,
-  isFacetPage,
-} from './search-types';
+import { DEFAULT_SEARCH_MODE, SearchInput, isFacetPage } from './search-types';
 import { searchCallFor, setRequestFor } from './search-call';
 import { SearchCache } from './search-cache';
 import { SearchResults } from './search-results';
@@ -37,18 +33,21 @@ export class SearchService {
     private readonly brands: BrandsService,
   ) {}
 
-  async search(
-    query: string,
-    vehicleId?: number,
-    page: number = SEARCH_DEFAULT_PAGE,
-    pageSize: number = SEARCH_DEFAULT_PAGE_SIZE,
-    filters: SearchFilters = {},
-    searchMode: SearchMode = DEFAULT_SEARCH_MODE,
-  ): Promise<SearchResponseDto> {
+  async search(input: SearchInput): Promise<SearchResponseDto> {
+    const {
+      query,
+      vehicleId,
+      page = SEARCH_DEFAULT_PAGE,
+      pageSize = SEARCH_DEFAULT_PAGE_SIZE,
+      filters = {},
+      searchMode = DEFAULT_SEARCH_MODE,
+      sort = DEFAULT_SEARCH_SORT,
+    } = input;
+
     const rawQuery = query.trim();
     const parsed = await this.parse(rawQuery);
     const call = searchCallFor(parsed, searchMode);
-    const scope = { vehicleId, page, pageSize, filters };
+    const scope = { vehicleId, page, pageSize, sort, filters };
 
     const enumeration = await this.cache.enumerate(setRequestFor(call, scope));
     const result = await this.results.read(enumeration, call, scope);
@@ -77,6 +76,7 @@ export class SearchService {
       pageSize,
       maxPage: result.maxPage,
       ordering: result.ordering,
+      isRankable: result.isRankable,
       ...(result.stockScopeCounts && {
         stockScopeCounts: result.stockScopeCounts,
       }),

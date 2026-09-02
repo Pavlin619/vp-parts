@@ -83,6 +83,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               results={response.results}
               total={response.total}
               ordering={response.ordering}
+              isRankable={response.isRankable}
               stockScopeCounts={response.stockScopeCounts}
               pager={
                 <SearchPaginationCompact

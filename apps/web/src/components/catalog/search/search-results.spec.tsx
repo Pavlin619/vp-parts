@@ -46,6 +46,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={2}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
@@ -60,6 +61,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={87}
         results={[resultItem()]}
       />,
@@ -75,6 +77,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={87}
         results={[resultItem(), resultItem({ articleNumber: 'WL6341' })]}
       />,
@@ -90,6 +93,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={87}
         results={[resultItem()]}
         pager={<span>1/5</span>}
@@ -105,6 +109,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem()]}
       />,
@@ -121,6 +126,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem()]}
       />,
@@ -136,6 +142,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem()]}
         availability={availability}
@@ -151,6 +158,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem({ articleNumber: 'OC115' })]}
         availability={availability}
@@ -166,6 +174,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem()]}
         availability={null}
@@ -183,6 +192,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem({ fitsVehicle: true })]}
       />,
@@ -193,6 +203,7 @@ describe('SearchResults', () => {
       <SearchResults
         state={STATE}
         ordering="availability"
+        isRankable
         total={1}
         results={[resultItem({ fitsVehicle: false })]}
       />,

@@ -2,11 +2,13 @@ import "server-only";
 import { headers } from "next/headers";
 import {
   DEFAULT_SEARCH_MODE,
+  DEFAULT_SEARCH_SORT,
   FORWARDED_FOR_HEADER,
   WEB_ORIGIN_TOKEN_HEADER,
   type AttributeSelectionDto,
   type SearchMode,
   type SearchResponseDto,
+  type SearchSort,
   type StockScope,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
@@ -36,6 +38,12 @@ export interface SearchArticlesParams {
    * carrying no `stockScopeCounts`.
    */
   stockScope?: StockScope;
+  /**
+   * Which order to serve the results in. An order that ranks on stock cannot be
+   * honoured on a set too wide to enumerate; the response reports what it fell
+   * back to in `ordering` rather than failing.
+   */
+  sort?: SearchSort;
 }
 
 /**
@@ -101,6 +109,10 @@ function searchQueryString(params: SearchArticlesParams): URLSearchParams {
 
   if (params.stockScope !== undefined) {
     query.set("stock", params.stockScope);
+  }
+
+  if (params.sort !== undefined && params.sort !== DEFAULT_SEARCH_SORT) {
+    query.set("sort", params.sort);
   }
 
   return query;

@@ -35,6 +35,17 @@ jest.mock('@/hooks/use-vehicle-context', () => ({
 
 const COUNTS: StockScopeCountsDto = { all: 14, central: 12, external: 6 }
 
+/**
+ * A match set too wide to enumerate. `isRankable` is what says so — the
+ * catalogue ordering alongside it is a consequence, and on its own would also
+ * describe a narrow set whose visitor simply chose that order.
+ */
+const WIDE_SET = {
+  total: 4812,
+  ordering: 'catalogue',
+  isRankable: false,
+} as const
+
 function renderHeader(
   props: Partial<Parameters<typeof SearchResultsHeader>[0]> = {},
 ) {
@@ -43,6 +54,7 @@ function renderHeader(
       state={parseSearchUrl({ q: 'WL634' })}
       total={14}
       ordering="availability"
+      isRankable
       {...props}
     />,
   )
@@ -63,7 +75,7 @@ describe('SearchResultsHeader — which left-hand control it shows', () => {
   // Offering the control without counts would promise a narrowing the API has
   // already said it cannot honour.
   it('falls back to a plain count when it has no origin counts', () => {
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     expect(
       screen.queryByRole('navigation', { name: 'Наличност' }),
@@ -72,7 +84,7 @@ describe('SearchResultsHeader — which left-hand control it shows', () => {
   })
 
   it('groups the thousands in that count', () => {
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     expect(screen.getByText(/артикула/).textContent).not.toContain('4812')
   })
@@ -90,11 +102,23 @@ describe('SearchResultsHeader — which left-hand control it shows', () => {
     rerender(
       <SearchResultsHeader
         state={parseSearchUrl({ q: 'WL634' })}
-        total={4812}
-        ordering="catalogue"
+        {...WIDE_SET}
       />,
     )
     expect(screen.getByRole('switch', { name: 'Цени с ДДС' })).toBeVisible()
+  })
+
+  /**
+   * The reason the tier is reported on its own rather than inferred from the
+   * ordering. A visitor may pick the catalogue order over fifty results, and
+   * that must cost them neither the stock filter nor a prompt to narrow a set
+   * that is already narrow.
+   */
+  it('keeps the stock filter when a narrow set is shown in catalogue order', () => {
+    renderHeader({ ordering: 'catalogue', stockScopeCounts: COUNTS })
+
+    expect(screen.getByRole('navigation', { name: 'Наличност' })).toBeVisible()
+    expect(screen.queryByText(/по-конкретен резултат/)).not.toBeInTheDocument()
   })
 })
 
@@ -105,7 +129,7 @@ describe('SearchResultsHeader — the wide-set notice', () => {
   })
 
   it('explains an unranked list and how to narrow it', () => {
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     expect(screen.getByText(/по-конкретен резултат/)).toBeInTheDocument()
   })
@@ -122,7 +146,7 @@ describe('SearchResultsHeader — the wide-set notice', () => {
   // nothing on screen saying so.
   it('collapses to a badge rather than disappearing', async () => {
     const user = userEvent.setup()
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     await user.click(screen.getByRole('button', { name: 'Скрий' }))
 
@@ -134,7 +158,7 @@ describe('SearchResultsHeader — the wide-set notice', () => {
 
   it('expands again from that badge', async () => {
     const user = userEvent.setup()
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     await user.click(screen.getByRole('button', { name: 'Скрий' }))
     await user.click(
@@ -153,7 +177,7 @@ describe('SearchResultsHeader — scoping to a vehicle', () => {
 
   it('opens the vehicle selector from the notice', async () => {
     const user = userEvent.setup()
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     await user.click(screen.getByRole('button', { name: /Избери автомобил/ }))
 
@@ -165,7 +189,7 @@ describe('SearchResultsHeader — scoping to a vehicle', () => {
   it('re-runs the search scoped to the confirmed vehicle', async () => {
     const user = userEvent.setup()
     storedVehicle = { vehicleId: '10042' }
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     await user.click(screen.getByRole('button', { name: /Избери автомобил/ }))
     await user.click(screen.getByRole('button', { name: 'Потвърди автомобил' }))
@@ -179,7 +203,7 @@ describe('SearchResultsHeader — scoping to a vehicle', () => {
   // tick, so reading it at render time would send the previous one.
   it('reads the vehicle at confirm time, not at render time', async () => {
     const user = userEvent.setup()
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     await user.click(screen.getByRole('button', { name: /Избери автомобил/ }))
     storedVehicle = { vehicleId: '99' }
@@ -192,7 +216,7 @@ describe('SearchResultsHeader — scoping to a vehicle', () => {
 
   it('navigates nowhere when the selector closed without a vehicle', async () => {
     const user = userEvent.setup()
-    renderHeader({ total: 4812, ordering: 'catalogue' })
+    renderHeader(WIDE_SET)
 
     await user.click(screen.getByRole('button', { name: /Избери автомобил/ }))
     await user.click(screen.getByRole('button', { name: 'Потвърди автомобил' }))

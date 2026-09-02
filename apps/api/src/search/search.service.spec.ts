@@ -8,6 +8,7 @@ import {
   CategoryAutocompleteItemDto,
   CategoryNavigationDto,
   SearchFacetDto,
+  SearchSort,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { SearchService } from './search.service';
@@ -296,7 +297,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
-      await service.search('WL634');
+      await service.search({ query: 'WL634' });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -314,7 +315,7 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      await service.search('oil filter');
+      await service.search({ query: 'oil filter' });
 
       const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([PART]);
@@ -328,14 +329,13 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340')]),
       );
 
-      await service.search(
-        'WL6340',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.PartNumberExact,
-      );
+      await service.search({
+        query: 'WL6340',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.PartNumberExact,
+      });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -352,14 +352,13 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WA5432')]),
       );
 
-      await service.search(
-        'WA5432 WIX',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.PartNumberExact,
-      );
+      await service.search({
+        query: 'WA5432 WIX',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.PartNumberExact,
+      });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -374,14 +373,13 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      await service.search(
-        'oil filter',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.PartNumberExact,
-      );
+      await service.search({
+        query: 'oil filter',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.PartNumberExact,
+      });
 
       const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([EXACT]);
@@ -392,14 +390,13 @@ describe('SearchService', () => {
     it('issues a single free-text (type 99) call over the raw query', async () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
-      await service.search(
-        'oil filter',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.Generic,
-      );
+      await service.search({
+        query: 'oil filter',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.Generic,
+      });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -413,14 +410,13 @@ describe('SearchService', () => {
     it('never runs a number search in generic mode', async () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
-      await service.search(
-        'oil filter',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.Generic,
-      );
+      await service.search({
+        query: 'oil filter',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.Generic,
+      });
 
       const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([TERM]);
@@ -430,14 +426,13 @@ describe('SearchService', () => {
       getBrandsMock.mockResolvedValue(BRANDS);
       enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
-      await service.search(
-        'oil filter bosch',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.Generic,
-      );
+      await service.search({
+        query: 'oil filter bosch',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.Generic,
+      });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -452,14 +447,13 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      await service.search(
-        'zzz nothing here',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.Generic,
-      );
+      await service.search({
+        query: 'zzz nothing here',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.Generic,
+      });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
     });
@@ -472,7 +466,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
       );
 
-      const result = await service.search('WA5432 WIX');
+      const result = await service.search({ query: 'WA5432 WIX' });
 
       expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432',
@@ -491,7 +485,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
       );
 
-      await service.search('WIX WA5432');
+      await service.search({ query: 'WIX WA5432' });
 
       expect(enumerateMock).toHaveBeenCalledWith(
         'WA5432',
@@ -507,7 +501,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL-6340/A', { brandName: 'WIX Filters' })]),
       );
 
-      await service.search('WL-6340/A WIX');
+      await service.search({ query: 'WL-6340/A WIX' });
 
       expect(enumerateMock).toHaveBeenCalledWith(
         'WL-6340/A',
@@ -526,7 +520,7 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      const result = await service.search('WIX WA5432');
+      const result = await service.search({ query: 'WIX WA5432' });
 
       expect(result.total).toBe(0);
       expect(enumerateMock).toHaveBeenCalledTimes(1);
@@ -543,7 +537,7 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValue([]);
 
-      await service.search('WIX WA5432');
+      await service.search({ query: 'WIX WA5432' });
 
       const executions = enumerateMock.mock.calls.map((call) => call[2]);
       expect(executions).toEqual([PART]);
@@ -570,7 +564,7 @@ describe('SearchService', () => {
         ]),
       );
 
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result.results?.map((row) => row.articleNumber)).toEqual([
         'W-STOCKED',
@@ -582,7 +576,7 @@ describe('SearchService', () => {
     it('reads stock for the whole enumerated set, not just the page', async () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf(articleItems(30)));
 
-      await service.search('WL634', undefined, 1, 20);
+      await service.search({ query: 'WL634', page: 1, pageSize: 20 });
 
       expect(availabilityMock).toHaveBeenCalledWith(
         expect.arrayContaining([{ brandId: '268', articleNumber: 'WL6029' }]),
@@ -595,7 +589,7 @@ describe('SearchService', () => {
     it('hydrates only the page it serves', async () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf(articleItems(30)));
 
-      await service.search('WL634', undefined, 1, 20);
+      await service.search({ query: 'WL634', page: 1, pageSize: 20 });
 
       expect(hydrateMock.mock.calls[0][0]).toHaveLength(20);
     });
@@ -624,12 +618,20 @@ describe('SearchService', () => {
         new Map([[articleIdentityKey('268', 'THIRD'), inStock(42)]]),
       );
 
-      const first = await service.search('WL634', undefined, 1, 1);
+      const first = await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 1,
+      });
       // The part that ranked first has since sold out, and another came in.
       availabilityMock.mockResolvedValue(
         new Map([[articleIdentityKey('268', 'SECOND'), inStock(42)]]),
       );
-      const second = await service.search('WL634', undefined, 2, 1);
+      const second = await service.search({
+        query: 'WL634',
+        page: 2,
+        pageSize: 1,
+      });
 
       expect(first.results?.map((row) => row.articleNumber)).toEqual(['THIRD']);
       expect(second.results?.map((row) => row.articleNumber)).toEqual([
@@ -655,7 +657,7 @@ describe('SearchService', () => {
     });
 
     it('reports what each origin holds across the whole match set', async () => {
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result.stockScopeCounts).toEqual({
         all: 2,
@@ -665,8 +667,13 @@ describe('SearchService', () => {
     });
 
     it('serves only what the requested origin holds', async () => {
-      const result = await service.search('WL634', undefined, 1, 20, {
-        stockScope: 'central',
+      const result = await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          stockScope: 'central',
+        },
       });
 
       expect(result.results?.map((row) => row.articleNumber)).toEqual([
@@ -677,8 +684,13 @@ describe('SearchService', () => {
     // The pager measures what is being paged through; the counts describe what
     // dropping the narrowing would restore. Two different numbers, both needed.
     it('reports the narrowed total beside the unnarrowed counts', async () => {
-      const result = await service.search('WL634', undefined, 1, 20, {
-        stockScope: 'central',
+      const result = await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          stockScope: 'central',
+        },
       });
 
       expect(result.total).toBe(1);
@@ -689,7 +701,7 @@ describe('SearchService', () => {
     it('omits the counts when stock could not be read', async () => {
       availabilityMock.mockResolvedValue(null);
 
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result.stockScopeCounts).toBeUndefined();
       expect(result.results).toHaveLength(2);
@@ -699,8 +711,13 @@ describe('SearchService', () => {
     // emptied it, and "did you mean" would send them away from the one click
     // that fixes it.
     it('suggests nothing for a search its own stock filter emptied', async () => {
-      const result = await service.search('WL634', undefined, 1, 20, {
-        stockScope: 'external',
+      const result = await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          stockScope: 'external',
+        },
       });
 
       expect(result.total).toBe(0);
@@ -712,8 +729,13 @@ describe('SearchService', () => {
     // over 1,000, two thirds of it blocking the event loop — and it would answer
     // a fresher question than the order it narrows.
     it('costs the ranking no second stock read', async () => {
-      await service.search('WL634', undefined, 1, 20, {
-        stockScope: 'central',
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          stockScope: 'central',
+        },
       });
 
       expect(availabilityMock).toHaveBeenCalledTimes(1);
@@ -724,8 +746,13 @@ describe('SearchService', () => {
         { brandId: '268', articleNumber: 'STOCKED', legacyArticleIds: [1] },
       ]);
 
-      await service.search('WL634', undefined, 1, 20, {
-        stockScope: 'central',
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          stockScope: 'central',
+        },
       });
 
       expect(availabilityMock).not.toHaveBeenCalled();
@@ -745,32 +772,94 @@ describe('SearchService', () => {
     });
 
     it('reads the requested page and labels it as the catalogue order', async () => {
-      const result = await service.search('филтър', undefined, 3, 20);
+      const result = await service.search({
+        query: 'филтър',
+        page: 3,
+        pageSize: 20,
+      });
 
-      expect(readRowsPageMock).toHaveBeenCalledWith(
-        'филтър',
-        undefined,
-        PART,
-        3,
-        20,
-        NO_FILTERS,
-      );
+      expect(readRowsPageMock).toHaveBeenCalledWith({
+        query: 'филтър',
+        vehicleId: undefined,
+        execution: PART,
+        page: 3,
+        pageSize: 20,
+        sort: SearchSort.Availability,
+        filters: NO_FILTERS,
+      });
       expect(result.results).toEqual([articleItem('WL6340')]);
       expect(result.ordering).toBe('catalogue');
     });
 
     it('takes maxPage from TecDoc\u2019s own paging ceiling', async () => {
-      const result = await service.search('филтър', undefined, 3, 20);
+      const result = await service.search({
+        query: 'филтър',
+        page: 3,
+        pageSize: 20,
+      });
 
       expect(result.total).toBe(5000);
       expect(result.maxPage).toBe(200);
     });
 
     it('neither reads stock nor hydrates rows of its own', async () => {
-      await service.search('филтър');
+      await service.search({ query: 'филтър' });
 
       expect(availabilityMock).not.toHaveBeenCalled();
       expect(hydrateMock).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The tier, reported on its own rather than inferred from the ordering. Once
+     * relevance is something a visitor can pick, `ordering === 'catalogue'` no
+     * longer means "too wide" — a set of fifty sorted that way on request would
+     * otherwise raise the narrowing prompt and hide the stock control.
+     */
+    it('reports the set as unrankable', async () => {
+      const result = await service.search({ query: 'филтър' });
+
+      expect(result.isRankable).toBe(false);
+    });
+  });
+
+  describe('search — the order asked for', () => {
+    beforeEach(() => {
+      enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
+    });
+
+    it('defaults to availability when none is asked for', async () => {
+      const result = await service.search({ query: 'WL634' });
+
+      expect(result.ordering).toBe(SearchSort.Availability);
+      expect(result.isRankable).toBe(true);
+    });
+
+    it.each([
+      SearchSort.PriceAscending,
+      SearchSort.PriceDescending,
+      SearchSort.Brand,
+      SearchSort.ArticleNumber,
+      SearchSort.Catalogue,
+    ])('serves and echoes %s over a set it can rank', async (sort) => {
+      const result = await service.search({ query: 'WL634', sort });
+
+      expect(result.ordering).toBe(sort);
+      expect(result.isRankable).toBe(true);
+    });
+
+    /**
+     * A narrow set asked for relevance is still perfectly rankable — the two
+     * fields answer different questions, which is why the response carries both.
+     */
+    it('stays rankable when relevance is the order chosen', async () => {
+      const result = await service.search({
+        query: 'WL634',
+        sort: SearchSort.Catalogue,
+      });
+
+      expect(result.ordering).toBe(SearchSort.Catalogue);
+      expect(result.isRankable).toBe(true);
+      expect(readRowsPageMock).not.toHaveBeenCalled();
     });
   });
 
@@ -816,7 +905,7 @@ describe('SearchService', () => {
         }),
       );
 
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result.facets).toEqual(facets);
       expect(result.attributes).toEqual(attributes);
@@ -828,7 +917,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result).not.toHaveProperty('facets');
       expect(result).not.toHaveProperty('attributes');
@@ -842,7 +931,11 @@ describe('SearchService', () => {
         enumerationOf(articleItems(30), { facets, attributes }),
       );
 
-      const result = await service.search('WL634', undefined, 2, 20);
+      const result = await service.search({
+        query: 'WL634',
+        page: 2,
+        pageSize: 20,
+      });
 
       expect(result.facets).toEqual(facets);
       expect(result).not.toHaveProperty('attributes');
@@ -860,7 +953,7 @@ describe('SearchService', () => {
         categoryNodeId: 100,
         criteria: [{ criteriaId: 20, rawValue: '106.4' }],
       };
-      await service.search('WL634', undefined, 1, 20, filters);
+      await service.search({ query: 'WL634', page: 1, pageSize: 20, filters });
 
       expect(enumerateMock).toHaveBeenCalledWith(
         'WL634',
@@ -875,8 +968,13 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340')], { facets }),
       );
 
-      const result = await service.search('WL6340', undefined, 1, 20, {
-        brandIds: [4],
+      const result = await service.search({
+        query: 'WL6340',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          brandIds: [4],
+        },
       });
 
       expect(result.results).toHaveLength(1);
@@ -890,7 +988,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340')]),
       );
 
-      const result = await service.search('WL6340');
+      const result = await service.search({ query: 'WL6340' });
 
       expect(result.results).toEqual([articleItem('WL6340')]);
       expect(result.total).toBe(1);
@@ -900,14 +998,13 @@ describe('SearchService', () => {
     it('returns a one-item list for a single free-text hit in generic mode', async () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf([articleItem('OF1')]));
 
-      const result = await service.search(
-        'oil filter mann',
-        undefined,
-        1,
-        20,
-        {},
-        SearchMode.Generic,
-      );
+      const result = await service.search({
+        query: 'oil filter mann',
+        page: 1,
+        pageSize: 20,
+        filters: {},
+        searchMode: SearchMode.Generic,
+      });
 
       expect(result.results).toHaveLength(1);
     });
@@ -918,7 +1015,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WA5432', { brandName: 'WIX Filters' })]),
       );
 
-      const result = await service.search('WIX WA5432');
+      const result = await service.search({ query: 'WIX WA5432' });
 
       expect(result.results).toHaveLength(1);
     });
@@ -928,7 +1025,11 @@ describe('SearchService', () => {
     it('serves the requested slice of the ranked set and echoes the paging', async () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf(articleItems(25)));
 
-      const result = await service.search('WL634', undefined, 2, 10);
+      const result = await service.search({
+        query: 'WL634',
+        page: 2,
+        pageSize: 10,
+      });
 
       expect(result.total).toBe(25);
       expect(result.page).toBe(2);
@@ -945,7 +1046,7 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValueOnce(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValueOnce([]);
 
-      await service.search('NO-MATCH');
+      await service.search({ query: 'NO-MATCH' });
 
       expect(cachedMock).toHaveBeenCalledWith(
         expect.stringMatching(/^tecdoc:search:set:[a-f0-9]{64}$/),
@@ -965,7 +1066,7 @@ describe('SearchService', () => {
         ]),
       );
 
-      await service.search('  06J 115 403 Q  ');
+      await service.search({ query: '  06J 115 403 Q  ' });
 
       expect(enumerateMock).toHaveBeenCalledWith(
         '06J 115 403 Q',
@@ -978,19 +1079,29 @@ describe('SearchService', () => {
     it('uses one cache key for equivalent query and filter ordering', async () => {
       enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
 
-      await service.search('wl634', undefined, 1, 20, {
-        brandIds: [8, 4],
-        criteria: [
-          { criteriaId: 44, rawValue: 'front' },
-          { criteriaId: 20, rawValue: '106.4' },
-        ],
+      await service.search({
+        query: 'wl634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          brandIds: [8, 4],
+          criteria: [
+            { criteriaId: 44, rawValue: 'front' },
+            { criteriaId: 20, rawValue: '106.4' },
+          ],
+        },
       });
-      await service.search('WL634', undefined, 1, 20, {
-        brandIds: [4, 8],
-        criteria: [
-          { criteriaId: 20, rawValue: '106.4' },
-          { criteriaId: 44, rawValue: 'front' },
-        ],
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          brandIds: [4, 8],
+          criteria: [
+            { criteriaId: 20, rawValue: '106.4' },
+            { criteriaId: 44, rawValue: 'front' },
+          ],
+        },
       });
 
       expect(cachedMock.mock.calls[0][0]).toBe(cachedMock.mock.calls[1][0]);
@@ -1001,8 +1112,8 @@ describe('SearchService', () => {
     it('uses one cache key across the pages of one search', async () => {
       enumerateMock.mockResolvedValue(enumerationOf(articleItems(30)));
 
-      await service.search('WL634', undefined, 1, 20);
-      await service.search('WL634', undefined, 2, 20);
+      await service.search({ query: 'WL634', page: 1, pageSize: 20 });
+      await service.search({ query: 'WL634', page: 2, pageSize: 20 });
 
       expect(cachedMock.mock.calls[0][0]).toBe(cachedMock.mock.calls[1][0]);
     });
@@ -1012,13 +1123,23 @@ describe('SearchService', () => {
     it('keys a leaf and a non-leaf category search separately', async () => {
       enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
 
-      await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: 100,
-        categoryHasChildren: false,
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          categoryNodeId: 100,
+          categoryHasChildren: false,
+        },
       });
-      await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: 100,
-        categoryHasChildren: true,
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          categoryNodeId: 100,
+          categoryHasChildren: true,
+        },
       });
 
       expect(cachedMock.mock.calls[0][0]).not.toBe(cachedMock.mock.calls[1][0]);
@@ -1029,12 +1150,22 @@ describe('SearchService', () => {
     it('shares one cache key between an absent hint and a non-leaf hint', async () => {
       enumerateMock.mockResolvedValue(enumerationOf([articleItem('WL6340')]));
 
-      await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: 100,
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          categoryNodeId: 100,
+        },
       });
-      await service.search('WL634', undefined, 1, 20, {
-        categoryNodeId: 100,
-        categoryHasChildren: true,
+      await service.search({
+        query: 'WL634',
+        page: 1,
+        pageSize: 20,
+        filters: {
+          categoryNodeId: 100,
+          categoryHasChildren: true,
+        },
       });
 
       expect(cachedMock.mock.calls[0][0]).toBe(cachedMock.mock.calls[1][0]);
@@ -1048,7 +1179,7 @@ describe('SearchService', () => {
         ]),
       );
 
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result.query).toBe('WL634');
       expect(result).not.toHaveProperty('normalisedQuery');
@@ -1065,7 +1196,7 @@ describe('SearchService', () => {
         suggestionItem('XXXX900'),
       ]);
 
-      const result = await service.search('XXXX999');
+      const result = await service.search({ query: 'XXXX999' });
 
       expect(result.results).toEqual([]);
       expect(result.total).toBe(0);
@@ -1077,7 +1208,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
-      const result = await service.search('WL634');
+      const result = await service.search({ query: 'WL634' });
 
       expect(result.suggestions).toBeUndefined();
     });
@@ -1087,7 +1218,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
-      const result = await service.search('WL634', 10042);
+      const result = await service.search({ query: 'WL634', vehicleId: 10042 });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -1108,7 +1239,7 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340'), articleItem('WL6341')]),
       );
 
-      await service.search('WIX WA5432', 10042);
+      await service.search({ query: 'WIX WA5432', vehicleId: 10042 });
 
       expect(enumerateMock).toHaveBeenCalledTimes(1);
       expect(enumerateMock).toHaveBeenCalledWith(
@@ -1124,7 +1255,10 @@ describe('SearchService', () => {
         enumerationOf([articleItem('WL6340')]),
       );
 
-      const result = await service.search('WL6340', 10042);
+      const result = await service.search({
+        query: 'WL6340',
+        vehicleId: 10042,
+      });
 
       expect(result.results).toEqual([articleItem('WL6340')]);
       expect(result).not.toHaveProperty('redirect');
@@ -1136,7 +1270,7 @@ describe('SearchService', () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
       getAutocompleteArticlesMock.mockResolvedValueOnce([]);
 
-      await service.search('WL6340');
+      await service.search({ query: 'WL6340' });
 
       expect(getAutocompleteArticlesMock).toHaveBeenCalledWith(
         'WL634',
@@ -1147,7 +1281,7 @@ describe('SearchService', () => {
     it('does not fetch suggestions when the query is shorter than 3 chars', async () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
 
-      await service.search('WL');
+      await service.search({ query: 'WL' });
 
       expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
     });
@@ -1159,7 +1293,7 @@ describe('SearchService', () => {
         .spyOn(Logger.prototype, 'log')
         .mockImplementation(() => undefined);
 
-      await service.search('ZZZ999', 10042);
+      await service.search({ query: 'ZZZ999', vehicleId: 10042 });
 
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('search_zero_result'),
@@ -1178,7 +1312,7 @@ describe('SearchService', () => {
         categorySuggestionItem('1'),
       ]);
 
-      const result = await service.search('WL6340');
+      const result = await service.search({ query: 'WL6340' });
 
       expect(result.suggestions).toEqual([suggestionItem('WL630')]);
     });

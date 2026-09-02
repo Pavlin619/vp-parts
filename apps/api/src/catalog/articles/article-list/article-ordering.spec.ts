@@ -1,10 +1,23 @@
 import {
   ArticleInventoryDetailDto,
+  SearchSort,
   WarehouseAvailabilityDto,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { ArticleStatus } from '../../../tecdoc';
-import { OrderableArticle, orderByAvailability } from './article-ordering';
+import { OrderableArticle, orderArticles } from './article-ordering';
+
+/**
+ * The availability sort under its own name, since most of this file predates the
+ * other orders and reads better without the third argument repeated on every
+ * call.
+ */
+function orderByAvailability<T extends OrderableArticle>(
+  articles: T[],
+  availability: Map<string, ArticleInventoryDetailDto> | null,
+): T[] {
+  return orderArticles(articles, availability, SearchSort.Availability);
+}
 
 const BOSCH = '30';
 
@@ -322,5 +335,237 @@ describe('orderByAvailability', () => {
       'https://cdn/a2.png',
       null,
     ]);
+  });
+});
+
+describe('orderArticles by price', () => {
+  /**
+   * The visitor asked for the cheapest, but a part nobody can ship has no price
+   * to be cheapest at — so stock still leads, and price only decides within it.
+   */
+  it('keeps what we can ship first in both directions', () => {
+    const availability = priced([
+      ['CHEAP-GONE', OUT_OF_STOCK],
+      ['DEAR-HERE', inStock(1, 9000)],
+    ]);
+    const articles = [article('CHEAP-GONE'), article('DEAR-HERE')];
+
+    const ascending = orderArticles(
+      articles,
+      availability,
+      SearchSort.PriceAscending,
+    );
+    const descending = orderArticles(
+      articles,
+      availability,
+      SearchSort.PriceDescending,
+    );
+
+    expect(numbersOf(ascending)).toEqual(['DEAR-HERE', 'CHEAP-GONE']);
+    expect(numbersOf(descending)).toEqual(['DEAR-HERE', 'CHEAP-GONE']);
+  });
+
+  it('puts the cheapest in-stock part first', () => {
+    const availability = priced([
+      ['MID', inStock(1, 5000)],
+      ['DEAR', inStock(1, 9000)],
+      ['CHEAP', inStock(1, 1000)],
+    ]);
+
+    const ordered = orderArticles(
+      [article('MID'), article('DEAR'), article('CHEAP')],
+      availability,
+      SearchSort.PriceAscending,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['CHEAP', 'MID', 'DEAR']);
+  });
+
+  it('puts the dearest in-stock part first', () => {
+    const availability = priced([
+      ['MID', inStock(1, 5000)],
+      ['DEAR', inStock(1, 9000)],
+      ['CHEAP', inStock(1, 1000)],
+    ]);
+
+    const ordered = orderArticles(
+      [article('MID'), article('DEAR'), article('CHEAP')],
+      availability,
+      SearchSort.PriceDescending,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['DEAR', 'MID', 'CHEAP']);
+  });
+
+  /**
+   * Price outranks delivery here, which is the whole difference from the
+   * availability sort — under that rule the same two rows come back reversed.
+   */
+  it('prefers the cheaper part over the faster one', () => {
+    const availability = priced([
+      ['SLOW-CHEAP', inStock(3, 1000)],
+      ['FAST-DEAR', inStock(0, 9000)],
+    ]);
+    const articles = [article('SLOW-CHEAP'), article('FAST-DEAR')];
+
+    const byPrice = orderArticles(
+      articles,
+      availability,
+      SearchSort.PriceAscending,
+    );
+
+    expect(numbersOf(byPrice)).toEqual(['SLOW-CHEAP', 'FAST-DEAR']);
+    expect(numbersOf(orderByAvailability(articles, availability))).toEqual([
+      'FAST-DEAR',
+      'SLOW-CHEAP',
+    ]);
+  });
+
+  /**
+   * The bug a naive "missing price sorts as infinity" invites: it lands last
+   * ascending and first descending, so sorting by dearest would head the list
+   * with parts carrying no price at all.
+   */
+  it('sorts a stocked part with no price last in both directions', () => {
+    const availability = priced([
+      ['NO-PRICE', { ...inStock(1, 4200), bestPriceIncVat: null }],
+      ['PRICED', inStock(1, 4200)],
+    ]);
+    const articles = [article('NO-PRICE'), article('PRICED')];
+
+    expect(
+      numbersOf(
+        orderArticles(articles, availability, SearchSort.PriceAscending),
+      ),
+    ).toEqual(['PRICED', 'NO-PRICE']);
+    expect(
+      numbersOf(
+        orderArticles(articles, availability, SearchSort.PriceDescending),
+      ),
+    ).toEqual(['PRICED', 'NO-PRICE']);
+  });
+
+  it('breaks an equal price on delivery band, then brand and number', () => {
+    const availability = priced([
+      ['SLOW', inStock(3, 4200)],
+      ['FAST', inStock(0, 4200)],
+      ['ALSO-FAST', inStock(0, 4200)],
+    ]);
+
+    const ordered = orderArticles(
+      [
+        article('SLOW'),
+        article('FAST', { brandName: 'ZF' }),
+        article('ALSO-FAST', { brandName: 'ATE' }),
+      ],
+      availability,
+      SearchSort.PriceAscending,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['ALSO-FAST', 'FAST', 'SLOW']);
+  });
+
+  it('falls back to catalogue data when there is no availability', () => {
+    const ordered = orderArticles(
+      [article('A2', { brandName: 'ZF' }), article('A1', { brandName: 'ATE' })],
+      null,
+      SearchSort.PriceAscending,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['A1', 'A2']);
+  });
+});
+
+describe('orderArticles by catalogue axis', () => {
+  it('orders by brand, then number within a brand', () => {
+    const ordered = orderArticles(
+      [
+        article('Z1', { brandName: 'ZF' }),
+        article('B2', { brandName: 'ATE' }),
+        article('B1', { brandName: 'ATE' }),
+      ],
+      null,
+      SearchSort.Brand,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['B1', 'B2', 'Z1']);
+  });
+
+  /**
+   * The mirror of the brand sort: the same rows, ordered on the other axis
+   * first, so two suppliers filing near numbers interleave rather than group.
+   */
+  it('orders by number, then brand within a number', () => {
+    const ordered = orderArticles(
+      [
+        article('B2', { brandName: 'ATE' }),
+        article('B1', { brandName: 'ZF' }),
+        article('B1', { brandName: 'ATE' }),
+      ],
+      null,
+      SearchSort.ArticleNumber,
+    );
+
+    expect(
+      ordered.map((row) => `${row.brandName} ${row.articleNumber}`),
+    ).toEqual(['ATE B1', 'ZF B1', 'ATE B2']);
+  });
+
+  /**
+   * These two axes are the catalogue's own and mean the same thing whether or
+   * not the stock database answered — which is why they stay available on a set
+   * the availability sorts cannot be offered over.
+   */
+  it('ignores availability entirely', () => {
+    const availability = priced([['Z1', inStock(0, 100)]]);
+
+    const ordered = orderArticles(
+      [article('Z1', { brandName: 'ZF' }), article('A1', { brandName: 'ATE' })],
+      availability,
+      SearchSort.Brand,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['A1', 'Z1']);
+  });
+
+  it('leaves the input array untouched', () => {
+    const articles = [article('A2'), article('A1')];
+
+    orderArticles(articles, null, SearchSort.Brand);
+
+    expect(numbersOf(articles)).toEqual(['A2', 'A1']);
+  });
+});
+
+describe('orderArticles by catalogue relevance', () => {
+  /**
+   * TecDoc's own order is what the enumeration already arrived in, so the only
+   * correct thing to do is nothing — any comparator here would be us inventing
+   * a relevance we do not have.
+   */
+  it('keeps the order the catalogue answered in', () => {
+    const articles = [
+      article('Z1', { brandName: 'ZF' }),
+      article('A1', { brandName: 'ATE' }),
+      article('M1', { brandName: 'MANN' }),
+    ];
+
+    const ordered = orderArticles(
+      articles,
+      priced([['A1', inStock(0, 100)]]),
+      SearchSort.Catalogue,
+    );
+
+    expect(numbersOf(ordered)).toEqual(['Z1', 'A1', 'M1']);
+  });
+
+  it('leaves the input array untouched', () => {
+    const articles = [article('A2'), article('A1')];
+
+    const ordered = orderArticles(articles, null, SearchSort.Catalogue);
+
+    ordered.reverse();
+
+    expect(numbersOf(articles)).toEqual(['A2', 'A1']);
   });
 });

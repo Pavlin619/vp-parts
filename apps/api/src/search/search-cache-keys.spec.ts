@@ -1,3 +1,4 @@
+import { SearchSort } from '@vp-parts-shop/shared';
 import {
   autocompleteArticlesCacheKey,
   autocompleteTermsCacheKey,
@@ -18,6 +19,7 @@ function setRequest(
   return {
     query: 'WL6340',
     execution: PART,
+    sort: SearchSort.Availability,
     filters: {},
     ...overrides,
   };
@@ -81,6 +83,15 @@ describe('searchSetCacheKey', () => {
   it('ignores a stock narrowing, which TecDoc never sees', () => {
     expect(
       searchSetCacheKey(setRequest({ filters: { stockScope: 'central' } })),
+    ).toBe(searchSetCacheKey(setRequest()));
+  });
+
+  // The same articles match whichever order they are read in. Keyed on the sort,
+  // switching it would re-fetch a set of up to a thousand candidates to hand
+  // back the rows already in hand.
+  it('ignores the order asked for, which matches the same articles', () => {
+    expect(
+      searchSetCacheKey(setRequest({ sort: SearchSort.PriceAscending })),
     ).toBe(searchSetCacheKey(setRequest()));
   });
 
@@ -155,6 +166,9 @@ describe('searchPageCacheKey', () => {
     ['page size', request({ pageSize: 50 })],
     ['query', request({ query: 'WL6341' })],
     ['vehicle scope', request({ vehicleId: 10042 })],
+    // TecDoc does this sorting inside the page read, so two sorts really are
+    // two different pages of rows.
+    ['sort', request({ sort: SearchSort.Brand })],
   ])('separates entries that differ by %s', (_label, variant) => {
     expect(searchPageCacheKey(variant)).not.toBe(searchPageCacheKey(request()));
   });
@@ -189,6 +203,24 @@ describe('searchOrderCacheKey', () => {
     expect(searchOrderCacheKey(variant)).not.toBe(
       searchOrderCacheKey(setRequest()),
     );
+  });
+
+  /**
+   * The one key the sort belongs in. Sharing an entry across sorts would page on
+   * through the pinned copy of the previous ranking — switching the control and
+   * watching the list not move, with nothing logged and nothing thrown.
+   */
+  it('pins one ranking per order asked for', () => {
+    const keys = [
+      SearchSort.Availability,
+      SearchSort.PriceAscending,
+      SearchSort.PriceDescending,
+      SearchSort.Brand,
+      SearchSort.ArticleNumber,
+      SearchSort.Catalogue,
+    ].map((sort) => searchOrderCacheKey(setRequest({ sort })));
+
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   // The order covers the whole set, so the slice taken out of it is not part of

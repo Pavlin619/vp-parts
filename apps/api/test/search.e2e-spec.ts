@@ -14,6 +14,7 @@ import {
   AttributeFacetDto,
   CategoryNavigationDto,
   SearchFacetDto,
+  SearchSort,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 
@@ -262,6 +263,32 @@ describe('SearchController (e2e)', () => {
       expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
+    it('serves the order the sort param asks for and echoes it back', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('Z-LAST'), makeArticle('A-FIRST')]),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/search?q=WL634&sort=article_number')
+        .expect(200);
+
+      expect(
+        (res.body.results as Array<{ articleNumber: string }>).map(
+          (result) => result.articleNumber,
+        ),
+      ).toEqual(['A-FIRST', 'Z-LAST']);
+      expect(res.body.ordering).toBe(SearchSort.ArticleNumber);
+      expect(res.body.isRankable).toBe(true);
+    });
+
+    it('returns 400 for an order it does not offer', async () => {
+      await request(app.getHttpServer())
+        .get('/search?q=WL6340&sort=cheapest')
+        .expect(400);
+
+      expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
+    });
+
     it('serves the requested slice of the ranked set and echoes the paging', async () => {
       mockTecDocClient.enumerate.mockResolvedValueOnce(
         enumerationOf(makeArticles(55)),
@@ -306,15 +333,17 @@ describe('SearchController (e2e)', () => {
       expect(res.body.total).toBe(50_000);
       expect(res.body.maxPage).toBe(500);
       expect(res.body.ordering).toBe('catalogue');
+      expect(res.body.isRankable).toBe(false);
       expect(res.body.results).toHaveLength(1);
-      expect(mockTecDocClient.readRowsPage).toHaveBeenCalledWith(
-        'филтър',
-        undefined,
-        TERM,
-        1,
-        20,
-        NO_FILTERS,
-      );
+      expect(mockTecDocClient.readRowsPage).toHaveBeenCalledWith({
+        query: 'филтър',
+        vehicleId: undefined,
+        execution: TERM,
+        page: 1,
+        pageSize: 20,
+        sort: SearchSort.Availability,
+        filters: NO_FILTERS,
+      });
     });
 
     it('scopes the search to the vehicle when a vehicleId is supplied', async () => {
