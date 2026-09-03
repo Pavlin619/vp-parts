@@ -4,6 +4,7 @@ import type {
   SearchFacetDto,
 } from "@vp-parts-shop/shared";
 import type { SearchUrlState } from "@/lib/catalog/search-url";
+import { cn } from "@/lib/utils";
 import { CategoryFilter } from "./category-filter";
 import { BrandFilter } from "./brand-filter";
 import { AttributeFilters } from "./attribute-filters";
@@ -26,6 +27,17 @@ interface SearchFiltersSidebarProps {
  * The vehicle leads because it is the strongest narrowing of the four and the
  * only one that is not a facet of the results: it re-runs the search against a
  * different TecDoc linkage rather than filtering what came back.
+ *
+ * **The height bound is what makes `sticky` usable, not a refinement of it.** A
+ * pinned element stops moving relative to the viewport, so whatever hangs below
+ * the fold is only revealed once the grid itself runs out — meaning the
+ * dimensions, which sit last, were reachable only by scrolling to the end of
+ * the results column. And overflowing is the normal case rather than the edge:
+ * the category list is uncapped at 9–56 rows, which put 13 of 14 measured
+ * queries over a 900px viewport before any dimension block was even rendered
+ * (`помпа`, 56 rows, ~2,456px). Capping the list would have fixed it too, but
+ * every category and every dimension stays on offer here, so the sidebar
+ * carries its own scroll instead.
  */
 export function SearchFiltersSidebar({
   state,
@@ -40,7 +52,11 @@ export function SearchFiltersSidebar({
   return (
     <aside
       aria-label="Филтри"
-      className="flex flex-col gap-2 lg:sticky lg:top-6"
+      className={cn(
+        "flex flex-col gap-2 thin-scrollbar",
+        "lg:sticky lg:top-[calc(var(--header-height)+1.5rem)]",
+        "lg:max-h-[calc(100vh-var(--header-height)-3rem)] lg:overflow-y-auto",
+      )}
     >
       <SearchVehicleFilter state={state} total={total} />
       <CategoryFilter

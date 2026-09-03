@@ -14,12 +14,11 @@ import {
   facetScopeKey,
   FIRST_PAGE,
   hasDimensions,
-  isAttributeSelected,
-  toggleAttribute,
   withPage,
   type SearchUrlState,
 } from "@/lib/catalog/search-url";
 import { cn } from "@/lib/utils";
+import { AttributeValueList } from "./attribute-value-list";
 import { FilterBlock } from "./filter-block";
 import { FittingPositionDiagram } from "./fitting-position-diagram";
 
@@ -151,8 +150,13 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
                 </button>
               </legend>
 
+              {/* Both children return null when they have nothing to show, so
+                  the gap never opens on its own. */}
               {isOpen && (
-                <div id={`criterion-${facet.id}`} className="mt-[7px]">
+                <div
+                  id={`criterion-${facet.id}`}
+                  className="mt-[7px] flex flex-col gap-2"
+                >
                   {facet.role === "fitting-position" && (
                     <FittingPositionDiagram
                       state={state}
@@ -161,44 +165,11 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
                     />
                   )}
 
-                  <div className="mt-2 flex flex-wrap gap-1.5 empty:mt-0">
-                    {chipValues(facet).map((value) => {
-                    const selected = isAttributeSelected(
-                      state,
-                      facet.id,
-                      value.value,
-                    );
-
-                    return (
-                      <Link
-                        key={value.value}
-                        href={buildSearchUrl(
-                          toggleAttribute(state, facet.id, value.value),
-                        )}
-                        prefetch={false}
-                        aria-label={`${facet.label} ${value.label} — ${
-                          selected ? "премахни филтъра" : "добави филтъра"
-                        }`}
-                        className={cn(
-                          "rounded-full border px-2.5 py-[5px] font-mono text-xs transition-colors",
-                          selected
-                            ? "border-ink bg-ink text-white"
-                            : "border-line bg-canvas text-ink-2 hover:border-ink-3",
-                        )}
-                      >
-                        {value.label}{" "}
-                        <span
-                          className={cn(
-                            "text-[10px]",
-                            selected ? "text-white/60" : "text-ink-4",
-                          )}
-                        >
-                          ({value.count})
-                        </span>
-                      </Link>
-                    );
-                    })}
-                  </div>
+                  <AttributeValueList
+                    state={state}
+                    facet={facet}
+                    values={chipValues(facet)}
+                  />
                 </div>
               )}
             </fieldset>
