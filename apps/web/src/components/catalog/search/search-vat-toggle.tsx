@@ -18,9 +18,9 @@ export function SearchVatToggle() {
     <div className="flex shrink-0 items-center gap-2">
       <span
         id="search-vat-toggle-label"
-        className="text-[13.5px] font-medium text-ink-2"
+        className="whitespace-nowrap text-[13.5px] font-medium text-ink-2"
       >
-        Цени с ДДС
+        <span className="hidden sm:inline">Цени </span>с ДДС
       </span>
 
       <button

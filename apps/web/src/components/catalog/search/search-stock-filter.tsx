@@ -48,7 +48,7 @@ export function SearchStockFilter({ state, counts }: SearchStockFilterProps) {
   return (
     <nav
       aria-label="Наличност"
-      className="flex min-w-0 items-center gap-0.5 rounded-full bg-bg-sunken p-1"
+      className="thin-scrollbar flex min-w-0 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-bg-sunken p-1"
     >
       {options.map((option) => (
         <StockOptionLink
@@ -92,7 +92,7 @@ function StockOptionLink({
   );
 
   const shape =
-    "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[14px] font-medium transition-colors";
+    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[14px] font-medium transition-colors sm:px-3.5";
 
   if (option.count === 0 && !isSelected) {
     return (

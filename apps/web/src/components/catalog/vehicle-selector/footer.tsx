@@ -14,7 +14,7 @@ export function VehicleSelectorFooter({
   onConfirm,
 }: VehicleSelectorFooterProps) {
   return (
-    <div className="flex items-center justify-between px-6 py-4 border-t border-line flex-shrink-0">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 px-4 py-3.5 border-t border-line flex-shrink-0 sm:px-6 sm:py-4">
       <div className="min-h-[1.25rem]">
         {pendingVariant && (
           <span className="flex items-center gap-1.5 text-sm font-medium text-ok">
@@ -23,7 +23,7 @@ export function VehicleSelectorFooter({
           </span>
         )}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-3">
         <button
           onClick={onClose}
           className="px-4 py-2 text-sm font-medium text-ink border border-line rounded-lg hover:bg-bg-sunken transition-colors"

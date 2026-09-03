@@ -204,11 +204,28 @@
   --container-page: 1600px;
 }
 
+/* A catalog row lays out from its own width rather than the viewport's, because
+   one viewport gives it several: it renders at the top of a search list, again
+   nested inside an expanded row's substitutes, and narrower still once the
+   filter sidebar appears. Its six-column layout needs 810px, so below this it
+   stacks. Keyed on the row because a viewport breakpoint cannot see any of
+   that — at `lg` the sidebar leaves it 688px and the buy column was clipped. */
+@theme {
+  --container-row-wide: 820px;
+}
+
+/* The narrow gutter is not a cosmetic choice: the results controls and the
+   pager are laid out from fixed-width parts, and at 360px the 24px gutter is
+   the difference between them fitting the column and overflowing it. */
 @utility page-container {
   width: 100%;
   max-width: var(--container-page);
   margin-inline: auto;
-  padding-inline: 1.5rem;
+  padding-inline: 1rem;
+
+  @variant sm {
+    padding-inline: 1.5rem;
+  }
 }
 
 /* Inert unless the element it is on actually scrolls, so it needs no breakpoint

@@ -161,3 +161,23 @@ describe('ArticleRowAvailability — resolved', () => {
     expect(screen.getByText('Под поръчка')).toBeInTheDocument()
   })
 })
+
+// Both cells are labelled in every state, including the ones that render a bare
+// chip or a bare count. They sit side by side in the stacked mobile layout,
+// where "за днес" next to "1 бр." is two unexplained values without them.
+describe('ArticleRowAvailability — the column labels', () => {
+  const states: [string, ArticleInventoryDetailDto | null | undefined][] = [
+    ['pending', undefined],
+    ['failed', null],
+    ['in stock', detail({ availabilityByWarehouse: [warehouse('CENTRAL', 2)] })],
+    ['summary only', detail({ availabilityByWarehouse: [] })],
+    ['unavailable', detail({ available: false })],
+  ]
+
+  it.each(states)('labels both columns in the %s state', (_, availability) => {
+    renderCells(availability)
+
+    expect(screen.getByText('Доставка')).toBeInTheDocument()
+    expect(screen.getByText('Наличност')).toBeInTheDocument()
+  })
+})

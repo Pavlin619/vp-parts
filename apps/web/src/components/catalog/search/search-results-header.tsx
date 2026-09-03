@@ -22,7 +22,11 @@ import {
   SearchWideSetNotice,
 } from "./search-wide-set-notice";
 
-const CONTROL_DIVIDER = "h-5 w-px shrink-0 bg-line";
+/**
+ * Hidden below `sm`, where the controls it separates wrap onto their own lines
+ * and a rule between them would sit at the end of a row dividing nothing.
+ */
+const CONTROL_DIVIDER = "hidden h-5 w-px shrink-0 bg-line sm:block";
 
 interface SearchResultsHeaderProps {
   state: SearchUrlState;
@@ -81,8 +85,12 @@ export function SearchResultsHeader({
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5">
-        <div className="flex min-w-0 items-center gap-3">
+      {/* Centred while the controls are stacked, because each row is then a
+          band of its own width and left-aligning them leaves ragged gutters on
+          alternating sides. It only splits left and right once both fit one
+          row. */}
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2.5 lg:justify-between">
+        <div className="flex min-w-0 max-w-full items-center gap-3">
           {stockScopeCounts ? (
             <SearchStockFilter state={state} counts={stockScopeCounts} />
           ) : (
@@ -99,7 +107,11 @@ export function SearchResultsHeader({
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3.5">
+        {/* Its own row below `lg`, not a narrower share of this one: the three
+            controls measure 421px together against a 342px column on a phone,
+            and left to shrink they would each overflow their box and paint
+            over the count beside them. */}
+        <div className="flex w-full flex-wrap items-center justify-center gap-x-3.5 gap-y-2.5 lg:w-auto lg:justify-end">
           <SearchSortSelect
             state={state}
             ordering={ordering}

@@ -23,29 +23,32 @@ export function SearchWideSetNotice({
   onHide,
 }: SearchWideSetNoticeProps) {
   return (
-    <aside className="mb-4 flex items-start gap-3 rounded-[10px] bg-warn-soft px-3.5 py-3">
-      <Info
-        className="mt-0.5 h-4 w-4 shrink-0 text-warn"
-        aria-hidden="true"
-      />
+    // Stacked below `sm` rather than squeezed: beside a button that will not
+    // give way, the prose column collapsed to about 110px and broke one word
+    // per line.
+    <aside className="mb-4 flex flex-col gap-3 rounded-[10px] bg-warn-soft px-3.5 py-3 sm:flex-row sm:items-start">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
 
-      <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] leading-snug text-ink">
-          За точно филтриране по <strong className="font-semibold">наличност</strong>{" "}
-          и <strong className="font-semibold">цена</strong> изберете по-конкретен
-          резултат.
-        </p>
-        <p className="mt-0.5 text-[12.5px] leading-snug text-ink-3">
-          Изберете автомобил, категория или производител — филтрите се включват
-          автоматично.
-        </p>
+        <div className="min-w-0">
+          <p className="text-[13.5px] leading-snug text-ink">
+            За точно филтриране по{" "}
+            <strong className="font-semibold">наличност</strong> и{" "}
+            <strong className="font-semibold">цена</strong> изберете по-конкретен
+            резултат.
+          </p>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-ink-3">
+            Изберете автомобил, категория или производител — филтрите се
+            включват автоматично.
+          </p>
+        </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3 pl-7 sm:pl-0">
         <button
           type="button"
           onClick={onOpenVehicleSelector}
-          className="flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-ink px-3.5 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent"
         >
           <Car className="h-3.5 w-3.5" aria-hidden="true" />
           Избери автомобил

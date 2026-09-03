@@ -13,7 +13,10 @@ export function VehiclePreviewSidebar({
   pendingVariant,
 }: VehiclePreviewSidebarProps) {
   return (
-    <div className="w-72 flex-shrink-0 flex flex-col p-5 gap-4 overflow-y-auto">
+    // Dropped below `lg`, where its 288px would leave the list it previews
+    // about 70px to render in. What it says is on screen anyway by then: the
+    // step tabs carry the make and model, and the footer confirms the variant.
+    <div className="hidden w-72 flex-shrink-0 flex-col p-5 gap-4 overflow-y-auto lg:flex">
       <div className="h-36 rounded-xl bg-bg-sunken border border-line flex items-center justify-center flex-shrink-0">
         {selectedMake ? (
           <div className="text-center px-4">

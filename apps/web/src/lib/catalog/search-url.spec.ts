@@ -11,6 +11,7 @@ import {
   clearBrands,
   clearCategory,
   clearProductType,
+  countActiveFilters,
   drillIntoCategory,
   facetScopeKey,
   FIRST_PAGE,
@@ -931,6 +932,47 @@ describe('isNarrowedSearch', () => {
 
   it('is true for any filter that clearing removes', () => {
     expect(isNarrowedSearch(state({ brandIds: ['268'] }))).toBe(true)
+  })
+})
+
+describe('countActiveFilters', () => {
+  it('counts nothing for a bare query', () => {
+    expect(countActiveFilters(state())).toBe(0)
+  })
+
+  it('counts every brand and every attribute separately', () => {
+    expect(
+      countActiveFilters(
+        state({
+          brandIds: ['268', '2'],
+          attributes: [
+            { criteriaId: '20', value: '106.4' },
+            { criteriaId: '100', value: 'VL' },
+          ],
+        }),
+      ),
+    ).toBe(4)
+  })
+
+  // The drill is one selection with a trail behind it, not one per level.
+  it('counts a category path once however deep it is', () => {
+    expect(countActiveFilters(state({ categoryPath: ['100', '1052', '9021'] }))).toBe(1)
+  })
+
+  it('counts the product type on top of the category it sits under', () => {
+    expect(
+      countActiveFilters(state({ categoryPath: ['1052'], productTypeId: '7' })),
+    ).toBe(2)
+  })
+
+  it('counts the vehicle, which narrows the search like any other axis', () => {
+    expect(countActiveFilters(state({ vehicleId: '10042' }))).toBe(1)
+  })
+
+  // Its control lives in the results header, so a visitor sent into the panel
+  // by this number would not find it there.
+  it('ignores the stock scope', () => {
+    expect(countActiveFilters(state({ stockScope: 'central' }))).toBe(0)
   })
 })
 
