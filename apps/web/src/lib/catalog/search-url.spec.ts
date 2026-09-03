@@ -13,6 +13,7 @@ import {
   clearProductType,
   drillIntoCategory,
   facetScopeKey,
+  FIRST_PAGE,
   hasActiveFilters,
   hasDimensions,
   isAttributeSelected,
@@ -25,6 +26,7 @@ import {
   selectProductType,
   toSearchRequest,
   toggleAttribute,
+  toggleAttributeGroup,
   toggleBrand,
   withMode,
   withPage,
@@ -571,6 +573,48 @@ describe('mutations', () => {
 
       expect(isAttributeSelected(narrowed, '21', '30')).toBe(false)
       expect(toggleAttribute(narrowed, '21', '30').attributes).toHaveLength(2)
+    })
+
+    describe('toggleAttributeGroup', () => {
+      it('applies every value of the group in one step', () => {
+        expect(
+          toggleAttributeGroup(state(), '100', ['VL', 'LV']).attributes,
+        ).toEqual([
+          { criteriaId: '100', value: 'VL' },
+          { criteriaId: '100', value: 'LV' },
+        ])
+      })
+
+      // Half-selected is the state a per-value toggle would leave behind, and
+      // it has no meaning on a diagram: the zone is either narrowing or not.
+      it('clears the whole group when only part of it is applied', () => {
+        const narrowed = state({
+          attributes: [{ criteriaId: '100', value: 'LV' }],
+        })
+
+        expect(
+          toggleAttributeGroup(narrowed, '100', ['VL', 'LV']).attributes,
+        ).toEqual([])
+      })
+
+      it('leaves the same value under another criterion alone', () => {
+        const narrowed = state({
+          attributes: [{ criteriaId: '273', value: 'VL' }],
+        })
+
+        expect(
+          toggleAttributeGroup(narrowed, '100', ['VL']).attributes,
+        ).toEqual([
+          { criteriaId: '273', value: 'VL' },
+          { criteriaId: '100', value: 'VL' },
+        ])
+      })
+
+      it('returns to the first page, like every other narrowing', () => {
+        expect(
+          toggleAttributeGroup(state({ page: 4 }), '100', ['VA']).page,
+        ).toBe(FIRST_PAGE)
+      })
     })
 
     it('clears every attribute at once', () => {

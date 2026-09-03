@@ -3,7 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import type { AttributeFacetDto } from "@vp-parts-shop/shared";
+import type {
+  AttributeFacetDto,
+  AttributeFacetValueDto,
+} from "@vp-parts-shop/shared";
 import { useRetainedFacets } from "@/hooks/use-retained-facets";
 import {
   buildSearchUrl,
@@ -18,6 +21,7 @@ import {
 } from "@/lib/catalog/search-url";
 import { cn } from "@/lib/utils";
 import { FilterBlock } from "./filter-block";
+import { FittingPositionDiagram } from "./fitting-position-diagram";
 
 interface AttributeFiltersProps {
   state: SearchUrlState;
@@ -148,11 +152,17 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
               </legend>
 
               {isOpen && (
-                <div
-                  id={`criterion-${facet.id}`}
-                  className="mt-[7px] flex flex-wrap gap-1.5"
-                >
-                  {facet.values.map((value) => {
+                <div id={`criterion-${facet.id}`} className="mt-[7px]">
+                  {facet.role === "fitting-position" && (
+                    <FittingPositionDiagram
+                      state={state}
+                      criteriaId={facet.id}
+                      values={facet.values}
+                    />
+                  )}
+
+                  <div className="mt-2 flex flex-wrap gap-1.5 empty:mt-0">
+                    {chipValues(facet).map((value) => {
                     const selected = isAttributeSelected(
                       state,
                       facet.id,
@@ -187,7 +197,8 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
                         </span>
                       </Link>
                     );
-                  })}
+                    })}
+                  </div>
                 </div>
               )}
             </fieldset>
@@ -196,6 +207,22 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
       </div>
     </FilterBlock>
   );
+}
+
+/**
+ * What is left for the chip list once the diagram has taken its share.
+ *
+ * A fitting position the API placed on the car is already on screen as a zone,
+ * and offering it twice would be two controls for one filter. Everything an
+ * outline cannot hold — levels, orientations, cylinder and body positions,
+ * about a fifth of real usage — stays a chip underneath it.
+ */
+function chipValues(facet: AttributeFacetDto): AttributeFacetValueDto[] {
+  if (facet.role !== "fitting-position") {
+    return facet.values;
+  }
+
+  return facet.values.filter((value) => !value.zone);
 }
 
 function selectedValueCount(

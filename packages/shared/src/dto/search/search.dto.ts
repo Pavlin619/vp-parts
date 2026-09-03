@@ -37,6 +37,14 @@ export interface AttributeFacetValueDto {
   value: string;
   label: string;
   count: number;
+  /**
+   * Where on a top-down car this value sits, for the values of the
+   * `fitting-position` criterion a diagram can place. Null for every other
+   * criterion and for the fitting positions that are not a place on the car —
+   * see `fitting-position-zones.ts` in the API for what that covers and why the
+   * client must keep a plain list alongside any diagram.
+   */
+  zone?: FittingPositionZone | null;
 }
 
 /**
@@ -53,6 +61,26 @@ export interface AttributeSelectionDto {
  * A semantic role the client can render with a dedicated control.
  */
 export type AttributeFacetRole = 'fitting-position' | 'axle' | 'side';
+
+/**
+ * A place on a top-down car outline, which is as much of a fitting position as
+ * a diagram can express.
+ *
+ * The axle members carry no side, and `left` / `right` carry no axle: TecDoc
+ * files all three shapes, and a headlight or a mirror offers only the sideless
+ * pair. So this is deliberately not a grid of axle × side — a value that names
+ * one axis and not the other has a home of its own here, rather than being
+ * dropped or guessed onto both.
+ */
+export type FittingPositionZone =
+  | 'front-axle'
+  | 'front-left'
+  | 'front-right'
+  | 'rear-axle'
+  | 'rear-left'
+  | 'rear-right'
+  | 'left'
+  | 'right';
 
 export interface AttributeFacetDto {
   id: string;

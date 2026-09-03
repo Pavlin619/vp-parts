@@ -478,6 +478,36 @@ export function toggleAttribute(
   return { ...state, attributes, page: FIRST_PAGE };
 }
 
+/**
+ * Applies or clears a whole group of one criterion's values at once.
+ *
+ * A diagram zone stands for several TecDoc codes — front-left is filed as `VL`
+ * and as `LV`, plus the numbered-axle variants — and toggling them one at a
+ * time would leave a zone half-selected, with its next href depending on which
+ * of its codes was read first. Any of them already applied counts the zone as
+ * selected, so one click clears all of them.
+ */
+export function toggleAttributeGroup(
+  state: SearchUrlState,
+  criteriaId: string,
+  values: readonly string[],
+): SearchUrlState {
+  const grouped = new Set(values);
+  const withoutGroup = state.attributes.filter(
+    (attribute) =>
+      !(attribute.criteriaId === criteriaId && grouped.has(attribute.value)),
+  );
+  const wasSelected = withoutGroup.length !== state.attributes.length;
+
+  return {
+    ...state,
+    attributes: wasSelected
+      ? withoutGroup
+      : [...state.attributes, ...values.map((value) => ({ criteriaId, value }))],
+    page: FIRST_PAGE,
+  };
+}
+
 export function clearAttributes(state: SearchUrlState): SearchUrlState {
   return { ...state, attributes: [], page: FIRST_PAGE };
 }

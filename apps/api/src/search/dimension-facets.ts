@@ -2,6 +2,7 @@ import {
   AttributeFacetDto,
   AttributeFacetValueDto,
 } from '@vp-parts-shop/shared';
+import { fittingPositionZoneFor } from './fitting-position-zones';
 import { attributeRoleFor, CriteriaFilter } from './search-types';
 
 /**
@@ -198,7 +199,9 @@ function mapCriterion(
     isInterval: criteria.isInterval,
     isMandatory: criteria.isMandatory,
     role: attributeRoleFor(id),
-    values: orderValues(offered, criteria.criteriaType).map(toFacetValue),
+    values: orderValues(offered, criteria.criteriaType).map((merged) =>
+      toFacetValue(merged, id),
+    ),
   };
 }
 
@@ -364,13 +367,25 @@ function byLabel(left: MergedValue, right: MergedValue): number {
   return left.label < right.label ? -1 : 1;
 }
 
-function toFacetValue(merged: MergedValue): AttributeFacetValueDto {
+/**
+ * `zone` is omitted rather than sent as null, because the criterion it applies
+ * to is one of many: a null on every value of a capped dimension list costs
+ * ~13 KB on the 1,028-value responses measured, for a field only the
+ * fitting-position control reads.
+ */
+function toFacetValue(
+  merged: MergedValue,
+  criteriaId: string,
+): AttributeFacetValueDto {
+  const zone = fittingPositionZoneFor(criteriaId, merged.rawValues);
+
   return {
     // Sorted so one merged value is one token, whatever order TecDoc listed its
     // spellings in — the token is a URL, a cache key and the selected state.
     value: [...merged.rawValues].sort().join(MERGED_VALUE_SEPARATOR),
     label: merged.label,
     count: merged.count,
+    ...(zone !== null && { zone }),
   };
 }
 
