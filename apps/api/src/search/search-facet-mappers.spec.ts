@@ -1,17 +1,13 @@
+import { AssemblyGroupType } from '../tecdoc';
 import {
   buildCategoryNavigation,
   buildCategorySuggestions,
-  mapAttributeFacets,
   mapBrandFacets,
   mapProductTypeFacets,
   PRODUCT_TYPE_FACET_LIMIT,
   TecDocAssemblyGroupFacetCount,
-  TecDocCriteriaFacetCount,
-  TecDocCriteriaInfo,
-  TecDocCriteriaValueCount,
   TecDocGenericArticleFacetCount,
 } from './search-facet-mappers';
-import { FITTING_POSITION_CRITERIA_ID } from './search-types';
 
 /** `count` descends with the id, so the widest type is the highest id. */
 function productTypeCounts(howMany: number): TecDocGenericArticleFacetCount[] {
@@ -30,27 +26,6 @@ function node(
     assemblyGroupNodeId,
     assemblyGroupName: `Group ${assemblyGroupNodeId}`,
     ...overrides,
-  };
-}
-
-/**
- * A `criteriaFacets.counts` entry as TecDoc files it: the criterion nested
- * under `criteria`, its values under `criteriaValueCounts`.
- */
-function criteriaFacet(
-  criteria: Partial<TecDocCriteriaInfo> &
-    Pick<TecDocCriteriaInfo, 'criteriaId'>,
-  criteriaValueCounts: TecDocCriteriaValueCount[],
-): TecDocCriteriaFacetCount {
-  return {
-    criteria: {
-      criteriaDescription: `Criterion ${criteria.criteriaId}`,
-      criteriaType: 'N',
-      isInterval: false,
-      isMandatory: false,
-      ...criteria,
-    },
-    criteriaValueCounts,
   };
 }
 
@@ -158,156 +133,6 @@ describe('mapProductTypeFacets', () => {
   });
 });
 
-describe('mapAttributeFacets', () => {
-  it('reads the criterion from `criteria` and its values from `criteriaValueCounts`', () => {
-    const [facet] = mapAttributeFacets([
-      criteriaFacet(
-        {
-          criteriaId: 20,
-          criteriaDescription: 'Diameter',
-          criteriaUnitDescription: 'mm',
-          criteriaType: 'N',
-          isInterval: true,
-        },
-        [{ rawValue: '106.4', formattedValue: '106,4', count: 3 }],
-      ),
-    ]);
-
-    expect(facet).toEqual({
-      id: '20',
-      label: 'Diameter',
-      unit: 'mm',
-      type: 'N',
-      isInterval: true,
-      isMandatory: false,
-      role: null,
-      values: [{ value: '106.4', label: '106,4', count: 3 }],
-    });
-  });
-
-  // The unit is the only part of TecDoc's CriteriaInfo the schema marks
-  // optional, and a unitless criterion is the common case.
-  it('nulls an absent unit', () => {
-    const [facet] = mapAttributeFacets([
-      criteriaFacet({ criteriaId: 20 }, [
-        { rawValue: 'front', formattedValue: 'Front', count: 1 },
-      ]),
-    ]);
-
-    expect(facet.unit).toBeNull();
-  });
-
-  // The catalogue's own statement of which criteria identify the part; the
-  // client leads the dimension list with them.
-  it('carries the mandatory flag through', () => {
-    const [mandatory, optional] = mapAttributeFacets([
-      criteriaFacet({ criteriaId: 20, isMandatory: true }, [
-        { rawValue: '106.4', formattedValue: '106,4', count: 3 },
-      ]),
-      criteriaFacet({ criteriaId: 21, isMandatory: false }, [
-        { rawValue: 'steel', formattedValue: 'Стомана', count: 2 },
-      ]),
-    ]);
-
-    expect(mandatory.isMandatory).toBe(true);
-    expect(optional.isMandatory).toBe(false);
-  });
-
-  it('tags the fitting-position criterion with its semantic role', () => {
-    const [facet] = mapAttributeFacets([
-      criteriaFacet(
-        {
-          criteriaId: Number(FITTING_POSITION_CRITERIA_ID),
-          criteriaDescription: 'Позиция на монтаж',
-          criteriaType: 'K',
-        },
-        [{ rawValue: 'front', formattedValue: 'Отпред', count: 1 }],
-      ),
-    ]);
-
-    expect(facet.role).toBe('fitting-position');
-  });
-
-  it('drops criteria that carry no values', () => {
-    expect(mapAttributeFacets([criteriaFacet({ criteriaId: 20 }, [])])).toEqual(
-      [],
-    );
-  });
-
-  // `criteriaValueCounts` is minOccurs=0 in the schema, so a criterion with no
-  // values arrives with the field missing rather than as an empty array.
-  it('drops a criterion whose value block was omitted entirely', () => {
-    expect(
-      mapAttributeFacets([
-        {
-          criteria: {
-            criteriaId: 20,
-            criteriaDescription: 'Diameter',
-            criteriaType: 'N',
-            isInterval: false,
-            isMandatory: true,
-          },
-        },
-      ]),
-    ).toEqual([]);
-  });
-
-  // `applyDqmRules` marks rather than filters: the impermissible values still
-  // arrive, flagged, and dropping them here is what the flag actually buys.
-  describe('DQM verdicts', () => {
-    it('drops a value TecDoc ruled impermissible', () => {
-      const [facet] = mapAttributeFacets([
-        criteriaFacet({ criteriaId: 44, criteriaType: 'K' }, [
-          {
-            rawValue: 'Отпред',
-            formattedValue: 'Отпред',
-            permittedKeyValue: true,
-            count: 6,
-          },
-          {
-            rawValue: 'Отзад',
-            formattedValue: 'Отзад',
-            permittedKeyValue: false,
-            count: 2,
-          },
-        ]),
-      ]);
-
-      expect(facet.values).toEqual([
-        { value: 'Отпред', label: 'Отпред', count: 6 },
-      ]);
-    });
-
-    // The flag is absent for every non-key-table criterion and whenever
-    // `applyDqmRules` was not sent, so absence cannot read as a rejection.
-    it('keeps values that carry no verdict at all', () => {
-      const [facet] = mapAttributeFacets([
-        criteriaFacet({ criteriaId: 20 }, [
-          { rawValue: '106.4', formattedValue: '106,4', count: 3 },
-          { rawValue: '112.0', formattedValue: '112,0', count: 1 },
-        ]),
-      ]);
-
-      expect(facet.values).toHaveLength(2);
-    });
-
-    it('drops the criterion when every value was ruled out', () => {
-      expect(
-        mapAttributeFacets([
-          criteriaFacet({ criteriaId: 44, criteriaType: 'K' }, [
-            {
-              rawValue: 'Отзад',
-              formattedValue: 'Отзад',
-              permittedKeyValue: false,
-              count: 2,
-            },
-          ]),
-        ]),
-      ).toEqual([]);
-    });
-  });
-});
-
 describe('buildCategoryNavigation', () => {
   it('returns empty navigation when TecDoc sent no facet block', () => {
     expect(buildCategoryNavigation()).toEqual({
@@ -365,6 +190,105 @@ describe('buildCategoryNavigation', () => {
     expect(navigation.current).toBeNull();
     expect(navigation.ancestors).toEqual([]);
     expect(navigation.options).toEqual([]);
+  });
+
+  // The passenger-car and universal trees duplicate names outright: measured
+  // catalogue-wide, "двигател" is both 100002 (passenger car) and 705972
+  // (universal), and `q=филтър` had 9 of 37 root labels used twice.
+  describe('labels that collide between two trees', () => {
+    const passengerCar = { assemblyGroupType: AssemblyGroupType.PassengerCar };
+    const universal = { assemblyGroupType: AssemblyGroupType.Universal };
+
+    it('qualifies the universal side and leaves the passenger-car side plain', () => {
+      const counts = [
+        node(100002, { ...passengerCar, assemblyGroupName: 'двигател' }),
+        node(705972, { ...universal, assemblyGroupName: 'двигател' }),
+      ];
+
+      expect(
+        buildCategoryNavigation(counts).options.map((o) => o.label),
+      ).toEqual(['двигател', 'двигател (универсални части)']);
+    });
+
+    // Suppressing one side would sometimes hide the larger category: measured
+    // catalogue-wide, "климатична уредба" is 114 articles in the universal tree
+    // against 87 in the passenger-car one.
+    it('keeps both options rather than picking a winner', () => {
+      const counts = [
+        node(100243, { ...passengerCar, assemblyGroupName: 'кл', count: 87 }),
+        node(701187, { ...universal, assemblyGroupName: 'кл', count: 114 }),
+      ];
+
+      expect(buildCategoryNavigation(counts).options).toEqual([
+        { id: '100243', label: 'кл', count: 87, hasChildren: false },
+        {
+          id: '701187',
+          label: 'кл (универсални части)',
+          count: 114,
+          hasChildren: false,
+        },
+      ]);
+    });
+
+    it('leaves a name that only one node uses untouched', () => {
+      const counts = [
+        node(100002, { ...passengerCar, assemblyGroupName: 'двигател' }),
+        node(705972, { ...universal, assemblyGroupName: 'масла' }),
+      ];
+
+      expect(
+        buildCategoryNavigation(counts).options.map((o) => o.label),
+      ).toEqual(['двигател', 'масла']);
+    });
+
+    // Siblings are what one level renders side by side. The same name under two
+    // different parents is told apart by where the visitor already is.
+    it('does not qualify a repeated name that is not shown side by side', () => {
+      const counts = [
+        node(1, { ...passengerCar, assemblyGroupName: 'корпус' }),
+        node(2, { ...universal, assemblyGroupName: 'корпус' }),
+        node(10, {
+          parentNodeId: 1,
+          ...passengerCar,
+          assemblyGroupName: 'ремък',
+        }),
+        node(20, { parentNodeId: 2, ...universal, assemblyGroupName: 'ремък' }),
+      ];
+
+      const children = buildCategoryNavigation(counts, 1).options;
+
+      expect(children.map((o) => o.label)).toEqual(['ремък']);
+      expect(buildCategoryNavigation(counts, 2).options[0].label).toBe('ремък');
+    });
+
+    // The breadcrumb has to read the same as the option that was clicked.
+    it('qualifies current and the ancestors the same way', () => {
+      const counts = [
+        node(100002, { ...passengerCar, assemblyGroupName: 'двигател' }),
+        node(705972, { ...universal, assemblyGroupName: 'двигател' }),
+        node(705973, { parentNodeId: 705972, ...universal }),
+      ];
+
+      const navigation = buildCategoryNavigation(counts, 705973);
+
+      expect(navigation.ancestors.map((a) => a.label)).toEqual([
+        'двигател (универсални части)',
+      ]);
+    });
+
+    // TecDoc marks the field required on every count, but it arrives over an
+    // untyped transport: a node with no tree cannot be named, and inventing a
+    // suffix for it would be worse than the duplicate it replaces.
+    it('leaves a collision untouched when the tree type is missing', () => {
+      const counts = [
+        node(1, { assemblyGroupName: 'двигател' }),
+        node(2, { assemblyGroupName: 'двигател' }),
+      ];
+
+      expect(
+        buildCategoryNavigation(counts).options.map((o) => o.label),
+      ).toEqual(['двигател', 'двигател']);
+    });
   });
 
   describe('ancestors', () => {

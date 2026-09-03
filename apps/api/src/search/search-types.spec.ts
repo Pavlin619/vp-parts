@@ -1,5 +1,6 @@
 import {
   attributeRoleFor,
+  AXLE_CRITERIA_ID,
   FITTING_POSITION_CRITERIA_ID,
   hasSingleProductType,
   isFacetPage,
@@ -8,10 +9,18 @@ import {
 } from './search-types';
 
 describe('attributeRoleFor', () => {
+  // Both ids are read off the live catalogue: 100 is "страна на монтаж", whose
+  // values mix side, axle and height, and 273 is "ос".
   it('maps the fitting-position criteriaId to the fitting-position role', () => {
+    expect(FITTING_POSITION_CRITERIA_ID).toBe('100');
     expect(attributeRoleFor(FITTING_POSITION_CRITERIA_ID)).toBe(
       'fitting-position',
     );
+  });
+
+  it('maps the axle criteriaId to the axle role', () => {
+    expect(AXLE_CRITERIA_ID).toBe('273');
+    expect(attributeRoleFor(AXLE_CRITERIA_ID)).toBe('axle');
   });
 
   it('maps the Bulgarian fitting-position label used by the mock', () => {
@@ -20,6 +29,13 @@ describe('attributeRoleFor', () => {
 
   it('returns null for an unmapped criteriaId', () => {
     expect(attributeRoleFor('9999')).toBeNull();
+  });
+
+  // '2' was a guessed id and is not a criterion TecDoc files: it appeared in
+  // none of 320 distinct criteria measured across six part types, so mapping it
+  // tagged nothing while looking as though it did.
+  it('no longer claims the guessed criteriaId 2 is a fitting position', () => {
+    expect(attributeRoleFor('2')).toBeNull();
   });
 });
 

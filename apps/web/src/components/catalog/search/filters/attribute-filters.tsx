@@ -3,7 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import type { AttributeFacetDto } from "@vp-parts-shop/shared";
+import type {
+  AttributeFacetDto,
+  AttributeFacetValueDto,
+} from "@vp-parts-shop/shared";
 import { useRetainedFacets } from "@/hooks/use-retained-facets";
 import {
   buildSearchUrl,
@@ -11,13 +14,13 @@ import {
   facetScopeKey,
   FIRST_PAGE,
   hasDimensions,
-  isAttributeSelected,
-  toggleAttribute,
   withPage,
   type SearchUrlState,
 } from "@/lib/catalog/search-url";
 import { cn } from "@/lib/utils";
+import { AttributeValueList } from "./attribute-value-list";
 import { FilterBlock } from "./filter-block";
+import { FittingPositionDiagram } from "./fitting-position-diagram";
 
 interface AttributeFiltersProps {
   state: SearchUrlState;
@@ -147,47 +150,26 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
                 </button>
               </legend>
 
+              {/* Both children return null when they have nothing to show, so
+                  the gap never opens on its own. */}
               {isOpen && (
                 <div
                   id={`criterion-${facet.id}`}
-                  className="mt-[7px] flex flex-wrap gap-1.5"
+                  className="mt-[7px] flex flex-col gap-2"
                 >
-                  {facet.values.map((value) => {
-                    const selected = isAttributeSelected(
-                      state,
-                      facet.id,
-                      value.value,
-                    );
+                  {facet.role === "fitting-position" && (
+                    <FittingPositionDiagram
+                      state={state}
+                      criteriaId={facet.id}
+                      values={facet.values}
+                    />
+                  )}
 
-                    return (
-                      <Link
-                        key={value.value}
-                        href={buildSearchUrl(
-                          toggleAttribute(state, facet.id, value.value),
-                        )}
-                        prefetch={false}
-                        aria-label={`${facet.label} ${value.label} — ${
-                          selected ? "премахни филтъра" : "добави филтъра"
-                        }`}
-                        className={cn(
-                          "rounded-full border px-2.5 py-[5px] font-mono text-xs transition-colors",
-                          selected
-                            ? "border-ink bg-ink text-white"
-                            : "border-line bg-canvas text-ink-2 hover:border-ink-3",
-                        )}
-                      >
-                        {value.label}{" "}
-                        <span
-                          className={cn(
-                            "text-[10px]",
-                            selected ? "text-white/60" : "text-ink-4",
-                          )}
-                        >
-                          ({value.count})
-                        </span>
-                      </Link>
-                    );
-                  })}
+                  <AttributeValueList
+                    state={state}
+                    facet={facet}
+                    values={chipValues(facet)}
+                  />
                 </div>
               )}
             </fieldset>
@@ -196,6 +178,22 @@ export function AttributeFilters({ state, attributes }: AttributeFiltersProps) {
       </div>
     </FilterBlock>
   );
+}
+
+/**
+ * What is left for the chip list once the diagram has taken its share.
+ *
+ * A fitting position the API placed on the car is already on screen as a zone,
+ * and offering it twice would be two controls for one filter. Everything an
+ * outline cannot hold — levels, orientations, cylinder and body positions,
+ * about a fifth of real usage — stays a chip underneath it.
+ */
+function chipValues(facet: AttributeFacetDto): AttributeFacetValueDto[] {
+  if (facet.role !== "fitting-position") {
+    return facet.values;
+  }
+
+  return facet.values.filter((value) => !value.zone);
 }
 
 function selectedValueCount(
@@ -219,10 +217,12 @@ function selectedValueCount(
  * (fitting position, axle, side) outranks even that — a mechanic reaches for it
  * before any dimension.
  *
- * TecDoc can rank the criteria itself via `includeCriteriaFacetsSorting`, but
- * only for a search filtered to one `linkageTargetId` and one
- * `genericArticleId`. Until the search is vehicle-scoped that call is
- * unavailable, so this ordering stands in for it.
+ * This orders the criteria; what order the *values* inside one come in is the
+ * API's decision, in `dimension-facets.ts`, so they are rendered as given.
+ *
+ * TecDoc's own ranking, `includeCriteriaFacetsSorting`, is not an option: it is
+ * refused on our account ("Sorting of criteria facets is not enabled"), so a
+ * vehicle-scoped search would not unlock it either.
  */
 function orderedFacets(facets: AttributeFacetDto[]): AttributeFacetDto[] {
   const rank = (facet: AttributeFacetDto): number => {

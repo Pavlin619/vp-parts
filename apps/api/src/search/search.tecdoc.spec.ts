@@ -214,7 +214,6 @@ describe('SearchTecDoc', () => {
           assemblyGroupFacetOptions: {
             enabled: true,
             assemblyGroupType: 'PU',
-            includeCompleteTree: false,
           },
         });
       });
@@ -233,65 +232,58 @@ describe('SearchTecDoc', () => {
         };
 
         expect(payload).toMatchObject({ linkageTargetId: 20154 });
-        expect(payload.assemblyGroupFacetOptions).toEqual({
-          enabled: true,
-          includeCompleteTree: false,
-        });
+        expect(payload.assemblyGroupFacetOptions).toEqual({ enabled: true });
       });
     });
 
-    // The schema documents the flag as "Always return the complete tree back,
-    // even if other assemblyGroupsIds are being filtered", so without it a
-    // filtered facet is anchored on the selected node and cannot name what sits
-    // above it — which is the breadcrumb's whole trail.
+    /**
+     * A facet filtered to one node answers with that node, its children and its
+     * complete ancestor chain on its own — measured over 17 nodes at depths 2
+     * to 4 — so `includeCompleteTree` adds only the rest of the catalogue tree,
+     * which tripled the node count for nothing the navigation reads. Sending it
+     * again would be paid for on exactly the queries that can least afford it.
+     */
     describe('the tree depth the category facet is asked for', () => {
-      it('asks for the complete tree once a category narrows the search', async () => {
+      it('never asks for the complete tree, category selected or not', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
-
-        await tecdoc.enumerate(
-          'масло',
-          undefined,
-          { type: 99 },
-          {
-            categoryNodeId: 100,
-          },
-        );
-
-        expect(call.mock.calls[0][1]).toMatchObject({
-          assemblyGroupFacetOptions: { includeCompleteTree: true },
-        });
-      });
-
-      // An unnarrowed search already gets the roots it needs, and the whole
-      // catalogue tree would be paid for on every broad query.
-      it('leaves it off while no category is selected', async () => {
         call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
 
         await tecdoc.enumerate('масло', undefined, { type: 99 });
-
-        expect(call.mock.calls[0][1]).toMatchObject({
-          assemblyGroupFacetOptions: { includeCompleteTree: false },
-        });
-      });
-
-      it('asks for it under a vehicle scope too', async () => {
-        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
-
         await tecdoc.enumerate(
           'масло',
           20154,
           { type: 99 },
-          {
-            categoryNodeId: 100,
-          },
+          { categoryNodeId: 100 },
         );
 
-        expect(call.mock.calls[0][1]).toMatchObject({
-          assemblyGroupFacetOptions: {
-            enabled: true,
-            includeCompleteTree: true,
+        for (const [, payload] of call.mock.calls) {
+          expect(
+            (payload as { assemblyGroupFacetOptions: Record<string, unknown> })
+              .assemblyGroupFacetOptions,
+          ).not.toHaveProperty('includeCompleteTree');
+        }
+      });
+
+      // Unset is what returns the full tree. The schema's "Defaults to 1 (no
+      // limit, full tree)" is wrong twice over: 1 returns the roots alone and 0
+      // empties the facet, so a guessed value here loses the categories.
+      it('never sends maxDepth', async () => {
+        call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+        await tecdoc.enumerate('масло', undefined, { type: 99 });
+
+        expect(
+          call.mock.calls[0][1] as {
+            assemblyGroupFacetOptions: Record<string, unknown>;
           },
-        });
+        ).toMatchObject({ assemblyGroupFacetOptions: expect.any(Object) });
+        expect(
+          (
+            call.mock.calls[0][1] as {
+              assemblyGroupFacetOptions: Record<string, unknown>;
+            }
+          ).assemblyGroupFacetOptions,
+        ).not.toHaveProperty('maxDepth');
       });
     });
 
@@ -879,7 +871,6 @@ describe('SearchTecDoc', () => {
           assemblyGroupFacetOptions: {
             enabled: true,
             assemblyGroupType: 'PU',
-            includeCompleteTree: false,
           },
         }),
       );

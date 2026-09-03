@@ -46,10 +46,10 @@ const MATERIAL: AttributeFacetDto = {
 }
 
 const FITTING_POSITION: AttributeFacetDto = {
-  id: '2',
+  id: '100',
   label: 'Позиция на монтаж',
   unit: null,
-  type: 'A',
+  type: 'K',
   isInterval: false,
   isMandatory: true,
   role: 'fitting-position',
@@ -347,5 +347,67 @@ describe('AttributeFilters', () => {
     rerender(<AttributeFilters state={leafState({ brandIds: ['268'] })} />)
 
     expect(screen.queryByText('Височина')).not.toBeInTheDocument()
+  })
+
+  describe('the fitting-position diagram', () => {
+    // Real TecDoc key-table-90 codes, with the zones the API resolves them to.
+    const PLACED: AttributeFacetDto = {
+      ...FITTING_POSITION,
+      values: [
+        { value: 'VA', label: 'предна ос', count: 34076, zone: 'front-axle' },
+        { value: 'HA', label: 'задна ос', count: 20129, zone: 'rear-axle' },
+        { value: 'FB', label: 'двустранен', count: 900 },
+      ],
+    }
+
+    it('offers the placed values as zones on the car', () => {
+      render(<AttributeFilters state={leafState()} attributes={[PLACED]} />)
+
+      expect(
+        screen.getByRole('link', { name: /Предна ос \(34076\)/ }),
+      ).toBeInTheDocument()
+    })
+
+    it('does not also list a placed value as a chip', () => {
+      render(<AttributeFilters state={leafState()} attributes={[PLACED]} />)
+
+      expect(screen.queryByText('предна ос')).not.toBeInTheDocument()
+    })
+
+    it('keeps the values a car outline cannot hold as chips', () => {
+      render(<AttributeFilters state={leafState()} attributes={[PLACED]} />)
+
+      expect(
+        screen.getByRole('link', { name: /двустранен/ }),
+      ).toBeInTheDocument()
+    })
+
+    // Without a zone on any value there is nothing to draw, and the criterion
+    // has to stay usable as a plain list.
+    it('falls back to chips when the API placed nothing', () => {
+      render(
+        <AttributeFilters state={leafState()} attributes={[FITTING_POSITION]} />,
+      )
+
+      expect(screen.getByRole('link', { name: /Отпред/ })).toBeInTheDocument()
+    })
+
+    it('draws no diagram for a criterion without the role', () => {
+      const zonedButRoleless: AttributeFacetDto = {
+        ...PLACED,
+        id: '25',
+        label: 'Материал',
+        role: null,
+      }
+
+      render(
+        <AttributeFilters state={leafState()} attributes={[zonedButRoleless]} />,
+      )
+
+      expect(screen.getByRole('link', { name: /предна ос/ })).toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: /Предна ос \(34076\)/ }),
+      ).not.toBeInTheDocument()
+    })
   })
 })

@@ -84,7 +84,7 @@ export default async function ArticleDetailPage({
           <ArticleSpecs technicalSpecs={article.technicalSpecs} />
         </div>
 
-        <aside className="h-fit lg:sticky lg:top-4">
+        <aside className="h-fit lg:sticky lg:top-[calc(var(--header-height)+1rem)]">
           <ArticleBuyBox
             brandId={brandId}
             articleNumber={articleNumber}

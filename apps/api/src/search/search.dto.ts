@@ -20,6 +20,7 @@ import {
   type StockScope,
 } from '@vp-parts-shop/shared';
 import { CriteriaFilter, SearchMode } from './search-types';
+import { splitMergedValue } from './dimension-facets';
 
 export const SEARCH_DEFAULT_PAGE = 1;
 export const SEARCH_DEFAULT_PAGE_SIZE = 20;
@@ -165,9 +166,11 @@ export class SearchQueryDto {
   categoryHasChildren?: boolean;
 
   /**
-   * Technical-attribute selections, each a repeatable `criteriaId:rawValue`
-   * pair (e.g. `?attr=20:106.4&attr=44:Отпред`). Parsed into
-   * {@link CriteriaFilter}s by {@link parseCriteriaFilters} in the controller.
+   * Technical-attribute selections, each a repeatable `criteriaId:value` pair
+   * (e.g. `?attr=20:106.4&attr=44:Отпред`). Parsed into {@link CriteriaFilter}s
+   * by {@link parseCriteriaFilters} in the controller, which may expand one
+   * entry into several: the value is an opaque token that can stand for more
+   * than one raw TecDoc spelling of the same measurement.
    */
   @IsOptional()
   @Transform(toStringArray)
@@ -214,8 +217,12 @@ export class SearchQueryDto {
 
 /**
  * Parses the repeatable `attr` query param into criteria filters. Each entry is
- * a `criteriaId:rawValue` pair split on the FIRST colon, so a rawValue may
- * itself contain colons.
+ * a `criteriaId:value` pair split on the FIRST colon, so a value may itself
+ * contain colons.
+ *
+ * One entry can yield more than one filter. A facet value stands for every raw
+ * spelling TecDoc files one measurement under, so the token carries them all
+ * and {@link splitMergedValue} unpacks it here.
  *
  * A malformed entry is dropped rather than rejected, matching how the other
  * facet params behave — these values are echoed back from a facet block we
@@ -236,8 +243,11 @@ export function parseCriteriaFilters(attr?: string[]): CriteriaFilter[] {
     }
 
     const criteriaId = Number(entry.slice(0, separatorIndex));
-    const rawValue = entry.slice(separatorIndex + 1);
-    if (rawValue.length > 0 && Number.isInteger(criteriaId) && criteriaId > 0) {
+    if (!Number.isInteger(criteriaId) || criteriaId <= 0) {
+      return filters;
+    }
+
+    for (const rawValue of splitMergedValue(entry.slice(separatorIndex + 1))) {
       filters.push({ criteriaId, rawValue });
     }
 

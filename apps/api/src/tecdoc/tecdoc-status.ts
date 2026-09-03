@@ -40,6 +40,7 @@ export enum TecDocFailure {
  * meanings, but the value being classified is whatever the response body
  * carried — it is not an `HttpStatus` and must not be typed as one.
  */
+const TECDOC_BAD_REQUEST = 400;
 const TECDOC_UNAUTHORIZED = 401;
 const TECDOC_FORBIDDEN = 403;
 const TECDOC_TOO_MANY_REQUESTS = 429;
@@ -50,15 +51,27 @@ const TECDOC_TOO_MANY_REQUESTS = 429;
  *
  * The switch covers the codes we can name; everything else falls through to
  * {@link classifyByStatusClass}. That fallback is not laziness — TecAlliance
- * documents only 200 and 401 ("Access not allowed") and publishes no enum, so an
- * exhaustive `case` list would be invented rather than specified. [VERIFY-TC]
- * Promote a code into the switch once the Test Client confirms it.
+ * publishes no enum, so an exhaustive `case` list would be invented rather than
+ * specified.
+ *
+ * Two are confirmed against the live endpoint. `400` carries a `statusText`
+ * naming the offending field and is always our bug: `Field 'perPage' must be >
+ * 0 and <= 1000`, `Field 'page' must be > 0`, `Field 'numberType' has an
+ * invalid value:12345.`, and `Sorting of criteria facets is not enabled for
+ * this account` — the last of which is an entitlement rather than a malformed
+ * request, but still a call we should not have made. `401` is "Access not
+ * allowed", returned for a ProviderId that is not ours. Nothing produced a 403,
+ * a 429 or a 5xx, so those two cases stand on the HTTP meanings alone. Note
+ * that an empty `searchQuery` is answered `200`, not a rejection.
  */
 export function classifyTecDocStatus(status: number): TecDocFailure {
   switch (status) {
     case TECDOC_UNAUTHORIZED:
     case TECDOC_FORBIDDEN:
       return TecDocFailure.Denied;
+
+    case TECDOC_BAD_REQUEST:
+      return TecDocFailure.Rejected;
 
     case TECDOC_TOO_MANY_REQUESTS:
       return TecDocFailure.Unavailable;

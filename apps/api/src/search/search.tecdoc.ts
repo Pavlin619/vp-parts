@@ -28,14 +28,16 @@ import { SearchRequest } from './search-call';
 import {
   buildCategoryNavigation,
   buildCategorySuggestions,
-  mapAttributeFacets,
   mapBrandFacets,
   mapProductTypeFacets,
   TecDocAssemblyGroupFacetCount,
   TecDocBrandFacetCount,
-  TecDocCriteriaFacetCount,
   TecDocGenericArticleFacetCount,
 } from './search-facet-mappers';
+import {
+  mapAttributeFacets,
+  TecDocCriteriaFacetCount,
+} from './dimension-facets';
 
 /**
  * The passenger-car and universal assembly-group trees in one request. TecDoc
@@ -59,29 +61,30 @@ const CATALOGUE_WIDE_TREES = `${AssemblyGroupType.PassengerCar}${AssemblyGroupTy
  * `'P'` covers motorcycles, tree `'P'` excludes them), so naming a tree here
  * would quietly drop part of the linkage's own catalogue.
  *
- * `includeCompleteTree` is asked for **only once a category is selected**. The
- * schema defines it as "Always return the complete tree back, even if other
- * assemblyGroupsIds are being filtered", so under an `assemblyGroupNodeIds`
- * filter the facet is otherwise anchored on the selected node and never names
- * its ancestors — which is exactly the trail the breadcrumb walks. An
- * unnarrowed search needs no such thing: it already receives the roots, and
- * asking for the whole catalogue tree on every broad query would be paid for on
- * the calls that can least afford it.
+ * `includeCompleteTree` is never asked for, and that is a measured decision
+ * rather than a default. The schema defines it as "Always return the complete
+ * tree back, even if other assemblyGroupsIds are being filtered", which reads
+ * as though a filtered facet were anchored on the selected node with no way
+ * back up — the trail the breadcrumb walks. It is not: a facet filtered to one
+ * node answers with that node, its children *and* its complete ancestor chain
+ * regardless of the flag (17 of 17 nodes at depths 2–4, catalogue-wide and
+ * under a vehicle). All the flag adds is the rest of the catalogue tree, which
+ * tripled the node count for nothing the navigation reads.
  *
- * [VERIFY-TC] `maxDepth` is left unset. The navigation is single-level, so one
- * level below the current node is all we read, but the schema documents the
- * field as "a limit to the number of edges … Defaults to 1 (no limit, full
- * tree)" — under which 1 is a sentinel for unlimited and no documented value
- * asks for one level. Confirm against the Test Client before setting it:
- * guessing risks an empty category facet.
+ * `maxDepth` is left unset, which is what returns the full tree. The schema's
+ * "Defaults to 1 (no limit, full tree)" is wrong on both halves: 1 is not a
+ * sentinel for unlimited but the roots alone, and it is a count of levels
+ * rather than of edges — 2 gives roots plus one level, 3 plus two, and **0
+ * empties the facet entirely**. Unset and -1 both give everything. Setting it
+ * to 2 would trim a broad search's facet, since only the roots are rendered and
+ * `children` survives the trim; it is left off because the facet is cached per
+ * search and is a small part of the entry either way.
  */
 function assemblyGroupFacetOptionsFor(
   vehicleId: number | undefined,
-  hasCategorySelection = false,
 ): Record<string, unknown> {
   return {
     enabled: true,
-    includeCompleteTree: hasCategorySelection,
     ...(vehicleId == null && { assemblyGroupType: CATALOGUE_WIDE_TREES }),
   };
 }
@@ -192,18 +195,22 @@ export class SearchTecDoc {
       includeMisc: true,
       includeDataSupplierFacets: true,
       includeGenericArticleFacets: true,
-      // TODO(search-ux): auto-surface dimensions when a precise query (e.g. a
-      // full part number) collapses to a single leaf category, so the user need
-      // not click to reveal them. Preferred approach: keep this broad call cheap
-      // and, when categoryNavigation resolves to exactly one leaf option, fire
-      // one follow-up scoped getArticles for its criteria (Redis-cached).
+      // Dimensions wait for a selection, and auto-surfacing them on a precise
+      // query was measured and dropped. A match set never narrows to one
+      // product type on its own: free text spans hundreds (`филтър` → 213), and
+      // an exact number fans out over OE, trade and comparable numbers onto
+      // kits and service sets as well as the bare part, so it lands on two to
+      // six — `OX 389/1D` is 114 articles across 83 brands, 110 of them an oil
+      // filter and 4 a filter kit. The gate held in 0 of 48 exact searches
+      // sampled across eight product types; the only shapes that did collapse
+      // held one or two articles, where no filter can change the result. So the
+      // follow-up call this once planned would fire on a case that does not
+      // occur, and where a number search does need an axis, the visitor's is
+      // brand — 83 of them here, already in the sidebar.
       ...(shouldRequestCriteriaFacets(filters) && {
         includeCriteriaFacets: true,
       }),
-      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(
-        vehicleId,
-        filters?.categoryNodeId !== undefined,
-      ),
+      assemblyGroupFacetOptions: assemblyGroupFacetOptionsFor(vehicleId),
     });
 
     const categoryNavigation = buildCategoryNavigation(
@@ -229,7 +236,7 @@ export class SearchTecDoc {
         ),
       ],
       attributes: isHomogeneous
-        ? mapAttributeFacets(data.criteriaFacets?.counts)
+        ? mapAttributeFacets(data.criteriaFacets?.counts, filters?.criteria)
         : [],
       categoryNavigation,
     };

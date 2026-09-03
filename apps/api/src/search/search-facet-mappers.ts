@@ -1,83 +1,38 @@
 import {
-  AttributeFacetDto,
-  AttributeFacetValueDto,
   CategoryAutocompleteItemDto,
   CategoryNavigationDto,
   CategoryOptionDto,
   FacetValueDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
-import { attributeRoleFor, CATEGORY_AUTOCOMPLETE_LIMIT } from './search-types';
-
-/**
- * TecDoc `CriteriaInfo`: the criterion a criteria facet block describes.
- * `criteriaUnitDescription` is the only part of it we read that the schema
- * marks optional; `isMandatory` and `isInterval` are both required.
- */
-export interface TecDocCriteriaInfo {
-  criteriaId: number;
-  criteriaDescription: string;
-  criteriaUnitDescription?: string;
-  criteriaType: string;
-  isMandatory: boolean;
-  isInterval: boolean;
-}
-
-/**
- * TecDoc `CriteriaValueCounts`: one selectable value of a criterion, with the
- * machine `rawValue` a `criteriaFilters` selection echoes back and the display
- * `formattedValue`.
- *
- * `permittedKeyValue` is TecDoc's DQM verdict on the value: "for criteriaType
- * 'K', defines whether this value is permitted for a given genericArticle and
- * criteria. Available when filtering by a single genericArticleId and
- * 'applyDqmRules' … is set to true." So the request flag does not drop the
- * impermissible values — it only marks them, and the caller does the dropping.
- * Absent for every criterion that is not a key table, and whenever the flag was
- * not sent.
- */
-export interface TecDocCriteriaValueCount {
-  rawValue: string;
-  formattedValue: string;
-  permittedKeyValue?: boolean;
-  count: number;
-}
-
-/**
- * One technical-attribute facet block from a `getArticles`
- * `includeCriteriaFacets` response (TecDoc `CriteriaFacetCount`): the criterion
- * nested under `criteria`, its values under `criteriaValueCounts`.
- */
-export interface TecDocCriteriaFacetCount {
-  criteria: TecDocCriteriaInfo;
-  criteriaValueCounts?: TecDocCriteriaValueCount[];
-}
+import { AssemblyGroupType } from '../tecdoc';
+import { CATEGORY_AUTOCOMPLETE_LIMIT } from './search-types';
 
 /**
  * One node of a `getArticles` `assemblyGroupFacets` tree (TecDoc
  * `AssemblyGroupFacetCount`). `children` is TecDoc's count of the node's child
  * assembly groups — distinct from the child `options` the navigation builder
  * derives, and the authoritative leafness signal because the facet is scoped to
- * the match set and may omit children the node really has. `count` is optional:
- * under a linkage filter TecDoc populates it only for that linkage's assembly
- * group type.
+ * the match set and may omit children the node really has. `count` is optional
+ * in the schema — "counts are only populated for a linkage filter's assembly
+ * group type" — but measured populated on every node of both trees with no
+ * linkage at all, so a null one is defensive rather than expected.
  *
- * [VERIFY-TC] The schema's own `assemblyGroupType` — which it marks *required*
- * on every count — is deliberately not read, which assumes `assemblyGroupNodeId`
- * is unique across trees. A catalogue-wide search asks for the passenger-car and
- * universal trees together (the schema: "Multiple tree types can be combined"),
- * and {@link buildCategoryNavigation} keys its node map on the id alone — so if
- * the two trees can reuse a number, one node silently overwrites the other. The
- * schema does not say whether ids are unique per tree or globally, so this is
- * still open. It now carries the breadcrumb as well as `current`: the ancestor
- * walk follows the same map, so a collision could hang a node off a parent from
- * the other tree. Confirm on the Test Client; if ids do collide, the map key has
- * to become `(assemblyGroupType, assemblyGroupNodeId)` and the pair has to
- * travel to the client in place of the bare id.
+ * **`assemblyGroupNodeId` is unique across trees**, which is why
+ * {@link buildCategoryNavigation} keys its node map on the bare id. A
+ * catalogue-wide search asks for the passenger-car and universal trees together
+ * (the schema: "Multiple tree types can be combined"), so a reused number would
+ * silently overwrite one node with another and hang a breadcrumb off a parent
+ * from the other tree. Measured over 2,277 distinct ids drawn from all six tree
+ * types (P, U, B, O, M, A): none is reused by two of them.
+ *
+ * The **names** are not unique, though, which is the one thing
+ * `assemblyGroupType` is read for — see {@link qualifiedLabelsFor}.
  */
 export interface TecDocAssemblyGroupFacetCount {
   assemblyGroupNodeId: number;
   assemblyGroupName: string;
+  assemblyGroupType?: string;
   parentNodeId?: number | null;
   children?: number;
   count?: number;
@@ -186,52 +141,6 @@ function selectedBeyond(
 }
 
 /**
- * Turns the raw TecDoc `criteriaFacets` blocks into the shared attribute facet
- * groups. Each criterion becomes one group keyed by its `criteriaId`, carrying
- * the unit and type so the UI can render numeric attributes (with intervals)
- * differently from enum ones. Values DQM ruled out are dropped, and groups left
- * with none go with them.
- */
-export function mapAttributeFacets(
-  criteriaCounts: TecDocCriteriaFacetCount[] = [],
-): AttributeFacetDto[] {
-  return criteriaCounts
-    .map(({ criteria, criteriaValueCounts }): AttributeFacetDto => {
-      const values: AttributeFacetValueDto[] = (criteriaValueCounts ?? [])
-        .filter(isPermittedValue)
-        .map((value) => ({
-          value: value.rawValue,
-          label: value.formattedValue,
-          count: value.count,
-        }));
-
-      const id = String(criteria.criteriaId);
-
-      return {
-        id,
-        label: criteria.criteriaDescription,
-        unit: criteria.criteriaUnitDescription ?? null,
-        type: criteria.criteriaType,
-        isInterval: criteria.isInterval,
-        isMandatory: criteria.isMandatory,
-        role: attributeRoleFor(id),
-        values,
-      };
-    })
-    .filter((facet) => facet.values.length > 0);
-}
-
-/**
- * Only an explicit `false` is a rejection. TecDoc omits the flag for every
- * criterion that is not a key table and whenever `applyDqmRules` was not sent,
- * so treating absence as "not permitted" would empty the dimension list for
- * every search that does not narrow to one product type.
- */
-function isPermittedValue(value: TecDocCriteriaValueCount): boolean {
-  return value.permittedKeyValue !== false;
-}
-
-/**
  * Turns the flat TecDoc `assemblyGroupFacets` counts into **single-level**
  * navigation: the immediate `options` for the current position (roots when
  * nothing is selected, otherwise the selected node's children), the `current`
@@ -240,18 +149,116 @@ function isPermittedValue(value: TecDocCriteriaValueCount): boolean {
  * the one path back out.
  *
  * `current` and `ancestors` are both best-effort: they are resolvable only for
- * the nodes TecDoc returns in the match-scoped facet.
+ * the nodes TecDoc returns in the match-scoped facet. In practice both always
+ * resolve — a facet filtered to one node answers with that node, its children
+ * and its **complete** ancestor chain, which is what lets the search ask for
+ * neither the whole tree nor a second call. Measured on 17 nodes at depths 2 to
+ * 4, catalogue-wide and vehicle-scoped: 17 complete chains, 0 short.
  *
- * [VERIFY-TC] The search sends `includeCompleteTree: false`, which the schema
- * documents as "Always return the complete tree back, even if other
- * assemblyGroupsIds are being filtered. Default false" — so under a
- * `assemblyGroupNodeIds` filter the response is anchored on the filtered node
- * (`maxDepth` counts "edges from either a filtered 'assemblyGroupNodeIds' or
- * assembly group root node") and probably omits its ancestors. If it does, this
- * returns an empty chain and the breadcrumb shortens to the current category
- * alone; nothing else changes. Confirm on the Test Client, and if the ancestors
- * are indeed dropped, the fix is `includeCompleteTree: true` whenever a
- * category is selected — at the cost of a larger facet payload.
+ * **The options at one level overlap, and that is TecDoc's model rather than a
+ * bug to filter out.** The tree is not one taxonomy with a single home per
+ * part: it flattens several orthogonal axes into one list of roots — what a
+ * part *is*, why it is replaced, and where it sits on the car. A vehicle-scoped
+ * search for "филтър" (100 articles) returns `филтър` with 100 and `части за
+ * сервиз/инспекция/обслужване` with the **identical** 100 identities, while
+ * `двигател` 66, `кормилно управление` 15, `горивопроводна система` 12 and
+ * `отопление` 7 are mutually disjoint and partition the same 100 exactly. The
+ * counts sum to 300 for a set of 100, because each article is filed under three
+ * roots. So a level's counts never sum to the total, and two options can narrow
+ * to the same list.
+ *
+ * The overlap is served as it comes. **Do not filter a root out because its
+ * count equals the total.** That is the rule dimension facets use for a
+ * single-value criterion, and on a tree it inverts: `филтър` is exactly such a
+ * root and its children are the most useful split available (маслен 56,
+ * хидравличен 15, горивен 12, въздушен 10, филтър купе 7), whereas `части за
+ * сервиз` splits into Периодична подмяна 88 / Други 12. Dropping both would
+ * delete the best navigation and keep the worst.
+ */
+/**
+ * What a category tree is called when its name has to be said out loud. Only
+ * the trees a search can actually span are worded: a catalogue-wide search asks
+ * for `P` and `U` together, and under a vehicle TecDoc answers from one tree, so
+ * `P`/`U` is the only pair measured colliding. Passenger car is deliberately
+ * absent — it is the shop's default context, so it keeps TecDoc's plain name and
+ * only the other side of a collision is qualified.
+ *
+ * Bulgarian because the labels beside it are: `lang: 'bg'` is fixed on every
+ * TecDoc call, so a category name is already Bulgarian display text by the time
+ * it reaches this file. A second language would need this map keyed by it.
+ */
+const TREE_QUALIFIER: Readonly<Record<string, string>> = {
+  [AssemblyGroupType.Universal]: 'универсални части',
+  [AssemblyGroupType.Motorcycle]: 'мотоциклети',
+  [AssemblyGroupType.CommercialVehicle]: 'товарни автомобили',
+};
+
+/**
+ * Resolves the label each node should be shown under, qualifying only the ones
+ * a visitor could not otherwise tell apart.
+ *
+ * The passenger-car and universal trees genuinely duplicate names: measured
+ * catalogue-wide, `q=филтър` had 9 of 37 root labels used twice and
+ * `q=двигател` 23 of 67 — "двигател" is both `100002` (passenger car,
+ * 133,828 articles) and `705972` (universal, 1). Two options reading exactly
+ * the same is a coin toss the visitor cannot win.
+ *
+ * Only a *sibling* collision is qualified, because siblings are what a level
+ * renders side by side; the same name under two different parents is told apart
+ * by where the visitor is. And only the non-passenger-car side gains a suffix —
+ * picking a winner to *drop* is what this deliberately does not do, since the
+ * bigger side is not consistently the passenger-car one ("климатична уредба" is
+ * 114 universal against 87 passenger car), so suppressing either would
+ * sometimes hide the larger category.
+ */
+function qualifiedLabelsFor(
+  siblingGroups: Iterable<TecDocAssemblyGroupFacetCount[]>,
+): Map<number, string> {
+  const labels = new Map<number, string>();
+
+  for (const siblings of siblingGroups) {
+    const nodesByLabel = new Map<string, TecDocAssemblyGroupFacetCount[]>();
+
+    for (const node of siblings) {
+      const sharing = nodesByLabel.get(node.assemblyGroupName) ?? [];
+      sharing.push(node);
+      nodesByLabel.set(node.assemblyGroupName, sharing);
+    }
+
+    for (const sharing of nodesByLabel.values()) {
+      if (sharing.length < 2) {
+        continue;
+      }
+
+      for (const node of sharing) {
+        const qualifier = TREE_QUALIFIER[node.assemblyGroupType ?? ''];
+
+        if (qualifier) {
+          labels.set(
+            node.assemblyGroupNodeId,
+            `${node.assemblyGroupName} (${qualifier})`,
+          );
+        }
+      }
+    }
+  }
+
+  return labels;
+}
+
+/**
+ * Options keep the order TecDoc sent them in, and the `sortNo` on every node is
+ * deliberately not read. That field is the catalogue's own display order, so
+ * sorting by it looks like the obvious thing to do — but the order we already
+ * get is alphabetical by localised name (298 of 318 sibling groups over eight
+ * queries) and stable, agreeing across three identical requests and between a
+ * page-1 and a page-2 read. Sorting would swap one defined order for another,
+ * and `sortNo` runs an independent sequence per tree — both P and U roots start
+ * at 1 — so it would need a tree precedence and a tie-break invented here.
+ *
+ * The one wart it would fix is a duplicated label whose smaller twin lists
+ * first, and that is 10 of those 318 groups, already told apart by
+ * {@link qualifiedLabelsFor}.
  */
 export function buildCategoryNavigation(
   counts: TecDocAssemblyGroupFacetCount[] = [],
@@ -278,12 +285,15 @@ export function buildCategoryNavigation(
     childrenByParent.set(key, siblings);
   }
 
+  const qualifiedLabels = qualifiedLabelsFor(childrenByParent.values());
+
   const toOption = (raw: TecDocAssemblyGroupFacetCount): CategoryOptionDto => {
     const id = String(raw.assemblyGroupNodeId);
     const childList = childrenByParent.get(id) ?? [];
     return {
       id,
-      label: raw.assemblyGroupName,
+      label:
+        qualifiedLabels.get(raw.assemblyGroupNodeId) ?? raw.assemblyGroupName,
       count: raw.count ?? null,
       hasChildren: childList.length > 0 || (raw.children ?? 0) > 0,
     };
