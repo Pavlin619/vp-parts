@@ -6,11 +6,11 @@ interface VehicleSelectorHeaderProps {
 
 export function VehicleSelectorHeader({ onClose }: VehicleSelectorHeaderProps) {
   return (
-    <div className="flex items-center gap-3 px-6 py-4 border-b border-line flex-shrink-0">
+    <div className="flex items-center gap-3 px-4 py-3.5 border-b border-line flex-shrink-0 sm:px-6 sm:py-4">
       <div className="w-10 h-10 bg-ink rounded-xl flex items-center justify-center flex-shrink-0">
         <Car className="w-5 h-5 text-white" aria-hidden="true" />
       </div>
-      <div>
+      <div className="min-w-0">
         <h2 className="font-display font-semibold text-ink text-base leading-tight">
           Избери автомобил
         </h2>
@@ -19,7 +19,10 @@ export function VehicleSelectorHeader({ onClose }: VehicleSelectorHeaderProps) {
         </p>
       </div>
       <div className="ml-auto flex items-center gap-3">
-        <div className="flex items-center border border-line rounded-lg overflow-hidden text-sm">
+        {/* Hidden below `sm` rather than wrapped: it is the widest thing in the
+            row and the only one a visitor never has to touch — VIN entry is
+            not wired up yet. */}
+        <div className="hidden items-center border border-line rounded-lg overflow-hidden text-sm sm:flex">
           <button className="px-3 py-1.5 font-medium text-ink bg-bg-sunken">
             Стъпка по стъпка
           </button>
@@ -29,7 +32,7 @@ export function VehicleSelectorHeader({ onClose }: VehicleSelectorHeaderProps) {
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-bg-sunken transition-colors"
+          className="p-1.5 rounded-lg hover:bg-bg-sunken transition-colors flex-shrink-0"
           aria-label="Затвори"
         >
           <X className="w-5 h-5 text-muted" />

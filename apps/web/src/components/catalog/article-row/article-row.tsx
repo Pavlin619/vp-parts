@@ -75,7 +75,7 @@ export function ArticleRow({
 
   return (
     <article
-      className="overflow-hidden rounded-[12px] border border-line bg-bg-card transition-colors hover:border-ink-3"
+      className="@container overflow-hidden rounded-[12px] border border-line bg-bg-card transition-colors hover:border-ink-3"
       aria-busy={availability === undefined}
     >
       <div className="flex items-stretch">
@@ -98,7 +98,11 @@ export function ArticleRow({
           />
         </button>
 
-        <div className="grid min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)] items-center gap-x-3.5 gap-y-3 p-3 lg:grid-cols-[44px_minmax(150px,1fr)_68px_116px_142px_152px] lg:px-4 lg:py-[13px]">
+        {/* Six columns once the row is wide enough. Below that the brand keeps a
+            column of its own beside the identity block — a mark reads as part of
+            the part's name, not as inventory — and the live columns drop to a
+            band underneath. */}
+        <div className="grid min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)_auto] items-start gap-x-3.5 gap-y-3 p-3 @row-wide:grid-cols-[44px_minmax(150px,1fr)_68px_116px_142px_152px] @row-wide:items-center @row-wide:px-4 @row-wide:py-[13px]">
           <ArticleThumbnail href={href} thumbnailUrl={article.thumbnailUrl} />
 
           <div className="flex min-w-0 flex-col gap-[3px]">
@@ -131,13 +135,15 @@ export function ArticleRow({
             )}
           </div>
 
-          {/* The metadata columns wrap under the identity block on narrow
-              viewports, so they start their own grid row there. Each cell centres
-              as a whole — label included — so a label always sits directly above
-              the value it describes rather than on a shared header line. */}
-          <div className="col-span-2 grid grid-cols-2 items-center gap-x-3.5 gap-y-3 border-t border-line pt-3 lg:col-span-4 lg:grid-cols-subgrid lg:border-0 lg:pt-0">
-            <BrandLogo brandName={brandName} brandLogoUrl={article.brandLogoUrl} />
+          <BrandLogo brandName={brandName} brandLogoUrl={article.brandLogoUrl} />
 
+          {/* The live-inventory columns wrap under the identity block in a narrow
+              row, so they start their own grid row there: delivery beside stock,
+              then price and the buy actions on a line of their own. Each cell
+              centres as a whole — label included — so a label always sits
+              directly above the value it describes rather than on a shared
+              header line. */}
+          <div className="col-span-3 grid grid-cols-2 items-start gap-x-3.5 gap-y-3 border-t border-line pt-3 @row-wide:grid-cols-subgrid @row-wide:items-center @row-wide:border-0 @row-wide:pt-0">
             <ArticleRowAvailability
               availability={availability}
               articleNumber={articleNumber}
@@ -241,7 +247,7 @@ function BrandLogo({
     return (
       <span
         title={brandName}
-        className="relative block h-[42px] w-[68px] rounded-md border border-line bg-bg-card"
+        className="relative block h-[34px] w-[56px] rounded-md border border-line bg-bg-card @row-wide:h-[42px] @row-wide:w-[68px]"
       >
         <Image
           src={brandLogoUrl}
@@ -256,7 +262,7 @@ function BrandLogo({
   }
 
   return (
-    <span className="grid h-[42px] place-items-center break-words rounded-md border border-line bg-bg-card px-[5px] py-[3px] text-center font-display text-[10.5px] font-bold leading-[1.1] tracking-[0.02em] text-ink-2">
+    <span className="grid h-[34px] w-[56px] place-items-center break-words rounded-md border border-line bg-bg-card px-[5px] py-[3px] text-center font-display text-[10.5px] font-bold leading-[1.1] tracking-[0.02em] text-ink-2 @row-wide:h-[42px] @row-wide:w-[68px]">
       {brandName}
     </span>
   );

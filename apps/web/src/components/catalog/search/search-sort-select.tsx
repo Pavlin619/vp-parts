@@ -119,9 +119,14 @@ export function SearchSortSelect({
             : "border-line shadow-card hover:border-line-2",
         )}
       >
-        <ArrowDownUp className="h-3.5 w-3.5 text-ink-4" aria-hidden="true" />
+        <ArrowDownUp
+          className="hidden h-3.5 w-3.5 text-ink-4 sm:block"
+          aria-hidden="true"
+        />
         <span className="hidden text-ink-3 sm:inline">Подредба</span>
-        <span className="font-semibold text-ink">{selected.label}</span>
+        <span className="whitespace-nowrap font-semibold text-ink">
+          {selected.label}
+        </span>
         {selected.hint && (
           <span className="hidden text-ink-3 sm:inline">{selected.hint}</span>
         )}
@@ -135,10 +140,15 @@ export function SearchSortSelect({
       </button>
 
       {isOpen && (
+        // Anchored to whichever edge of the trigger has the viewport behind it.
+        // From `lg` the strip is right-aligned, so the panel opens leftwards;
+        // below that the trigger leads a centred row with the panel's width to
+        // its right and barely a chip's worth to its left, and opening leftwards
+        // ran the options off the screen.
         <div
           role="listbox"
           aria-label="Подредба"
-          className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[264px] rounded-md border border-line bg-bg-card p-1.5 shadow-overlay"
+          className="absolute left-0 top-[calc(100%+8px)] z-[60] w-[264px] max-w-[calc(100vw-2rem)] rounded-md border border-line bg-bg-card p-1.5 shadow-overlay lg:left-auto lg:right-0"
         >
           {options.map((option) => {
             const isSelected = option.sort === selected.sort;

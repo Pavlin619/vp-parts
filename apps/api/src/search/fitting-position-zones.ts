@@ -72,8 +72,10 @@ const ZONE_BY_CODE: Readonly<Record<string, FittingPositionZone | undefined>> =
  * "багажно пространство"), and orientations that are relative rather than
  * absolute ("двустранен", "пред оста", "от страната на трансмисията"). The 32
  * codes mapped here are 84% of measured usage — 1,236,807 of 1,464,928
- * occurrences — which leaves a fifth of it for the plain list the client keeps
- * alongside the diagram.
+ * occurrences — leaving the other 158 codes and 16% for the plain list the
+ * client keeps alongside the diagram. Half of that remainder is a single axis
+ * the plan view has no room for: `U` отдолу, `O` горе, `A` отвън and
+ * `I` вътрешен are 105,265 occurrences between them.
  *
  * A merged value must agree with itself: every raw spelling has to resolve to
  * the same zone, or the answer is null. Two codes only merge when they share a

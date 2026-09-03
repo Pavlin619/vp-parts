@@ -235,11 +235,11 @@ function AvailabilityUnknown() {
   );
 }
 
-/** One labelled column; the label is dropped on the wrapped mobile layout. */
+/** One labelled column. */
 function RowCell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="mb-1.5 hidden text-[9.5px] font-semibold uppercase tracking-[0.05em] text-ink-4 lg:block">
+      <p className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.05em] text-ink-4">
         {title}
       </p>
       {children}

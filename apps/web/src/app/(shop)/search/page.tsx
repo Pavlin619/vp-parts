@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { searchArticles } from "@/lib/api/search";
 import {
   buildSearchUrl,
+  countActiveFilters,
   isNarrowedSearch,
   isPageOutOfRange,
   parseSearchUrl,
@@ -15,6 +16,7 @@ import { SearchEmptyState } from "@/components/catalog/search/search-empty-state
 import { SearchNoMatches } from "@/components/catalog/search/search-no-matches";
 import { SearchResultsTitle } from "@/components/catalog/search/search-results-title";
 import {
+  SearchFiltersPanel,
   SearchFiltersSidebar,
   SearchPagination,
   SearchPaginationCompact,
@@ -70,13 +72,21 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       />
 
       <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
-        <SearchFiltersSidebar
-          state={state}
+        {/* The sidebar is server-rendered and passed in as children, so the
+            panel can hold it open across the navigation each selection makes
+            without any of the facet reads crossing into the client bundle. */}
+        <SearchFiltersPanel
           total={response.total}
-          facets={response.facets}
-          attributes={response.attributes}
-          categoryNavigation={response.categoryNavigation}
-        />
+          activeCount={countActiveFilters(state)}
+        >
+          <SearchFiltersSidebar
+            state={state}
+            total={response.total}
+            facets={response.facets}
+            attributes={response.attributes}
+            categoryNavigation={response.categoryNavigation}
+          />
+        </SearchFiltersPanel>
 
         <main className="min-w-0">
           {/* Above both branches: a narrowing that empties the list is exactly

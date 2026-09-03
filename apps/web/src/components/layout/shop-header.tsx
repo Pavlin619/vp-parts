@@ -15,14 +15,17 @@ export function ShopHeader() {
   return (
     <>
       <header className="bg-bg-card border-b border-line sticky top-0 z-40">
-        <div className="page-container py-3 flex items-center gap-4">
+        {/* Wraps rather than scrolls: the search box needs the whole width to
+            be usable, and below `md` there is not enough of it left over once
+            the brand and the account actions have taken theirs. */}
+        <div className="page-container py-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
           <SiteLogo />
 
           <MainNav />
 
           <HeaderSearch />
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0 md:ml-0">
             <VehiclePill onOpenSelector={() => setVehicleSelectorOpen(true)} />
 
             <Link

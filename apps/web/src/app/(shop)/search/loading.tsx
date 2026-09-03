@@ -4,7 +4,12 @@ export default function SearchLoading() {
       <div className="mb-6 h-4 w-72 animate-pulse rounded bg-bg-sunken" />
 
       <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
-        <div className="flex flex-col gap-2">
+        {/* Mirrors the two shapes the filters take: a trigger below `lg`, the
+            column of blocks above it. A skeleton of the column on a phone would
+            promise 640px of sidebar that never arrives. */}
+        <div className="h-11 animate-pulse rounded-md bg-bg-sunken lg:hidden" />
+
+        <div className="hidden flex-col gap-2 lg:flex">
           {[180, 260, 200].map((height) => (
             <div
               key={height}

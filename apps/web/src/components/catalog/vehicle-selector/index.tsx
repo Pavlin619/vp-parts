@@ -28,7 +28,7 @@ export function VehicleSelector({ isOpen, onClose, onConfirm }: VehicleSelectorP
   if (!isOpen || !isHydrated) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-ink/60 sm:p-4">
       <VehicleSelectorContent onClose={onClose} onConfirm={onConfirm} />
     </div>,
     document.body,

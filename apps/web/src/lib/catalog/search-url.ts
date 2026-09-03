@@ -257,6 +257,26 @@ export function isNarrowedSearch(state: SearchUrlState): boolean {
 }
 
 /**
+ * How many narrowings the filters panel is currently holding — what its mobile
+ * trigger has to say, since the blocks themselves are behind it.
+ *
+ * Counts the panel's own axes and nothing else. The stock scope is a narrowing
+ * too, but its control sits in the results header, so counting it here would
+ * send a visitor into the panel looking for something that is not in it. The
+ * category path counts once however deep it is: the drill is one selection with
+ * a trail behind it, not one per level.
+ */
+export function countActiveFilters(state: SearchUrlState): number {
+  return (
+    (state.vehicleId ? 1 : 0) +
+    (state.categoryPath.length > 0 ? 1 : 0) +
+    (state.productTypeId ? 1 : 0) +
+    state.brandIds.length +
+    state.attributes.length
+  );
+}
+
+/**
  * Whether this search is narrowed enough for the API to have computed the
  * dimension facets. The rule itself is shared with the API — see
  * {@link hasCoherentDimensions} — so the sidebar never asks for a narrowing the

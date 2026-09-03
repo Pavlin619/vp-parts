@@ -8,15 +8,21 @@ import { usePricesIncludeVat } from "@/hooks/use-price-display";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 
 /**
- * The buy column is the tallest cell in a catalog row, so its height is the
- * row's. Pinned to the height of its fullest state — price, stepper and cart
- * button — because otherwise a back-ordered part, or one whose availability has
- * not landed yet, renders a visibly shorter row than the one above it and the
- * list ripples as prices arrive. A floor rather than a fixed height, so a cell
- * that outgrows it is never clipped.
+ * Two layouts for one cell, chosen by the row's own width (`--container-row-wide`).
+ * In a wide row it is the last column, stacked and right-aligned; in a narrow
+ * one it is a band across the bottom of the card, price on the left and the
+ * actions on the right.
+ *
+ * The height floor belongs to the column layout alone, because there it is the
+ * tallest cell and so sets the row's height: without it a back-ordered part, or
+ * one whose availability has not landed yet, renders visibly shorter than the
+ * row above and the list ripples as prices arrive. A floor rather than a fixed
+ * height, so a cell that outgrows it is never clipped. As a band it is the last
+ * thing in the card and nothing lines up beside it, so it simply takes the
+ * height it needs.
  */
 const BUY_COLUMN_CLASS_NAME =
-  "flex min-h-[88px] flex-col items-end gap-1 text-right";
+  "col-span-2 flex items-center justify-between gap-3 border-t border-line pt-3 @row-wide:col-span-1 @row-wide:min-h-[88px] @row-wide:flex-col @row-wide:items-end @row-wide:gap-1 @row-wide:border-0 @row-wide:pt-0 @row-wide:text-right";
 
 interface ArticleRowBuyProps {
   availability: RowAvailability;
@@ -50,20 +56,22 @@ export function ArticleRowBuy({
 
   return (
     <div className={BUY_COLUMN_CLASS_NAME} data-testid="article-row-buy">
-      {price != null ? (
-        <p className="whitespace-nowrap font-display text-lg font-semibold tracking-[-0.01em] tabular-nums text-ink">
-          {formatPrice(price)}
-        </p>
-      ) : (
-        <p className="font-display text-lg font-semibold text-ink-3">—</p>
-      )}
+      <div className="flex min-w-0 flex-col @row-wide:items-end">
+        {price != null ? (
+          <p className="whitespace-nowrap font-display text-lg font-semibold tracking-[-0.01em] tabular-nums text-ink">
+            {formatPrice(price)}
+          </p>
+        ) : (
+          <p className="font-display text-lg font-semibold text-ink-3">—</p>
+        )}
 
-      <p className="text-[10.5px] text-ink-3">
-        {includesVat ? "с ДДС" : "без ДДС"} · за брой
-      </p>
+        <p className="text-[10.5px] text-ink-3">
+          {includesVat ? "с ДДС" : "без ДДС"} · за брой
+        </p>
+      </div>
 
       {canBuy && (
-        <div className="mt-1 flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 @row-wide:mt-1">
           <div className="flex h-8 items-center rounded-md border border-line">
             <Button
               type="button"
@@ -113,17 +121,19 @@ export function ArticleRowBuy({
 function BuySkeleton() {
   return (
     <div className={BUY_COLUMN_CLASS_NAME} data-testid="article-row-buy">
+      <div className="flex flex-col gap-1 @row-wide:items-end">
+        <span
+          data-testid="article-row-buy-skeleton"
+          className="block h-[22px] w-[76px] animate-pulse rounded bg-bg-sunken"
+          aria-hidden="true"
+        />
+        <span
+          className="block h-3 w-[64px] animate-pulse rounded bg-bg-sunken"
+          aria-hidden="true"
+        />
+      </div>
       <span
-        data-testid="article-row-buy-skeleton"
-        className="block h-[22px] w-[76px] animate-pulse rounded bg-bg-sunken"
-        aria-hidden="true"
-      />
-      <span
-        className="block h-3 w-[64px] animate-pulse rounded bg-bg-sunken"
-        aria-hidden="true"
-      />
-      <span
-        className="mt-1 block h-8 w-[112px] animate-pulse rounded-md bg-bg-sunken"
+        className="block h-8 w-[112px] shrink-0 animate-pulse rounded-md bg-bg-sunken @row-wide:mt-1"
         aria-hidden="true"
       />
     </div>

@@ -11,6 +11,14 @@ import { SearchPageStep } from "./search-page-step";
 /** Numbered links shown at once; beyond this the window slides with the page. */
 const PAGE_WINDOW = 7;
 
+/**
+ * The window below `sm`. The wide one plus its two steps measures 401px, which
+ * does not fit a phone's 342px column. Both windows are centred on the current
+ * page, so the narrow one is always a subset of the wide one and the pages it
+ * drops can simply be hidden — no second list, and one set of links either way.
+ */
+const COMPACT_PAGE_WINDOW = 5;
+
 interface SearchPaginationProps {
   state: SearchUrlState;
   total: number;
@@ -41,12 +49,15 @@ export function SearchPagination({
   // beats letting the pager simply end.
   const reachable = maxPage * pageSize;
   const isTruncated = reachable < total;
+  const compactWindow = new Set(
+    pageWindow(page, maxPage, COMPACT_PAGE_WINDOW),
+  );
 
   return (
     <div className="mt-6">
       <nav
         aria-label="Страници с резултати"
-        className="flex items-center justify-center gap-3.5"
+        className="flex items-center justify-center gap-2 sm:gap-3.5"
       >
         <PageStep
           state={state}
@@ -58,7 +69,10 @@ export function SearchPagination({
 
         <ul className="flex gap-1">
           {pageWindow(page, maxPage).map((candidate) => (
-            <li key={candidate}>
+            <li
+              key={candidate}
+              className={cn(!compactWindow.has(candidate) && "hidden sm:list-item")}
+            >
               <Link
                 href={buildSearchUrl(withPage(state, candidate))}
                 prefetch={false}
@@ -116,26 +130,31 @@ function PageStep({
       isDisabled={isDisabled}
       label={label}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full border border-line px-3 text-[12.5px] font-medium",
+        "inline-flex h-8 items-center gap-1.5 rounded-full border border-line px-2.5 text-[12.5px] font-medium sm:px-3",
         isDisabled
           ? "text-ink-3 opacity-35"
           : "bg-canvas text-ink-2 transition-colors hover:border-ink-3 hover:text-ink",
       )}
     >
       {icon === "left" && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
-      {label}
+      {/* The arrow says it below `sm`; the accessible name is on the link. */}
+      <span className="hidden sm:inline">{label}</span>
       {icon === "right" && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
     </SearchPageStep>
   );
 }
 
-/** A {@link PAGE_WINDOW}-wide run of page numbers centred on the current page. */
-export function pageWindow(page: number, totalPages: number): number[] {
+/** A `size`-wide run of page numbers centred on the current page. */
+export function pageWindow(
+  page: number,
+  totalPages: number,
+  size: number = PAGE_WINDOW,
+): number[] {
   const start = Math.max(
     1,
-    Math.min(page - Math.floor(PAGE_WINDOW / 2), totalPages - PAGE_WINDOW + 1),
+    Math.min(page - Math.floor(size / 2), totalPages - size + 1),
   );
-  const length = Math.min(PAGE_WINDOW, totalPages);
+  const length = Math.min(size, totalPages);
 
   return Array.from({ length }, (_, index) => start + index);
 }

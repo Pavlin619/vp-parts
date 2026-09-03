@@ -182,4 +182,22 @@ describe('pageWindow', () => {
   it('clamps the window to the end', () => {
     expect(pageWindow(20, 20)).toEqual([14, 15, 16, 17, 18, 19, 20])
   })
+
+  it('narrows to the requested size', () => {
+    expect(pageWindow(10, 20, 5)).toEqual([8, 9, 10, 11, 12])
+  })
+
+  // The narrow window is rendered by hiding pages out of the wide one, so a
+  // page it kept that the wide one dropped would be a page a phone cannot reach.
+  it('keeps the narrow window inside the wide one wherever the page sits', () => {
+    for (const totalPages of [1, 3, 5, 6, 7, 8, 20]) {
+      for (let page = 1; page <= totalPages; page += 1) {
+        const wide = pageWindow(page, totalPages)
+        const narrow = pageWindow(page, totalPages, 5)
+
+        expect(narrow).toContain(page)
+        expect(wide).toEqual(expect.arrayContaining(narrow))
+      }
+    }
+  })
 })
