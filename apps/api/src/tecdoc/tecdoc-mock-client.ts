@@ -36,8 +36,9 @@ import {
   SearchExecution,
   SearchFilters,
   TecDocSearchType,
-  AUTOCOMPLETE_SUGGESTIONS_LIMIT,
+  ARTICLE_AUTOCOMPLETE_FETCH_LIMIT,
   CATEGORY_AUTOCOMPLETE_LIMIT,
+  TERM_AUTOCOMPLETE_LIMIT,
   attributeRoleFor,
   hasSingleProductType,
   shouldRequestCriteriaFacets,
@@ -1466,13 +1467,14 @@ export class TecDocMockClient {
         : this.findMatchingArticles(query);
 
     const articles: ArticleAutocompleteItemDto[] = matches
-      .slice(0, AUTOCOMPLETE_SUGGESTIONS_LIMIT)
-      .map(({ articleNumber, brandName, description }) => ({
+      .slice(0, ARTICLE_AUTOCOMPLETE_FETCH_LIMIT)
+      .map(({ articleNumber, brandName, description, thumbnailUrl }) => ({
         kind: 'article' as const,
         articleNumber,
         brandId: brandIdFor(brandName),
         brandName,
         description,
+        thumbnailUrl,
       }));
 
     const categories = this.buildAutocompleteCategorySuggestions(
@@ -1536,7 +1538,7 @@ export class TecDocMockClient {
         this.findByDescription(query).map((article) => article.description),
       ),
     ]
-      .slice(0, AUTOCOMPLETE_SUGGESTIONS_LIMIT)
+      .slice(0, TERM_AUTOCOMPLETE_LIMIT)
       .map((term) => ({ kind: 'term' as const, term }));
 
     return Promise.resolve(terms);

@@ -207,10 +207,19 @@
 /* A catalog row lays out from its own width rather than the viewport's, because
    one viewport gives it several: it renders at the top of a search list, again
    nested inside an expanded row's substitutes, and narrower still once the
-   filter sidebar appears. Its six-column layout needs 810px, so below this it
-   stacks. Keyed on the row because a viewport breakpoint cannot see any of
-   that — at `lg` the sidebar leaves it 688px and the buy column was clipped. */
+   filter sidebar appears. A viewport breakpoint cannot see any of that — at
+   `lg` the sidebar leaves the row 688px, where the six-column layout overran
+   the card and the buy column was clipped.
+
+   Three tiers, each shedding one line's worth of columns:
+   - from `row-wide`, one line of six columns. 810px is what they measure, so
+     this is that plus slack.
+   - from `row-split`, two lines: identity and brand, then delivery, stock and
+     the buy actions side by side. 560px is where those three still fit — the
+     narrowest gives delivery and stock 157px each beside a 152px buy column.
+   - below it, three lines, with the buy actions on one of their own. */
 @theme {
+  --container-row-split: 560px;
   --container-row-wide: 820px;
 }
 

@@ -20,6 +20,7 @@ describe('suggestionHref', () => {
       brandId: '268',
       brandName: 'WIX',
       description: 'Oil Filter',
+      thumbnailUrl: null,
     }
 
     // The suggestion already identified one part, so re-running a search for it

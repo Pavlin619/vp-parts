@@ -848,6 +848,7 @@ describe('SearchTecDoc', () => {
           brandId: '268',
           brandName: 'WIX',
           description: '',
+          thumbnailUrl: null,
         },
       ]);
     });
@@ -883,8 +884,86 @@ describe('SearchTecDoc', () => {
           brandId: '268',
           brandName: 'WIX',
           description: 'Oil Filter',
+          thumbnailUrl: null,
         },
       ]);
+    });
+
+    /**
+     * The photo is how a mechanic tells `OX 353` from `OX 353/3D` apart, and it
+     * is the costliest flag on this call — measured at +37% over eight live
+     * prefix queries, since TecDoc answers with all seven widths of every photo
+     * an article has. Asserted so it cannot be dropped as dead weight.
+     */
+    it('asks for the images the row thumbnail is read from', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [articleRecord('WL6340')],
+      });
+
+      await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(call).toHaveBeenCalledWith(
+        'getArticles',
+        expect.objectContaining({ includeImages: true }),
+      );
+    });
+
+    // A dropdown row is 28px, so the 800px asset every other surface reads
+    // would be fetched and re-encoded per keystroke to be shown at a fraction
+    // of its size.
+    it('takes the 100px width for the dropdown thumbnail', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [
+          {
+            ...articleRecord('WL6340'),
+            images: [
+              {
+                imageURL100: 'https://assets/100/wl6340.jpg',
+                imageURL200: 'https://assets/200/wl6340.jpg',
+                imageURL800: 'https://assets/800/wl6340.jpg',
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(result[0]).toMatchObject({
+        thumbnailUrl: 'https://assets/100/wl6340.jpg',
+      });
+    });
+
+    it('falls back to the next width up when TecDoc files no 100px asset', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [
+          {
+            ...articleRecord('WL6340'),
+            images: [{ imageURL200: 'https://assets/200/wl6340.jpg' }],
+          },
+        ],
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(result[0]).toMatchObject({
+        thumbnailUrl: 'https://assets/200/wl6340.jpg',
+      });
+    });
+
+    // Measured at 3 of 48 live rows, so the dropdown has to render without one.
+    it('maps a part with no photo to a null thumbnail', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [{ ...articleRecord('WL6340'), images: [] }],
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(result[0]).toMatchObject({ thumbnailUrl: null });
     });
 
     it('forwards an exact match type when the exact execution is used', async () => {

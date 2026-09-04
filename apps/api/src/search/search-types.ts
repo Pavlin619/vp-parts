@@ -46,17 +46,32 @@ export const DEFAULT_SEARCH_EXECUTION: SearchExecution = {
 };
 
 /**
- * How many autocomplete suggestions to request from TecDoc and surface. Applies
- * to both article (`getArticles`) and term (`getAutoCompleteSuggestions`)
- * autocomplete so the dropdown is capped consistently regardless of mode.
+ * How many articles the autocomplete `getArticles` read asks for. Deliberately
+ * larger than {@link ARTICLE_AUTOCOMPLETE_LIMIT}: the zero-result "did you
+ * mean" recovery shares this cached entry and has a page to fill rather than a
+ * dropdown, so the rows the dropdown does not show are not wasted.
  */
-export const AUTOCOMPLETE_SUGGESTIONS_LIMIT = 8;
+export const ARTICLE_AUTOCOMPLETE_FETCH_LIMIT = 8;
+
+/**
+ * How many article rows the dropdown shows above the category section. Held to
+ * five so the categories are on screen without scrolling — a dropdown that
+ * fills itself with near-identical numbers answers only the visitor who
+ * already knows which one they want.
+ */
+export const ARTICLE_AUTOCOMPLETE_LIMIT = 5;
+
+/**
+ * How many term suggestions (`getAutoCompleteSuggestions`) to surface. Higher
+ * than the article limit because generic mode has no category section beneath
+ * it, so the terms are the whole dropdown.
+ */
+export const TERM_AUTOCOMPLETE_LIMIT = 8;
 
 /**
  * How many category suggestions to surface in the part-number autocomplete
  * dropdown (the InterCars-style "search {term} in {category}" rows built from
- * the `assemblyGroupFacets` of the same `getArticles` call). Kept well below the
- * article limit so the categories stay a compact secondary section, not a wall.
+ * the `assemblyGroupFacets` of the same `getArticles` call).
  */
 export const CATEGORY_AUTOCOMPLETE_LIMIT = 5;
 

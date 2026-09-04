@@ -129,9 +129,10 @@ describe('ArticleRowBuy — resolved', () => {
   })
 })
 
-// In a wide row the buy column is the tallest cell, so its height is the row's.
-// A state reserving less would leave a back-ordered part — or one whose price
-// has not landed yet — visibly shorter than the row above it.
+// Wherever the buy cell shares a line with delivery and stock it is the tallest
+// of the three, so its height is the row's. A state reserving less would leave
+// a back-ordered part — or one whose price has not landed yet — visibly shorter
+// than the row above it.
 describe('ArticleRowBuy — the row height it pins', () => {
   const states: [string, ArticleInventoryDetailDto | null | undefined][] = [
     ['pending', undefined],
@@ -143,18 +144,18 @@ describe('ArticleRowBuy — the row height it pins', () => {
   it.each(states)('reserves the full height in the %s state', (_, availability) => {
     renderBuy(availability)
 
-    expect(screen.getByTestId('article-row-buy')).toHaveClass('@row-wide:min-h-[88px]')
+    expect(screen.getByTestId('article-row-buy')).toHaveClass('@row-split:min-h-[88px]')
   })
 
-  // In a narrow row it is a band across the bottom of the card rather than the
-  // last of two columns, so it has to clear the grid the delivery and stock
-  // cells share — otherwise the price lands beside them and the actions wrap.
+  // Only in the narrowest row does it drop to a band across the bottom of the
+  // card, where it has to clear the grid the delivery and stock cells share —
+  // otherwise the price lands beside them and the actions wrap under.
   it.each(states)('spans the whole band in the %s state', (_, availability) => {
     renderBuy(availability)
 
     expect(screen.getByTestId('article-row-buy')).toHaveClass(
       'col-span-2',
-      '@row-wide:col-span-1',
+      '@row-split:col-span-1',
     )
   })
 })

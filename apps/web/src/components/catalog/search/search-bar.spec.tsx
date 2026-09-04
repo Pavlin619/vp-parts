@@ -37,6 +37,9 @@ const mockUseVehicleContext = jest.mocked(useVehicleContext)
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+const PHOTO_URL =
+  'https://digital-assets.tecalliance.services/images/100/wl6340.jpg'
+
 const SUGGESTIONS: AutocompleteItemDto[] = [
   {
     kind: 'article',
@@ -44,6 +47,7 @@ const SUGGESTIONS: AutocompleteItemDto[] = [
     brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter',
+    thumbnailUrl: PHOTO_URL,
   },
   {
     kind: 'article',
@@ -51,8 +55,30 @@ const SUGGESTIONS: AutocompleteItemDto[] = [
     brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter Heavy Duty',
+    thumbnailUrl: null,
   },
 ]
+
+function articleSuggestions(count: number): AutocompleteItemDto[] {
+  return Array.from({ length: count }, (_, index) => ({
+    kind: 'article',
+    articleNumber: `WL63${index}`,
+    brandId: '268',
+    brandName: 'WIX',
+    description: 'Oil Filter',
+    thumbnailUrl: null,
+  }))
+}
+
+function categorySuggestions(count: number): AutocompleteItemDto[] {
+  return Array.from({ length: count }, (_, index) => ({
+    kind: 'category',
+    term: 'WL63',
+    categoryNodeId: `10${index}`,
+    label: `Category ${index}`,
+    count: 12,
+  }))
+}
 
 function setVehicleContext(vehicleId: string | null) {
   const state = {
@@ -100,45 +126,157 @@ describe('SearchBar', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
-  it('does not fetch suggestions for input under 3 characters', async () => {
+  it('does not fetch suggestions for a single character', async () => {
     const user = userEvent.setup()
     renderSearchBar()
 
-    await user.type(screen.getByRole('combobox'), 'WL')
+    await user.type(screen.getByRole('combobox'), 'W')
 
     await waitFor(() => {
       expect(getAutocompleteMock).not.toHaveBeenCalled()
     })
   })
 
-  it('shows autocomplete suggestions for input of 3+ characters', async () => {
+  // Two characters is the shared minimum, so this is the shortest input that
+  // must open the dropdown.
+  it('shows autocomplete suggestions from two characters on', async () => {
     const user = userEvent.setup()
     renderSearchBar()
 
-    await user.type(screen.getByRole('combobox'), 'WL6')
+    await user.type(screen.getByRole('combobox'), 'WL')
 
     expect(await screen.findByRole('listbox')).toBeInTheDocument()
     expect(screen.getAllByRole('option')).toHaveLength(2)
     expect(screen.getByText('WL6340')).toBeInTheDocument()
   })
 
-  it('renders at most 8 suggestions', async () => {
-    getAutocompleteMock.mockResolvedValue(
-      Array.from({ length: 10 }, (_, i) => ({
-        kind: 'article',
-        articleNumber: `WL63${i}`,
-        brandId: '268',
-        brandName: 'WIX',
-        description: 'Oil Filter',
-      })),
-    )
+  /**
+   * The dropdown applies no cap of its own. The API caps each suggestion kind
+   * separately, and re-capping the flat list here spends the budget on the
+   * articles — which arrive first — leaving the category rows off screen.
+   */
+  it('renders every suggestion the API returns', async () => {
+    getAutocompleteMock.mockResolvedValue([
+      ...articleSuggestions(5),
+      ...categorySuggestions(5),
+    ])
     const user = userEvent.setup()
     renderSearchBar()
 
     await user.type(screen.getByRole('combobox'), 'WL6')
 
     await screen.findByRole('listbox')
-    expect(screen.getAllByRole('option')).toHaveLength(8)
+    expect(screen.getAllByRole('option')).toHaveLength(10)
+  })
+
+  it('keeps the category rows below a full list of article rows', async () => {
+    getAutocompleteMock.mockResolvedValue([
+      ...articleSuggestions(5),
+      ...categorySuggestions(5),
+    ])
+    const user = userEvent.setup()
+    renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), 'WL6')
+
+    const options = await screen.findAllByRole('option')
+    expect(options.slice(0, 5).map((option) => option.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('WL630')]),
+    )
+    expect(options[5]).toHaveTextContent('Category 0')
+  })
+
+  it('reads a category row as the search it runs', async () => {
+    getAutocompleteMock.mockResolvedValue([
+      {
+        kind: 'category',
+        term: 'OX 3',
+        categoryNodeId: '1052',
+        label: 'Маслен филтър',
+        count: 12,
+      },
+    ])
+    const user = userEvent.setup()
+    renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), 'OX 3')
+
+    const option = await screen.findByRole('option')
+    expect(option).toHaveTextContent('„OX 3“ в категория Маслен филтър')
+  })
+
+  // The divider is what makes the categories read as a second offer rather than
+  // more of the same ranking, so it belongs on the first category row only.
+  it('separates the category section from the article rows', async () => {
+    getAutocompleteMock.mockResolvedValue([
+      ...articleSuggestions(2),
+      ...categorySuggestions(2),
+    ])
+    const user = userEvent.setup()
+    renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), 'WL6')
+
+    const options = await screen.findAllByRole('option')
+    expect(options[1]).not.toHaveClass('border-t')
+    expect(options[2]).toHaveClass('border-t')
+    expect(options[3]).not.toHaveClass('border-t')
+  })
+
+  it('does not draw a divider when the categories are the whole list', async () => {
+    getAutocompleteMock.mockResolvedValue(categorySuggestions(2))
+    const user = userEvent.setup()
+    renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), 'WL6')
+
+    const options = await screen.findAllByRole('option')
+    expect(options[0]).not.toHaveClass('border-t')
+  })
+
+  describe('article thumbnails', () => {
+    it('shows the part photo on a suggestion that has one', async () => {
+      const user = userEvent.setup()
+      renderSearchBar()
+
+      await user.type(screen.getByRole('combobox'), 'WL6')
+      await screen.findByRole('listbox')
+
+      const photo = document.querySelector('img')
+      expect(photo).toBeInTheDocument()
+      expect(photo).toHaveAttribute(
+        'src',
+        expect.stringContaining(encodeURIComponent(PHOTO_URL)),
+      )
+    })
+
+    /**
+     * TecDoc files no photo for some parts, and the slot still has to occupy its
+     * width — otherwise the numbers in a scanned column do not line up.
+     */
+    it('keeps the slot on a suggestion with no photo', async () => {
+      const user = userEvent.setup()
+      renderSearchBar()
+
+      await user.type(screen.getByRole('combobox'), 'WL6')
+      await screen.findByRole('listbox')
+
+      const slots = screen.getAllByTestId('suggestion-thumbnail')
+      expect(slots).toHaveLength(2)
+      expect(slots[1].querySelector('img')).not.toBeInTheDocument()
+    })
+
+    // The category rows are a search, not a part, so they have nothing to show.
+    it('gives no thumbnail slot to a category row', async () => {
+      getAutocompleteMock.mockResolvedValue(categorySuggestions(2))
+      const user = userEvent.setup()
+      renderSearchBar()
+
+      await user.type(screen.getByRole('combobox'), 'WL6')
+      await screen.findByRole('listbox')
+
+      expect(screen.queryByTestId('suggestion-thumbnail')).not.toBeInTheDocument()
+    })
   })
 
   it('navigates to the article detail page when a suggestion is clicked', async () => {

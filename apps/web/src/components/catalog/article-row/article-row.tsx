@@ -137,13 +137,16 @@ export function ArticleRow({
 
           <BrandLogo brandName={brandName} brandLogoUrl={article.brandLogoUrl} />
 
-          {/* The live-inventory columns wrap under the identity block in a narrow
-              row, so they start their own grid row there: delivery beside stock,
-              then price and the buy actions on a line of their own. Each cell
-              centres as a whole — label included — so a label always sits
-              directly above the value it describes rather than on a shared
-              header line. */}
-          <div className="col-span-3 grid grid-cols-2 items-start gap-x-3.5 gap-y-3 border-t border-line pt-3 @row-wide:grid-cols-subgrid @row-wide:items-center @row-wide:border-0 @row-wide:pt-0">
+          {/* The live-inventory columns wrap under the identity block once the
+              row is too narrow for one line, and drop the buy actions to a line
+              of their own once it is too narrow even for that. On two lines
+              delivery and stock keep the widths they have on one, so the slack
+              collects in front of the right-aligned price rather than between
+              the two of them; an `auto` track anywhere here would misalign the
+              list, since every row is its own grid. Each cell centres as a
+              whole — label included — so a label always sits directly above the
+              value it describes rather than on a shared header line. */}
+          <div className="col-span-3 grid grid-cols-2 items-start gap-x-3.5 gap-y-3 border-t border-line pt-3 @row-split:grid-cols-[116px_142px_minmax(0,1fr)] @row-wide:grid-cols-subgrid @row-wide:items-center @row-wide:border-0 @row-wide:pt-0">
             <ArticleRowAvailability
               availability={availability}
               articleNumber={articleNumber}
@@ -247,7 +250,7 @@ function BrandLogo({
     return (
       <span
         title={brandName}
-        className="relative block h-[34px] w-[56px] rounded-md border border-line bg-bg-card @row-wide:h-[42px] @row-wide:w-[68px]"
+        className="relative block h-[34px] w-[56px] rounded-md border border-line bg-bg-card @row-split:h-[42px] @row-split:w-[68px]"
       >
         <Image
           src={brandLogoUrl}
@@ -262,7 +265,7 @@ function BrandLogo({
   }
 
   return (
-    <span className="grid h-[34px] w-[56px] place-items-center break-words rounded-md border border-line bg-bg-card px-[5px] py-[3px] text-center font-display text-[10.5px] font-bold leading-[1.1] tracking-[0.02em] text-ink-2 @row-wide:h-[42px] @row-wide:w-[68px]">
+    <span className="grid h-[34px] w-[56px] place-items-center break-words rounded-md border border-line bg-bg-card px-[5px] py-[3px] text-center font-display text-[10.5px] font-bold leading-[1.1] tracking-[0.02em] text-ink-2 @row-split:h-[42px] @row-split:w-[68px]">
       {brandName}
     </span>
   );

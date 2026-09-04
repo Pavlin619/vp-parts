@@ -205,6 +205,7 @@ function suggestionItem(articleNumber: string): ArticleAutocompleteItemDto {
     brandId: '268',
     brandName: 'WIX',
     description: 'Oil Filter',
+    thumbnailUrl: null,
   };
 }
 
@@ -1278,10 +1279,10 @@ describe('SearchService', () => {
       );
     });
 
-    it('does not fetch suggestions when the query is shorter than 3 chars', async () => {
+    it('does not fetch suggestions when the query is under the minimum', async () => {
       enumerateMock.mockResolvedValue(enumerationOf([]));
 
-      await service.search({ query: 'WL' });
+      await service.search({ query: 'W' });
 
       expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
     });
