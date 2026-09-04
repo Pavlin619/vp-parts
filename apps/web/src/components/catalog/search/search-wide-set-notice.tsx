@@ -48,7 +48,7 @@ export function SearchWideSetNotice({
         <button
           type="button"
           onClick={onOpenVehicleSelector}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-ink px-3.5 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-accent px-3.5 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-accent-hover"
         >
           <Car className="h-3.5 w-3.5" aria-hidden="true" />
           Избери автомобил

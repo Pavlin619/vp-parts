@@ -32,7 +32,7 @@ export function SearchVatToggle() {
         className={cn(
           "relative h-[21px] w-[38px] shrink-0 rounded-full transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
-          includesVat ? "bg-ink" : "bg-line-2",
+          includesVat ? "bg-accent" : "bg-line-2",
         )}
       >
         <span

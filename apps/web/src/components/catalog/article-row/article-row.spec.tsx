@@ -75,14 +75,21 @@ describe('ArticleRow — catalog metadata', () => {
   })
 
   // A logo is a mark, not a name, and the row has no room to print one beside it.
-  it('names the brand on hovering its logo', () => {
+  it('names the brand in a tooltip on its logo', async () => {
+    const user = userEvent.setup()
     render(
       <ArticleRow
         article={article({ brandLogoUrl: 'https://img.example/wix.png' })}
       />,
     )
 
-    expect(screen.getByTitle('WIX')).toBeInTheDocument()
+    // The mark is the only thing rendered for the brand, so the name is not on
+    // screen until the tooltip opens.
+    expect(screen.queryByText('WIX')).not.toBeInTheDocument()
+
+    await user.hover(screen.getByAltText('WIX'))
+
+    expect(await screen.findByText('WIX')).toBeInTheDocument()
   })
 
   it('summarises the technical specs under the description', () => {
