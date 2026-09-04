@@ -63,6 +63,12 @@ export interface TecDocArticleRecord {
   }>;
   /** Present with `includeMisc`. See {@link ArticleStatus}. */
   misc?: { articleStatusId?: number };
+  /**
+   * Present with `includeImages`. TecDoc files each photo at seven widths —
+   * `imageURL50` through `imageURL3200` — so a surface picks the one its slot
+   * needs rather than resizing the largest: the autocomplete dropdown reads the
+   * 100px variant. Only the sizes a caller actually reads are declared.
+   */
   images?: Array<{ imageURL800?: string }>;
   articleCriteria?: Array<{
     criteriaId?: number;

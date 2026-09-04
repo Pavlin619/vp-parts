@@ -15,12 +15,17 @@ interface SearchFiltersPanelProps {
 }
 
 /**
- * Where the filters live below `lg`: behind a trigger, in a sheet over the page.
+ * Where the filters live below `xl`: behind a trigger, in a sheet over the page.
  *
  * The sidebar is a column of uncapped lists — the category block alone runs to
  * 56 rows — so stacked above the results it measured 2,268px on a broad query,
  * putting the first part three and a half screens down. That is the whole
  * reason this exists; it is not a tidier way to show the same thing.
+ *
+ * It waits for `xl` rather than `lg` because it costs the results 288px, and at
+ * `lg` that is what takes a catalog row below the width its one-line layout
+ * needs — so a visitor widening a window from 1000px to 1024px watched the rows
+ * get *more* cramped as the sidebar arrived.
  *
  * Which of the two layouts applies is decided in CSS, not JavaScript. The
  * alternative is a media-query hook, and it would have to render *something*
@@ -29,7 +34,7 @@ interface SearchFiltersPanelProps {
  *
  * `display: contents` on the wrapper is what lets one element do both: the
  * trigger and the sheet become grid items of the search layout directly, so at
- * `lg` the sheet is the sidebar in column one and the `lg:hidden` trigger is
+ * `xl` the sheet is the sidebar in column one and the `xl:hidden` trigger is
  * out of the grid entirely rather than taking a row of its own.
  */
 export function SearchFiltersPanel({
@@ -69,7 +74,7 @@ export function SearchFiltersPanel({
         onClick={() => setOpen(true)}
         aria-expanded={isOpen}
         aria-label={activeCount > 0 ? `Филтри (${activeCount} приложени)` : undefined}
-        className="flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line bg-bg-card text-[14px] font-semibold text-ink shadow-card transition-colors hover:border-ink-3 lg:hidden"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line bg-bg-card text-[14px] font-semibold text-ink shadow-card transition-colors hover:border-ink-3 xl:hidden"
       >
         <SlidersHorizontal className="h-4 w-4 text-ink-3" aria-hidden="true" />
         Филтри
@@ -83,17 +88,17 @@ export function SearchFiltersPanel({
         )}
       </button>
 
-      {/* `lg:contents` on both wrappers hands the grid item back to the
+      {/* `xl:contents` on both wrappers hands the grid item back to the
           `<aside>` itself at desktop width. It has to be the grid item: its
           `sticky` travels the height of the grid *area*, which a wrapper sized
           to its own content would not give it. */}
       <div
         className={cn(
-          "lg:contents",
+          "xl:contents",
           isOpen ? "fixed inset-0 z-50 flex flex-col bg-canvas" : "hidden",
         )}
       >
-        <div className="flex items-center justify-between border-b border-line bg-bg-card px-4 py-3 lg:hidden">
+        <div className="flex items-center justify-between border-b border-line bg-bg-card px-4 py-3 xl:hidden">
           <h2 className="font-display text-[15px] font-semibold text-ink">
             Филтри
           </h2>
@@ -107,11 +112,11 @@ export function SearchFiltersPanel({
           </button>
         </div>
 
-        <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-4 lg:contents">
+        <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-4 xl:contents">
           {children}
         </div>
 
-        <div className="border-t border-line bg-bg-card p-4 lg:hidden">
+        <div className="border-t border-line bg-bg-card p-4 xl:hidden">
           <button
             type="button"
             onClick={() => setOpen(false)}

@@ -1,10 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Info, Search } from "lucide-react";
-import type { AutocompleteItemDto } from "@vp-parts-shop/shared";
+import { Image as ImageIcon, Info, Search } from "lucide-react";
+import {
+  AUTOCOMPLETE_MIN_QUERY_LENGTH,
+  type AutocompleteItemDto,
+} from "@vp-parts-shop/shared";
 import { autocompleteQueryOptions } from "@/lib/api/catalog";
 import { buildSearchUrl, newSearch } from "@/lib/catalog/search-url";
 import { suggestionHref } from "@/lib/catalog/suggestion-href";
@@ -20,9 +24,6 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { cn } from "@/lib/utils";
 import { SearchScopeSelect } from "./search-scope-select";
 import { SearchExactToggle } from "./search-exact-toggle";
-
-const MIN_AUTOCOMPLETE_QUERY_LENGTH = 3;
-const MAX_SUGGESTIONS = 8;
 
 const PLACEHOLDER: Record<SearchScope, string> = {
   generic: "Напр. въздушен филтър BMW 320d",
@@ -54,15 +55,23 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
   const debouncedQuery = useDebouncedValue(query.trim(), debounceMs);
 
   const canAutocomplete =
-    debouncedQuery.length >= MIN_AUTOCOMPLETE_QUERY_LENGTH;
+    debouncedQuery.length >= AUTOCOMPLETE_MIN_QUERY_LENGTH;
   const { data } = useQuery({
     ...autocompleteQueryOptions(debouncedQuery, mode),
     enabled: canAutocomplete,
   });
 
-  const suggestions =
-    isDropdownOpen && canAutocomplete ? (data ?? []).slice(0, MAX_SUGGESTIONS) : [];
+  // Rendered whole: the API caps each suggestion kind separately, and a flat cap
+  // applied again here is spent entirely on the articles — they arrive first —
+  // so the category rows never reached the screen.
+  const suggestions = isDropdownOpen && canAutocomplete ? (data ?? []) : [];
   const isListVisible = suggestions.length > 0;
+
+  // Where the "search {term} in {category}" rows begin, so the two sections read
+  // as two offers rather than one ranked list.
+  const firstCategoryIndex = suggestions.findIndex(
+    (suggestion) => suggestion.kind === "category",
+  );
 
   // A query typed into the wrong scope does not match loosely, it does not
   // match at all; offer the switch rather than returning nothing and leaving
@@ -218,6 +227,9 @@ export function SearchBar({ debounceMs = 300 }: SearchBarProps) {
               className={cn(
                 "cursor-pointer px-4 py-2 text-sm",
                 index === activeIndex ? "bg-bg-sunken" : "hover:bg-bg-sunken",
+                index === firstCategoryIndex &&
+                  index > 0 &&
+                  "border-t border-line",
               )}
               onMouseDown={(event) => {
                 event.preventDefault();
@@ -267,15 +279,18 @@ function scopeHintFor(scope: SearchScope, query: string): ScopeHint | null {
 function SuggestionRow({ suggestion }: { suggestion: AutocompleteItemDto }) {
   if (suggestion.kind === "article") {
     return (
-      <span className="flex items-baseline gap-2">
-        <span className="font-mono text-xs text-ink">
-          {suggestion.articleNumber}
-        </span>
-        <span className="text-xs font-semibold uppercase text-muted">
-          {suggestion.brandName}
-        </span>
-        <span className="truncate text-xs text-muted">
-          {suggestion.description}
+      <span className="flex items-center gap-2.5">
+        <SuggestionThumbnail thumbnailUrl={suggestion.thumbnailUrl} />
+        <span className="min-w-0 flex-1 items-baseline gap-2 sm:flex">
+          <span className="font-mono text-xs text-ink">
+            {suggestion.articleNumber}
+          </span>
+          <span className="text-xs font-semibold uppercase text-muted">
+            {suggestion.brandName}
+          </span>
+          <span className="block truncate text-xs text-muted sm:inline">
+            {suggestion.description}
+          </span>
         </span>
       </span>
     );
@@ -287,16 +302,60 @@ function SuggestionRow({ suggestion }: { suggestion: AutocompleteItemDto }) {
 
   return (
     <span className="flex items-baseline gap-2">
-      <span className="text-xs text-muted">
-        „{suggestion.term}“ в
-      </span>
-      <span className="flex-1 truncate text-sm text-ink">
-        {suggestion.label}
+      {/* One text flow rather than two flex items, so the phrase carries a real
+          space: the row's accessible name is this text concatenated, and a gap
+          drawn by the layout is not read out. */}
+      <span className="min-w-0 flex-1 truncate text-xs text-muted">
+        „{suggestion.term}“ в категория{" "}
+        <span className="text-sm text-ink">{suggestion.label}</span>
       </span>
       {suggestion.count !== null && (
         <span className="font-display text-xs text-ink-4">
           {suggestion.count}
         </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The dropdown row's part photo, at the 100px asset the API picks for this slot.
+ *
+ * The slot is a fixed size whether or not there is a photo: TecDoc files none
+ * for some parts, and a row that collapsed to no thumbnail would put its number
+ * on a different left edge from the rows above it — in a list whose whole job is
+ * scanning a column of near-identical numbers.
+ */
+function SuggestionThumbnail({
+  thumbnailUrl,
+}: {
+  thumbnailUrl: string | null;
+}) {
+  const [hasFailed, setHasFailed] = useState(false);
+  const photoUrl = hasFailed ? null : thumbnailUrl;
+
+  return (
+    <span
+      // The number beside it is the row's label; this is decorative.
+      aria-hidden="true"
+      data-testid="suggestion-thumbnail"
+      className={cn(
+        "relative grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded",
+        photoUrl ? "border border-line bg-bg-card" : "bg-bg-sunken",
+      )}
+    >
+      {photoUrl ? (
+        <Image
+          src={photoUrl}
+          alt=""
+          width={28}
+          height={28}
+          // Supplier photos are rarely square, so letterbox rather than crop.
+          className="h-full w-full object-contain"
+          onError={() => setHasFailed(true)}
+        />
+      ) : (
+        <ImageIcon className="h-3.5 w-3.5 text-ink-4" />
       )}
     </span>
   );

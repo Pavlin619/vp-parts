@@ -1,20 +1,33 @@
 import { Injectable } from '@nestjs/common';
 import {
   ArticleAutocompleteItemDto,
+  AUTOCOMPLETE_MIN_QUERY_LENGTH,
   AutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
+  ARTICLE_AUTOCOMPLETE_LIMIT,
   CATEGORY_AUTOCOMPLETE_LIMIT,
   DEFAULT_AUTOCOMPLETE_EXECUTION,
   DEFAULT_SEARCH_MODE,
   EXACT_AUTOCOMPLETE_EXECUTION,
   SearchMode,
+  TERM_AUTOCOMPLETE_LIMIT,
 } from './search-types';
 import { SearchCache } from './search-cache';
 
-const AUTOCOMPLETE_MIN_QUERY_LENGTH = 3;
-const AUTOCOMPLETE_MAX_SUGGESTIONS = 8;
 const SUGGESTION_PREFIX_LENGTH = 5;
+
+/**
+ * One limit per kind rather than one for the dropdown, because the kinds answer
+ * different questions and a shared budget lets the cheapest answer crowd out
+ * the others: a three-character prefix matches thousands of articles, so a flat
+ * cap is spent entirely on numbers before a single category is reached.
+ */
+const SUGGESTION_LIMITS: Record<AutocompleteItemDto['kind'], number> = {
+  article: ARTICLE_AUTOCOMPLETE_LIMIT,
+  term: TERM_AUTOCOMPLETE_LIMIT,
+  category: CATEGORY_AUTOCOMPLETE_LIMIT,
+};
 
 /**
  * The two suggestion surfaces: the live search-bar dropdown and the
@@ -101,22 +114,24 @@ export class AutocompleteService {
   }
 
   /**
-   * Caps each suggestion kind independently so the article and term dropdowns
-   * keep their limit while the appended category rows (part-number mode) are not
-   * counted against — nor allowed to blow past — the article cap. Order is
-   * preserved: the primary hits (articles or terms) come first, the category
-   * rows after.
+   * Applies {@link SUGGESTION_LIMITS} per kind, keeping the source order — which
+   * is what puts the articles above the category rows, since the TecDoc read
+   * appends the categories to the articles it derived them from.
    */
   private capSuggestions(
     suggestions: AutocompleteItemDto[],
   ): AutocompleteItemDto[] {
-    const primary = suggestions
-      .filter((item) => item.kind !== 'category')
-      .slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
-    const categories = suggestions
-      .filter((item) => item.kind === 'category')
-      .slice(0, CATEGORY_AUTOCOMPLETE_LIMIT);
+    const keptPerKind = new Map<AutocompleteItemDto['kind'], number>();
 
-    return [...primary, ...categories];
+    return suggestions.filter((item) => {
+      const kept = keptPerKind.get(item.kind) ?? 0;
+      if (kept >= SUGGESTION_LIMITS[item.kind]) {
+        return false;
+      }
+
+      keptPerKind.set(item.kind, kept + 1);
+
+      return true;
+    });
   }
 }

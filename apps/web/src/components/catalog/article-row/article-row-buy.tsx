@@ -8,21 +8,22 @@ import { usePricesIncludeVat } from "@/hooks/use-price-display";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 
 /**
- * Two layouts for one cell, chosen by the row's own width (`--container-row-wide`).
- * In a wide row it is the last column, stacked and right-aligned; in a narrow
- * one it is a band across the bottom of the card, price on the left and the
- * actions on the right.
+ * Two layouts for one cell, chosen by the row's own width. Wherever the cell
+ * shares a line with the delivery and stock cells — `--container-row-split` and
+ * up, so both the one-line and two-line rows — it is a column, stacked and
+ * right-aligned. Only in the narrowest row does it become a band across the
+ * bottom of the card, price on the left and the actions on the right.
  *
  * The height floor belongs to the column layout alone, because there it is the
- * tallest cell and so sets the row's height: without it a back-ordered part, or
- * one whose availability has not landed yet, renders visibly shorter than the
- * row above and the list ripples as prices arrive. A floor rather than a fixed
- * height, so a cell that outgrows it is never clipped. As a band it is the last
- * thing in the card and nothing lines up beside it, so it simply takes the
- * height it needs.
+ * tallest cell on its line and so sets the row's height: without it a
+ * back-ordered part, or one whose availability has not landed yet, renders
+ * visibly shorter than the row above and the list ripples as prices arrive. A
+ * floor rather than a fixed height, so a cell that outgrows it is never
+ * clipped. As a band it is the last thing in the card and nothing lines up
+ * beside it, so it simply takes the height it needs.
  */
 const BUY_COLUMN_CLASS_NAME =
-  "col-span-2 flex items-center justify-between gap-3 border-t border-line pt-3 @row-wide:col-span-1 @row-wide:min-h-[88px] @row-wide:flex-col @row-wide:items-end @row-wide:gap-1 @row-wide:border-0 @row-wide:pt-0 @row-wide:text-right";
+  "col-span-2 flex items-center justify-between gap-3 border-t border-line pt-3 @row-split:col-span-1 @row-split:min-h-[88px] @row-split:flex-col @row-split:items-end @row-split:gap-1 @row-split:border-0 @row-split:pt-0 @row-split:text-right";
 
 interface ArticleRowBuyProps {
   availability: RowAvailability;
@@ -56,7 +57,7 @@ export function ArticleRowBuy({
 
   return (
     <div className={BUY_COLUMN_CLASS_NAME} data-testid="article-row-buy">
-      <div className="flex min-w-0 flex-col @row-wide:items-end">
+      <div className="flex min-w-0 flex-col @row-split:items-end">
         {price != null ? (
           <p className="whitespace-nowrap font-display text-lg font-semibold tracking-[-0.01em] tabular-nums text-ink">
             {formatPrice(price)}
@@ -71,7 +72,7 @@ export function ArticleRowBuy({
       </div>
 
       {canBuy && (
-        <div className="flex shrink-0 items-center gap-1.5 @row-wide:mt-1">
+        <div className="flex shrink-0 items-center gap-1.5 @row-split:mt-1">
           <div className="flex h-8 items-center rounded-md border border-line">
             <Button
               type="button"
@@ -121,7 +122,7 @@ export function ArticleRowBuy({
 function BuySkeleton() {
   return (
     <div className={BUY_COLUMN_CLASS_NAME} data-testid="article-row-buy">
-      <div className="flex flex-col gap-1 @row-wide:items-end">
+      <div className="flex flex-col gap-1 @row-split:items-end">
         <span
           data-testid="article-row-buy-skeleton"
           className="block h-[22px] w-[76px] animate-pulse rounded bg-bg-sunken"
@@ -133,7 +134,7 @@ function BuySkeleton() {
         />
       </div>
       <span
-        className="block h-8 w-[112px] shrink-0 animate-pulse rounded-md bg-bg-sunken @row-wide:mt-1"
+        className="block h-8 w-[112px] shrink-0 animate-pulse rounded-md bg-bg-sunken @row-split:mt-1"
         aria-hidden="true"
       />
     </div>

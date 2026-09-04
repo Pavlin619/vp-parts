@@ -799,16 +799,24 @@ Response `200` — no matches (no facets / attributes / category navigation):
 
 **`GET /search/autocomplete?q={query}`** `[PUBLIC]`
 
-Returns up to 8 suggestions for queries of 3+ characters.
+Answers queries of 2+ characters. Each suggestion kind is capped on its own —
+5 articles, 5 categories, 8 free-text terms — so a query matching far more
+articles than the dropdown shows cannot crowd out the category rows beneath
+them.
 
 Response `200`:
 ```json
 [
-  { "articleNumber": "WL6340", "brandId": "268", "brandName": "WIX", "description": "Oil Filter" },
-  { "articleNumber": "WL6341", "brandId": "268", "brandName": "WIX", "description": "Oil Filter Heavy Duty" }
+  { "kind": "article", "articleNumber": "OX 353D", "brandId": "72", "brandName": "KNECHT", "description": "Маслен филтър", "thumbnailUrl": "https://digital-assets.tecalliance.services/images/100/c7841fa.jpg" },
+  { "kind": "article", "articleNumber": "OX 361D", "brandId": "72", "brandName": "KNECHT", "description": "Маслен филтър", "thumbnailUrl": null },
+  { "kind": "category", "term": "OX 3", "categoryNodeId": "100256", "label": "Маслен филтър", "count": 41 }
 ]
 ```
-Cache: Redis, 15 min for suggestions and 5 min for empty results.
+`thumbnailUrl` is the 100px width of the part photo — a dropdown row, not a list
+row — and is null where the supplier filed none.
+
+Cache: Redis, 15 min for suggestions and 5 min for empty results. One entry per
+query and match type, shared with the zero-result "did you mean" recovery.
 
 ---
 

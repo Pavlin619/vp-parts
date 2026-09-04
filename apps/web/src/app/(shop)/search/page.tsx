@@ -71,7 +71,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         categoryNavigation={response.categoryNavigation}
       />
 
-      <div className="grid items-start gap-6 lg:grid-cols-[264px_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-[264px_minmax(0,1fr)]">
         {/* The sidebar is server-rendered and passed in as children, so the
             panel can hold it open across the navigation each selection makes
             without any of the facet reads crossing into the client bundle. */}

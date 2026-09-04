@@ -114,6 +114,7 @@ describe('SearchEmptyState', () => {
         brandId: '268',
         brandName: 'WIX',
         description: 'Oil Filter',
+        thumbnailUrl: null,
       },
       {
         kind: 'article',
@@ -121,6 +122,7 @@ describe('SearchEmptyState', () => {
         brandId: '268',
         brandName: 'WIX',
         description: 'Air Filter',
+        thumbnailUrl: null,
       },
     ]
 

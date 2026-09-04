@@ -97,6 +97,7 @@ const makeSuggestion = (articleNumber: string): ArticleAutocompleteItemDto => ({
   brandId: '268',
   brandName: 'WIX',
   description: 'Oil Filter',
+  thumbnailUrl: 'https://assets/100/wl6340.jpg',
 });
 
 const makeTerm = (term: string): TermAutocompleteItemDto => ({
@@ -800,9 +801,9 @@ describe('SearchController (e2e)', () => {
       expect(mockTecDocClient.getAutocompleteTerms).not.toHaveBeenCalled();
     });
 
-    it('returns an empty list for a query shorter than 3 characters without calling TecDoc', async () => {
+    it('returns an empty list for a single-character query without calling TecDoc', async () => {
       const res = await request(app.getHttpServer())
-        .get('/search/autocomplete?q=WL')
+        .get('/search/autocomplete?q=W')
         .expect(200);
 
       expect(res.body).toEqual([]);

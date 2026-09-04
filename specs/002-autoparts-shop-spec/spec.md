@@ -55,7 +55,7 @@ A customer or mechanic who knows a part number (or a fragment of one) types it i
 3. **Given** a normalised part number that exactly matches one article in the catalogue, **When** the search is submitted, **Then** the customer is taken directly to that part's detail page.
 4. **Given** a part number that matches multiple articles (e.g., cross-references), **When** searched, **Then** a results page lists all matching parts with brand, description, and best price; the customer chooses which to view.
 5. **Given** a part number with no match in the catalogue, **When** searched, **Then** the customer sees a "no results" message with a suggestion to search by vehicle, browse categories, or contact the store — not a blank page.
-6. **Given** the customer starts typing in the search bar (minimum 3 characters), **When** typing pauses briefly, **Then** an autocomplete dropdown appears showing up to 8 matching part numbers or article names without requiring a full submit.
+6. **Given** the customer starts typing in the search bar (minimum 2 characters), **When** typing pauses briefly, **Then** an autocomplete dropdown appears showing up to 5 matching parts — each with its photo — followed by up to 5 categories the same query can be narrowed to, without requiring a full submit.
 7. **Given** a customer with a vehicle selected searches a part number that is in the catalogue, **When** results are shown, **Then** each result includes a "Fits your vehicle" or "Does not fit your vehicle" indicator.
 
 ---
