@@ -4,7 +4,12 @@ import { MapPin, Truck } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import type { ArticleInventoryDetailDto } from "@vp-parts-shop/shared";
 import { WarehouseAvailabilityDialog } from "@/components/catalog/availability/warehouse-availability-dialog";
-import { deliveryBand, summariseWarehouses } from "@/lib/delivery/availability";
+import {
+  deliveryBand,
+  formatStockQuantity,
+  STOCK_DISPLAY_LIMIT,
+  summariseWarehouses,
+} from "@/lib/delivery/availability";
 import { DELIVERY_BAND, DELIVERY_BAND_LABEL } from "@/lib/delivery/bands";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 import { cn } from "@/lib/utils";
@@ -109,6 +114,10 @@ function AvailabilityCells({
   const tone = DELIVERY_BAND[band];
   const otherStock = totalQuantity - fastest.quantity;
 
+  // The trigger's own leading "+" carries the cap, so this is a bare 9 where
+  // every other surface renders "9+".
+  const rollupStock = Math.min(otherStock, STOCK_DISPLAY_LIMIT);
+
   return (
     <>
       <RowCell title="Доставка">
@@ -121,7 +130,7 @@ function AvailabilityCells({
       <RowCell title="Наличност">
         <StockHeadline
           dotClassName={tone.dot}
-          headline={`${fastest.quantity} бр.`}
+          headline={`${formatStockQuantity(fastest.quantity)} бр.`}
           detail={fastest.name}
         />
 
@@ -134,7 +143,7 @@ function AvailabilityCells({
             <>
               <MapPin className="h-3 w-3 text-accent" aria-hidden="true" />
               Складове
-              {otherStock > 0 && ` +${otherStock} бр.`}
+              {otherStock > 0 && ` +${rollupStock} бр.`}
             </>
           }
         />

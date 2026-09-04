@@ -24,6 +24,22 @@ export interface WarehouseRow extends WarehouseAvailabilityDto {
  */
 export { deliveryBand, type DeliveryBand } from "@vp-parts-shop/shared";
 
+/**
+ * Deepest stock we name exactly. Anything above reads "9+": how many hundreds
+ * we hold is not something a buyer decides on, and it is not worth publishing.
+ * A display rule only — the stepper ceiling and the delivery projection both
+ * keep working from the real quantity.
+ */
+export const STOCK_DISPLAY_LIMIT = 9;
+
+export function isStockCapped(quantity: number): boolean {
+  return quantity > STOCK_DISPLAY_LIMIT;
+}
+
+export function formatStockQuantity(quantity: number): string {
+  return isStockCapped(quantity) ? `${STOCK_DISPLAY_LIMIT}+` : String(quantity);
+}
+
 export interface AvailabilitySummary {
   /** Total available across every warehouse. */
   totalQuantity: number;

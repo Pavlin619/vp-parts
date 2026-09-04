@@ -99,14 +99,39 @@ describe('ArticleRowAvailability — resolved', () => {
         availabilityByWarehouse: [
           warehouse('CENTRAL', 3),
           warehouse('REGIONAL_1', 5, 1),
-          warehouse('POLAND', 6, 3),
+          warehouse('POLAND', 4, 3),
         ],
       }),
     )
 
     expect(
-      screen.getByRole('button', { name: /Складове \+11 бр\./ }),
+      screen.getByRole('button', { name: /Складове \+9 бр\./ }),
     ).toBeInTheDocument()
+  })
+
+  it('caps a deep warehouse in the stock headline', () => {
+    renderCells(
+      detail({ availabilityByWarehouse: [warehouse('CENTRAL', 28)] }),
+    )
+
+    expect(screen.getByText('9+ бр.')).toBeInTheDocument()
+    expect(screen.queryByText('28 бр.')).not.toBeInTheDocument()
+  })
+
+  it('caps the rollup in the trigger', () => {
+    renderCells(
+      detail({
+        availabilityByWarehouse: [
+          warehouse('CENTRAL', 3),
+          warehouse('POLAND', 40, 3),
+        ],
+      }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: /Складове \+9 бр\./ }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/40/)).not.toBeInTheDocument()
   })
 
   it('opens the per-warehouse breakdown from the stock cell', async () => {

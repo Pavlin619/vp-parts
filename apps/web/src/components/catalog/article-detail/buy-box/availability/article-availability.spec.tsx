@@ -42,6 +42,36 @@ describe("ArticleAvailability", () => {
     expect(screen.getByText(/\+ 5 бр\. в 1 друг склад/)).toBeInTheDocument();
   });
 
+  it("caps a deep warehouse in the headline", () => {
+    render(
+      <ArticleAvailability
+        now={NOW}
+        availabilityByWarehouse={[warehouse("CENTRAL", 28)]}
+      />,
+    );
+
+    expect(screen.getByTestId("availability-headline")).toHaveTextContent(
+      "Наличен в Централен склад · 9+ бр.",
+    );
+  });
+
+  // "+ 9+ бр." reads badly and a capped headline beside an exact rollup would
+  // give the depth back anyway, so the rollup names no quantity at all.
+  it("names no quantity in the rollup when the rest is deep", () => {
+    render(
+      <ArticleAvailability
+        now={NOW}
+        availabilityByWarehouse={[
+          warehouse("CENTRAL", 2),
+          warehouse("ROMANIA", 40, { orderCutoffTime: "17:00" }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/\+ още в 1 друг склад/)).toBeInTheDocument();
+    expect(screen.queryByText(/40/)).not.toBeInTheDocument();
+  });
+
   it("names the fastest warehouse even when the central one is empty", () => {
     render(
       <ArticleAvailability
@@ -88,6 +118,24 @@ describe("ArticleAvailability", () => {
     expect(dialog.getByText("Склад Румъния")).toBeInTheDocument();
     expect(dialog.getAllByText(/готово/).length).toBeGreaterThan(0);
     expect(dialog.getByText(/поръчай до 17:00 ч\./)).toBeInTheDocument();
+  });
+
+  it("caps a deep warehouse line in the dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <ArticleAvailability
+        now={NOW}
+        availabilityByWarehouse={[warehouse("CENTRAL", 2), warehouse("ROMANIA", 40)]}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /Наличност по складове/ }),
+    );
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("2 бр.")).toBeInTheDocument();
+    expect(dialog.getByText("9+ бр.")).toBeInTheDocument();
   });
 
   it("omits out-of-stock warehouses from the dialog without a filter toggle", async () => {
