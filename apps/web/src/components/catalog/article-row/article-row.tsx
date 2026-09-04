@@ -10,6 +10,7 @@ import type {
   WarehouseAvailabilityDto,
 } from "@vp-parts-shop/shared";
 import { CopyButton } from "@/components/common/copy-button";
+import { Tooltip } from "@/components/common/tooltip";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { articleDetailHref } from "@/lib/catalog/article-href";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
@@ -234,8 +235,8 @@ function ArticleThumbnail({
  * wordmark fallback says more than an empty frame, and a TecDoc image host we
  * have not registered in `next.config.ts` fails exactly this way.
  *
- * The logo carries the brand name as a hover title: a mark alone is not a name,
- * and the row has no room to print one beside it.
+ * The logo carries the brand name in a tooltip: a mark alone is not a name, and
+ * the row has no room to print one beside it.
  */
 function BrandLogo({
   brandName,
@@ -248,21 +249,23 @@ function BrandLogo({
 
   if (brandLogoUrl && !hasFailed) {
     return (
-      <span
-        title={brandName}
-        className="relative block h-[34px] w-[56px] rounded-md border border-line bg-bg-card @row-split:h-[42px] @row-split:w-[68px]"
-      >
-        <Image
-          src={brandLogoUrl}
-          alt={brandName}
-          fill
-          className="object-contain p-1"
-          sizes="68px"
-          onError={() => setHasFailed(true)}
-        />
-      </span>
+      <Tooltip label={brandName}>
+        <span className="relative block h-[34px] w-[56px] rounded-md border border-line bg-bg-card @row-split:h-[42px] @row-split:w-[68px]">
+          <Image
+            src={brandLogoUrl}
+            alt={brandName}
+            fill
+            className="object-contain p-1"
+            sizes="68px"
+            onError={() => setHasFailed(true)}
+          />
+        </span>
+      </Tooltip>
     );
   }
+
+  // No tooltip on the wordmark: it already prints the name the tooltip would
+  // repeat.
 
   return (
     <span className="grid h-[34px] w-[56px] place-items-center break-words rounded-md border border-line bg-bg-card px-[5px] py-[3px] text-center font-display text-[10.5px] font-bold leading-[1.1] tracking-[0.02em] text-ink-2 @row-split:h-[42px] @row-split:w-[68px]">

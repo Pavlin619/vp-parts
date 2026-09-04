@@ -18,4 +18,32 @@ describe('SearchExactToggle', () => {
 
     expect(onChange).toHaveBeenCalledWith(true)
   })
+
+  // Neither the switch nor its label says which way it is set — the track's
+  // position is the only cue, and it is 22px wide.
+  it.each([
+    [true, 'Точно съвпадение — вкл.'],
+    [false, 'Точно съвпадение — изкл.'],
+  ])('names the state it is in when isExact is %s', async (isExact, label) => {
+    const user = userEvent.setup()
+    render(<SearchExactToggle isExact={isExact} onChange={jest.fn()} />)
+
+    await user.hover(screen.getByRole('switch'))
+
+    expect(await screen.findByText(label)).toBeInTheDocument()
+    expect(
+      screen.getByText(/съвпадат буква по буква/, { exact: false }),
+    ).toBeInTheDocument()
+  })
+
+  // The visible hint was dropped from the panel, so this is the only thing left
+  // saying the shortcut exists.
+  it('declares the keyboard shortcut', () => {
+    render(<SearchExactToggle isExact={false} onChange={jest.fn()} />)
+
+    expect(screen.getByRole('switch')).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Alt+E',
+    )
+  })
 })

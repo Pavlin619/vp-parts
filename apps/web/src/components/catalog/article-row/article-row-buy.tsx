@@ -108,7 +108,7 @@ export function ArticleRowBuy({
             type="button"
             onClick={() => onAddToCart?.(quantity.selectedQuantity)}
             aria-label={`Добави ${articleName} в кошницата`}
-            className="h-8 gap-1.5 rounded-md bg-ink px-3 text-white hover:bg-accent"
+            className="h-8 gap-1.5 rounded-md bg-accent px-3 text-white hover:bg-accent-hover"
           >
             <ShoppingCart className="h-4 w-4" aria-hidden="true" />
           </Button>
