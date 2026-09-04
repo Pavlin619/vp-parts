@@ -1,7 +1,12 @@
 "use client";
 
 import type { WarehouseAvailabilityDto } from "@vp-parts-shop/shared";
-import { deliveryBand, summariseWarehouses } from "@/lib/delivery/availability";
+import {
+  deliveryBand,
+  formatStockQuantity,
+  isStockCapped,
+  summariseWarehouses,
+} from "@/lib/delivery/availability";
 import { DELIVERY_BAND } from "@/lib/delivery/bands";
 import { cn } from "@/lib/utils";
 import { WarehouseAvailabilityDialog } from "@/components/catalog/availability/warehouse-availability-dialog";
@@ -62,14 +67,13 @@ export function ArticleAvailability({
         />
         <span data-testid="availability-headline">
           Наличен в <b className="font-semibold">{homeWarehouse.name}</b> ·{" "}
-          {homeWarehouse.quantity} бр.
+          {formatStockQuantity(homeWarehouse.quantity)} бр.
         </span>
       </p>
 
       {otherCount > 0 && (
         <p className="ml-[17px] mt-1 text-[12.5px] text-ink-3">
-          + {otherStock} бр. в {otherCount}{" "}
-          {otherCount === 1 ? "друг склад" : "други склада"}
+          {buildRollupLabel(otherStock, otherCount)}
         </p>
       )}
 
@@ -81,6 +85,18 @@ export function ArticleAvailability({
       />
     </div>
   );
+}
+
+/**
+ * The stock past the fastest warehouse. Capped depth names no quantity at all:
+ * an exact rollup beside a capped headline would hand the depth back by
+ * subtraction, and "+ 9+ бр." reads badly.
+ */
+function buildRollupLabel(otherStock: number, otherCount: number): string {
+  const stock = isStockCapped(otherStock) ? "още" : `${otherStock} бр.`;
+  const warehouses = otherCount === 1 ? "друг склад" : "други склада";
+
+  return `+ ${stock} в ${otherCount} ${warehouses}`;
 }
 
 function buildSubtitle(

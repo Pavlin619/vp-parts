@@ -1,6 +1,8 @@
 import type { WarehouseAvailabilityDto, WarehouseId } from "@vp-parts-shop/shared";
 import {
   deliveryBand,
+  formatStockQuantity,
+  isStockCapped,
   isWarehouseSnapshotStale,
   selectWarehouseForQuantity,
   summariseWarehouses,
@@ -64,6 +66,23 @@ describe("summariseWarehouses", () => {
       totalQuantity: 0,
       warehouses: [],
     });
+  });
+});
+
+describe("formatStockQuantity", () => {
+  it("shows a shallow count exactly", () => {
+    expect(formatStockQuantity(1)).toBe("1");
+    expect(formatStockQuantity(9)).toBe("9");
+  });
+
+  it("caps anything deeper than the limit", () => {
+    expect(formatStockQuantity(10)).toBe("9+");
+    expect(formatStockQuantity(28)).toBe("9+");
+  });
+
+  it("agrees with isStockCapped on the boundary", () => {
+    expect(isStockCapped(9)).toBe(false);
+    expect(isStockCapped(10)).toBe(true);
   });
 });
 

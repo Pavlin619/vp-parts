@@ -1,6 +1,10 @@
 "use client";
 
-import { deliveryBand, type WarehouseRow } from "@/lib/delivery/availability";
+import {
+  deliveryBand,
+  formatStockQuantity,
+  type WarehouseRow,
+} from "@/lib/delivery/availability";
 import { DELIVERY_BAND } from "@/lib/delivery/bands";
 import { formatDeliveryLabel } from "@/lib/delivery/format";
 import { cn } from "@/lib/utils";
@@ -50,7 +54,7 @@ export function WarehouseBranchRow({
         </span>
       </span>
       <span className="shrink-0 font-display text-sm font-semibold tabular-nums text-ink">
-        {warehouse.quantity} бр.
+        {formatStockQuantity(warehouse.quantity)} бр.
       </span>
     </div>
   );
