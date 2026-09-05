@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import type { ManufacturerDto, ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
 import { cn } from "@/lib/utils";
+import { formatPower } from "@/lib/catalog/vehicle-specs";
 import { STEP_PLACEHOLDERS, type Step } from "./use-vehicle-selector";
 
 interface VehicleSelectionListProps {
@@ -116,7 +117,9 @@ export function VehicleSelectionList({
                           isSelected ? "text-white/60" : "text-muted",
                         )}
                       >
-                        {variant.powerKw} kW · {variant.fuelType} · {variant.yearFrom}
+                        {/* No displacement here: the variant name already carries it ("2.0 TDI"). */}
+                        {formatPower(variant.powerKw, variant.powerHp)} · {variant.fuelType} ·{" "}
+                        {variant.yearFrom}
                         {variant.yearTo ? `–${variant.yearTo}` : "+"}
                       </div>
                     </div>

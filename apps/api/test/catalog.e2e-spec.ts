@@ -49,8 +49,11 @@ const VEHICLE_VARIANTS: VehicleVariantDto[] = [
     yearTo: 2020,
     engine: 'CRBC',
     powerKw: 110,
+    powerHp: 150,
+    displacementLiters: 2,
     fuelType: 'Diesel',
     bodyType: 'Hatchback',
+    imageUrl: 'https://example.test/golf-vii.jpg',
   },
 ];
 

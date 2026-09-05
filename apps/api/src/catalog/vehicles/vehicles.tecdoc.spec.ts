@@ -52,6 +52,8 @@ describe('VehiclesTecDoc', () => {
           endYearMonth: null,
           engines: [{ code: 'CRBC' }],
           kiloWattsFrom: 110,
+          horsePowerFrom: 150,
+          capacityLiters: 2,
           fuelType: 'Diesel',
           bodyStyle: 'Hatchback',
         },
@@ -66,7 +68,115 @@ describe('VehiclesTecDoc', () => {
       yearFrom: 2012,
       yearTo: null,
       engine: 'CRBC',
+      powerKw: 110,
+      powerHp: 150,
+      displacementLiters: 2,
     });
+  });
+
+  // TecDoc files 2,143 cc as 2.2 l to match the badge on the car, so the litres
+  // it sends are not `capacityCC` divided down — that would read 2.1.
+  it('getVehicleTypes takes the litres TecDoc filed rather than the cc', async () => {
+    call.mockResolvedValueOnce({
+      linkageTargets: [
+        {
+          linkageTargetId: 10002,
+          vehicleModelSeriesId: 3,
+          description: 'E 220 CDI',
+          beginYearMonth: '2009-01',
+          endYearMonth: '2016-12',
+          engines: [{ code: 'OM651' }],
+          kiloWattsFrom: 125,
+          horsePowerFrom: 170,
+          capacityCC: 2143,
+          capacityLiters: 2.2,
+          fuelType: 'Diesel',
+          bodyStyle: 'Saloon',
+        },
+      ],
+    });
+
+    const result = await tecdoc.getVehicleTypes(3);
+
+    expect(result[0].displacementLiters).toBe(2.2);
+  });
+
+  it('getVehicleTypes maps the vehicle photo from the 800px asset', async () => {
+    call.mockResolvedValueOnce({
+      linkageTargets: [
+        {
+          linkageTargetId: 10004,
+          vehicleModelSeriesId: 2,
+          description: '2.0 TDI',
+          beginYearMonth: '2012-05',
+          endYearMonth: null,
+          engines: [{ code: 'CRBC' }],
+          kiloWattsFrom: 110,
+          horsePowerFrom: 150,
+          vehicleImages: [
+            {
+              imageURL200: 'https://example.test/small.jpg',
+              imageURL800: 'https://example.test/large.jpg',
+            },
+          ],
+          fuelType: 'Diesel',
+          bodyStyle: 'Hatchback',
+        },
+      ],
+    });
+
+    const result = await tecdoc.getVehicleTypes(2);
+
+    expect(result[0].imageUrl).toBe('https://example.test/large.jpg');
+  });
+
+  // 12.6% of variants have no photo filed, so this is an ordinary outcome.
+  it('getVehicleTypes reports no photo when TecDoc files none', async () => {
+    call.mockResolvedValueOnce({
+      linkageTargets: [
+        {
+          linkageTargetId: 10005,
+          vehicleModelSeriesId: 2,
+          description: '1.6 TDI',
+          beginYearMonth: '2012-05',
+          endYearMonth: null,
+          engines: [{ code: 'CLHA' }],
+          kiloWattsFrom: 77,
+          horsePowerFrom: 105,
+          fuelType: 'Diesel',
+          bodyStyle: 'Hatchback',
+        },
+      ],
+    });
+
+    const result = await tecdoc.getVehicleTypes(2);
+
+    expect(result[0].imageUrl).toBeNull();
+  });
+
+  // An electric variant has no displacement to report, and TecDoc omits the
+  // field rather than sending a zero.
+  it('getVehicleTypes reports no displacement for a variant that has none', async () => {
+    call.mockResolvedValueOnce({
+      linkageTargets: [
+        {
+          linkageTargetId: 10003,
+          vehicleModelSeriesId: 2,
+          description: 'e-Golf',
+          beginYearMonth: '2014-03',
+          endYearMonth: null,
+          engines: [],
+          kiloWattsFrom: 100,
+          horsePowerFrom: 136,
+          fuelType: 'Electric',
+          bodyStyle: 'Hatchback',
+        },
+      ],
+    });
+
+    const result = await tecdoc.getVehicleTypes(2);
+
+    expect(result[0].displacementLiters).toBeNull();
   });
 
   it('getAssemblyGroupTree requests the complete tree and maps parent ids', async () => {

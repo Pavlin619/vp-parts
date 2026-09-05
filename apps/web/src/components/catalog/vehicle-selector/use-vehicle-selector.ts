@@ -25,6 +25,7 @@ export interface VehicleSelectorState {
   selectedMake: ManufacturerDto | null;
   selectedSeries: ModelSeriesDto | null;
   pendingVariant: VehicleVariantDto | null;
+  seriesPhotoUrl: string | null;
   isCurrentStepLoading: boolean;
   filteredManufacturers: ManufacturerDto[];
   filteredSeries: ModelSeriesDto[];
@@ -89,6 +90,15 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
     }
     return null;
   }, [selectedVariantId, variants, storedVehicle, selectedSeries?.id]);
+
+  // Read across the series, not off the pending variant: TecDoc files one photo
+  // per model series and leaves it off some variants entirely (a Hyundai KONA
+  // carries it on 1 of 22). Taking the first available one shows the car the
+  // moment a model is picked and covers the siblings that have none.
+  const seriesPhotoUrl = useMemo(
+    () => variants.find((v) => v.imageUrl)?.imageUrl ?? null,
+    [variants],
+  );
 
   const isCurrentStepLoading =
     (step === 0 && isManufacturersPending) ||
@@ -168,6 +178,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
     selectedMake,
     selectedSeries,
     pendingVariant,
+    seriesPhotoUrl,
     isCurrentStepLoading,
     filteredManufacturers,
     filteredSeries,

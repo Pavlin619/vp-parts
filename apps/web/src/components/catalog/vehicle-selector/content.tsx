@@ -44,6 +44,7 @@ export function VehicleSelectorContent({ onClose, onConfirm }: VehicleSelectorCo
           selectedMake={selector.selectedMake}
           selectedSeries={selector.selectedSeries}
           pendingVariant={selector.pendingVariant}
+          seriesPhotoUrl={selector.seriesPhotoUrl}
         />
       </div>
       <VehicleSelectorFooter
