@@ -1,9 +1,10 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Car } from "lucide-react";
-import type { ManufacturerDto, ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
+import type { ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
 import { formatDisplacement, formatPower } from "@/lib/catalog/vehicle-specs";
 import { cn } from "@/lib/utils";
+import type { SelectedMake } from "./use-vehicle-selector";
 
 // The 800px asset TecDoc serves, measured identical on every series sampled.
 // The frame below carries the same ratio, so the photo fills it edge to edge
@@ -12,7 +13,7 @@ const PHOTO_WIDTH = 800;
 const PHOTO_HEIGHT = 287;
 
 interface VehiclePreviewSidebarProps {
-  selectedMake: ManufacturerDto | null;
+  selectedMake: SelectedMake | null;
   selectedSeries: ModelSeriesDto | null;
   pendingVariant: VehicleVariantDto | null;
   seriesPhotoUrl: string | null;

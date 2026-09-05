@@ -30,9 +30,17 @@ import {
   ArticleSummaryDto,
 } from '@vp-parts-shop/shared';
 
+/** The two halves the route merges: the make facet, and TecDoc's own curation. */
+const MANUFACTURER_FACET = [
+  { id: 5, name: 'BMW', vehicleCount: 1994 },
+  { id: 16, name: 'Volkswagen', vehicleCount: 2333 },
+];
+
+const POPULAR_MANUFACTURER_IDS = new Set([16]);
+
 const MANUFACTURERS: ManufacturerDto[] = [
-  { id: '16', name: 'Volkswagen' },
-  { id: '5', name: 'BMW' },
+  { id: '16', name: 'Volkswagen', isPopular: true },
+  { id: '5', name: 'BMW', isPopular: false },
 ];
 
 const MODEL_SERIES: ModelSeriesDto[] = [
@@ -215,9 +223,10 @@ const ARTICLES_PAGE: CatalogArticlesPage = {
 };
 
 const mockTecDocClient = {
-  getManufacturers: jest.fn(),
+  getManufacturerFacet: jest.fn(),
+  getPopularManufacturerIds: jest.fn(),
   getModelSeries: jest.fn(),
-  getVehicleTypes: jest.fn(),
+  getVehicleVariants: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
   getBrands: jest.fn(),
   getArticles: jest.fn(),
@@ -284,20 +293,30 @@ describe('CatalogController (e2e)', () => {
   });
 
   describe('GET /catalog/manufacturers', () => {
-    it('returns manufacturer list from TecDoc', async () => {
-      mockTecDocClient.getManufacturers.mockResolvedValueOnce(MANUFACTURERS);
+    beforeEach(() => {
+      mockTecDocClient.getManufacturerFacet.mockResolvedValue(
+        MANUFACTURER_FACET,
+      );
+      mockTecDocClient.getPopularManufacturerIds.mockResolvedValue(
+        POPULAR_MANUFACTURER_IDS,
+      );
+    });
 
+    // Two TecDoc reads behind one route: the facet has the names, the favoured
+    // list has the flag, and the response is the ordered merge of them.
+    it('returns the two TecDoc reads merged and ordered', async () => {
       const res = await request(app.getHttpServer())
         .get('/catalog/manufacturers')
         .expect(200);
 
       expect(res.body).toEqual(MANUFACTURERS);
-      expect(mockTecDocClient.getManufacturers).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.getManufacturerFacet).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.getPopularManufacturerIds).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it('serves the second request from cache without calling TecDoc again', async () => {
-      mockTecDocClient.getManufacturers.mockResolvedValueOnce(MANUFACTURERS);
-
       await request(app.getHttpServer())
         .get('/catalog/manufacturers')
         .expect(200);
@@ -306,7 +325,28 @@ describe('CatalogController (e2e)', () => {
         .expect(200);
 
       expect(res.body).toEqual(MANUFACTURERS);
-      expect(mockTecDocClient.getManufacturers).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.getManufacturerFacet).toHaveBeenCalledTimes(1);
+      expect(mockTecDocClient.getPopularManufacturerIds).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    // A refused popularity read must not be cached as a flagless list for the
+    // week the merged answer is held for.
+    it('fails the route rather than serving a list with no popular section', async () => {
+      mockTecDocClient.getPopularManufacturerIds.mockRejectedValueOnce(
+        new Error('TecDoc refused'),
+      );
+
+      await request(app.getHttpServer())
+        .get('/catalog/manufacturers')
+        .expect(500);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/manufacturers')
+        .expect(200);
+
+      expect(res.body).toEqual(MANUFACTURERS);
     });
   });
 
@@ -325,14 +365,16 @@ describe('CatalogController (e2e)', () => {
 
   describe('GET /catalog/model-series/:seriesId/variants', () => {
     it('returns vehicle variants and forwards the series id to TecDoc', async () => {
-      mockTecDocClient.getVehicleTypes.mockResolvedValueOnce(VEHICLE_VARIANTS);
+      mockTecDocClient.getVehicleVariants.mockResolvedValueOnce(
+        VEHICLE_VARIANTS,
+      );
 
       const res = await request(app.getHttpServer())
         .get('/catalog/model-series/2/variants')
         .expect(200);
 
       expect(res.body).toEqual(VEHICLE_VARIANTS);
-      expect(mockTecDocClient.getVehicleTypes).toHaveBeenCalledWith(2);
+      expect(mockTecDocClient.getVehicleVariants).toHaveBeenCalledWith(2);
     });
   });
 
@@ -357,7 +399,7 @@ describe('CatalogController (e2e)', () => {
   describe('TecDoc id parsing on route params', () => {
     it.each([
       ['/catalog/manufacturers/abc/model-series', 'getModelSeries'],
-      ['/catalog/model-series/0/variants', 'getVehicleTypes'],
+      ['/catalog/model-series/0/variants', 'getVehicleVariants'],
       ['/catalog/vehicles/1.5/categories', 'getAssemblyGroupTree'],
       ['/catalog/vehicles/-1/categories/100001/articles', 'getArticles'],
     ] as const)('returns 400 for %s', async (url, method) => {

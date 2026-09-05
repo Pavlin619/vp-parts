@@ -31,8 +31,8 @@ const mockUseVehicleContext = jest.mocked(useVehicleContext)
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
-const BMW: ManufacturerDto = { id: 'bmw', name: 'BMW' }
-const AUDI: ManufacturerDto = { id: 'audi', name: 'Audi' }
+const BMW: ManufacturerDto = { id: 'bmw', name: 'BMW', isPopular: true }
+const AUDI: ManufacturerDto = { id: 'audi', name: 'Audi', isPopular: true }
 const SERIES_3: ModelSeriesDto = { id: 's3', manufacturerId: 'bmw', name: '3 Series' }
 const VARIANT_320D: VehicleVariantDto = {
   vehicleId: 'v-320d',

@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import type { ManufacturerDto, ModelSeriesDto, VehicleVariantDto } from '@vp-parts-shop/shared'
+import type { ModelSeriesDto, VehicleVariantDto } from '@vp-parts-shop/shared'
 import { VehiclePreviewSidebar } from './preview-sidebar'
+import type { SelectedMake } from './use-vehicle-selector'
 
-const BMW: ManufacturerDto = { id: '16', name: 'BMW' }
+const BMW: SelectedMake = { id: '16', name: 'BMW' }
 const SERIES_3: ModelSeriesDto = { id: 's3', manufacturerId: '16', name: '3 Series' }
 
 const VARIANT_320D: VehicleVariantDto = {

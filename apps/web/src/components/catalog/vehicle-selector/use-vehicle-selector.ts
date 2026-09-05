@@ -10,6 +10,14 @@ import { useVehicleContext, type SelectedVehicle } from "@/hooks/use-vehicle-con
 
 export type Step = 0 | 1 | 2;
 
+/**
+ * A picked make is only ever identified and named — never re-rendered as a card
+ * — and one of the two ways it is set is a vehicle restored from storage, which
+ * has no popularity to restore. Narrowing the type here is what keeps that path
+ * from having to invent an `isPopular`.
+ */
+export type SelectedMake = Pick<ManufacturerDto, "id" | "name">;
+
 export const STEP_LABELS = ["Марка", "Модел", "Двигател"] as const;
 
 export const STEP_PLACEHOLDERS: Record<Step, string> = {
@@ -22,7 +30,7 @@ export interface VehicleSelectorState {
   step: Step;
   search: string;
   setSearch: (s: string) => void;
-  selectedMake: ManufacturerDto | null;
+  selectedMake: SelectedMake | null;
   selectedSeries: ModelSeriesDto | null;
   pendingVariant: VehicleVariantDto | null;
   seriesPhotoUrl: string | null;
@@ -49,7 +57,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
     storedVehicle?.manufacturerId && storedVehicle?.seriesId ? 2 : 0,
   );
   const [search, setSearch] = useState("");
-  const [selectedMake, setSelectedMake] = useState<ManufacturerDto | null>(() =>
+  const [selectedMake, setSelectedMake] = useState<SelectedMake | null>(() =>
     storedVehicle?.manufacturerId
       ? { id: storedVehicle.manufacturerId, name: storedVehicle.manufacturerName }
       : null,

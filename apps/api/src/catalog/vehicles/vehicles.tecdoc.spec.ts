@@ -10,21 +10,38 @@ describe('VehiclesTecDoc', () => {
     tecdoc = new VehiclesTecDoc({ call } as unknown as TecDocTransport);
   });
 
-  it('getManufacturers maps mfrFacets via getLinkageTargets', async () => {
+  it('getManufacturerFacet asks getLinkageTargets for the make facet alone', async () => {
     call.mockResolvedValueOnce({
-      mfrFacets: { counts: [{ id: 16, name: 'Volkswagen' }] },
+      mfrFacets: { counts: [{ id: 16, name: 'Volkswagen', count: 2333 }] },
     });
 
-    const result = await tecdoc.getManufacturers();
+    const result = await tecdoc.getManufacturerFacet();
 
     expect(call).toHaveBeenCalledWith(
       'getLinkageTargets',
+      expect.objectContaining({ perPage: 0, includeMfrFacets: true }),
+    );
+    expect(result).toEqual([
+      { id: 16, name: 'Volkswagen', vehicleCount: 2333 },
+    ]);
+  });
+
+  // TecDoc has no popularity signal on the facet, so this is a second call to a
+  // legacy function. `linkingTargetType` is required, and its letters are the
+  // legacy set rather than the facet call's — 'P' is passenger car alone here.
+  it('getPopularManufacturerIds reads the favoured list from getManufacturers2', async () => {
+    call.mockResolvedValueOnce({ data: { array: [{ manuId: 16 }] } });
+
+    const result = await tecdoc.getPopularManufacturerIds();
+
+    expect(call).toHaveBeenCalledWith(
+      'getManufacturers2',
       expect.objectContaining({
-        linkageTargetType: 'P',
-        includeMfrFacets: true,
+        linkingTargetType: 'P',
+        favouredList: 1,
       }),
     );
-    expect(result).toEqual([{ id: '16', name: 'Volkswagen' }]);
+    expect(result).toEqual(new Set([16]));
   });
 
   it('getModelSeries passes the manufacturerId as a number and maps the facets', async () => {
@@ -41,143 +58,38 @@ describe('VehiclesTecDoc', () => {
     expect(result).toEqual([{ id: '2', manufacturerId: '16', name: 'Golf' }]);
   });
 
-  it('getVehicleTypes maps linkage targets including a null end year', async () => {
-    call.mockResolvedValueOnce({
-      linkageTargets: [
-        {
-          linkageTargetId: 10001,
-          vehicleModelSeriesId: 2,
-          description: 'Golf VII 2.0 TDI',
-          beginYearMonth: '2012-05',
-          endYearMonth: null,
-          engines: [{ code: 'CRBC' }],
-          kiloWattsFrom: 110,
-          horsePowerFrom: 150,
-          capacityLiters: 2,
-          fuelType: 'Diesel',
-          bodyStyle: 'Hatchback',
-        },
-      ],
-    });
+  it('getVehicleVariants reads the targets of one model series', async () => {
+    call.mockResolvedValueOnce({ status: 200 });
 
-    const result = await tecdoc.getVehicleTypes(2);
+    await tecdoc.getVehicleVariants(2);
 
-    expect(result[0]).toMatchObject({
-      vehicleId: '10001',
-      seriesId: '2',
-      yearFrom: 2012,
-      yearTo: null,
-      engine: 'CRBC',
-      powerKw: 110,
-      powerHp: 150,
-      displacementLiters: 2,
-    });
+    expect(call).toHaveBeenCalledWith(
+      'getLinkageTargets',
+      expect.objectContaining({ vehicleModelSeriesIds: 2, perPage: 100 }),
+    );
   });
 
-  // TecDoc files 2,143 cc as 2.2 l to match the badge on the car, so the litres
-  // it sends are not `capacityCC` divided down — that would read 2.1.
-  it('getVehicleTypes takes the litres TecDoc filed rather than the cc', async () => {
-    call.mockResolvedValueOnce({
-      linkageTargets: [
-        {
-          linkageTargetId: 10002,
-          vehicleModelSeriesId: 3,
-          description: 'E 220 CDI',
-          beginYearMonth: '2009-01',
-          endYearMonth: '2016-12',
-          engines: [{ code: 'OM651' }],
-          kiloWattsFrom: 125,
-          horsePowerFrom: 170,
-          capacityCC: 2143,
-          capacityLiters: 2.2,
-          fuelType: 'Diesel',
-          bodyStyle: 'Saloon',
-        },
-      ],
-    });
+  // 'VL' is passenger cars and LCVs, which is what the shop sells parts for.
+  // It has to be the same on all three steps: a make list narrower than the
+  // series list behind it strands a visitor on a make whose series are all
+  // bikes. KTM is the live case — 2 X-Bow series here against 40 under 'P'.
+  it.each([
+    ['getManufacturerFacet', () => tecdoc.getManufacturerFacet()],
+    ['getModelSeries', () => tecdoc.getModelSeries(2760)],
+    ['getVehicleVariants', () => tecdoc.getVehicleVariants(2)],
+  ])(
+    '%s excludes motorcycles from the selectable vehicles',
+    async (_name, load) => {
+      call.mockResolvedValue({ status: 200 });
 
-    const result = await tecdoc.getVehicleTypes(3);
+      await load();
 
-    expect(result[0].displacementLiters).toBe(2.2);
-  });
-
-  it('getVehicleTypes maps the vehicle photo from the 800px asset', async () => {
-    call.mockResolvedValueOnce({
-      linkageTargets: [
-        {
-          linkageTargetId: 10004,
-          vehicleModelSeriesId: 2,
-          description: '2.0 TDI',
-          beginYearMonth: '2012-05',
-          endYearMonth: null,
-          engines: [{ code: 'CRBC' }],
-          kiloWattsFrom: 110,
-          horsePowerFrom: 150,
-          vehicleImages: [
-            {
-              imageURL200: 'https://example.test/small.jpg',
-              imageURL800: 'https://example.test/large.jpg',
-            },
-          ],
-          fuelType: 'Diesel',
-          bodyStyle: 'Hatchback',
-        },
-      ],
-    });
-
-    const result = await tecdoc.getVehicleTypes(2);
-
-    expect(result[0].imageUrl).toBe('https://example.test/large.jpg');
-  });
-
-  // 12.6% of variants have no photo filed, so this is an ordinary outcome.
-  it('getVehicleTypes reports no photo when TecDoc files none', async () => {
-    call.mockResolvedValueOnce({
-      linkageTargets: [
-        {
-          linkageTargetId: 10005,
-          vehicleModelSeriesId: 2,
-          description: '1.6 TDI',
-          beginYearMonth: '2012-05',
-          endYearMonth: null,
-          engines: [{ code: 'CLHA' }],
-          kiloWattsFrom: 77,
-          horsePowerFrom: 105,
-          fuelType: 'Diesel',
-          bodyStyle: 'Hatchback',
-        },
-      ],
-    });
-
-    const result = await tecdoc.getVehicleTypes(2);
-
-    expect(result[0].imageUrl).toBeNull();
-  });
-
-  // An electric variant has no displacement to report, and TecDoc omits the
-  // field rather than sending a zero.
-  it('getVehicleTypes reports no displacement for a variant that has none', async () => {
-    call.mockResolvedValueOnce({
-      linkageTargets: [
-        {
-          linkageTargetId: 10003,
-          vehicleModelSeriesId: 2,
-          description: 'e-Golf',
-          beginYearMonth: '2014-03',
-          endYearMonth: null,
-          engines: [],
-          kiloWattsFrom: 100,
-          horsePowerFrom: 136,
-          fuelType: 'Electric',
-          bodyStyle: 'Hatchback',
-        },
-      ],
-    });
-
-    const result = await tecdoc.getVehicleTypes(2);
-
-    expect(result[0].displacementLiters).toBeNull();
-  });
+      expect(call).toHaveBeenCalledWith(
+        'getLinkageTargets',
+        expect.objectContaining({ linkageTargetType: 'VL' }),
+      );
+    },
+  );
 
   it('getAssemblyGroupTree requests the complete tree and maps parent ids', async () => {
     call.mockResolvedValueOnce({
@@ -187,11 +99,6 @@ describe('VehiclesTecDoc', () => {
             assemblyGroupNodeId: 100001,
             assemblyGroupName: 'Brakes',
             parentNodeId: null,
-          },
-          {
-            assemblyGroupNodeId: 100002,
-            assemblyGroupName: 'Discs',
-            parentNodeId: 100001,
           },
         ],
       },
@@ -208,26 +115,45 @@ describe('VehiclesTecDoc', () => {
         }),
       }),
     );
-    expect(result).toEqual([
-      { id: '100001', name: 'Brakes', parentId: null },
-      { id: '100002', name: 'Discs', parentId: '100001' },
-    ]);
+    expect(result).toEqual([{ id: '100001', name: 'Brakes', parentId: null }]);
+  });
+
+  // Not 'VL': `getArticles` refuses a concatenated code outright, and pairs the
+  // type against the id — a car id under 'V' and a van id under 'L' are both
+  // rejected, so 'P' is the only single code that accepts either.
+  it('getAssemblyGroupTree keeps the wide code getArticles requires', async () => {
+    call.mockResolvedValue({ status: 200 });
+
+    await tecdoc.getAssemblyGroupTree(10001);
+
+    expect(call).toHaveBeenCalledWith(
+      'getArticles',
+      expect.objectContaining({ linkageTargetType: 'P' }),
+    );
   });
 
   // TecDoc signals "nothing matched" by omitting the collection, not by sending
   // an empty one, and it still answers status 200 — an unknown-but-well-formed
-  // id looks exactly like a real one with no data. Dereferencing the missing key
-  // turned that ordinary outcome into a 500.
+  // id looks exactly like a real one with no data. Each mapper handles this and
+  // is tested for it; this is the guard that every read goes through one.
   describe('when TecDoc omits the collection because nothing matched', () => {
     it.each([
-      ['getManufacturers', () => tecdoc.getManufacturers()],
+      ['getManufacturerFacet', () => tecdoc.getManufacturerFacet()],
       ['getModelSeries', () => tecdoc.getModelSeries(99999999)],
-      ['getVehicleTypes', () => tecdoc.getVehicleTypes(99999999)],
+      ['getVehicleVariants', () => tecdoc.getVehicleVariants(99999999)],
       ['getAssemblyGroupTree', () => tecdoc.getAssemblyGroupTree(99999999)],
     ])('%s returns an empty list', async (_name, load) => {
-      call.mockResolvedValueOnce({ status: 200 });
+      call.mockResolvedValue({ status: 200 });
 
       await expect(load()).resolves.toEqual([]);
+    });
+
+    it('getPopularManufacturerIds returns an empty set', async () => {
+      call.mockResolvedValue({ status: 200 });
+
+      await expect(tecdoc.getPopularManufacturerIds()).resolves.toEqual(
+        new Set(),
+      );
     });
   });
 });

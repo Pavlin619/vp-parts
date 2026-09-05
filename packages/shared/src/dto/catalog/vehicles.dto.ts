@@ -1,6 +1,17 @@
 export interface ManufacturerDto {
   id: string;
   name: string;
+  /**
+   * TecDoc's own favoured-manufacturer curation — 35 of the 466 makes it
+   * catalogues for Bulgaria. It is editorial rather than derived, so it is not
+   * reproducible from anything else in the payload; it comes from a second
+   * TecDoc call — see `VehiclesTecDoc.getPopularManufacturerIds`.
+   *
+   * The list arrives with these first, ordered by how many vehicles TecDoc
+   * catalogues for each, so a consumer that ignores the flag still gets a
+   * sensible default order.
+   */
+  isPopular: boolean;
 }
 
 export interface ModelSeriesDto {
