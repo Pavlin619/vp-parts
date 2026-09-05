@@ -1,8 +1,10 @@
 export { CatalogModule } from './catalog.module';
 export { BrandsModule, BrandsService, BrandsTecDoc } from './brands';
-export { VehiclesService } from './vehicles/vehicles.service';
-export { VehiclesTecDoc } from './vehicles/vehicles.tecdoc';
-export { VehiclesController } from './vehicles/vehicles.controller';
+export {
+  VehiclesController,
+  VehiclesService,
+  VehiclesTecDoc,
+} from './vehicles';
 export { ArticlesService } from './articles/articles.service';
 export { ArticlesTecDoc } from './articles/articles.tecdoc';
 export { ArticleReadCache } from './articles/article-read';

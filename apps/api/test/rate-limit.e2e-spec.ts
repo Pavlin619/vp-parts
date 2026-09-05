@@ -44,9 +44,10 @@ const ONE_HIT: SearchEnumeration = {
 };
 
 const mockTecDocClient = {
-  getManufacturers: jest.fn(),
+  getManufacturerFacet: jest.fn(),
+  getPopularManufacturerIds: jest.fn(),
   getModelSeries: jest.fn(),
-  getVehicleTypes: jest.fn(),
+  getVehicleVariants: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
   getBrands: jest.fn().mockResolvedValue([]),
   getArticles: jest.fn(),

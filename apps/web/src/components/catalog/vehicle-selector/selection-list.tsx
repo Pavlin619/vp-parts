@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import type { ManufacturerDto, ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
 import { cn } from "@/lib/utils";
 import { formatPower } from "@/lib/catalog/vehicle-specs";
+import { ManufacturerGrid } from "./manufacturer-grid";
 import { STEP_PLACEHOLDERS, type Step } from "./use-vehicle-selector";
 
 interface VehicleSelectionListProps {
@@ -52,26 +53,33 @@ export function VehicleSelectionList({
 
       <div className="flex-1 overflow-y-auto px-5 pb-5 min-h-0">
         {isLoading && (
-          <ul className="space-y-1" aria-label="Зарежда се..." aria-busy="true">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <li key={idx} className="h-12 rounded-lg bg-bg-sunken animate-pulse" />
+          <ul
+            className={cn(
+              step === 0
+                ? "grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+                : "space-y-1",
+            )}
+            aria-label="Зарежда се..."
+            aria-busy="true"
+          >
+            {Array.from({ length: step === 0 ? 8 : 6 }).map((_, idx) => (
+              <li
+                key={idx}
+                className={cn(
+                  "rounded-lg bg-bg-sunken animate-pulse",
+                  step === 0 ? "h-[104px]" : "h-12",
+                )}
+              />
             ))}
           </ul>
         )}
 
         {!isLoading && step === 0 && (
-          <ul className="space-y-0.5" role="list" aria-label="Марки">
-            {filteredManufacturers.map((make) => (
-              <li key={make.id}>
-                <button
-                  onClick={() => onSelectMake(make)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-bg-sunken transition-colors text-left"
-                >
-                  <span className="font-medium text-sm text-ink">{make.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ManufacturerGrid
+            manufacturers={filteredManufacturers}
+            isFiltered={search.trim().length > 0}
+            onSelect={onSelectMake}
+          />
         )}
 
         {!isLoading && step === 1 && (

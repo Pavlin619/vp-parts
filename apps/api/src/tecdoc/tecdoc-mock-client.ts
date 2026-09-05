@@ -1,5 +1,4 @@
 import {
-  ManufacturerDto,
   ModelSeriesDto,
   VehicleVariantDto,
   AssemblyGroupDto,
@@ -20,6 +19,7 @@ import {
   AutocompleteItemDto,
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
+import type { ManufacturerFacetEntry } from '../catalog/vehicles/vehicles.mapper';
 import { ArticleStatus } from './article-mapper';
 import type {
   ArticleCandidate,
@@ -210,12 +210,21 @@ function numberKey(articleNumber: string): string {
   return articleNumber.replace(/[-.\s]/g, '').toUpperCase();
 }
 
-const MANUFACTURERS: ManufacturerDto[] = [
-  { id: '16', name: 'Volkswagen' },
-  { id: '5', name: 'BMW' },
-  { id: '165', name: 'Toyota' },
-  { id: '35', name: 'Ford' },
+/**
+ * The two halves the make list is merged from, given raw rather than as a
+ * finished list: in ascending `mfrId` with no popularity on it, and the
+ * favoured ids beside it. Mock mode then exercises the same merge and ordering
+ * production runs, instead of a hand-sorted fixture that could quietly disagree
+ * with `orderManufacturers`.
+ */
+const MANUFACTURER_FACET: ManufacturerFacetEntry[] = [
+  { id: 5, name: 'BMW', vehicleCount: 1994 },
+  { id: 16, name: 'Volkswagen', vehicleCount: 2333 },
+  { id: 35, name: 'Ford', vehicleCount: 1500 },
+  { id: 165, name: 'Toyota', vehicleCount: 900 },
 ];
+
+const POPULAR_MANUFACTURER_IDS = new Set([5, 16, 35]);
 
 const MODEL_SERIES: Record<string, ModelSeriesDto[]> = {
   '16': [
@@ -1349,15 +1358,19 @@ const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
 };
 
 export class TecDocMockClient {
-  getManufacturers(): Promise<ManufacturerDto[]> {
-    return Promise.resolve(MANUFACTURERS);
+  getManufacturerFacet(): Promise<ManufacturerFacetEntry[]> {
+    return Promise.resolve(MANUFACTURER_FACET);
+  }
+
+  getPopularManufacturerIds(): Promise<Set<number>> {
+    return Promise.resolve(POPULAR_MANUFACTURER_IDS);
   }
 
   getModelSeries(manufacturerId: number): Promise<ModelSeriesDto[]> {
     return Promise.resolve(MODEL_SERIES[manufacturerId] ?? []);
   }
 
-  getVehicleTypes(seriesId: number): Promise<VehicleVariantDto[]> {
+  getVehicleVariants(seriesId: number): Promise<VehicleVariantDto[]> {
     return Promise.resolve(VEHICLE_VARIANTS[seriesId] ?? []);
   }
 

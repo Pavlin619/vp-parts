@@ -106,9 +106,10 @@ const makeTerm = (term: string): TermAutocompleteItemDto => ({
 });
 
 const mockTecDocClient = {
-  getManufacturers: jest.fn(),
+  getManufacturerFacet: jest.fn(),
+  getPopularManufacturerIds: jest.fn(),
   getModelSeries: jest.fn(),
-  getVehicleTypes: jest.fn(),
+  getVehicleVariants: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
   getBrands: jest.fn(),
   getArticles: jest.fn(),
