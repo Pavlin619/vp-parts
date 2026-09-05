@@ -3,6 +3,7 @@ import { VehiclesTecDoc } from './vehicles.tecdoc';
 import { VehiclesService } from './vehicles.service';
 
 const WEEK = 7 * 24 * 60 * 60;
+const TWELVE_HOURS = 12 * 60 * 60;
 
 describe('VehiclesService', () => {
   let tecdoc: {
@@ -49,13 +50,19 @@ describe('VehiclesService', () => {
     expect(tecdoc.getModelSeries).toHaveBeenCalledWith(16);
   });
 
-  it('caches vehicle variants per series id', async () => {
-    await service.getVehicleVariants(2);
+  // Half the tree's TTL is not a rounding of a week: a cached entry read just
+  // before it expires hands the browser an image token of that age, and 20.1 h
+  // is the oldest one measured still alive.
+  it('caches vehicle variants for twelve hours, not the tree week', async () => {
+    const result = await service.getVehicleVariants(2);
+
     expect(cachedMock).toHaveBeenCalledWith(
       'tecdoc:vehicle-types:2',
-      WEEK,
+      TWELVE_HOURS,
       expect.any(Function),
     );
+    expect(tecdoc.getVehicleTypes).toHaveBeenCalledWith(2);
+    expect(result).toEqual(['v']);
   });
 
   it('caches the category tree per vehicle id', async () => {

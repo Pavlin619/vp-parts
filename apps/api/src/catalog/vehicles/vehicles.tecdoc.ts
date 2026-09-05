@@ -77,6 +77,9 @@ export class VehiclesTecDoc {
         endYearMonth: string | null;
         engines: Array<{ code: string }>;
         kiloWattsFrom: number;
+        horsePowerFrom?: number;
+        capacityLiters?: number;
+        vehicleImages?: Array<{ imageURL800: string }>;
         fuelType: string;
         bodyStyle: string;
       }>;
@@ -99,8 +102,20 @@ export class VehiclesTecDoc {
         : null,
       engine: v.engines[0]?.code ?? '',
       powerKw: v.kiloWattsFrom,
+      // Optional in the XSD, though present on all 1,268 variants measured —
+      // absence is the schema's allowance rather than a case in the data.
+      powerHp: v.horsePowerFrom ?? null,
+      // TecDoc's own litres, not `capacityCC` divided down: it files 2,143 cc
+      // as 2.2 l to match the badge on the car, where dividing reads 2.1.
+      // Absent on an electric variant, which has no displacement at all.
+      displacementLiters: v.capacityLiters ?? null,
       fuelType: v.fuelType,
       bodyType: v.bodyStyle,
+      // No include flag turns these on — `getLinkageTargets` sends them with
+      // every vehicle target, so the photo costs nothing beyond the read we
+      // already make. The 800px asset is 800x287 and 19-25 KB, matching the
+      // size article thumbnails already use.
+      imageUrl: v.vehicleImages?.[0]?.imageURL800 ?? null,
     }));
   }
 

@@ -40,10 +40,13 @@ const VARIANT_320D: VehicleVariantDto = {
   name: 'BMW 320d (F30)',
   engine: '2.0d',
   powerKw: 110,
+  powerHp: 150,
+  displacementLiters: 2,
   yearFrom: 2012,
   yearTo: 2019,
   fuelType: 'Diesel',
   bodyType: 'Saloon',
+  imageUrl: null,
 }
 
 const STORED_VEHICLE = {
@@ -153,6 +156,59 @@ describe('useVehicleSelector — initial state (stored vehicle)', () => {
     })
 
     expect(result.current.pendingVariant).toEqual(VARIANT_320D)
+  })
+})
+
+// TecDoc files one photo per model series, byte-identical on every variant of
+// it, and leaves it off some variants entirely (a Hyundai KONA carries it on 1
+// of 22). So the photo is read across the series rather than off the variant in
+// hand, which both shows the car as soon as a model is picked and gives the
+// other 21 KONA engines the picture their sibling has.
+describe('useVehicleSelector — series photo', () => {
+  it('takes the first photo any variant of the series carries', () => {
+    const qc = buildQueryClient()
+    qc.setQueryData(['catalog', 'manufacturers'], [BMW])
+    qc.setQueryData(['catalog', 'model-series', 'bmw'], [SERIES_3])
+    qc.setQueryData(
+      ['catalog', 'variants', 's3'],
+      [
+        { ...VARIANT_320D, vehicleId: 'v-318d', imageUrl: null },
+        { ...VARIANT_320D, imageUrl: 'https://example.test/e90.jpg' },
+      ],
+    )
+    mockStore(STORED_VEHICLE)
+
+    const { result } = renderHook(() => useVehicleSelector(jest.fn()), {
+      wrapper: createWrapper(qc),
+    })
+
+    expect(result.current.seriesPhotoUrl).toBe('https://example.test/e90.jpg')
+  })
+
+  it('has no photo when no variant of the series carries one', () => {
+    const qc = buildQueryClient()
+    qc.setQueryData(['catalog', 'manufacturers'], [BMW])
+    qc.setQueryData(['catalog', 'model-series', 'bmw'], [SERIES_3])
+    qc.setQueryData(['catalog', 'variants', 's3'], [{ ...VARIANT_320D, imageUrl: null }])
+    mockStore(STORED_VEHICLE)
+
+    const { result } = renderHook(() => useVehicleSelector(jest.fn()), {
+      wrapper: createWrapper(qc),
+    })
+
+    expect(result.current.seriesPhotoUrl).toBeNull()
+  })
+
+  it('has no photo before a model is picked', () => {
+    const qc = buildQueryClient()
+    qc.setQueryData(['catalog', 'manufacturers'], [BMW])
+    mockStore(null)
+
+    const { result } = renderHook(() => useVehicleSelector(jest.fn()), {
+      wrapper: createWrapper(qc),
+    })
+
+    expect(result.current.seriesPhotoUrl).toBeNull()
   })
 })
 
