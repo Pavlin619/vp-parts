@@ -10,6 +10,7 @@ const mockVehicle: SelectedVehicle = {
   variantName: 'BMW 320d (F30)',
   engine: 'N47D20C',
   powerKw: 135,
+  powerHp: 184,
   yearFrom: 2018,
   yearTo: 2022,
 }
@@ -100,6 +101,58 @@ describe('useVehicleContext', () => {
   it('accepts yearTo as null', () => {
     useVehicleContext.getState().setVehicle({ ...mockVehicle, yearTo: null })
     expect(useVehicleContext.getState().selectedVehicle?.yearTo).toBeNull()
+  })
+})
+
+/**
+ * A car already in a visitor's browser is migrated rather than re-picked, so
+ * every shape a previous release wrote has to survive the read.
+ */
+describe('migrating a stored vehicle', () => {
+  const migrate = useVehicleContext.persist.getOptions().migrate!
+
+  function migrateStored(stored: unknown) {
+    return migrate(stored, 1) as {
+      selectedVehicle: SelectedVehicle | null
+      recentVehicles: SelectedVehicle[]
+    }
+  }
+
+  function savedWithoutPower() {
+    const vehicle: Partial<SelectedVehicle> = { ...mockVehicle }
+    delete vehicle.powerHp
+
+    return vehicle
+  }
+
+  it('keeps a car saved before horsepower, with the figure unknown', () => {
+    const stored = savedWithoutPower()
+
+    const state = migrateStored({
+      selectedVehicle: stored,
+      recentVehicles: [stored],
+    })
+
+    expect(state.selectedVehicle).toMatchObject({ vehicleId: 'v-001', powerHp: null })
+    expect(state.recentVehicles[0].powerHp).toBeNull()
+  })
+
+  it('leaves a horsepower figure that was already stored', () => {
+    const state = migrateStored({ selectedVehicle: mockVehicle, recentVehicles: [] })
+
+    expect(state.selectedVehicle?.powerHp).toBe(184)
+  })
+
+  // The ids are what reopen the selector on the saved car; without them there is
+  // nothing to restore, so the car goes rather than the dialog breaking.
+  it('forgets a car saved without the ids the selector needs', () => {
+    const state = migrateStored({
+      selectedVehicle: { ...mockVehicle, seriesId: '' },
+      recentVehicles: [mockVehicle],
+    })
+
+    expect(state.selectedVehicle).toBeNull()
+    expect(state.recentVehicles).toEqual([])
   })
 })
 

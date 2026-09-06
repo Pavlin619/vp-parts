@@ -22,13 +22,14 @@ const mockedUseVehicleContext = jest.mocked(useVehicleContext)
 
 const baseVehicle: SelectedVehicle = {
   vehicleId: 'v-1',
-  manufacturerId: 'mfr-5',
+  manufacturerId: '16',
   seriesId: 'ser-10',
   manufacturerName: 'BMW',
   seriesName: '3 Series',
   variantName: 'BMW 320d (F30)',
   engine: '320i',
   powerKw: 135,
+  powerHp: 184,
   yearFrom: 2015,
   yearTo: 2020,
 }
@@ -86,6 +87,14 @@ describe('VehiclePill — vehicle selected', () => {
 
   it('shows engine, power and year range', () => {
     render(<VehiclePill onOpenSelector={jest.fn()} />)
+    expect(screen.getByText(/320i · 135 kW \(184 к.с.\) · 2015–2020/)).toBeInTheDocument()
+  })
+
+  // Kilowatts are what the registration document carries; horsepower is what a
+  // Bulgarian buyer knows the engine by.
+  it('drops to kilowatts alone for a car saved before horsepower was stored', () => {
+    mockState({ ...baseVehicle, powerHp: null })
+    render(<VehiclePill onOpenSelector={jest.fn()} />)
     expect(screen.getByText(/320i · 135 kW · 2015–2020/)).toBeInTheDocument()
   })
 
@@ -106,5 +115,20 @@ describe('VehiclePill — vehicle selected', () => {
     render(<VehiclePill onOpenSelector={onOpenSelector} />)
     await userEvent.click(screen.getByRole('button', { name: 'Промени избрания автомобил' }))
     expect(onOpenSelector).toHaveBeenCalledTimes(1)
+  })
+
+  // jsdom resolves the badge's root-relative source against the test origin.
+  it("badges the vehicle with its make's mark", () => {
+    const { container } = render(<VehiclePill onOpenSelector={jest.fn()} />)
+    const src = container.querySelector('img')?.getAttribute('src') ?? ''
+    expect(new URL(src).pathname).toBe('/vehicle-makes/bmw.webp')
+  })
+
+  // 57 of the 286 selectable makes ship no badge, and the pill keeps the glyph
+  // it showed before there were any.
+  it('keeps the car glyph for a make with no bundled badge', () => {
+    mockState({ ...baseVehicle, manufacturerId: '812' })
+    const { container } = render(<VehiclePill onOpenSelector={jest.fn()} />)
+    expect(container.querySelector('img')).toBeNull()
   })
 })

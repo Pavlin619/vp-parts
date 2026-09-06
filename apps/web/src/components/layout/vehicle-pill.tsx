@@ -1,7 +1,9 @@
 "use client";
 
 import { X, Car } from "lucide-react";
+import { VehicleMakeBadge } from "@/components/catalog/vehicle-make-badge";
 import { useVehicleContext, useHydration } from "@/hooks/use-vehicle-context";
+import { formatPower, formatYearRange } from "@/lib/catalog/vehicle-specs";
 
 interface VehiclePillProps {
   onOpenSelector: () => void;
@@ -41,17 +43,18 @@ export function VehiclePill({ onOpenSelector }: VehiclePillProps) {
         className="flex items-center gap-3 text-left"
         aria-label="Промени избрания автомобил"
       >
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent">
-          <Car className="w-4 h-4 text-white" aria-hidden="true" />
-        </span>
+        <VehicleMakeBadge
+          manufacturerId={selectedVehicle.manufacturerId}
+          className="h-8 w-8 rounded-lg"
+        />
         <span className="hidden flex-col items-start leading-none lg:flex">
           <span className="text-xs font-bold text-white uppercase tracking-wide">
             {selectedVehicle.manufacturerName} · {selectedVehicle.seriesName}
           </span>
           <span className="text-[11px] text-white/60 mt-0.5">
-            {selectedVehicle.engine} · {selectedVehicle.powerKw} kW ·{" "}
-            {selectedVehicle.yearFrom}
-            {selectedVehicle.yearTo ? `–${selectedVehicle.yearTo}` : "+"}
+            {selectedVehicle.engine} ·{" "}
+            {formatPower(selectedVehicle.powerKw, selectedVehicle.powerHp)} ·{" "}
+            {formatYearRange(selectedVehicle.yearFrom, selectedVehicle.yearTo)}
           </span>
         </span>
       </button>

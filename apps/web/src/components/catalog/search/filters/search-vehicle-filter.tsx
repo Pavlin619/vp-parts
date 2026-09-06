@@ -1,16 +1,24 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Car, CheckCircle2, Pencil, X } from "lucide-react";
 import { formatCount } from "@vp-parts-shop/shared";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
+import { VehicleMakeBadge } from "@/components/catalog/vehicle-make-badge";
+import { useSeriesPhoto } from "@/hooks/use-series-photo";
 import {
   useHydration,
   useVehicleContext,
   type SelectedVehicle,
 } from "@/hooks/use-vehicle-context";
+import {
+  SERIES_PHOTO_HEIGHT,
+  SERIES_PHOTO_WIDTH,
+} from "@/lib/catalog/vehicle-series-photo";
+import { formatPower, formatYearRange } from "@/lib/catalog/vehicle-specs";
 import {
   buildSearchUrl,
   withoutVehicle,
@@ -145,6 +153,8 @@ function OfferCard({
     <VehicleCard>
       <h2 className={cn(TITLE, "text-ink-3")}>Търсене по автомобил</h2>
 
+      <VehicleShot vehicle={vehicle} />
+
       <div className="mt-3">
         <VehicleIdentity vehicle={vehicle} isApplied={false} />
       </div>
@@ -189,6 +199,8 @@ function ScopedCard({
         <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
         Търсене само за
       </h2>
+
+      <VehicleShot vehicle={vehicle} />
 
       <div className="mt-3">
         <VehicleIdentity vehicle={vehicle} isApplied />
@@ -249,17 +261,16 @@ function VehicleIdentity({
 }) {
   return (
     <div className="flex items-start gap-2.5">
-      <span
+      {/* The badge is a photographic mark drawn for white, so the applied state
+          rings the tile instead of filling it. Nothing is lost: the card itself
+          is tinted, titled in brand and ticked. */}
+      <VehicleMakeBadge
+        manufacturerId={vehicle?.manufacturerId ?? null}
         className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-          isApplied ? "bg-brand" : "bg-bg-sunken",
+          "h-9 w-9 rounded-md border",
+          isApplied ? "border-brand/40" : "border-line",
         )}
-      >
-        <Car
-          className={cn("h-4 w-4", isApplied ? "text-white" : "text-ink-3")}
-          aria-hidden="true"
-        />
-      </span>
+      />
 
       <div className="min-w-0">
         <p className="font-display text-[15px] font-semibold uppercase leading-tight tracking-[-0.01em] text-ink">
@@ -278,6 +289,40 @@ function VehicleIdentity({
 }
 
 /**
+ * The car itself, where TecDoc files a photo of its series.
+ *
+ * It carries its own top margin and renders nothing without a photo, because
+ * between a fifth and nearly half of series have none — the coverage is measured
+ * per make in `docs/TECDOC.md`. Reserving the space instead is the tempting
+ * alternative and it trades a card that grows once, early, for an empty box on
+ * every third card forever.
+ */
+function VehicleShot({ vehicle }: { vehicle: SelectedVehicle | null }) {
+  const photoUrl = useSeriesPhoto(vehicle?.seriesId);
+  // The URL is a signed token minted per response, which is both why it cannot
+  // go through the optimizer and why it can be dead before a browser asks for
+  // it. A dead one costs the photo rather than a broken-image icon.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  if (!photoUrl || photoUrl === failedUrl) return null;
+
+  return (
+    // The asset's background is baked white, so its frame has to be white too.
+    <div className="mt-3 overflow-hidden rounded-md border border-line bg-white">
+      <Image
+        src={photoUrl}
+        alt=""
+        width={SERIES_PHOTO_WIDTH}
+        height={SERIES_PHOTO_HEIGHT}
+        unoptimized
+        onError={() => setFailedUrl(photoUrl)}
+        className="h-auto w-full"
+      />
+    </div>
+  );
+}
+
+/**
  * The saved vehicle only names the scoped id when it *is* that vehicle. A
  * bookmarked or shared link carries an id this browser never resolved, and
  * labelling it with whatever car happens to be saved would name the wrong one.
@@ -290,17 +335,17 @@ function vehicleNamed(
 }
 
 /**
- * `1.9 TDI · 66 kW · 1996–2001`. The trim and the build years are what tell two
- * variants of one model apart, and a mechanic reads the wrong one as the wrong
- * parts. `engine` is deliberately not here: TecDoc files a code in it — `AGR`,
- * `OM 699.302` — which identifies nothing to a visitor.
+ * `1.9 TDI · 66 kW (90 к.с.) · 1996–2001`. The trim and the build years are what
+ * tell two variants of one model apart, and a mechanic reads the wrong one as
+ * the wrong parts. `engine` is deliberately not here: TecDoc files a code in it
+ * — `AGR`, `OM 699.302` — which identifies nothing to a visitor.
  */
 function vehicleSpec(vehicle: SelectedVehicle): string {
-  const years = vehicle.yearTo
-    ? `${vehicle.yearFrom}–${vehicle.yearTo}`
-    : `${vehicle.yearFrom}+`;
-
-  return [vehicle.variantName, `${vehicle.powerKw} kW`, years].join(" · ");
+  return [
+    vehicle.variantName,
+    formatPower(vehicle.powerKw, vehicle.powerHp),
+    formatYearRange(vehicle.yearFrom, vehicle.yearTo),
+  ].join(" · ");
 }
 
 function resultNoun(total: number): string {
