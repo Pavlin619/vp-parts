@@ -12,6 +12,7 @@ const VEHICLE: SelectedVehicle = {
   variantName: '2.0 E',
   engine: 'ABT',
   powerKw: 66,
+  powerHp: 90,
   yearFrom: 1992,
   yearTo: 1996,
 }

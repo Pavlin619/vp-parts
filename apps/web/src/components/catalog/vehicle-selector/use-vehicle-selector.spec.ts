@@ -338,6 +338,10 @@ describe('useVehicleSelector — confirm and close', () => {
         seriesId: SERIES_3.id,
         manufacturerName: BMW.name,
         seriesName: SERIES_3.name,
+        // The pill and the search card print this and cannot fetch it back:
+        // what confirm does not save, the storefront cannot show.
+        powerKw: VARIANT_320D.powerKw,
+        powerHp: VARIANT_320D.powerHp,
       }),
     )
     expect(onClose).toHaveBeenCalledTimes(1)

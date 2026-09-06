@@ -11,6 +11,7 @@ const vehicle: SelectedVehicle = {
   variantName: "2.0 TDI",
   engine: "2.0 TDI",
   powerKw: 110,
+  powerHp: 150,
   yearFrom: 2012,
   yearTo: null,
 };

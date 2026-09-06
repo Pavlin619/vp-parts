@@ -6,13 +6,13 @@ import {
   formatPower,
   formatYearRange,
 } from "@/lib/catalog/vehicle-specs";
+import {
+  SERIES_PHOTO_HEIGHT,
+  SERIES_PHOTO_WIDTH,
+} from "@/lib/catalog/vehicle-series-photo";
 import { cn } from "@/lib/utils";
 import { MakeMark } from "./make-mark";
 import type { SelectedMake, SelectedSeries } from "./use-vehicle-selector";
-
-// The 800px asset TecDoc serves, measured identical on every series sampled.
-const PHOTO_WIDTH = 800;
-const PHOTO_HEIGHT = 287;
 
 /** The width the frame renders at, for the badge's source-set hint. */
 const FRAME_SIZES = "248px";
@@ -175,8 +175,8 @@ function PreviewFrame({
         <Image
           src={photoUrl}
           alt={photoLabel}
-          width={PHOTO_WIDTH}
-          height={PHOTO_HEIGHT}
+          width={SERIES_PHOTO_WIDTH}
+          height={SERIES_PHOTO_HEIGHT}
           // TecDoc already serves this pre-sized and compressed, so the
           // optimizer would only re-encode it — and it could not cache the
           // result anyway, since the URL carries a token minted per response.

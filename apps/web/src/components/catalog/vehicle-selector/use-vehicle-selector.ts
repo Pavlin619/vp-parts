@@ -6,6 +6,7 @@ import {
   modelSeriesQueryOptions,
   variantsQueryOptions,
 } from "@/lib/api/catalog";
+import { seriesPhotoUrlOf } from "@/lib/catalog/vehicle-series-photo";
 import { useVehicleContext, type SelectedVehicle } from "@/hooks/use-vehicle-context";
 
 export type Step = 0 | 1 | 2;
@@ -111,14 +112,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
     return null;
   }, [selectedVariantId, variants, storedVehicle, selectedSeries?.id]);
 
-  // Read across the series, not off the pending variant: TecDoc files one photo
-  // per model series and leaves it off some variants entirely (a Hyundai KONA
-  // carries it on 1 of 22). Taking the first available one shows the car the
-  // moment a model is picked and covers the siblings that have none.
-  const seriesPhotoUrl = useMemo(
-    () => variants.find((v) => v.imageUrl)?.imageUrl ?? null,
-    [variants],
-  );
+  const seriesPhotoUrl = seriesPhotoUrlOf(variants);
 
   const isCurrentStepLoading =
     (step === 0 && isManufacturersPending) ||
@@ -172,6 +166,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
       variantName: pendingVariant.name,
       engine: pendingVariant.engine,
       powerKw: pendingVariant.powerKw,
+      powerHp: pendingVariant.powerHp,
       yearFrom: pendingVariant.yearFrom,
       yearTo: pendingVariant.yearTo,
     };
