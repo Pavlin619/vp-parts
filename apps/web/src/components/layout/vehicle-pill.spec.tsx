@@ -27,7 +27,7 @@ const baseVehicle: SelectedVehicle = {
   manufacturerName: 'BMW',
   seriesName: '3 Series',
   variantName: 'BMW 320d (F30)',
-  engine: '320i',
+  engineCodes: ['320i'],
   powerKw: 135,
   powerHp: 184,
   yearFrom: 2015,

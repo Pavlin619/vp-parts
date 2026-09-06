@@ -1,4 +1,4 @@
-import { formatDisplacement, formatPower } from './vehicle-specs'
+import { formatDisplacement, formatEngineCodes, formatPower } from './vehicle-specs'
 
 describe('formatPower', () => {
   it('leads with kilowatts and carries horsepower alongside', () => {
@@ -31,5 +31,30 @@ describe('formatDisplacement', () => {
 
   it('has nothing to show when the field is absent altogether', () => {
     expect(formatDisplacement(undefined as unknown as null)).toBeNull()
+  })
+})
+
+describe('formatEngineCodes', () => {
+  it('reads a single code as itself', () => {
+    expect(formatEngineCodes(['N47D20C'])).toBe('N47D20C')
+  })
+
+  // A third of vehicles are built with more than one engine, and the visitor is
+  // matching this against the code on the block in front of them — the first
+  // alone is a sibling's engine as often as it is theirs.
+  it('joins every code a vehicle was built with', () => {
+    expect(formatEngineCodes(['OM 642.852', 'OM 642.850'])).toBe(
+      'OM 642.852, OM 642.850',
+    )
+  })
+
+  it('has nothing to show for a vehicle with no code filed', () => {
+    expect(formatEngineCodes([])).toBeNull()
+  })
+
+  // Variants are cached for a day and the two apps deploy separately, so the
+  // browser can be newer than the entry answering it.
+  it('has nothing to show when the field is absent altogether', () => {
+    expect(formatEngineCodes(undefined)).toBeNull()
   })
 })

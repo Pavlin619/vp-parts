@@ -3,6 +3,7 @@ import Image from "next/image";
 import type { VehicleVariantDto } from "@vp-parts-shop/shared";
 import {
   formatDisplacement,
+  formatEngineCodes,
   formatPower,
   formatYearRange,
 } from "@/lib/catalog/vehicle-specs";
@@ -112,7 +113,14 @@ function previewSpecs(variant: VehicleVariantDto | null): PreviewSpec[] {
       label: "Година",
       value: variant ? formatYearRange(variant.yearFrom, variant.yearTo) : null,
     },
-    { label: "Двигател", value: variant?.engine || null, isCode: true },
+    // A third of vehicles are built with more than one engine, and the visitor
+    // is matching this against the code on the block in front of them — so all
+    // of them print, for the same reason the type-approval numbers below do.
+    {
+      label: "Двигател",
+      value: formatEngineCodes(variant?.engineCodes),
+      isCode: true,
+    },
     {
       label: "Мощност",
       value: variant ? formatPower(variant.powerKw, variant.powerHp) : null,

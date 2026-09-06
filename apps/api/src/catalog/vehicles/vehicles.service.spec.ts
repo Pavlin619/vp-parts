@@ -173,7 +173,7 @@ describe('VehiclesService', () => {
     const result = await service.getVehicleVariants(2);
 
     expect(cachedMock).toHaveBeenCalledWith(
-      'tecdoc:vehicle-types:VL:v2:2',
+      'tecdoc:vehicle-types:VL:v3:2',
       DAY,
       expect.any(Function),
     );

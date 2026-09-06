@@ -44,7 +44,7 @@ const VARIANT_320D: VehicleVariantDto = {
   vehicleId: 'v-320d',
   seriesId: 's3',
   name: 'BMW 320d (F30)',
-  engine: '2.0d',
+  engineCodes: ['N47D20C'],
   powerKw: 110,
   powerHp: 150,
   displacementLiters: 2,
@@ -63,7 +63,7 @@ const STORED_VEHICLE = {
   manufacturerName: 'BMW',
   seriesName: '3 Series',
   variantName: 'BMW 320d (F30)',
-  engine: '2.0d',
+  engineCodes: ['N47D20C'],
   powerKw: 110,
   yearFrom: 2012,
   yearTo: 2019,
@@ -277,7 +277,7 @@ describe('useVehicleSelector — step transitions', () => {
     act(() => result.current.handleSelectVariant(VARIANT_320D))
 
     expect(result.current.pendingVariant).toEqual(VARIANT_320D)
-    expect(result.current.stepValues[2]).toBe(VARIANT_320D.engine)
+    expect(result.current.stepValues[2]).toBe('N47D20C')
   })
 
   it('handleStepClick navigates back to earlier steps', () => {
@@ -426,5 +426,42 @@ describe('useVehicleSelector — search filtering', () => {
     })
 
     expect(result.current.filteredManufacturers).toEqual([BMW, AUDI])
+  })
+
+  // The engine step advertises a search by code, and a code is never in the
+  // description — `variant-search.spec.ts` holds the matching rules; this is
+  // the wiring that reaches them.
+  it('filters variants by an engine code the name does not carry', () => {
+    const petrol = { ...VARIANT_320D, vehicleId: 'v-320i', engineCodes: ['N20B20A'] }
+    const qc = buildQueryClient()
+    qc.setQueryData(['catalog', 'manufacturers'], [BMW])
+    qc.setQueryData(['catalog', 'model-series', 'bmw'], [SERIES_3])
+    qc.setQueryData(['catalog', 'variants', 's3'], [VARIANT_320D, petrol])
+    mockStore(STORED_VEHICLE)
+
+    const { result } = renderHook(() => useVehicleSelector(jest.fn()), {
+      wrapper: createWrapper(qc),
+    })
+
+    act(() => result.current.setSearch('n20b'))
+
+    expect(result.current.filteredVariants).toEqual([petrol])
+  })
+
+  it('filters variants by type-approval number', () => {
+    const other = { ...VARIANT_320D, vehicleId: 'v-318d', kbaNumbers: ['0603BLP'] }
+    const qc = buildQueryClient()
+    qc.setQueryData(['catalog', 'manufacturers'], [BMW])
+    qc.setQueryData(['catalog', 'model-series', 'bmw'], [SERIES_3])
+    qc.setQueryData(['catalog', 'variants', 's3'], [VARIANT_320D, other])
+    mockStore(STORED_VEHICLE)
+
+    const { result } = renderHook(() => useVehicleSelector(jest.fn()), {
+      wrapper: createWrapper(qc),
+    })
+
+    act(() => result.current.setSearch('0603BLP'))
+
+    expect(result.current.filteredVariants).toEqual([other])
   })
 })

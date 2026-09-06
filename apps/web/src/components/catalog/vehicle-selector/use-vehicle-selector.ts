@@ -7,7 +7,9 @@ import {
   variantsQueryOptions,
 } from "@/lib/api/catalog";
 import { seriesPhotoUrlOf } from "@/lib/catalog/vehicle-series-photo";
+import { formatEngineCodes } from "@/lib/catalog/vehicle-specs";
 import { useVehicleContext, type SelectedVehicle } from "@/hooks/use-vehicle-context";
+import { matchesVariantSearch } from "./variant-search";
 
 export type Step = 0 | 1 | 2;
 
@@ -37,6 +39,16 @@ export const STEP_PLACEHOLDERS: Record<Step, string> = {
   0: "Търси марка...",
   1: "Търси модел...",
   2: "Търси двигател или код...",
+};
+
+/**
+ * What a step says when it has nothing to list and nothing was typed. A search
+ * that matched nothing names the query instead — see `NoResults`.
+ */
+export const STEP_EMPTY_LABELS: Record<Step, string> = {
+  0: "Няма налични марки",
+  1: "Няма модели за тази марка",
+  2: "Няма двигатели за този модел",
 };
 
 export interface VehicleSelectorState {
@@ -124,12 +136,14 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
     m.name.toLowerCase().includes(lowerSearch),
   );
   const filteredSeries = seriesList.filter((s) => s.name.toLowerCase().includes(lowerSearch));
-  const filteredVariants = variants.filter((v) => v.name.toLowerCase().includes(lowerSearch));
+  // The engine step matches over the codes as well as the name, because the
+  // name never carries one — see `variant-search.ts`.
+  const filteredVariants = variants.filter((v) => matchesVariantSearch(v, search));
 
   const stepValues: (string | null)[] = [
     selectedMake?.name ?? null,
     selectedSeries?.name ?? null,
-    pendingVariant?.engine ?? null,
+    formatEngineCodes(pendingVariant?.engineCodes),
   ];
 
   function handleSelectMake(make: ManufacturerDto) {
@@ -164,7 +178,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
       manufacturerName: selectedMake.name,
       seriesName: selectedSeries.name,
       variantName: pendingVariant.name,
-      engine: pendingVariant.engine,
+      engineCodes: pendingVariant.engineCodes ?? [],
       powerKw: pendingVariant.powerKw,
       powerHp: pendingVariant.powerHp,
       yearFrom: pendingVariant.yearFrom,

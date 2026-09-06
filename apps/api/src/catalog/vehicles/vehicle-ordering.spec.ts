@@ -14,7 +14,7 @@ function variant(
     vehicleId,
     seriesId: '11851',
     name,
-    engine: 'OM651',
+    engineCodes: ['OM651'],
     powerKw: 100,
     powerHp: 136,
     displacementLiters: 2,
