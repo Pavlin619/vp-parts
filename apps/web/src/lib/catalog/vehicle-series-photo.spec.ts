@@ -9,7 +9,7 @@ function variant(
     vehicleId,
     seriesId: 's3',
     name: '320 d',
-    engine: 'N47D20C',
+    engineCodes: ['N47D20C'],
     powerKw: 135,
     powerHp: 184,
     displacementLiters: 2,

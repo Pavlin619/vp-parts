@@ -59,7 +59,7 @@ const AUDI: SelectedVehicle = {
   manufacturerName: 'AUDI',
   seriesName: 'A3',
   variantName: 'A3 1.6 TDI',
-  engine: '1.6 TDI',
+  engineCodes: ['1.6 TDI'],
   powerKw: 77,
   powerHp: 105,
   yearFrom: 2012,
@@ -73,7 +73,7 @@ function variant(imageUrl: string | null): VehicleVariantDto {
     vehicleId: '10042',
     seriesId: '110',
     name: 'A3 1.6 TDI',
-    engine: '1.6 TDI',
+    engineCodes: ['1.6 TDI'],
     powerKw: 77,
     powerHp: 105,
     displacementLiters: 1.6,
@@ -219,7 +219,7 @@ describe('SearchVehicleFilter — a vehicle saved but not applied', () => {
   // TecDoc files an engine *code* here — `AGR`, `OM 699.302` — which identifies
   // nothing to a visitor reading the card.
   it('leaves the engine code out', () => {
-    storedVehicle = { ...AUDI, engine: 'OM 699.302' }
+    storedVehicle = { ...AUDI, engineCodes: ['OM 699.302'] }
     renderCard()
 
     expect(screen.queryByText(/OM 699.302/)).not.toBeInTheDocument()

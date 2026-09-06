@@ -10,7 +10,7 @@ const VEHICLE: SelectedVehicle = {
   manufacturerName: 'AUDI',
   seriesName: '80 B4 Avant (8C5)',
   variantName: '2.0 E',
-  engine: 'ABT',
+  engineCodes: ['ABT'],
   powerKw: 66,
   powerHp: 90,
   yearFrom: 1992,

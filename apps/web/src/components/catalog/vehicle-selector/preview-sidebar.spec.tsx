@@ -10,7 +10,7 @@ const VARIANT_320D: VehicleVariantDto = {
   vehicleId: 'v-320d',
   seriesId: 's3',
   name: '320 d',
-  engine: 'N47D20C',
+  engineCodes: ['N47D20C'],
   powerKw: 135,
   powerHp: 184,
   displacementLiters: 2,
@@ -115,6 +115,29 @@ describe('VehiclePreviewSidebar — the specification sheet', () => {
     renderWith(null, null, BMW, null)
 
     expect(screen.getByText('BMW').nextElementSibling).toHaveTextContent('—')
+  })
+
+  // A third of variants are built with more than one engine — a Mercedes
+  // E 300 CDI files OM 642.852 and OM 642.850 — and the visitor is matching
+  // this against the code stamped on the block in front of them.
+  it('prints every engine code filed for the variant', () => {
+    renderWith({ ...VARIANT_320D, engineCodes: ['OM 642.852', 'OM 642.850'] })
+
+    expect(valueOf('Двигател')).toHaveTextContent('OM 642.852, OM 642.850')
+  })
+
+  it('dashes the engine row for a variant with no code filed', () => {
+    renderWith({ ...VARIANT_320D, engineCodes: [] })
+
+    expect(valueOf('Двигател')).toHaveTextContent('—')
+  })
+
+  it('dashes the engine row for a variant cached without the field', () => {
+    const cachedBeforeTheField = { ...VARIANT_320D, engineCodes: undefined }
+
+    renderWith(cachedBeforeTheField as unknown as VehicleVariantDto)
+
+    expect(valueOf('Двигател')).toHaveTextContent('—')
   })
 
   // A variant sold under two type approvals carries both, and the visitor is

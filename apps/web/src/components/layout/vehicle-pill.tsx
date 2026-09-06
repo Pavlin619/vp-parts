@@ -2,11 +2,33 @@
 
 import { X, Car } from "lucide-react";
 import { VehicleMakeBadge } from "@/components/catalog/vehicle-make-badge";
-import { useVehicleContext, useHydration } from "@/hooks/use-vehicle-context";
-import { formatPower, formatYearRange } from "@/lib/catalog/vehicle-specs";
+import {
+  useVehicleContext,
+  useHydration,
+  type SelectedVehicle,
+} from "@/hooks/use-vehicle-context";
+import {
+  formatEngineCodes,
+  formatPower,
+  formatYearRange,
+} from "@/lib/catalog/vehicle-specs";
 
 interface VehiclePillProps {
   onOpenSelector: () => void;
+}
+
+/**
+ * Assembled from the parts that have an answer rather than interpolated, so a
+ * car TecDoc files no engine code for does not lead with a bare separator.
+ */
+function vehicleSummaryOf(vehicle: SelectedVehicle): string {
+  return [
+    formatEngineCodes(vehicle.engineCodes),
+    formatPower(vehicle.powerKw, vehicle.powerHp),
+    formatYearRange(vehicle.yearFrom, vehicle.yearTo),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function VehiclePill({ onOpenSelector }: VehiclePillProps) {
@@ -51,10 +73,10 @@ export function VehiclePill({ onOpenSelector }: VehiclePillProps) {
           <span className="text-xs font-bold text-white uppercase tracking-wide">
             {selectedVehicle.manufacturerName} · {selectedVehicle.seriesName}
           </span>
-          <span className="text-[11px] text-white/60 mt-0.5">
-            {selectedVehicle.engine} ·{" "}
-            {formatPower(selectedVehicle.powerKw, selectedVehicle.powerHp)} ·{" "}
-            {formatYearRange(selectedVehicle.yearFrom, selectedVehicle.yearTo)}
+          {/* Capped and truncated because the engine codes are a list: a car
+              built with seven of them would otherwise widen the header. */}
+          <span className="text-[11px] text-white/60 mt-0.5 max-w-64 truncate">
+            {vehicleSummaryOf(selectedVehicle)}
           </span>
         </span>
       </button>

@@ -38,3 +38,23 @@ export function formatYearRange(yearFrom: number, yearTo: number | null): string
 
   return `${yearFrom}–${yearTo}`;
 }
+
+/**
+ * Every engine code a vehicle was built with, or null where it has none.
+ *
+ * Joined rather than truncated to the first, because a third of vehicles carry
+ * several and the visitor is matching this against the one code they can read
+ * off their own car — showing a sibling's instead is a car they conclude is not
+ * theirs.
+ *
+ * Optional-chained on the way in: variants are cached for a day and the two
+ * apps deploy separately, so a browser can be newer than the entry answering
+ * it, and unknown has to read as unknown.
+ */
+export function formatEngineCodes(engineCodes: string[] | undefined): string | null {
+  if (!engineCodes?.length) {
+    return null;
+  }
+
+  return engineCodes.join(", ");
+}

@@ -159,7 +159,7 @@ describe('mapVehicleVariants', () => {
         name: 'Golf VII 2.0 TDI',
         yearFrom: 2012,
         yearTo: 2020,
-        engine: 'CRBC',
+        engineCodes: ['CRBC'],
         powerKw: 110,
         powerHp: 150,
         displacementLiters: 2,
@@ -201,7 +201,30 @@ describe('mapVehicleVariants', () => {
     });
 
     expect(row.displacementLiters).toBeNull();
-    expect(row.engine).toBe('');
+    expect(row.engineCodes).toEqual([]);
+  });
+
+  // A third of variants are built with more than one engine, and the visitor is
+  // matching this against a code stamped on their own block — so the whole list
+  // is kept, exactly as the type-approval numbers below are.
+  it('keeps every engine code filed for a variant', () => {
+    const [row] = mapVehicleVariants({
+      linkageTargets: [
+        variant({ engines: [{ code: 'OM 642.852' }, { code: 'OM 642.850' }] }),
+      ],
+    });
+
+    expect(row.engineCodes).toEqual(['OM 642.852', 'OM 642.850']);
+  });
+
+  // Present on every variant measured, but optional in the XSD — and TecDoc
+  // omits a collection rather than sending it empty.
+  it('reads an omitted engine collection as no codes filed', () => {
+    const [row] = mapVehicleVariants({
+      linkageTargets: [variant({ engines: undefined })],
+    });
+
+    expect(row.engineCodes).toEqual([]);
   });
 
   it('maps the vehicle photo from the 800px asset', () => {

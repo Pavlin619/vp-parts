@@ -22,9 +22,10 @@ const VEHICLE_VARIANT_TTL = 24 * 60 * 60;
  * Bumped whenever {@link VehicleVariantDto} gains a field, for the same reason
  * the enumerated keys name their scope: an entry written by the previous release
  * holds the previous shape, and serving it means the field the API now promises
- * is missing for a day. It was added with `kbaNumbers`.
+ * is missing for a day. It was added with `kbaNumbers`, and bumped again when
+ * `engine` became `engineCodes`.
  */
-const VEHICLE_VARIANT_SHAPE = 2;
+const VEHICLE_VARIANT_SHAPE = 3;
 
 /**
  * The same rule as {@link VEHICLE_VARIANT_SHAPE}, and a week rather than a day

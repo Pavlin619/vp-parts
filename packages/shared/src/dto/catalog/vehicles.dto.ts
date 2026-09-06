@@ -39,7 +39,21 @@ export interface VehicleVariantDto {
   name: string;
   yearFrom: number;
   yearTo: number | null;
-  engine: string;
+  /**
+   * Every engine code the vehicle was built with, empty where TecDoc files
+   * none. It is stamped on the block and printed on a registration document,
+   * so it is what a visitor identifies their own car by.
+   *
+   * A list rather than a code, because a third of vehicles are built with more
+   * than one engine: measured over 1,298 variants across the six largest makes,
+   * 447 carry several and one carries seven — a Mercedes E 300 CDI files
+   * `OM 642.852` and `OM 642.850`. Serving the first alone hid the other from
+   * the sheet and from the search over it.
+   *
+   * Free on the read that lists variants, exactly as `kbaNumbers` is:
+   * `getLinkageTargets` sends `engines[]` with every vehicle target.
+   */
+  engineCodes: string[];
   powerKw: number;
   powerHp: number | null;
   displacementLiters: number | null;

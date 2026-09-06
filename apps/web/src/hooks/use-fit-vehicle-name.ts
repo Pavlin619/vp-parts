@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEngineCodes } from "@/lib/catalog/vehicle-specs";
 import { useHydration, useVehicleContext } from "./use-vehicle-context";
 
 /**
@@ -18,7 +19,10 @@ export function useFitVehicleName(vehicleName?: string): string | undefined {
   }
 
   if (isHydrated && selectedVehicle) {
-    return `${selectedVehicle.manufacturerName} ${selectedVehicle.seriesName} · ${selectedVehicle.engine}`;
+    const model = `${selectedVehicle.manufacturerName} ${selectedVehicle.seriesName}`;
+    const engineCodes = formatEngineCodes(selectedVehicle.engineCodes);
+
+    return engineCodes ? `${model} · ${engineCodes}` : model;
   }
 
   return undefined;

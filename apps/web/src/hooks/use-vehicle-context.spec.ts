@@ -8,7 +8,7 @@ const mockVehicle: SelectedVehicle = {
   manufacturerName: 'BMW',
   seriesName: '3 Series',
   variantName: 'BMW 320d (F30)',
-  engine: 'N47D20C',
+  engineCodes: ['N47D20C'],
   powerKw: 135,
   powerHp: 184,
   yearFrom: 2018,
@@ -91,7 +91,7 @@ describe('useVehicleContext', () => {
     expect(useVehicleContext.getState().selectedVehicle).toMatchObject({
       yearFrom: 2018,
       yearTo: 2022,
-      engine: 'N47D20C',
+      engineCodes: ['N47D20C'],
       powerKw: 135,
       manufacturerId: 'mfr-5',
       seriesId: 'ser-10',
@@ -141,6 +141,44 @@ describe('migrating a stored vehicle', () => {
     const state = migrateStored({ selectedVehicle: mockVehicle, recentVehicles: [] })
 
     expect(state.selectedVehicle?.powerHp).toBe(184)
+  })
+
+  // A car saved before a variant was known to have several engines holds the
+  // first code as a bare string. It is still a true code, so it is promoted
+  // rather than thrown away — the next pass through the selector fills in the
+  // rest.
+  it('promotes a single stored engine code to the list', () => {
+    const savedWithOneCode = { ...mockVehicle, engine: 'N47D20C' }
+    delete (savedWithOneCode as Partial<SelectedVehicle>).engineCodes
+
+    const state = migrateStored({
+      selectedVehicle: savedWithOneCode,
+      recentVehicles: [savedWithOneCode],
+    })
+
+    expect(state.selectedVehicle?.engineCodes).toEqual(['N47D20C'])
+    expect(state.recentVehicles[0].engineCodes).toEqual(['N47D20C'])
+  })
+
+  it('keeps a car saved with no engine code at all', () => {
+    const savedWithoutCode: Partial<SelectedVehicle> = { ...mockVehicle }
+    delete savedWithoutCode.engineCodes
+
+    const state = migrateStored({
+      selectedVehicle: savedWithoutCode,
+      recentVehicles: [],
+    })
+
+    expect(state.selectedVehicle?.engineCodes).toEqual([])
+  })
+
+  it('leaves a list of codes that was already stored', () => {
+    const state = migrateStored({
+      selectedVehicle: { ...mockVehicle, engineCodes: ['OM 642.852', 'OM 642.850'] },
+      recentVehicles: [],
+    })
+
+    expect(state.selectedVehicle?.engineCodes).toEqual(['OM 642.852', 'OM 642.850'])
   })
 
   // The ids are what reopen the selector on the saved car; without them there is

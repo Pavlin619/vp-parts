@@ -110,7 +110,7 @@ export interface TecDocVehicleVariantRecord {
   description: string;
   beginYearMonth: string;
   endYearMonth: string | null;
-  engines: Array<{ code: string }>;
+  engines?: Array<{ code: string }>;
   kiloWattsFrom: number;
   horsePowerFrom?: number;
   capacityLiters?: number;
@@ -139,7 +139,10 @@ function mapVehicleVariant(
     name: record.description,
     yearFrom: yearOf(record.beginYearMonth),
     yearTo: record.endYearMonth ? yearOf(record.endYearMonth) : null,
-    engine: record.engines[0]?.code ?? '',
+    // Several are normal, not a data fault: 34% of measured variants are built
+    // with more than one engine and one carries seven, so the whole list is
+    // kept for the same reason `kbaNumbers` below is.
+    engineCodes: (record.engines ?? []).map((engine) => engine.code),
     powerKw: record.kiloWattsFrom,
     // Optional in the XSD, though present on all 1,268 variants measured —
     // absence is the schema's allowance rather than a case in the data.

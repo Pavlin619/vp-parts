@@ -61,7 +61,7 @@ const VEHICLE_VARIANTS: VehicleVariantDto[] = [
     name: 'Golf VII 2.0 TDI',
     yearFrom: 2012,
     yearTo: 2020,
-    engine: 'CRBC',
+    engineCodes: ['CRBC', 'CRLB'],
     powerKw: 110,
     powerHp: 150,
     displacementLiters: 2,
