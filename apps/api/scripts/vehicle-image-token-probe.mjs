@@ -1,10 +1,16 @@
 /**
  * Measures how long a TecDoc vehicle-image URL stays valid.
  *
- * [VERIFY-TC] Whether a vehicle-image token expires, and after how long, is
- * unverified — it is in neither the XSD nor the onboarding guide, and the only
- * way to find out is to hold one and watch it. This script is that measurement;
- * run it daily and read the ladder with `--report`.
+ * [VERIFY-TC] How long a vehicle-image token stays valid is still open at the
+ * top end — it is in neither the XSD nor the onboarding guide, the token itself
+ * is 146 opaque bytes with no readable expiry, and the only way to find out is
+ * to hold one and watch it. Measured so far: byte-identical responses at 6.9 h,
+ * 20.1 h and 27.1 h, none yet seen to die. Run daily, read with `--report`.
+ *
+ * The ladder has one weakness worth knowing before trusting it: every run
+ * re-checks every token, so a proxy that slid a token's window on access would
+ * make these ages flattering. The cache mints a token and leaves it unread for
+ * up to a day before one browser fetches it, which no entry here reproduces.
  *
  * `getLinkageTargets` returns `vehicleImages` as an opaque ~195-char token on
  * webservice.tecalliance.services/digital-assets-proxy/tecdoc/<token>, and the
@@ -14,10 +20,11 @@
  * cached for a week. Nothing in the XSD or the onboarding guide says whether a
  * token expires.
  *
- * That answer decides the cache design. `tecdoc:vehicle-types:<seriesId>` holds
- * variants for 7 days, so if tokens die sooner than that, storing the URL in the
- * cached DTO serves broken images for the remainder of every entry's life, and
- * the image URL has to be resolved fresh instead.
+ * That answer sets the cache TTL. `tecdoc:vehicle-types:<scope>:<seriesId>` holds
+ * variants for 24 h, which is an upper bound on the token age handed to a
+ * browser, so a token dying sooner serves dead URLs for the rest of an entry's
+ * life — survivable, because the preview sidebar falls back to a placeholder,
+ * but this is the number to move if the ladder ever shows a death.
  *
  * Each run re-checks every token minted by earlier runs and then mints one more,
  * so running it daily builds a ladder of ages from one probe. Read it with

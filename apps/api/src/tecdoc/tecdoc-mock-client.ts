@@ -228,16 +228,62 @@ const POPULAR_MANUFACTURER_IDS = new Set([5, 16, 35]);
 
 const MODEL_SERIES: Record<string, ModelSeriesDto[]> = {
   '16': [
-    { id: '2', manufacturerId: '16', name: 'Golf' },
-    { id: '3', manufacturerId: '16', name: 'Passat' },
-    { id: '4', manufacturerId: '16', name: 'Polo' },
+    {
+      id: '2',
+      manufacturerId: '16',
+      name: 'Golf',
+      yearFrom: 2012,
+      yearTo: null,
+    },
+    {
+      id: '3',
+      manufacturerId: '16',
+      name: 'Passat',
+      yearFrom: 2014,
+      yearTo: 2023,
+    },
+    {
+      id: '4',
+      manufacturerId: '16',
+      name: 'Polo',
+      yearFrom: 2017,
+      yearTo: null,
+    },
   ],
   '5': [
-    { id: '10', manufacturerId: '5', name: '3 Series' },
-    { id: '11', manufacturerId: '5', name: '5 Series' },
+    {
+      id: '10',
+      manufacturerId: '5',
+      name: '3 Series',
+      yearFrom: 2011,
+      yearTo: 2019,
+    },
+    {
+      id: '11',
+      manufacturerId: '5',
+      name: '5 Series',
+      yearFrom: 2016,
+      yearTo: null,
+    },
   ],
-  '165': [{ id: '20', manufacturerId: '165', name: 'Corolla' }],
-  '35': [{ id: '30', manufacturerId: '35', name: 'Focus' }],
+  '165': [
+    {
+      id: '20',
+      manufacturerId: '165',
+      name: 'Corolla',
+      yearFrom: 2018,
+      yearTo: null,
+    },
+  ],
+  '35': [
+    {
+      id: '30',
+      manufacturerId: '35',
+      name: 'Focus',
+      yearFrom: 2018,
+      yearTo: null,
+    },
+  ],
 };
 
 const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {

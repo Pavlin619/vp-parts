@@ -73,17 +73,71 @@ describe('mapModelSeries', () => {
         {
           vehicleModelSeriesFacets: {
             counts: [
-              { id: 2, name: 'Golf' },
-              { id: 3, name: 'Passat' },
+              {
+                id: 2,
+                name: 'Golf',
+                beginYearMonth: 201208,
+                endYearMonth: 202007,
+              },
+              {
+                id: 3,
+                name: 'Passat',
+                beginYearMonth: 201411,
+                endYearMonth: 202305,
+              },
             ],
           },
         },
         16,
       ),
     ).toEqual([
-      { id: '2', manufacturerId: '16', name: 'Golf' },
-      { id: '3', manufacturerId: '16', name: 'Passat' },
+      {
+        id: '2',
+        manufacturerId: '16',
+        name: 'Golf',
+        yearFrom: 2012,
+        yearTo: 2020,
+      },
+      {
+        id: '3',
+        manufacturerId: '16',
+        name: 'Passat',
+        yearFrom: 2014,
+        yearTo: 2023,
+      },
     ]);
+  });
+
+  // The facet spells the year-month as a `YYYYMM` integer, while the linkage
+  // target records the same function can return use a `YYYY-MM` string.
+  it('reads the facet year-month as a packed integer', () => {
+    const [series] = mapModelSeries(
+      {
+        vehicleModelSeriesFacets: {
+          counts: [
+            { id: 1, name: '80 B4 Седан (8C2)', beginYearMonth: 199109 },
+          ],
+        },
+      },
+      5,
+    );
+
+    expect(series.yearFrom).toBe(1991);
+  });
+
+  // 27% of series are still built, and TecDoc omits the end rather than
+  // sending a sentinel.
+  it('leaves a series still in production without an end year', () => {
+    const [series] = mapModelSeries(
+      {
+        vehicleModelSeriesFacets: {
+          counts: [{ id: 4, name: 'Polo', beginYearMonth: 201706 }],
+        },
+      },
+      16,
+    );
+
+    expect(series.yearTo).toBeNull();
   });
 
   it('reads an omitted facet as no series', () => {

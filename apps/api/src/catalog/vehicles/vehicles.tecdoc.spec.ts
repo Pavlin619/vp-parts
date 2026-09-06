@@ -46,7 +46,11 @@ describe('VehiclesTecDoc', () => {
 
   it('getModelSeries passes the manufacturerId as a number and maps the facets', async () => {
     call.mockResolvedValueOnce({
-      vehicleModelSeriesFacets: { counts: [{ id: 2, name: 'Golf' }] },
+      vehicleModelSeriesFacets: {
+        counts: [
+          { id: 2, name: 'Golf', beginYearMonth: 201208, endYearMonth: 202007 },
+        ],
+      },
     });
 
     const result = await tecdoc.getModelSeries(16);
@@ -55,7 +59,15 @@ describe('VehiclesTecDoc', () => {
       'getLinkageTargets',
       expect.objectContaining({ mfrIds: 16 }),
     );
-    expect(result).toEqual([{ id: '2', manufacturerId: '16', name: 'Golf' }]);
+    expect(result).toEqual([
+      {
+        id: '2',
+        manufacturerId: '16',
+        name: 'Golf',
+        yearFrom: 2012,
+        yearTo: 2020,
+      },
+    ]);
   });
 
   it('getVehicleVariants reads the targets of one model series', async () => {

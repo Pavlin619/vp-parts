@@ -97,11 +97,58 @@ describe('VehiclesService', () => {
   it('caches model series per manufacturer id', async () => {
     await service.getModelSeries(16);
     expect(cachedMock).toHaveBeenCalledWith(
-      'tecdoc:model-series:VL:16',
+      'tecdoc:model-series:VL:v1:16',
       WEEK,
       expect.any(Function),
     );
     expect(tecdoc.getModelSeries).toHaveBeenCalledWith(16);
+  });
+
+  // Series are held for a week, so an entry written before they carried a
+  // production window would serve seven days of rows reading "undefined+".
+  it('names the series DTO shape in the series key', async () => {
+    await service.getModelSeries(16);
+
+    const [key] = cachedMock.mock.calls.at(-1) as [string];
+
+    expect(key).toMatch(/:v\d+:/);
+  });
+
+  // Ordered outside the cache entry, so a changed comparator takes effect on
+  // deploy rather than after the week or day the list is held for. These two
+  // guard the wiring; `vehicle-ordering.spec.ts` guards the rule itself.
+  it('orders the series it serves, whatever order TecDoc sent', async () => {
+    tecdoc.getModelSeries.mockResolvedValue([
+      {
+        id: '1',
+        manufacturerId: '5',
+        name: '100 C2',
+        yearFrom: 1976,
+        yearTo: 1982,
+      },
+      {
+        id: '2',
+        manufacturerId: '5',
+        name: '80 B1',
+        yearFrom: 1972,
+        yearTo: 1978,
+      },
+    ]);
+
+    const result = await service.getModelSeries(5);
+
+    expect(result.map((entry) => entry.name)).toEqual(['80 B1', '100 C2']);
+  });
+
+  it('orders the variants it serves, whatever order TecDoc sent', async () => {
+    tecdoc.getVehicleVariants.mockResolvedValue([
+      { vehicleId: '2', name: 'C 250', yearFrom: 2014 },
+      { vehicleId: '1', name: 'C 180', yearFrom: 2014 },
+    ]);
+
+    const result = await service.getVehicleVariants(11851);
+
+    expect(result.map((entry) => entry.name)).toEqual(['C 180', 'C 250']);
   });
 
   // The tree is held for a week, so a key blind to the scope would go on
