@@ -126,12 +126,23 @@ describe('VehiclesService', () => {
     const result = await service.getVehicleVariants(2);
 
     expect(cachedMock).toHaveBeenCalledWith(
-      'tecdoc:vehicle-types:VL:2',
+      'tecdoc:vehicle-types:VL:v2:2',
       DAY,
       expect.any(Function),
     );
     expect(tecdoc.getVehicleVariants).toHaveBeenCalledWith(2);
     expect(result).toEqual(['v']);
+  });
+
+  // An entry written before a field was added holds the shape from before it,
+  // so a key blind to the shape promises `kbaNumbers` and serves a day of
+  // variants without it.
+  it('names the variant DTO shape in the variant key', async () => {
+    await service.getVehicleVariants(2);
+
+    const [key] = cachedMock.mock.calls.at(-1) as [string];
+
+    expect(key).toMatch(/:v\d+:/);
   });
 
   it('caches the category tree per vehicle id', async () => {

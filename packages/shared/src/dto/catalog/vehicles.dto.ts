@@ -33,6 +33,18 @@ export interface VehicleVariantDto {
   fuelType: string;
   bodyType: string;
   /**
+   * The German type-approval numbers filed for this vehicle, empty where TecDoc
+   * files none. It is what a car imported from Germany carries on its
+   * registration document, so it is the one field on this DTO a visitor can
+   * check their own paperwork against.
+   *
+   * Free on the read that lists variants: `getLinkageTargets` sends
+   * `kbaNumbers` with every vehicle target, exactly as it does `vehicleImages`,
+   * so this costs no flag and no second call. Measured over 227 variants across
+   * nine series: 218 carry at least one, 59 carry two and 10 carry three.
+   */
+  kbaNumbers: string[];
+  /**
    * Studio side-profile render of the car, or null where TecDoc files none.
    * It is a property of the model series rather than of this variant — every
    * variant of a series carries the identical image — so any variant's URL is

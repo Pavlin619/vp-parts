@@ -622,7 +622,7 @@ both.
 `SEARCH_SORTABLE_LIMIT` is now enumerated whole and ranked by what we can ship
 (`orderArticles`), with the ranking pinned for five minutes; only a set too wide
 to enumerate is served in TecDoc's own order, and the response says which it was
-via `ordering` and `isRankable`. See the search section of `CLAUDE.md`.
+via `ordering` and `isRankable`. See the search section of `docs/TECDOC.md`.
 
 **No redirects:** the search endpoint always returns a result list — even for a
 single hit — so the user stays on the search screen. (A single part number

@@ -47,6 +47,7 @@ const VARIANT_320D: VehicleVariantDto = {
   fuelType: 'Diesel',
   bodyType: 'Saloon',
   imageUrl: null,
+  kbaNumbers: ['0005BGJ'],
 }
 
 const STORED_VEHICLE = {

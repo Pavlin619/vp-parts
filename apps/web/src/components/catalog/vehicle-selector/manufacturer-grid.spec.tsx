@@ -40,7 +40,7 @@ describe('ManufacturerGrid', () => {
     const all = screen.getByRole('list', { name: 'A–Z' })
 
     // Asserted on the accessible name rather than the text, which also pins the
-    // decorative monogram out of it.
+    // decorative mark out of it.
     expectCardNames(popular, ['MERCEDES-BENZ', 'BMW'])
     expectCardNames(all, ['AUTO UNION', 'REZON'])
   })
@@ -54,6 +54,17 @@ describe('ManufacturerGrid', () => {
 
     expect(markers.map((marker) => marker.textContent)).toEqual(['Популярни', 'A–Z'])
     markers.forEach((marker) => expect(marker).toHaveClass('sticky', 'top-0'))
+  })
+
+  // A band across the panel rather than a line of text over the cards: the
+  // negative margin cancels the scrolling panel's padding, and the fill has to
+  // be opaque because the cards pass behind it.
+  it('draws each marker as a band across the whole panel', () => {
+    render(<ManufacturerGrid manufacturers={MAKES} isFiltered={false} onSelect={jest.fn()} />)
+
+    screen
+      .getAllByRole('heading', { level: 3 })
+      .forEach((marker) => expect(marker).toHaveClass('-mx-5', 'px-5', 'bg-canvas', 'border-t'))
   })
 
   // A query matching one popular make would otherwise render a "Популярни"
@@ -93,31 +104,28 @@ describe('ManufacturerGrid', () => {
     expect(onSelect).toHaveBeenCalledWith(MAKES[1])
   })
 
-  // Glas is the largest make no badge source resolves safely, at 27 vehicles,
-  // so the fallback is a live state in the A–Z run rather than an edge case.
-  // 57 of the 286 selectable makes render this way.
-  it('falls back to a wordmark without a bundled logo, keeping the card named', () => {
-    expect(VEHICLE_MAKE_LOGO_FILES['812']).toBeUndefined()
-
+  it('renders the bundled badge on a card, without repeating the name', () => {
     render(
       <ManufacturerGrid
-        manufacturers={[make('812', 'GLAS', false)]}
+        manufacturers={[MAKES[1]]}
         isFiltered={false}
         onSelect={jest.fn()}
       />,
     )
 
-    expect(screen.queryByTestId('make-logo')).not.toBeInTheDocument()
-    // The wordmark repeats the label, so it must stay out of the accessible
-    // name — otherwise every fallback card reads "GLAS GLAS".
-    expect(screen.getByRole('button', { name: 'GLAS' })).toBeInTheDocument()
+    expect(screen.getByTestId('make-logo')).toHaveAttribute('src', '/vehicle-makes/bmw.webp')
+    expect(screen.getByRole('button', { name: 'BMW' })).toBeInTheDocument()
   })
 
   // Two initials put FEIDI, FENGON and FEST on three identical "FE" tiles, and
-  // all three still fall back. The whole point of the wordmark is that
-  // neighbours differ.
+  // all three still fall back to a wordmark. The whole point of the wordmark is
+  // that neighbours differ; `make-mark.spec.tsx` covers how it is set.
   it('distinguishes alphabetical neighbours that share an initial', () => {
     const neighbours = ['FEIDI', 'FENGON', 'FEST']
+
+    neighbours.forEach((_, index) =>
+      expect(VEHICLE_MAKE_LOGO_FILES[`90${index}`]).toBeUndefined(),
+    )
 
     render(
       <ManufacturerGrid
@@ -130,48 +138,5 @@ describe('ManufacturerGrid', () => {
     expect(screen.getAllByTestId('make-wordmark').map((mark) => mark.textContent)).toEqual(
       neighbours,
     )
-  })
-
-  // A multi-word name sets one word per line, and the line count feeds the
-  // size. A short name stays whole even when it has a break in it: ICH-X gains
-  // no size from splitting and would read as a stack of stubs.
-  it.each([
-    ['GLAS', ['GLAS']],
-    ['KG MOBILITY', ['KG', 'MOBILITY']],
-    ['STANDARD AUTOMOBILE', ['STANDARD', 'AUTOMOBILE']],
-    ['AUSTIN-HEALEY', ['AUSTIN', 'HEALEY']],
-    ['ICH-X', ['ICH-X']],
-    ['B-ON', ['B-ON']],
-  ])('sets %s one word per line', (name, lines) => {
-    expect(VEHICLE_MAKE_LOGO_FILES['999000']).toBeUndefined()
-
-    render(
-      <ManufacturerGrid
-        manufacturers={[make('999000', name, false)]}
-        isFiltered={false}
-        onSelect={jest.fn()}
-      />,
-    )
-
-    const wordmark = screen.getByTestId('make-wordmark')
-
-    expect([...wordmark.querySelectorAll('span')].map((line) => line.textContent)).toEqual(lines)
-  })
-
-  it.each([
-    ['74', 'MERCEDES-BENZ', '/vehicle-makes/mercedes-benz.webp'],
-    ['16', 'BMW', '/vehicle-makes/bmw.webp'],
-  ])('renders the bundled mark for %s', (id, name, src) => {
-    render(
-      <ManufacturerGrid
-        manufacturers={[make(id, name, true)]}
-        isFiltered={false}
-        onSelect={jest.fn()}
-      />,
-    )
-
-    expect(screen.getByTestId('make-logo')).toHaveAttribute('src', src)
-    // The name is printed below the mark, so the image must not repeat it.
-    expect(screen.getByRole('button', { name })).toBeInTheDocument()
   })
 })

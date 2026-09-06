@@ -25,3 +25,16 @@ export function formatDisplacement(displacementLiters: number | null): string | 
   // TecDoc sends a 2.0-litre engine as the number 2, which reads as "2 л".
   return `${displacementLiters.toFixed(1)} л`;
 }
+
+/**
+ * A variant still in production has no end year, which is a real state rather
+ * than missing data — so it reads "2015+" rather than trailing off after the
+ * dash.
+ */
+export function formatYearRange(yearFrom: number, yearTo: number | null): string {
+  if (yearTo == null) {
+    return `${yearFrom}+`;
+  }
+
+  return `${yearFrom}–${yearTo}`;
+}

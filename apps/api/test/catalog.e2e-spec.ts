@@ -62,6 +62,7 @@ const VEHICLE_VARIANTS: VehicleVariantDto[] = [
     fuelType: 'Diesel',
     bodyType: 'Hatchback',
     imageUrl: 'https://example.test/golf-vii.jpg',
+    kbaNumbers: ['0603BLP'],
   },
 ];
 

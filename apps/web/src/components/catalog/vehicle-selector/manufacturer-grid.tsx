@@ -1,7 +1,5 @@
-import { useState } from "react";
-import Image from "next/image";
 import type { ManufacturerDto } from "@vp-parts-shop/shared";
-import { vehicleMakeLogoSrc } from "@/lib/catalog/vehicle-make-mark";
+import { MakeMark } from "./make-mark";
 
 interface ManufacturerGridProps {
   manufacturers: ManufacturerDto[];
@@ -57,16 +55,17 @@ function ManufacturerCards({
     <section className="flex flex-col pb-5 last:pb-0">
       {/*
         Pinned because the A–Z run is 251 makes deep: without it a visitor who
-        has scrolled has nothing on screen saying which half they are in. The
-        panel's own background is what the cards pass behind; the negative
-        margin widens it past the cards' focus ring, which is drawn 3px outside
-        the border and would otherwise clip through.
+        has scrolled has nothing on screen saying which half they are in. Drawn
+        as a band across the whole panel rather than a line of text over the
+        cards — the negative margin cancels the scrolling panel's padding, which
+        the inner padding then puts back so the label still starts where the
+        cards do. The fill has to be opaque: the cards pass behind it.
       */}
-      <h3 className="sticky top-0 z-10 -mx-1 bg-bg-card px-1 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+      <h3 className="sticky top-0 z-10 -mx-5 border-t border-line bg-canvas px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted">
         {label}
       </h3>
       <ul
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-2 pt-3 sm:grid-cols-3 lg:grid-cols-4"
         aria-label={label}
       >
         {makes.map((make) => (
@@ -94,97 +93,14 @@ function ManufacturerCard({
       onClick={() => onSelect(make)}
       className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-bg-card p-2.5 transition-[border-color,box-shadow] hover:border-ink-2 hover:shadow-[0_2px_10px_rgba(11,18,32,0.08)] focus:outline-none focus-visible:border-ink focus-visible:shadow-[0_0_0_3px_rgba(11,18,32,0.06)]"
     >
-      <MakeMark make={make} />
+      {/* The box is reserved here so a make with a wide mark and one with a tall
+          mark leave their cards the same height. */}
+      <span className="flex aspect-[4/3] w-full">
+        <MakeMark make={make} sizes="160px" />
+      </span>
       <span className="w-full truncate text-center text-[13px] font-semibold text-ink">
         {make.name}
       </span>
     </button>
-  );
-}
-
-/**
- * The logo where one is bundled, otherwise the make's name set as a wordmark.
- * The name is rendered directly below either way, so the mark is decorative and
- * stays out of the accessibility tree.
- */
-function MakeMark({ make }: { make: ManufacturerDto }) {
-  const logoSrc = vehicleMakeLogoSrc(make.id);
-  const [hasFailed, setHasFailed] = useState(false);
-
-  if (logoSrc && !hasFailed) {
-    return (
-      // No background of its own: a badge is drawn for white, and the card
-      // already is white. The box is still reserved so a make with a wide mark
-      // and one with a tall mark leave their cards the same height.
-      <span className="relative flex aspect-[4/3] w-full items-center justify-center">
-        <Image
-          src={logoSrc}
-          alt=""
-          fill
-          className="object-contain p-2"
-          sizes="160px"
-          // The fetch script already writes these as WebP at the size this tile
-          // renders, so a transform would bill a request per make to hand back
-          // what it was given.
-          unoptimized
-          onError={() => setHasFailed(true)}
-        />
-      </span>
-    );
-  }
-
-  return <MakeWordmark name={make.name} />;
-}
-
-/**
- * One line per word, so a two-word make reads as a stacked mark rather than as
- * a shrunk-to-fit string. A short name is left whole: splitting it buys no size
- * — it already fits on one line — and costs legibility, since B-ON and ICH-X
- * break into a stack of stubs.
- */
-function wordmarkLines(name: string): string[] {
-  if (name.length <= 8) return [name];
-
-  return name.split(/[\s-]+/).filter(Boolean);
-}
-
-/**
- * A make with no bundled badge, set as its own name.
- *
- * This replaced two initials on a striped grey tile, which collided for
- * alphabetical neighbours — CALLAWAY, CARBODIES, CASALINI and CAVAN were four
- * identical "CA" tiles in a row — and read as a failed image next to the real
- * badges. A wordmark is not a stand-in for a logo here: 64 of the bundled
- * badges *are* the make's name set as type (BEDFORD, TOFAŞ, IRMSCHER, BAW), so
- * this renders as one more of those rather than as a gap in the grid.
- */
-function MakeWordmark({ name }: { name: string }) {
-  const words = wordmarkLines(name);
-  const longestWord = Math.max(...words.map((word) => word.length));
-
-  // Sized against the tile rather than the viewport, because the grid is 2, 3
-  // or 4 columns across the breakpoints and a fixed size fits none of them:
-  // width caps it so a long name cannot overflow, line count so a multi-word
-  // one cannot overrun the tile, and the constant so AC and DR stay a mark
-  // rather than filling the card.
-  const fontSize = Math.min(24, 130 / longestWord, 60 / words.length);
-
-  return (
-    <span
-      aria-hidden="true"
-      className="flex aspect-[4/3] w-full items-center justify-center [container-type:inline-size]"
-    >
-      <span
-        data-testid="make-wordmark"
-        // Weight 600 rather than bold: the display face is loaded at 400/500/600,
-        // so `font-bold` would leave the browser to synthesise 700.
-        className="flex flex-col items-center font-display font-semibold leading-[1.1] tracking-tight text-ink-2"
-        style={{ fontSize: `${fontSize}cqw` }}
-      >
-        {words.map((word, index) => (
-          <span key={`${word}-${index}`}>{word}</span>
-        ))}
-      </span>
-    </span>
   );
 }

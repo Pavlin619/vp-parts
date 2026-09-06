@@ -246,6 +246,17 @@
   scrollbar-color: var(--line-2) transparent;
 }
 
+/* The fill for an image slot holding nothing yet. Hatched rather than flat so
+   an empty frame reads as space reserved for a picture, which a plain panel of
+   the sunken surface does not — that one reads as an image that failed. */
+@utility hatched {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 9px,
+    var(--line) 9px 10px
+  );
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
