@@ -18,6 +18,18 @@ export type Step = 0 | 1 | 2;
  */
 export type SelectedMake = Pick<ManufacturerDto, "id" | "name">;
 
+/**
+ * Narrowed for the same reason {@link SelectedMake} is, and one field more so:
+ * a series restored from storage has no production window to restore, because
+ * what was saved is the *variant's* years and those are narrower than the
+ * series'. Nothing reads them off the selection anyway — the model list is
+ * where a series is described, and it holds the whole DTO.
+ */
+export type SelectedSeries = Pick<
+  ModelSeriesDto,
+  "id" | "manufacturerId" | "name"
+>;
+
 export const STEP_LABELS = ["Марка", "Модел", "Двигател"] as const;
 
 export const STEP_PLACEHOLDERS: Record<Step, string> = {
@@ -31,7 +43,7 @@ export interface VehicleSelectorState {
   search: string;
   setSearch: (s: string) => void;
   selectedMake: SelectedMake | null;
-  selectedSeries: ModelSeriesDto | null;
+  selectedSeries: SelectedSeries | null;
   pendingVariant: VehicleVariantDto | null;
   seriesPhotoUrl: string | null;
   isCurrentStepLoading: boolean;
@@ -62,7 +74,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
       ? { id: storedVehicle.manufacturerId, name: storedVehicle.manufacturerName }
       : null,
   );
-  const [selectedSeries, setSelectedSeries] = useState<ModelSeriesDto | null>(() =>
+  const [selectedSeries, setSelectedSeries] = useState<SelectedSeries | null>(() =>
     storedVehicle?.seriesId
       ? {
           id: storedVehicle.seriesId,

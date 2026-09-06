@@ -18,6 +18,19 @@ export interface ModelSeriesDto {
   id: string;
   manufacturerId: string;
   name: string;
+  /**
+   * The production window of the whole series, which is wider than any one
+   * variant's: a C-CLASS (W205) runs 2013–2023 while its C 200 runs 2013–2018
+   * and its C 180 2014–2021.
+   *
+   * Free on the read that lists series — the facet carries `beginYearMonth`
+   * with every count, as a `YYYYMM` integer rather than the `YYYY-MM` string
+   * the variant records beside it use. Measured over 3,573 series across the 30
+   * largest makes: every one carries a start.
+   */
+  yearFrom: number;
+  /** Absent where the series is still built — 26% of them. */
+  yearTo: number | null;
 }
 
 export interface VehicleVariantDto {

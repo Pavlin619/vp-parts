@@ -7,6 +7,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { orderManufacturers } from './manufacturer-ordering';
+import { orderModelSeries, orderVehicleVariants } from './vehicle-ordering';
 import { SELECTABLE_VEHICLES, VehiclesTecDoc } from './vehicles.tecdoc';
 
 const VEHICLE_TREE_TTL = 7 * 24 * 60 * 60;
@@ -26,6 +27,14 @@ const VEHICLE_VARIANT_TTL = 24 * 60 * 60;
 const VEHICLE_VARIANT_SHAPE = 2;
 
 /**
+ * The same rule as {@link VEHICLE_VARIANT_SHAPE}, and a week rather than a day
+ * of exposure to it: series were cached shapeless until they gained `yearFrom`
+ * and `yearTo`, so entries written by the previous release would have served
+ * seven days of rows whose year range reads "undefined+".
+ */
+const MODEL_SERIES_SHAPE = 1;
+
+/**
  * Vehicle-selection tree reads. Manufacturers, model series and the category
  * tree are Redis-cached for 7 days (stable TecDoc data); variants get a day
  * — see {@link VehiclesService.getVehicleVariants}.
@@ -37,6 +46,12 @@ const VEHICLE_VARIANT_SHAPE = 2;
  * The three keys over enumerated data name their {@link SELECTABLE_VEHICLES}
  * scope, so changing it takes effect on deploy instead of a week later. The
  * category tree does not, because it is read per vehicle and is not scoped.
+ *
+ * Series and variants are ordered *outside* their cache entry, so a changed
+ * comparator takes effect on deploy rather than a week or a day later — the
+ * sort is a pure function of the list and needs no read of its own. Makes are
+ * the exception and are ordered inside: their order depends on a second TecDoc
+ * call, so it is part of assembling the value rather than presenting it.
  */
 @Injectable()
 export class VehiclesService {
@@ -54,11 +69,13 @@ export class VehiclesService {
   }
 
   async getModelSeries(manufacturerId: number): Promise<ModelSeriesDto[]> {
-    return this.cache.cached(
-      `tecdoc:model-series:${SELECTABLE_VEHICLES}:${manufacturerId}`,
+    const series = await this.cache.cached(
+      `tecdoc:model-series:${SELECTABLE_VEHICLES}:v${MODEL_SERIES_SHAPE}:${manufacturerId}`,
       VEHICLE_TREE_TTL,
       () => this.tecdoc.getModelSeries(manufacturerId),
     );
+
+    return orderModelSeries(series);
   }
 
   /**
@@ -82,11 +99,13 @@ export class VehiclesService {
    * unread for a day and is fetched once — this cache's exact access pattern.
    */
   async getVehicleVariants(seriesId: number): Promise<VehicleVariantDto[]> {
-    return this.cache.cached(
+    const variants = await this.cache.cached(
       `tecdoc:vehicle-types:${SELECTABLE_VEHICLES}:v${VEHICLE_VARIANT_SHAPE}:${seriesId}`,
       VEHICLE_VARIANT_TTL,
       () => this.tecdoc.getVehicleVariants(seriesId),
     );
+
+    return orderVehicleVariants(variants);
   }
 
   async getCategoryTree(vehicleId: number): Promise<AssemblyGroupDto[]> {

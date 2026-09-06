@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import Image from "next/image";
-import type { ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
+import type { VehicleVariantDto } from "@vp-parts-shop/shared";
 import {
   formatDisplacement,
   formatPower,
@@ -8,7 +8,7 @@ import {
 } from "@/lib/catalog/vehicle-specs";
 import { cn } from "@/lib/utils";
 import { MakeMark } from "./make-mark";
-import type { SelectedMake } from "./use-vehicle-selector";
+import type { SelectedMake, SelectedSeries } from "./use-vehicle-selector";
 
 // The 800px asset TecDoc serves, measured identical on every series sampled.
 const PHOTO_WIDTH = 800;
@@ -22,7 +22,7 @@ const UNKNOWN_VALUE = "—";
 
 interface VehiclePreviewSidebarProps {
   selectedMake: SelectedMake | null;
-  selectedSeries: ModelSeriesDto | null;
+  selectedSeries: SelectedSeries | null;
   pendingVariant: VehicleVariantDto | null;
   seriesPhotoUrl: string | null;
 }
@@ -156,7 +156,7 @@ function PreviewFrame({
   onPhotoError,
 }: {
   selectedMake: SelectedMake | null;
-  selectedSeries: ModelSeriesDto | null;
+  selectedSeries: SelectedSeries | null;
   photoUrl: string | null;
   onPhotoError: () => void;
 }) {

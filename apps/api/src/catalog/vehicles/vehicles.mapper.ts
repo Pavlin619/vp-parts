@@ -71,13 +71,21 @@ export function collectFavouredManufacturerIds(
 
 export interface TecDocModelSeriesFacetResponse {
   vehicleModelSeriesFacets?: {
-    counts?: Array<{ id: number; name: string }>;
+    counts?: Array<{
+      id: number;
+      name: string;
+      beginYearMonth: number;
+      endYearMonth?: number | null;
+    }>;
   };
 }
 
 /**
  * The make is carried in from the request: the facet answers a call already
  * narrowed to one manufacturer, so it does not repeat it on each row.
+ *
+ * The production window costs nothing — the facet sends it with every count,
+ * with no include flag of its own.
  */
 export function mapModelSeries(
   response: TecDocModelSeriesFacetResponse,
@@ -87,6 +95,12 @@ export function mapModelSeries(
     id: String(entry.id),
     manufacturerId: String(manufacturerId),
     name: entry.name,
+    yearFrom: yearOfCompactYearMonth(entry.beginYearMonth),
+    // Omitted where the series is still built, which is 26% of them.
+    yearTo:
+      entry.endYearMonth != null
+        ? yearOfCompactYearMonth(entry.endYearMonth)
+        : null,
   }));
 }
 
@@ -150,6 +164,15 @@ function mapVehicleVariant(
 /** These arrive as `YYYY-MM` strings, unlike the `YYYYMM` integers §8.4 sends. */
 function yearOf(yearMonth: string): number {
   return Number.parseInt(yearMonth.split('-')[0], 10);
+}
+
+/**
+ * The facet counts file the same field as a `YYYYMM` integer while the linkage
+ * targets beside them use the string above, so one call's response can carry
+ * both spellings of one date.
+ */
+function yearOfCompactYearMonth(yearMonth: number): number {
+  return Math.trunc(yearMonth / 100);
 }
 
 export interface TecDocAssemblyGroupFacetResponse {

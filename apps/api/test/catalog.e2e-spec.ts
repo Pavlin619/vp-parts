@@ -44,8 +44,14 @@ const MANUFACTURERS: ManufacturerDto[] = [
 ];
 
 const MODEL_SERIES: ModelSeriesDto[] = [
-  { id: '2', manufacturerId: '16', name: 'Golf' },
-  { id: '3', manufacturerId: '16', name: 'Passat' },
+  { id: '2', manufacturerId: '16', name: 'Golf', yearFrom: 2012, yearTo: null },
+  {
+    id: '3',
+    manufacturerId: '16',
+    name: 'Passat',
+    yearFrom: 2014,
+    yearTo: 2023,
+  },
 ];
 
 const VEHICLE_VARIANTS: VehicleVariantDto[] = [

@@ -3,6 +3,7 @@ import type { ManufacturerDto, ModelSeriesDto, VehicleVariantDto } from "@vp-par
 import { cn } from "@/lib/utils";
 import { formatPower, formatYearRange } from "@/lib/catalog/vehicle-specs";
 import { ManufacturerGrid } from "./manufacturer-grid";
+import { ModelSeriesList } from "./model-series-list";
 import { STEP_PLACEHOLDERS, type Step } from "./use-vehicle-selector";
 
 interface VehicleSelectionListProps {
@@ -83,18 +84,7 @@ export function VehicleSelectionList({
         )}
 
         {!isLoading && step === 1 && (
-          <ul className="space-y-0.5" role="list" aria-label="Модели">
-            {filteredSeries.map((series) => (
-              <li key={series.id}>
-                <button
-                  onClick={() => onSelectSeries(series)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-bg-sunken transition-colors text-left"
-                >
-                  <span className="font-medium text-sm text-ink">{series.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <ModelSeriesList series={filteredSeries} onSelect={onSelectSeries} />
         )}
 
         {!isLoading && step === 2 && (
