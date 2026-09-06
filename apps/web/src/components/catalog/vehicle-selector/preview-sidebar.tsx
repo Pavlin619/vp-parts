@@ -1,16 +1,24 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
-import { Car } from "lucide-react";
 import type { ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
-import { formatDisplacement, formatPower } from "@/lib/catalog/vehicle-specs";
+import {
+  formatDisplacement,
+  formatPower,
+  formatYearRange,
+} from "@/lib/catalog/vehicle-specs";
 import { cn } from "@/lib/utils";
+import { MakeMark } from "./make-mark";
 import type { SelectedMake } from "./use-vehicle-selector";
 
 // The 800px asset TecDoc serves, measured identical on every series sampled.
-// The frame below carries the same ratio, so the photo fills it edge to edge
-// and the placeholder reserves the exact space the photo will occupy.
 const PHOTO_WIDTH = 800;
 const PHOTO_HEIGHT = 287;
+
+/** The width the frame renders at, for the badge's source-set hint. */
+const FRAME_SIZES = "248px";
+
+/** An answer the visitor has not reached yet, rather than one we do not have. */
+const UNKNOWN_VALUE = "—";
 
 interface VehiclePreviewSidebarProps {
   selectedMake: SelectedMake | null;
@@ -31,116 +39,191 @@ export function VehiclePreviewSidebar({
   const [failedPhotoUrl, setFailedPhotoUrl] = useState<string | null>(null);
   const photoUrl = seriesPhotoUrl === failedPhotoUrl ? null : seriesPhotoUrl;
 
-  const displacement = pendingVariant
-    ? formatDisplacement(pendingVariant.displacementLiters)
-    : null;
-
-  const photoLabel = [selectedMake?.name, selectedSeries?.name].filter(Boolean).join(" ");
-
   return (
     // Dropped below `lg`, where its 288px would leave the list it previews
     // about 70px to render in. What it says is on screen anyway by then: the
     // step tabs carry the make and model, and the footer confirms the variant.
-    <div className="hidden w-72 flex-shrink-0 flex-col p-5 gap-4 overflow-y-auto lg:flex">
-      <div
-        className={cn(
-          "aspect-[800/287] rounded-xl border border-line flex items-center",
-          "justify-center flex-shrink-0 overflow-hidden",
-          // The asset's background is baked white, so the frame behind it has to
-          // be white too. `bg-bg-sunken` is the more consistent-looking choice
-          // and it drew the photo as a white box inside a beige one.
-          photoUrl ? "bg-white" : "bg-bg-sunken",
-        )}
-      >
-        {photoUrl ? (
-          <Image
-            src={photoUrl}
-            alt={photoLabel}
-            width={PHOTO_WIDTH}
-            height={PHOTO_HEIGHT}
-            // TecDoc already serves this pre-sized and compressed, so the
-            // optimizer would only re-encode it — and it could not cache the
-            // result anyway, since the URL carries a token minted per response.
-            unoptimized
-            // The URL is a signed token cached for hours, so it can be dead by
-            // the time a browser asks for it. That has to cost the placeholder
-            // rather than the browser's broken-image icon.
-            onError={() => setFailedPhotoUrl(photoUrl)}
-            className="w-full h-auto"
-          />
-        ) : selectedMake ? (
-          <div className="text-center px-4">
-            <Car className="w-8 h-8 text-muted mx-auto mb-2" aria-hidden="true" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wide">
-              {selectedMake.name}
-              {selectedSeries && ` · ${selectedSeries.name}`}
-            </span>
-          </div>
-        ) : (
-          <span className="text-[10px] font-semibold text-muted uppercase tracking-widest">
-            Марка · Модел · Снимка
-          </span>
-        )}
-      </div>
+    <div className="hidden w-72 flex-shrink-0 flex-col bg-canvas p-5 gap-4 overflow-y-auto lg:flex">
+      <PreviewFrame
+        selectedMake={selectedMake}
+        selectedSeries={selectedSeries}
+        photoUrl={photoUrl}
+        onPhotoError={() => setFailedPhotoUrl(photoUrl)}
+      />
 
-      {selectedMake ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Избран автомобил
-          </p>
-          <div>
-            <p className="font-display font-bold text-2xl text-ink leading-tight">
-              {selectedMake.name}
-            </p>
-            {selectedSeries && (
-              <p className="text-sm text-ink-2 mt-0.5">{selectedSeries.name}</p>
+      <div className="flex flex-col gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+          Избран автомобил
+        </p>
+
+        <div>
+          <p
+            className={cn(
+              "font-display font-bold text-2xl leading-tight",
+              selectedMake ? "text-ink" : "text-ink-4",
             )}
-          </div>
-
-          {pendingVariant && (
-            <dl className="space-y-2 text-sm pt-1 border-t border-line">
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted flex-shrink-0">Година</dt>
-                <dd className="font-medium text-ink text-right">
-                  {pendingVariant.yearFrom}–{pendingVariant.yearTo ?? ""}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted flex-shrink-0">Двигател</dt>
-                <dd className="font-medium text-ink font-mono text-right">
-                  {pendingVariant.engine}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted flex-shrink-0">Мощност</dt>
-                <dd className="font-medium text-ink text-right">
-                  {formatPower(pendingVariant.powerKw, pendingVariant.powerHp)}
-                </dd>
-              </div>
-              {displacement && (
-                <div className="flex justify-between gap-2">
-                  <dt className="text-muted flex-shrink-0">Обем</dt>
-                  <dd className="font-medium text-ink text-right">{displacement}</dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted flex-shrink-0">Гориво</dt>
-                <dd className="font-medium text-ink text-right">{pendingVariant.fuelType}</dd>
-              </div>
-            </dl>
-          )}
-
-          {pendingVariant && (
-            <p className="text-[10px] text-muted leading-relaxed">
-              ⓘ Данните се предоставят от TecDoc. Винаги сверявай OEM номер.
+          >
+            {selectedMake?.name ?? "Избери марка…"}
+          </p>
+          {selectedMake && (
+            <p className="text-sm text-ink-2 mt-0.5">
+              {selectedSeries?.name ?? UNKNOWN_VALUE}
             </p>
           )}
         </div>
-      ) : (
-        <p className="text-sm text-muted text-center leading-relaxed">
-          Изберете марка, модел и двигател, за да видите съвместимите части.
+
+        <dl className="border-t border-line text-sm">
+          {previewSpecs(pendingVariant).map((spec) => (
+            <SpecRow key={spec.label} {...spec} />
+          ))}
+        </dl>
+
+        <p className="text-[10px] text-muted leading-relaxed">
+          ⓘ Данните се предоставят от TecDoc. Винаги сверявай OEM номер.
         </p>
+      </div>
+    </div>
+  );
+}
+
+interface PreviewSpec {
+  label: string;
+  value: string | null;
+  /** A code to be read character by character rather than a phrase. */
+  isCode?: boolean;
+}
+
+/**
+ * The sheet the sidebar prints, whether or not there is anything to fill it
+ * with.
+ *
+ * The first four rows are what identifies a car, so they are on screen from the
+ * first paint with a dash where the answer is not known yet — a sheet that
+ * appeared row by row would read as the panel loading rather than as the visitor
+ * having steps left. Displacement and fuel describe the engine instead, and the
+ * engine list prints both against every row of it, so they are only worth
+ * repeating once one is picked.
+ */
+function previewSpecs(variant: VehicleVariantDto | null): PreviewSpec[] {
+  const displacement = variant ? formatDisplacement(variant.displacementLiters) : null;
+
+  return [
+    {
+      label: "Година",
+      value: variant ? formatYearRange(variant.yearFrom, variant.yearTo) : null,
+    },
+    { label: "Двигател", value: variant?.engine || null, isCode: true },
+    {
+      label: "Мощност",
+      value: variant ? formatPower(variant.powerKw, variant.powerHp) : null,
+    },
+    // Empty for 4% of variants, and joined rather than truncated: a variant sold
+    // under two type approvals carries both, and the visitor is matching this
+    // against a registration document that names one of them.
+    //
+    // Chained through a required field on purpose: the API caches variants for a
+    // day, so a deploy that reaches the web first is answered from entries filed
+    // before the field existed. Absent has to read as unknown rather than blank
+    // the dialog out.
+    { label: "KBA код", value: variant?.kbaNumbers?.join(", ") || null, isCode: true },
+    ...(displacement ? [{ label: "Обем", value: displacement }] : []),
+    ...(variant ? [{ label: "Гориво", value: variant.fuelType }] : []),
+  ];
+}
+
+function SpecRow({ label, value, isCode }: PreviewSpec) {
+  return (
+    <div className="flex justify-between gap-2 border-b border-line py-2.5">
+      <dt className="text-muted flex-shrink-0">{label}</dt>
+      <dd className={cn("font-medium text-ink text-right", isCode && "font-mono")}>
+        {value ?? UNKNOWN_VALUE}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * The most specific picture available: the series photo, else the make's badge,
+ * else a hatched panel.
+ *
+ * A photo whose signed token has died falls back to the badge rather than to the
+ * panel — the make is still known, so there is still something true to show.
+ */
+function PreviewFrame({
+  selectedMake,
+  selectedSeries,
+  photoUrl,
+  onPhotoError,
+}: {
+  selectedMake: SelectedMake | null;
+  selectedSeries: ModelSeriesDto | null;
+  photoUrl: string | null;
+  onPhotoError: () => void;
+}) {
+  if (photoUrl) {
+    const photoLabel = [selectedMake?.name, selectedSeries?.name]
+      .filter(Boolean)
+      .join(" ");
+
+    return (
+      // The asset's background is baked white, so the frame behind it has to be
+      // white too — on the sunken surface it drew as a white box inside a beige
+      // one. It is 800x287 against a taller frame, which leaves it centred with
+      // white above and below rather than filling the box; the frame has to fit
+      // a badge as well, and a badge is nowhere near that wide.
+      <Frame className="bg-white">
+        <Image
+          src={photoUrl}
+          alt={photoLabel}
+          width={PHOTO_WIDTH}
+          height={PHOTO_HEIGHT}
+          // TecDoc already serves this pre-sized and compressed, so the
+          // optimizer would only re-encode it — and it could not cache the
+          // result anyway, since the URL carries a token minted per response.
+          unoptimized
+          // The URL is a signed token cached for hours, so it can be dead by
+          // the time a browser asks for it. That has to cost the badge rather
+          // than the browser's broken-image icon.
+          onError={onPhotoError}
+          className="w-full h-auto"
+        />
+      </Frame>
+    );
+  }
+
+  if (selectedMake) {
+    // White for the same reason the grid cards are: these are photographic
+    // marks drawn for white, 28 of them opaque rather than transparent.
+    return (
+      <Frame className="bg-white">
+        <MakeMark make={selectedMake} sizes={FRAME_SIZES} logoInset="p-6" />
+      </Frame>
+    );
+  }
+
+  return (
+    <Frame className="hatched bg-bg-sunken">
+      <span className="text-[10px] font-semibold text-muted uppercase tracking-widest">
+        Лого · фото на модел
+      </span>
+    </Frame>
+  );
+}
+
+/**
+ * One ratio for all three states, so the panel does not resize under the visitor
+ * when a make is picked or a photo arrives.
+ */
+function Frame({ className, children }: { className: string; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "aspect-[16/9] rounded-xl border border-line flex items-center",
+        "justify-center flex-shrink-0 overflow-hidden",
+        className,
       )}
+    >
+      {children}
     </div>
   );
 }

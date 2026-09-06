@@ -101,6 +101,7 @@ export interface TecDocVehicleVariantRecord {
   horsePowerFrom?: number;
   capacityLiters?: number;
   vehicleImages?: Array<{ imageURL800: string }>;
+  kbaNumbers?: string[];
   fuelType: string;
   bodyStyle: string;
 }
@@ -135,11 +136,14 @@ function mapVehicleVariant(
     displacementLiters: record.capacityLiters ?? null,
     fuelType: record.fuelType,
     bodyType: record.bodyStyle,
-    // No include flag turns these on — `getLinkageTargets` sends them with
-    // every vehicle target, so the photo costs nothing beyond the read we
-    // already make. The 800px asset is 800x287 and 19-25 KB, matching the
-    // size article thumbnails already use.
+    // No include flag turns the photo or the type-approval numbers on —
+    // `getLinkageTargets` sends both with every vehicle target, so they cost
+    // nothing beyond the read we already make. The 800px asset is 800x287 and
+    // 19-25 KB, matching the size article thumbnails already use.
     imageUrl: record.vehicleImages?.[0]?.imageURL800 ?? null,
+    // Several are normal: a variant sold under two type approvals files one
+    // number per approval, measured at up to three.
+    kbaNumbers: record.kbaNumbers ?? [],
   };
 }
 

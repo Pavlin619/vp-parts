@@ -18,6 +18,14 @@ const VEHICLE_TREE_TTL = 7 * 24 * 60 * 60;
 const VEHICLE_VARIANT_TTL = 24 * 60 * 60;
 
 /**
+ * Bumped whenever {@link VehicleVariantDto} gains a field, for the same reason
+ * the enumerated keys name their scope: an entry written by the previous release
+ * holds the previous shape, and serving it means the field the API now promises
+ * is missing for a day. It was added with `kbaNumbers`.
+ */
+const VEHICLE_VARIANT_SHAPE = 2;
+
+/**
  * Vehicle-selection tree reads. Manufacturers, model series and the category
  * tree are Redis-cached for 7 days (stable TecDoc data); variants get a day
  * — see {@link VehiclesService.getVehicleVariants}.
@@ -75,7 +83,7 @@ export class VehiclesService {
    */
   async getVehicleVariants(seriesId: number): Promise<VehicleVariantDto[]> {
     return this.cache.cached(
-      `tecdoc:vehicle-types:${SELECTABLE_VEHICLES}:${seriesId}`,
+      `tecdoc:vehicle-types:${SELECTABLE_VEHICLES}:v${VEHICLE_VARIANT_SHAPE}:${seriesId}`,
       VEHICLE_VARIANT_TTL,
       () => this.tecdoc.getVehicleVariants(seriesId),
     );

@@ -255,6 +255,7 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
       fuelType: 'Diesel',
       bodyType: 'Hatchback',
       imageUrl: 'https://placehold.co/800x287/f1f5f9/334155.png?text=Golf+VII',
+      kbaNumbers: ['0603BLP', '0603BOF'],
     },
     {
       vehicleId: '10002',
@@ -269,6 +270,7 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
       fuelType: 'Petrol',
       bodyType: 'Hatchback',
       imageUrl: 'https://placehold.co/800x287/f1f5f9/334155.png?text=Golf+VII',
+      kbaNumbers: ['0603BLJ'],
     },
     {
       vehicleId: '10003',
@@ -283,6 +285,8 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
       fuelType: 'Electric',
       bodyType: 'Hatchback',
       imageUrl: 'https://placehold.co/800x287/f1f5f9/334155.png?text=e-Golf',
+      // 4% of live variants have none, so one fixture carries the empty state.
+      kbaNumbers: [],
     },
   ],
   '3': [
@@ -299,6 +303,7 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
       fuelType: 'Diesel',
       bodyType: 'Saloon',
       imageUrl: 'https://placehold.co/800x287/f1f5f9/334155.png?text=Passat+B8',
+      kbaNumbers: ['0603BQP'],
     },
   ],
   '10': [
@@ -315,6 +320,7 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
       fuelType: 'Diesel',
       bodyType: 'Saloon',
       imageUrl: null,
+      kbaNumbers: ['0005BGJ'],
     },
   ],
 };

@@ -112,6 +112,7 @@ describe('mapVehicleVariants', () => {
         fuelType: 'Diesel',
         bodyType: 'Hatchback',
         imageUrl: null,
+        kbaNumbers: [],
       },
     ]);
   });
@@ -166,6 +167,24 @@ describe('mapVehicleVariants', () => {
     const [row] = mapVehicleVariants({ linkageTargets: [variant()] });
 
     expect(row.imageUrl).toBeNull();
+  });
+
+  // A variant sold under two type approvals files one number per approval, so
+  // the whole list is kept rather than the first entry.
+  it('keeps every type-approval number filed for a variant', () => {
+    const [row] = mapVehicleVariants({
+      linkageTargets: [variant({ kbaNumbers: ['0603BLP', '0603BOF'] })],
+    });
+
+    expect(row.kbaNumbers).toEqual(['0603BLP', '0603BOF']);
+  });
+
+  // 4% of measured variants have none, and TecDoc omits the collection rather
+  // than sending it empty.
+  it('reads an omitted type-approval collection as none filed', () => {
+    const [row] = mapVehicleVariants({ linkageTargets: [variant()] });
+
+    expect(row.kbaNumbers).toEqual([]);
   });
 
   it('reads an omitted collection as no variants', () => {

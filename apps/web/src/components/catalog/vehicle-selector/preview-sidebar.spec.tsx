@@ -19,6 +19,7 @@ const VARIANT_320D: VehicleVariantDto = {
   fuelType: 'Diesel',
   bodyType: 'Saloon',
   imageUrl: 'https://example.test/e90.jpg',
+  kbaNumbers: ['0005BGJ'],
 }
 
 /** The photo frame: the first child of the sidebar column. */
@@ -26,11 +27,30 @@ function frameOf(container: HTMLElement) {
   return container.firstElementChild?.firstElementChild
 }
 
-function renderWith(variant: VehicleVariantDto | null, seriesPhotoUrl: string | null = null) {
+/** The badge's path, which jsdom resolves against the test origin. */
+function badgePathOf(container: HTMLElement) {
+  return container.querySelector('img')?.getAttribute('src')
+}
+
+/** The value cell of one row of the specification sheet. */
+function valueOf(label: string) {
+  const value = screen.getByText(label).closest('div')?.querySelector('dd')
+
+  if (!value) throw new Error(`no value cell for ${label}`)
+
+  return value
+}
+
+function renderWith(
+  variant: VehicleVariantDto | null,
+  seriesPhotoUrl: string | null = null,
+  make: SelectedMake | null = BMW,
+  series: ModelSeriesDto | null = SERIES_3,
+) {
   return render(
     <VehiclePreviewSidebar
-      selectedMake={BMW}
-      selectedSeries={SERIES_3}
+      selectedMake={make}
+      selectedSeries={series}
       pendingVariant={variant}
       seriesPhotoUrl={seriesPhotoUrl}
     />,
@@ -59,15 +79,73 @@ describe('VehiclePreviewSidebar', () => {
     expect(screen.queryByText('Обем')).not.toBeInTheDocument()
   })
 
-  it('shows no specification rows until a variant is picked', () => {
-    renderWith(null)
+  // A variant still in production has no end year, which is a real state rather
+  // than missing data.
+  it('reads an open-ended production run as still current', () => {
+    renderWith({ ...VARIANT_320D, yearTo: null })
 
-    expect(screen.queryByText('Мощност')).not.toBeInTheDocument()
-    expect(screen.queryByText('Обем')).not.toBeInTheDocument()
+    expect(screen.getByText('2011+')).toBeInTheDocument()
   })
 })
 
-describe('VehiclePreviewSidebar — photo', () => {
+describe('VehiclePreviewSidebar — the specification sheet', () => {
+  // The four rows that identify a car are on screen from the first paint, so
+  // the sheet fills in rather than growing. Displacement and fuel describe the
+  // engine, and every row of the engine list prints both.
+  it('prints the identifying rows with a dash before anything is picked', () => {
+    renderWith(null, null, null, null)
+
+    for (const label of ['Година', 'Двигател', 'Мощност', 'KBA код']) {
+      expect(valueOf(label)).toHaveTextContent('—')
+    }
+
+    expect(screen.queryByText('Обем')).not.toBeInTheDocument()
+    expect(screen.queryByText('Гориво')).not.toBeInTheDocument()
+  })
+
+  it('prompts for a make until one is picked', () => {
+    renderWith(null, null, null, null)
+
+    expect(screen.getByText('Избери марка…')).toBeInTheDocument()
+  })
+
+  // The model is the next answer due, so its place is held rather than the make
+  // sitting alone above the sheet.
+  it('holds the model line with a dash once a make is picked', () => {
+    renderWith(null, null, BMW, null)
+
+    expect(screen.getByText('BMW').nextElementSibling).toHaveTextContent('—')
+  })
+
+  // A variant sold under two type approvals carries both, and the visitor is
+  // matching this against a registration document naming one of them.
+  it('prints every type-approval number filed for the variant', () => {
+    renderWith({ ...VARIANT_320D, kbaNumbers: ['0603BLP', '0603BOF'] })
+
+    expect(valueOf('KBA код')).toHaveTextContent('0603BLP, 0603BOF')
+  })
+
+  // 4% of live variants have none filed, which is missing data rather than a
+  // failed read.
+  it('dashes the type-approval row for a variant with none filed', () => {
+    renderWith({ ...VARIANT_320D, kbaNumbers: [] })
+
+    expect(valueOf('KBA код')).toHaveTextContent('—')
+  })
+
+  // The API caches variants for a day, so a release reaching the web first is
+  // answered from entries filed before the field existed. The cast is the payload
+  // that really arrives: unknown has to cost a dash, not the whole dialog.
+  it('dashes the type-approval row for a variant cached without the field', () => {
+    const cachedBeforeTheField = { ...VARIANT_320D, kbaNumbers: undefined }
+
+    renderWith(cachedBeforeTheField as unknown as VehicleVariantDto)
+
+    expect(valueOf('KBA код')).toHaveTextContent('—')
+  })
+})
+
+describe('VehiclePreviewSidebar — the frame', () => {
   // The photo belongs to the series, so it shows as soon as a model is picked
   // rather than waiting for an engine.
   it('shows the car as soon as a series photo is available', () => {
@@ -79,41 +157,58 @@ describe('VehiclePreviewSidebar — photo', () => {
   })
 
   // 12.6% of variants and a handful of whole series have no photo filed, so the
-  // icon placeholder has to stay rather than leaving an empty frame.
-  it('falls back to the make and model text when there is no photo', () => {
-    renderWith(VARIANT_320D, null)
+  // make's own badge is what the frame carries most of the time — the whole
+  // brand step is spent on it.
+  it('falls back to the make badge when there is no photo', () => {
+    const { container } = renderWith(VARIANT_320D, null)
 
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
-    expect(screen.getByText(/BMW · 3 Series/)).toBeInTheDocument()
+    expect(badgePathOf(container)).toContain('/vehicle-makes/bmw.webp')
+    expect(screen.queryByTestId('make-wordmark')).not.toBeInTheDocument()
   })
 
-  // TecDoc bakes a white background into the asset, so a coloured frame draws
-  // the photo as a white box inside a coloured one.
-  it('frames the photo in white and the placeholder in the sunken surface', () => {
+  // 57 of the 286 selectable makes have no badge bundled, so the wordmark has to
+  // reach the frame as well as the grid.
+  it('falls back to a wordmark for a make with no badge', () => {
+    const { container } = renderWith(null, null, { id: '812', name: 'GLAS' }, null)
+
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.getByTestId('make-wordmark')).toHaveTextContent('GLAS')
+  })
+
+  it('holds a hatched panel until a make is picked', () => {
+    const { container } = renderWith(null, null, null, null)
+
+    expect(frameOf(container)).toHaveClass('hatched', 'bg-bg-sunken')
+    expect(screen.getByText('Лого · фото на модел')).toBeInTheDocument()
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  // TecDoc bakes a white background into the photo, and the badges are drawn for
+  // white — 28 of them opaque rather than transparent — so both frame in white.
+  it('frames a photo and a badge in white', () => {
     const withPhoto = renderWith(null, 'https://example.test/e90.jpg')
     expect(frameOf(withPhoto.container)).toHaveClass('bg-white')
     withPhoto.unmount()
 
-    const withoutPhoto = renderWith(null, null)
-    expect(frameOf(withoutPhoto.container)).toHaveClass('bg-bg-sunken')
+    const withBadge = renderWith(null, null)
+    expect(frameOf(withBadge.container)).toHaveClass('bg-white')
   })
 
-  // A token that died in the cache must cost a placeholder, not the browser's
+  // A token that died in the cache must cost the badge, not the browser's
   // broken-image icon. This is what makes a cache TTL an acceptable bet.
-  it('falls back to the placeholder when the photo fails to load', async () => {
-    renderWith(VARIANT_320D, 'https://example.test/dead-token.jpg')
+  it('falls back to the badge when the photo fails to load', () => {
+    const { container } = renderWith(VARIANT_320D, 'https://example.test/dead-token.jpg')
 
-    fireEvent.error(screen.getByRole('img'))
+    fireEvent.error(screen.getByRole('img', { name: 'BMW 3 Series' }))
 
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
-    expect(screen.getByText(/BMW · 3 Series/)).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'BMW 3 Series' })).not.toBeInTheDocument()
+    expect(badgePathOf(container)).toContain('/vehicle-makes/bmw.webp')
   })
 
   // Otherwise one dead photo would suppress every later one in the same dialog.
   it('retries the photo when the visitor picks a different model', () => {
     const { rerender } = renderWith(VARIANT_320D, 'https://example.test/dead-token.jpg')
-    fireEvent.error(screen.getByRole('img'))
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    fireEvent.error(screen.getByRole('img', { name: 'BMW 3 Series' }))
 
     rerender(
       <VehiclePreviewSidebar
@@ -124,20 +219,25 @@ describe('VehiclePreviewSidebar — photo', () => {
       />,
     )
 
-    expect(screen.getByRole('img')).toHaveAttribute(
+    expect(screen.getByRole('img', { name: 'BMW 3 Series' })).toHaveAttribute(
       'src',
       'https://example.test/fresh-token.jpg',
     )
   })
 
-  // Both states share the asset's ratio, so the frame does not resize under the
-  // visitor when the photo arrives.
-  it('keeps the frame the same shape whether or not a photo is present', () => {
-    const withPhoto = renderWith(null, 'https://example.test/e90.jpg')
-    expect(frameOf(withPhoto.container)).toHaveClass('aspect-[800/287]')
-    withPhoto.unmount()
+  // All three states share one ratio, so the panel does not resize under the
+  // visitor when a make is picked or a photo arrives.
+  it('keeps the frame the same shape in every state', () => {
+    const states: Array<[VehicleVariantDto | null, string | null, SelectedMake | null]> = [
+      [null, 'https://example.test/e90.jpg', BMW],
+      [null, null, BMW],
+      [null, null, null],
+    ]
 
-    const withoutPhoto = renderWith(null, null)
-    expect(frameOf(withoutPhoto.container)).toHaveClass('aspect-[800/287]')
+    for (const [variant, photoUrl, make] of states) {
+      const view = renderWith(variant, photoUrl, make, null)
+      expect(frameOf(view.container)).toHaveClass('aspect-[16/9]')
+      view.unmount()
+    }
   })
 })
