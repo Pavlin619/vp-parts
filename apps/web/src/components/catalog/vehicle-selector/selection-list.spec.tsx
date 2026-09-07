@@ -96,6 +96,43 @@ describe('VehicleSelectionList — nothing to list', () => {
   })
 })
 
+// One element scrolls all three steps, so it carries its offset across them:
+// picking a make from the foot of the 286-card grid opened the model list
+// already scrolled past its first entries.
+describe('VehicleSelectionList — moving between steps', () => {
+  function scrollerOf(container: HTMLElement) {
+    const scroller = container.querySelector('.overflow-y-auto')
+
+    if (!scroller) throw new Error('no scrolling panel')
+
+    return scroller
+  }
+
+  it('starts the next step at the top of its list', () => {
+    const { container, rerender } = renderList({ step: 0 })
+    scrollerOf(container).scrollTop = 420
+    expect(scrollerOf(container).scrollTop).toBe(420)
+
+    rerender(
+      <VehicleSelectionList
+        step={1}
+        search=""
+        onSearchChange={jest.fn()}
+        isLoading={false}
+        filteredManufacturers={[BMW]}
+        filteredSeries={[SERIES_3]}
+        filteredVariants={[VARIANT_320D]}
+        pendingVariantId={undefined}
+        onSelectMake={jest.fn()}
+        onSelectSeries={jest.fn()}
+        onSelectVariant={jest.fn()}
+      />,
+    )
+
+    expect(scrollerOf(container).scrollTop).toBe(0)
+  })
+})
+
 describe('VehicleSelectionList — the engine rows', () => {
   // A third of variants are built with more than one engine, and the search
   // matches over all of them — a row truncated to the first would hide what it
