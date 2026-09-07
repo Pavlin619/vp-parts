@@ -781,12 +781,34 @@ describe('CatalogController (e2e)', () => {
       ['a page beyond the paging ceiling', 'page=99999999'],
       ['paging that is not a number', 'page=abc&pageSize=abc'],
       ['a fractional page', 'page=1.5'],
+      // Rejected rather than ignored: falling back to the default would answer
+      // a different question from the one asked.
+      ['an order we do not offer', 'sort=cheapest'],
     ])('rejects %s', async (_label, query) => {
       await request(app.getHttpServer())
         .get(`/catalog/brands/30/articles/BD-001/substitutes?${query}`)
         .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
 
       expect(mockTecDocClient.getArticleDetails).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The section offers the same orders the search does, and every one of them
+     * is answerable here: this set is enumerated in full before it is ranked, so
+     * there is no wide-set tier for it to fall back from.
+     */
+    it('serves the set in an order the search vocabulary names', async () => {
+      mockTecDocClient.getArticleDetails.mockResolvedValueOnce(articleRead());
+      mockTecDocClient.getCrossReferenceCandidates.mockResolvedValueOnce(
+        sixCandidates(),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/brands/30/articles/BD-001/substitutes?sort=price_asc')
+        .expect(200);
+
+      expect(res.body).toMatchObject({ total: 6, page: 1 });
+      expect(res.body.items).toHaveLength(6);
     });
 
     /**

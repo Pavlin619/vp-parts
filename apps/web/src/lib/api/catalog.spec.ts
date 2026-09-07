@@ -1,4 +1,4 @@
-import { SearchMode } from '@vp-parts-shop/shared'
+import { DEFAULT_SEARCH_SORT, SearchMode, SearchSort } from '@vp-parts-shop/shared'
 import {
   getManufacturers,
   getModelSeries,
@@ -141,7 +141,7 @@ describe('getSubstitutes', () => {
   })
 
   it('asks for a later page when one is requested', () => {
-    getSubstitutes('94', 'OX 982D', 3)
+    getSubstitutes('94', 'OX 982D', { page: 3 })
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/brands/94/articles/OX%20982D/substitutes?page=3&pageSize=20',
     )
@@ -162,6 +162,22 @@ describe('getSubstitutes', () => {
     getSubstitutes('94', 'ABC/123')
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/brands/94/articles/ABC%2F123/substitutes?page=1&pageSize=20',
+    )
+  })
+
+  it('asks for the order the visitor chose', () => {
+    getSubstitutes('94', 'OX 982D', { sort: SearchSort.PriceAscending })
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/94/articles/OX%20982D/substitutes?page=1&pageSize=20&sort=price_asc',
+    )
+  })
+
+  // The API's own default, so sending it would only make two spellings of one
+  // request — and two cache entries for one answer.
+  it('leaves the default order off the query string', () => {
+    getSubstitutes('94', 'OX 982D', { sort: DEFAULT_SEARCH_SORT })
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/catalog/brands/94/articles/OX%20982D/substitutes?page=1&pageSize=20',
     )
   })
 })
@@ -272,13 +288,23 @@ describe('partNumbersQueryOptions', () => {
 })
 
 describe('substitutesQueryOptions', () => {
-  it('keys by the brand and the article number', () => {
+  it('keys by the brand, the article number and the order', () => {
     expect(substitutesQueryOptions('94', 'OX 982D').queryKey).toEqual([
       'catalog',
       'substitutes',
       '94',
       'OX 982D',
+      DEFAULT_SEARCH_SORT,
     ])
+  })
+
+  // The sort reorders the whole set before it is paged, so pages of two sorts
+  // are not pages of one list and must not accumulate in one entry.
+  it('splits the cache between two orders of one set', () => {
+    expect(
+      substitutesQueryOptions('94', 'OX 982D', SearchSort.PriceAscending)
+        .queryKey,
+    ).not.toEqual(substitutesQueryOptions('94', 'OX 982D').queryKey)
   })
 
   // Which parts replace a part is a property of that part, so the two brands

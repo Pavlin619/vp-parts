@@ -7,3 +7,4 @@ export { ArticleRowSubstitutes } from "./article-row-substitutes";
 export { ArticleRowVehicles } from "./article-row-vehicles";
 export { PartNumberChip } from "./part-number-chip";
 export { SectionLoadError } from "./section-load-error";
+export { SubstitutesSortToggle } from "./substitutes-sort-toggle";

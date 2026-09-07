@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { TechnicalSpecDto } from "@vp-parts-shop/shared";
+import {
+  ARTICLE_SECTION_LABEL,
+  type ArticleSectionId,
+} from "@/lib/catalog/article-sections";
 import { cn } from "@/lib/utils";
 import { ArticleRowNumbers } from "./article-row-numbers";
 import { ArticleRowSubstitutes } from "./article-row-substitutes";
 import { ArticleRowVehicles } from "./article-row-vehicles";
 
-type DetailSectionId = "specs" | "substitutes" | "numbers" | "vehicles";
+type DetailSectionId = ArticleSectionId;
 
 interface ArticleRowDetailProps {
   /** TecDoc brand id; needed with the number to read this exact part. */
@@ -16,13 +20,6 @@ interface ArticleRowDetailProps {
   articleNumber: string;
   technicalSpecs: TechnicalSpecDto[];
 }
-
-const SECTION_LABEL: Record<DetailSectionId, string> = {
-  specs: "Технически характеристики",
-  substitutes: "Заменяеми",
-  numbers: "Алтернативни номера",
-  vehicles: "Приложими автомобили",
-};
 
 /**
  * The expanded body of a catalog row — an accordion over the article's detail.
@@ -59,7 +56,7 @@ export function ArticleRowDetail({
               openSection === section && "bg-bg-sunken text-ink",
             )}
           >
-            {SECTION_LABEL[section]}
+            {ARTICLE_SECTION_LABEL[section]}
             <ChevronRight
               className={cn(
                 "h-3 w-3 text-ink-4 transition-transform",

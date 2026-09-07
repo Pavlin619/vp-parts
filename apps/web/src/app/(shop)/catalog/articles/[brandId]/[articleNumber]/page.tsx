@@ -10,6 +10,7 @@ import {
   ArticleHeader,
   ArticleSpecs,
   ArticleBuyBox,
+  ArticleDetailSections,
 } from "@/components/catalog/article-detail";
 
 /**
@@ -66,7 +67,7 @@ export default async function ArticleDetailPage({
     <div className="page-container py-8">
       <CatalogBreadcrumbs />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)_340px] lg:gap-y-6">
         <ArticleImages
           images={article.images}
           articleNumber={article.articleNumber}
@@ -84,7 +85,10 @@ export default async function ArticleDetailPage({
           <ArticleSpecs technicalSpecs={article.technicalSpecs} />
         </div>
 
-        <aside className="h-fit lg:sticky lg:top-[calc(var(--header-height)+1rem)]">
+        {/* Spans both rows so the buy box — the tallest thing in the top row —
+            stops deciding where the section below starts. Confined to one row it
+            set that row's height, opening a gap under the shorter gallery. */}
+        <aside className="h-fit lg:sticky lg:top-[calc(var(--header-height)+1rem)] lg:row-span-2">
           <ArticleBuyBox
             brandId={brandId}
             articleNumber={articleNumber}
@@ -92,6 +96,16 @@ export default async function ArticleDetailPage({
             articleName={article.description}
           />
         </aside>
+
+        {/* Stops at the buy box rather than running the page's full width.
+            Anything that goes beside it later belongs inside the aside above,
+            which owns this row's third column too. */}
+        <div className="lg:col-span-2">
+          <ArticleDetailSections
+            brandId={brandId}
+            articleNumber={articleNumber}
+          />
+        </div>
       </div>
     </div>
   );

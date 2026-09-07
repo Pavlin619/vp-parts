@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  QueryClient,
+  QueryClientProvider,
+  keepPreviousData,
+} from '@tanstack/react-query'
 import {
   articleIdentityKey,
   type ArticleIdentityDto,
@@ -14,13 +18,18 @@ const substitutesMock = jest.fn()
 const availabilityMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  substitutesQueryOptions: (brandId: string, articleNumber: string) => ({
-    queryKey: ['catalog', 'substitutes', brandId, articleNumber],
+  substitutesQueryOptions: (
+    brandId: string,
+    articleNumber: string,
+    sort: string = 'availability',
+  ) => ({
+    queryKey: ['catalog', 'substitutes', brandId, articleNumber, sort],
     queryFn: ({ pageParam }: { pageParam: number }) =>
-      substitutesMock(brandId, articleNumber, pageParam) as Promise<unknown>,
+      substitutesMock(brandId, articleNumber, pageParam, sort) as Promise<unknown>,
     initialPageParam: 1,
     getNextPageParam: (page: PaginatedCatalogArticlesDto) =>
       page.page * page.pageSize < page.total ? page.page + 1 : undefined,
+    placeholderData: keepPreviousData,
   }),
   availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
     queryKey: ['catalog', 'availability', identityKeys(articles).sort().join(',')],
@@ -108,7 +117,7 @@ describe('ArticleRowSubstitutes', () => {
 
     renderSubstitutes('OF-WL7090', '268')
 
-    expect(substitutesMock).toHaveBeenCalledWith('268', 'OF-WL7090', 1)
+    expect(substitutesMock).toHaveBeenCalledWith('268', 'OF-WL7090', 1, 'availability')
   })
 
   it('shows a skeleton while the substitutes are in flight', () => {
@@ -264,6 +273,95 @@ describe('ArticleRowSubstitutes', () => {
     expect(availabilityMock).not.toHaveBeenCalled()
   })
 
+  // Nothing to order, so nothing to order it by.
+  it('offers no sort control for an article with no substitutes', async () => {
+    substitutesMock.mockResolvedValue(page([]))
+
+    renderSubstitutes()
+
+    expect(await screen.findByText(/Няма заменяеми части/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('group', { name: 'Подредба на заменяемите части' }),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * How many alternatives exist, not how many are on screen: the header counts
+   * the whole set the way "show more" does, so the two never disagree.
+   */
+  it('states the size of the whole set, not of the page', async () => {
+    substitutesMock.mockResolvedValue(
+      page([substitute()], { total: 97, pageSize: 20 }),
+    )
+
+    renderSubstitutes()
+
+    expect(await screen.findByText('· 97')).toBeInTheDocument()
+  })
+
+  describe('sorting', () => {
+    const twoPages = page([substitute()], { total: 3, pageSize: 1 })
+
+    it('re-reads the set in the order the visitor chose', async () => {
+      const user = userEvent.setup()
+      substitutesMock.mockResolvedValue(twoPages)
+
+      renderSubstitutes('WL6340', '77')
+
+      await user.click(await screen.findByRole('button', { name: 'Цена' }))
+
+      expect(substitutesMock).toHaveBeenLastCalledWith(
+        '77',
+        'WL6340',
+        1,
+        'price_asc',
+      )
+    })
+
+    // A visitor who switched sort after opening three pages is asking for the
+    // first page of a different order, not the fourth page of this one.
+    it('starts the new order from its first page', async () => {
+      const user = userEvent.setup()
+      substitutesMock.mockResolvedValue(twoPages)
+
+      renderSubstitutes('WL6340', '77')
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Покажи още (2)' }),
+      )
+      await user.click(screen.getByRole('button', { name: 'Цена' }))
+
+      expect(substitutesMock).toHaveBeenLastCalledWith(
+        '77',
+        'WL6340',
+        1,
+        'price_asc',
+      )
+    })
+
+    /**
+     * The control must not disappear under the cursor that just clicked it, so
+     * the previous order's rows are held on screen — marked busy — until the new
+     * one lands, rather than the section falling back to its skeleton.
+     */
+    it('keeps the rows and the control on screen while the new order loads', async () => {
+      const user = userEvent.setup()
+      substitutesMock.mockResolvedValueOnce(twoPages).mockReturnValue(pending())
+
+      renderSubstitutes()
+
+      await user.click(await screen.findByRole('button', { name: 'Цена' }))
+
+      expect(screen.getByRole('link', { name: 'OC 115' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Наличност' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByTestId('article-row-substitutes-skeleton'),
+      ).not.toBeInTheDocument()
+    })
+  })
+
   it('offers a retry when the substitutes read fails', async () => {
     const user = userEvent.setup()
     substitutesMock.mockRejectedValue(new Error('catalog unavailable'))
@@ -334,7 +432,7 @@ describe('ArticleRowSubstitutes', () => {
         await screen.findByRole('link', { name: 'WL7090' }),
       ).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'OC 115' })).toBeInTheDocument()
-      expect(substitutesMock).toHaveBeenLastCalledWith('77', 'WL6340', 2)
+      expect(substitutesMock).toHaveBeenLastCalledWith('77', 'WL6340', 2, 'availability')
     })
 
     // Each page is priced by its own availability read: one request for the
