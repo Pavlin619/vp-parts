@@ -237,6 +237,11 @@ band is `deliveryBand` in `packages/shared/src/delivery.ts`, and it is in the
 shared contract precisely because the web draws the dot from it and the API sorts
 by it; derived twice, the order and the badges would drift apart.
 
+That is the default; the section also offers price, and the route accepts the
+whole `SearchSort` vocabulary the search does. Every value is answerable here,
+with no wide-set tier to fall back from: this set is enumerated in full before it
+is ranked, which is what the search's `isRankable` reports the absence of.
+
 This step is the reason the candidate set is fetched whole. Sorting on stock only
 works if the sort sees every candidate; today's design merges five arbitrary
 pages and truncates at 20, so a part we stock may never be among the rows
@@ -259,7 +264,7 @@ part we show first. The search reaches it through the same package, which also
 owns the hydration read below and the paging.
 
 **The resulting order is pinned for five minutes, under
-`crossrefs:order:<brandId>:<articleNumber>`.** Ranking live and *paging* live are
+`crossrefs:order:<brandId>:<articleNumber>:<sort>`.** Ranking live and *paging* live are
 different things, and this section pages by appending: ranked again between two
 clicks of "show more", a part whose last unit sold in between drops a place, so
 the next page appends a row already on screen and skips another with no sign
@@ -370,12 +375,14 @@ availability read, which is what keeps a batch inside
 | Key | Holds | TTL |
 |---|---|---|
 | `tecdoc:crossrefs:{brandId}:{articleNumber}` | the step-2 candidate set | 24 h hit / 1 h empty |
-| `crossrefs:order:{brandId}:{articleNumber}` | the step-3 ranked identities | 5 min |
+| `crossrefs:order:{brandId}:{articleNumber}:{sort}` | the step-3 ranked identities | 5 min |
 | `tecdoc:article-row:{brandId}:{articleNumber}` | one hydrated row | 24 h |
 
 The ordering key carries no `tecdoc:` prefix because it is not a copy of TecDoc
 data — it is our answer about our own stock — and no page, because the ordering
-is a property of the whole set. The search pins its own orderings the same way,
+is a property of the whole set. It does carry the sort: one pin per order, or
+switching the control would page on through the pinned copy of the previous
+order and appear to do nothing. The search pins its own orderings the same way,
 under `search:order:…`.
 
 The candidate key replaced `tecdoc:substitutes:{brandId}:{articleNumber}` and
@@ -415,7 +422,9 @@ too) and the article read it starts from (shared with the detail page).
 | The delivery band the ordering ranks by, shared with the web's dot colour | `packages/shared/src/delivery.ts` |
 | Page bounds on both catalog routes | `ArticlePageQueryDto` in `apps/api/src/catalog/articles/articles.dto.ts` |
 | Per-row batch caching | `RedisCache.cachedMany` in `apps/api/src/redis/redis-cache.ts` |
-| The paged section and its *show more* | `apps/web/src/components/catalog/article-row/article-row-substitutes.tsx` |
+| The paged section, its *show more* and its set-size header | `apps/web/src/components/catalog/article-row/article-row-substitutes.tsx` |
+| The order control the section holds | `article-row/substitutes-sort-toggle.tsx` |
+| The two surfaces that mount it — a row's expander, and the detail page's tab strip | `article-row/article-row-detail.tsx`, `article-detail/article-detail-sections.tsx` |
 | The live probe behind every figure here | `apps/api/scripts/tecdoc-crossref-probe.ts` |
 
 The probe is the one file with no unit test of its own: it is a script that calls

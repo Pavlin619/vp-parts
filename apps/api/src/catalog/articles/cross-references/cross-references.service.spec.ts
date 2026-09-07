@@ -2,6 +2,7 @@ import {
   ArticleSummaryDto,
   ArticleInventoryDetailDto,
   PaginatedCatalogArticlesDto,
+  SearchSort,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
@@ -182,6 +183,33 @@ describe('CrossReferencesService', () => {
     });
   }
 
+  /**
+   * Two in-stock candidates that differ only in price, so the order they come
+   * back in is attributable to the sort and nothing else.
+   */
+  function givenTwoPricedCandidates(forEveryRequest = false): void {
+    const candidates = [
+      candidate('CHEAP', { legacyArticleIds: [1] }),
+      candidate('DEAR', { legacyArticleIds: [2] }),
+    ];
+    const availability = new Map([
+      [articleIdentityKey(FERODO, 'CHEAP'), IN_STOCK],
+      [
+        articleIdentityKey(FERODO, 'DEAR'),
+        { ...IN_STOCK, bestPriceIncVat: 9900 },
+      ],
+    ]);
+
+    if (forEveryRequest) {
+      tecdoc.getCrossReferenceCandidates.mockResolvedValue(candidates);
+      inventory.getAvailabilityForOrdering.mockResolvedValue(availability);
+      return;
+    }
+
+    tecdoc.getCrossReferenceCandidates.mockResolvedValueOnce(candidates);
+    inventory.getAvailabilityForOrdering.mockResolvedValueOnce(availability);
+  }
+
   function crossReferenceCacheKeys() {
     return cache.cachedArray.mock.calls
       .map(([key]) => key)
@@ -199,7 +227,7 @@ describe('CrossReferencesService', () => {
         candidate('A5'),
       ]);
 
-      await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      await service.getSubstitutes(BOSCH, 'SRC', { page: 1, pageSize: 20 });
 
       expect(tecdoc.getCrossReferenceCandidates).toHaveBeenCalledWith(
         'SRC',
@@ -214,7 +242,10 @@ describe('CrossReferencesService', () => {
         candidate('A1'),
       ]);
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(cache.cachedArray).toHaveBeenCalledWith(
         'tecdoc:crossrefs:30:SRC',
@@ -253,7 +284,10 @@ describe('CrossReferencesService', () => {
         ),
       );
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 2, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 2,
+        pageSize: 20,
+      });
 
       expect(page.total).toBe(45);
       expect(page.page).toBe(2);
@@ -287,7 +321,10 @@ describe('CrossReferencesService', () => {
         ]),
       );
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 1);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 1,
+      });
 
       // Priced as the brand that files each number, never by the number alone.
       expect(inventory.getAvailabilityForOrdering).toHaveBeenCalledWith([
@@ -317,7 +354,10 @@ describe('CrossReferencesService', () => {
         new Map([[articleIdentityKey(FERODO, 'A2-IN-STOCK'), IN_STOCK]]),
       );
 
-      const first = await service.getSubstitutes(BOSCH, 'SRC', 1, 1);
+      const first = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 1,
+      });
 
       // The last unit of the row that ranked first sells between the two clicks.
       inventory.getAvailabilityForOrdering.mockResolvedValue(
@@ -326,11 +366,61 @@ describe('CrossReferencesService', () => {
           [articleIdentityKey(FERODO, 'A2-IN-STOCK'), OUT_OF_STOCK],
         ]),
       );
-      const second = await service.getSubstitutes(BOSCH, 'SRC', 2, 1);
+      const second = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 2,
+        pageSize: 1,
+      });
 
       expect(numbersOf(first)).toEqual(['A2-IN-STOCK']);
       expect(numbersOf(second)).toEqual(['A1-SOLD-OUT-LATER']);
       expect(inventory.getAvailabilityForOrdering).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The section offers the same orders the search does, so a visitor who wants
+     * the dearest alternative first gets an order availability would never
+     * produce.
+     */
+    it('orders the set by the sort it was asked for', async () => {
+      givenArticle('SRC');
+      givenHydratedRows();
+      givenTwoPricedCandidates();
+
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        sort: SearchSort.PriceDescending,
+      });
+
+      expect(numbersOf(page)).toEqual(['DEAR', 'CHEAP']);
+    });
+
+    it('orders by availability when no sort is asked for', async () => {
+      givenArticle('SRC');
+      givenHydratedRows();
+      givenTwoPricedCandidates();
+
+      const page = await service.getSubstitutes(BOSCH, 'SRC');
+
+      expect(numbersOf(page)).toEqual(['CHEAP', 'DEAR']);
+    });
+
+    /**
+     * One pin per order. Sharing a key across sorts would serve the previous
+     * ordering back for as long as it holds, so switching the control would
+     * appear to do nothing.
+     */
+    it('pins each sort separately', async () => {
+      givenArticle('SRC');
+      givenHydratedRows();
+      givenPinnedMemo();
+      givenTwoPricedCandidates(true);
+
+      const byAvailability = await service.getSubstitutes(BOSCH, 'SRC');
+      const byPrice = await service.getSubstitutes(BOSCH, 'SRC', {
+        sort: SearchSort.PriceDescending,
+      });
+
+      expect(numbersOf(byAvailability)).toEqual(['CHEAP', 'DEAR']);
+      expect(numbersOf(byPrice)).toEqual(['DEAR', 'CHEAP']);
     });
 
     /**
@@ -346,7 +436,10 @@ describe('CrossReferencesService', () => {
       ]);
       inventory.getAvailabilityForOrdering.mockResolvedValueOnce(null);
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(page.total).toBe(1);
       expect(page.items).toHaveLength(1);
@@ -362,7 +455,10 @@ describe('CrossReferencesService', () => {
         candidate('A1'),
       ]);
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(page.total).toBe(1);
     });
@@ -381,7 +477,10 @@ describe('CrossReferencesService', () => {
         }),
       ]);
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(page.total).toBe(1);
     });
@@ -391,7 +490,10 @@ describe('CrossReferencesService', () => {
     it('returns nothing, and searches nothing, for a part with no generic article', async () => {
       givenArticle('SRC', { genericArticleIds: [] });
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(page).toEqual({ total: 0, page: 1, pageSize: 20, items: [] });
       expect(tecdoc.getCrossReferenceCandidates).not.toHaveBeenCalled();
@@ -403,8 +505,8 @@ describe('CrossReferencesService', () => {
     it('keys two brands sharing a number separately', async () => {
       givenArticle('OX 982D');
 
-      await service.getSubstitutes(BOSCH, 'OX 982D', 1, 20);
-      await service.getSubstitutes(94, 'OX 982D', 1, 20);
+      await service.getSubstitutes(BOSCH, 'OX 982D', { page: 1, pageSize: 20 });
+      await service.getSubstitutes(94, 'OX 982D', { page: 1, pageSize: 20 });
 
       expect(crossReferenceCacheKeys()).toEqual([
         'tecdoc:crossrefs:30:OX 982D',
@@ -427,7 +529,10 @@ describe('CrossReferencesService', () => {
         candidate('A1'),
       ]);
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(page.total).toBe(1);
       expect(tecdoc.getCrossReferenceCandidates).toHaveBeenCalledTimes(1);
@@ -436,7 +541,10 @@ describe('CrossReferencesService', () => {
     it('reads nothing beyond the one search, whatever OE numbers the part files', async () => {
       givenArticle('SRC', { oeNumbers: ['OE-1', 'OE-2', 'OE-3'] });
 
-      const page = await service.getSubstitutes(BOSCH, 'SRC', 1, 20);
+      const page = await service.getSubstitutes(BOSCH, 'SRC', {
+        page: 1,
+        pageSize: 20,
+      });
 
       expect(page.total).toBe(0);
       expect(tecdoc.getCrossReferenceCandidates).toHaveBeenCalledTimes(1);

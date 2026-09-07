@@ -1,15 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import type { ArticleSummaryDto } from "@vp-parts-shop/shared";
+import {
+  DEFAULT_SEARCH_SORT,
+  type ArticleSummaryDto,
+  type SearchSort,
+} from "@vp-parts-shop/shared";
 import {
   availabilityQueryOptions,
   substitutesQueryOptions,
 } from "@/lib/api/catalog";
 import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
+import { cn } from "@/lib/utils";
 import { ArticleRow } from "./article-row";
 import { SectionLoadError } from "./section-load-error";
+import { SubstitutesSortToggle } from "./substitutes-sort-toggle";
 
 interface ArticleRowSubstitutesProps {
   /** TecDoc brand id; which parts replace a part is a property of that part. */
@@ -36,15 +43,18 @@ export function ArticleRowSubstitutes({
   brandId,
   articleNumber,
 }: ArticleRowSubstitutesProps) {
+  const [sort, setSort] = useState<SearchSort>(DEFAULT_SEARCH_SORT);
+
   const {
     data,
     isPending,
     isError,
+    isPlaceholderData,
     refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useInfiniteQuery(substitutesQueryOptions(brandId, articleNumber));
+  } = useInfiniteQuery(substitutesQueryOptions(brandId, articleNumber, sort));
 
   if (isPending) {
     return <SubstitutesSkeleton />;
@@ -72,26 +82,49 @@ export function ArticleRowSubstitutes({
   const shown = data.pages.reduce((count, page) => count + page.items.length, 0);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* One group per fetched page, each pricing its own numbers: the
-          availability endpoint takes one page's worth of numbers at a time. */}
-      {data.pages.map((page) => (
-        <SubstituteRows key={page.page} substitutes={page.items} />
-      ))}
+    <div className="flex flex-col gap-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="text-[13px] text-ink-3">
+          Същата част от други производители{" "}
+          <span className="font-semibold text-ink">· {total}</span>
+        </p>
 
-      {hasNextPage && (
-        <button
-          type="button"
-          onClick={() => void fetchNextPage()}
-          disabled={isFetchingNextPage}
-          className="inline-flex h-9 items-center justify-center gap-2 self-start rounded-md border border-line-2 px-4 text-[13px] font-semibold text-ink-2 transition-colors hover:bg-bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
-        >
-          {isFetchingNextPage && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          )}
-          Покажи още ({total - shown})
-        </button>
-      )}
+        <SubstitutesSortToggle sort={sort} onSortChange={setSort} />
+      </div>
+
+      {/* The rows a switch of sort replaces are the previous order's, held on
+          screen so the control a visitor just clicked does not vanish under
+          their cursor — dimmed, because they are not the order now asked for. */}
+      <div
+        className={cn(
+          "flex flex-col gap-3 transition-opacity",
+          isPlaceholderData && "opacity-50",
+        )}
+        aria-busy={isPlaceholderData}
+      >
+        {/* One group per fetched page, each pricing its own numbers: the
+            availability endpoint takes one page's worth of numbers at a time. */}
+        {data.pages.map((page) => (
+          <SubstituteRows key={page.page} substitutes={page.items} />
+        ))}
+
+        {hasNextPage && (
+          <button
+            type="button"
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="inline-flex h-9 items-center justify-center gap-2 self-start rounded-md border border-line-2 px-4 text-[13px] font-semibold text-ink-2 transition-colors hover:bg-bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-60"
+          >
+            {isFetchingNextPage && (
+              <Loader2
+                className="h-3.5 w-3.5 animate-spin"
+                aria-hidden="true"
+              />
+            )}
+            Покажи още ({total - shown})
+          </button>
+        )}
+      </div>
     </div>
   );
 }

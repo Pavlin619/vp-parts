@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -13,7 +14,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { ArticleIdentityDto, articleIdentityKey } from '@vp-parts-shop/shared';
+import {
+  ArticleIdentityDto,
+  SEARCH_SORTS,
+  articleIdentityKey,
+  type SearchSort,
+} from '@vp-parts-shop/shared';
 
 /**
  * Upper bound on the articles one availability request may carry.
@@ -157,4 +163,28 @@ export class ArticlePageQueryDto {
   @Min(1)
   @Max(ARTICLE_MAX_PAGE_SIZE)
   pageSize?: number;
+}
+
+/** What the substitutes route reads off the query string. */
+export interface SubstitutesQuery {
+  page?: number;
+  pageSize?: number;
+  sort?: SearchSort;
+}
+
+/**
+ * Paging and ordering for the substitutes route.
+ *
+ * `sort` sits here rather than on {@link ArticlePageQueryDto} because the
+ * article listing shares that one and serves TecDoc's own order — it would
+ * accept a value it never honours, which is the one thing the shared sort
+ * vocabulary exists to prevent.
+ */
+export class SubstitutesQueryDto
+  extends ArticlePageQueryDto
+  implements SubstitutesQuery
+{
+  @IsOptional()
+  @IsIn(SEARCH_SORTS)
+  sort?: SearchSort;
 }

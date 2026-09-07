@@ -5,7 +5,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { Public } from '../../../auth/public.decorator';
 import { ParseTecDocIdPipe } from '../../../tecdoc';
-import { ArticlePageQueryDto } from '../articles.dto';
+import { SubstitutesQueryDto } from '../articles.dto';
 import { CrossReferencesService } from './cross-references.service';
 
 /**
@@ -24,19 +24,18 @@ export class CrossReferencesController {
    * few: `total` counts the whole cross-reference set, while a page carries only
    * the rows a visitor has reached. The ordering is decided per request from live
    * stock, so the pager is over a set, not over cached pages.
+   *
+   * `sort` is the same vocabulary the search route asks in, and every value it
+   * offers is answerable here: this set is enumerated in full before it is
+   * ranked, so there is no wide-set tier to fall back from.
    */
   @Get('substitutes')
   getSubstitutes(
     @Param('brandId', ParseTecDocIdPipe) brandId: number,
     @Param('articleNumber') articleNumber: string,
-    @Query() paging: ArticlePageQueryDto,
+    @Query() query: SubstitutesQueryDto,
   ): Promise<PaginatedCatalogArticlesDto> {
-    return this.crossReferences.getSubstitutes(
-      brandId,
-      articleNumber,
-      paging.page,
-      paging.pageSize,
-    );
+    return this.crossReferences.getSubstitutes(brandId, articleNumber, query);
   }
 
   /**

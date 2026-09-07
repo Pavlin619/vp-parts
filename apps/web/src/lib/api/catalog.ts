@@ -1,8 +1,14 @@
-import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
+import {
+  infiniteQueryOptions,
+  keepPreviousData,
+  queryOptions,
+} from "@tanstack/react-query";
 import {
   DEFAULT_SEARCH_MODE,
+  DEFAULT_SEARCH_SORT,
   articleIdentityKey,
   type SearchMode,
+  type SearchSort,
 } from "@vp-parts-shop/shared";
 import type {
   ManufacturerDto,
@@ -146,13 +152,18 @@ const SUBSTITUTES_PAGE_SIZE = 20;
 export function getSubstitutes(
   brandId: string,
   articleNumber: string,
-  page = 1,
-  pageSize = SUBSTITUTES_PAGE_SIZE,
+  query: { page?: number; sort?: SearchSort } = {},
 ): Promise<PaginatedCatalogArticlesDto> {
+  const { page = 1, sort = DEFAULT_SEARCH_SORT } = query;
+
   const params = new URLSearchParams({
     page: String(page),
-    pageSize: String(pageSize),
+    pageSize: String(SUBSTITUTES_PAGE_SIZE),
   });
+
+  if (sort !== DEFAULT_SEARCH_SORT) {
+    params.set("sort", sort);
+  }
 
   return apiFetch<PaginatedCatalogArticlesDto>(
     `${articlePath(brandId, articleNumber)}/substitutes?${params}`,
@@ -353,18 +364,25 @@ export const partNumbersQueryOptions = (
  *
  * Keyed on brand and number together, like the read behind it: which parts
  * replace a part is a property of that part, so a number-only key serves one
- * brand's alternatives to the other.
+ * brand's alternatives to the other. The sort joins them because it reorders
+ * the whole set before it is paged, so pages of two sorts are not pages of one
+ * list and must not accumulate in one entry.
  */
 export const substitutesQueryOptions = (
   brandId: string,
   articleNumber: string,
+  sort: SearchSort = DEFAULT_SEARCH_SORT,
 ) =>
   infiniteQueryOptions({
-    queryKey: ["catalog", "substitutes", brandId, articleNumber],
+    queryKey: ["catalog", "substitutes", brandId, articleNumber, sort],
     queryFn: ({ pageParam }) =>
-      getSubstitutes(brandId, articleNumber, pageParam),
+      getSubstitutes(brandId, articleNumber, { page: pageParam, sort }),
     initialPageParam: 1,
     getNextPageParam: nextPageOf,
+    // Switching sort changes the key, and without this the section would fall
+    // back to its skeleton — taking the sort control a visitor just clicked off
+    // the screen with it.
+    placeholderData: keepPreviousData,
     staleTime: ROW_SECTION_STALE_TIME,
     gcTime: ROW_SECTION_GC_TIME,
   });

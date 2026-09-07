@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+  DEFAULT_SEARCH_SORT,
   PaginatedCatalogArticlesDto,
   ArticlePartNumbersDto,
+  type SearchSort,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
 import { CrossReferenceCandidate } from '../../../tecdoc';
@@ -11,6 +13,7 @@ import { ArticleReadCache } from '../article-read';
 import {
   ARTICLE_DEFAULT_PAGE,
   ARTICLE_DEFAULT_PAGE_SIZE,
+  type SubstitutesQuery,
 } from '../articles.dto';
 import {
   ViewedArticle,
@@ -65,13 +68,19 @@ export class CrossReferencesService {
   async getSubstitutes(
     brandId: number,
     articleNumber: string,
-    page: number = ARTICLE_DEFAULT_PAGE,
-    pageSize: number = ARTICLE_DEFAULT_PAGE_SIZE,
+    query: SubstitutesQuery = {},
   ): Promise<PaginatedCatalogArticlesDto> {
+    const {
+      page = ARTICLE_DEFAULT_PAGE,
+      pageSize = ARTICLE_DEFAULT_PAGE_SIZE,
+      sort = DEFAULT_SEARCH_SORT,
+    } = query;
+
     const candidates = await this.loadCrossReferences(brandId, articleNumber);
     const ordered = await this.order.ordered(
-      crossReferenceOrderKey(brandId, articleNumber),
+      crossReferenceOrderKey(brandId, articleNumber, sort),
       candidates,
+      sort,
     );
 
     const requested = pageOf(ordered, page, pageSize);
@@ -176,10 +185,14 @@ export class CrossReferencesService {
 /**
  * Page-free, like the key the set itself is cached under: the ordering is a
  * property of the whole set, so one entry serves every page of it.
+ *
+ * The sort *is* in it — one pin per order, or switching sorts would page on
+ * through the pinned copy of the previous one and appear to do nothing.
  */
 function crossReferenceOrderKey(
   brandId: number,
   articleNumber: string,
+  sort: SearchSort,
 ): string {
-  return `crossrefs:order:${brandId}:${articleNumber}`;
+  return `crossrefs:order:${brandId}:${articleNumber}:${sort}`;
 }
