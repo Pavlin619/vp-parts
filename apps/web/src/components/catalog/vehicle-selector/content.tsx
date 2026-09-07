@@ -2,6 +2,7 @@ import { useVehicleSelector } from "./use-vehicle-selector";
 import { VehicleSelectorHeader } from "./header";
 import { VehicleSelectorStepTabs } from "./step-tabs";
 import { VehicleSelectionList } from "./selection-list";
+import { VehiclePreviewStrip } from "./preview-strip";
 import { VehiclePreviewSidebar } from "./preview-sidebar";
 import { VehicleSelectorFooter } from "./footer";
 
@@ -15,7 +16,10 @@ export function VehicleSelectorContent({ onClose, onConfirm }: VehicleSelectorCo
 
   return (
     <div
-      className="bg-bg-card rounded-[16px] w-full max-w-5xl max-h-[90vh] flex flex-col shadow-[0_16px_40px_rgba(11,18,32,0.14)]"
+      // Dynamic viewport units, because `vh` on a phone measures the window with
+      // the browser's toolbars retracted — at 90vh the footer holding "Потвърди"
+      // sits under them until the visitor scrolls.
+      className="bg-bg-card rounded-[16px] w-full max-w-5xl max-h-[90dvh] flex flex-col shadow-[0_16px_40px_rgba(11,18,32,0.14)]"
       role="dialog"
       aria-modal="true"
       aria-label="Избор на автомобил"
@@ -25,6 +29,12 @@ export function VehicleSelectorContent({ onClose, onConfirm }: VehicleSelectorCo
         step={selector.step}
         stepValues={selector.stepValues}
         onStepClick={selector.handleStepClick}
+      />
+      <VehiclePreviewStrip
+        selectedMake={selector.selectedMake}
+        selectedSeries={selector.selectedSeries}
+        pendingVariant={selector.pendingVariant}
+        seriesPhotoUrl={selector.seriesPhotoUrl}
       />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <VehicleSelectionList

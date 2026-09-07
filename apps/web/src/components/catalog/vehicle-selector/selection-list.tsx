@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Search } from "lucide-react";
 import type { ManufacturerDto, ModelSeriesDto, VehicleVariantDto } from "@vp-parts-shop/shared";
 import { cn } from "@/lib/utils";
@@ -44,8 +45,17 @@ export function VehicleSelectionList({
   };
   const hasResults = resultCounts[step] > 0;
 
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // One element scrolls all three steps, so it carries its offset across them:
+  // picking a make from the foot of the 286-card grid opened the model list
+  // already scrolled past its first entries.
+  useEffect(() => {
+    if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
+  }, [step]);
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 border-r border-line">
+    <div className="flex-1 flex flex-col min-h-0 border-line lg:border-r">
       <div className="px-5 py-3 flex-shrink-0">
         <div className="relative">
           <Search
@@ -63,7 +73,7 @@ export function VehicleSelectionList({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 pb-5 min-h-0">
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto px-5 pb-5 min-h-0">
         {isLoading && <StepSkeleton step={step} />}
 
         {!isLoading && !hasResults && <NoResults step={step} search={search} />}
