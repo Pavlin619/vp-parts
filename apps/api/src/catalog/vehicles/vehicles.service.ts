@@ -7,7 +7,11 @@ import {
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../redis';
 import { orderManufacturers } from './manufacturer-ordering';
-import { orderModelSeries, orderVehicleVariants } from './vehicle-ordering';
+import {
+  orderAssemblyGroups,
+  orderModelSeries,
+  orderVehicleVariants,
+} from './vehicle-ordering';
 import { SELECTABLE_VEHICLES, VehiclesTecDoc } from './vehicles.tecdoc';
 
 const VEHICLE_TREE_TTL = 7 * 24 * 60 * 60;
@@ -31,11 +35,12 @@ const VEHICLE_VARIANT_TTL = 24 * 60 * 60;
  * scope, so changing it takes effect on deploy instead of a week later. The
  * category tree does not, because it is read per vehicle and is not scoped.
  *
- * Series and variants are ordered *outside* their cache entry, so a changed
- * comparator takes effect on deploy rather than a week or a day later — the
- * sort is a pure function of the list and needs no read of its own. Makes are
- * the exception and are ordered inside: their order depends on a second TecDoc
- * call, so it is part of assembling the value rather than presenting it.
+ * Series, variants and the category tree are ordered *outside* their cache
+ * entry, so a changed comparator takes effect on deploy rather than a week or a
+ * day later — the sort is a pure function of the list and needs no read of its
+ * own. Makes are the exception and are ordered inside: their order depends on a
+ * second TecDoc call, so it is part of assembling the value rather than
+ * presenting it.
  */
 @Injectable()
 export class VehiclesService {
@@ -93,11 +98,13 @@ export class VehiclesService {
   }
 
   async getCategoryTree(vehicleId: number): Promise<AssemblyGroupDto[]> {
-    return this.cache.cached(
+    const groups = await this.cache.cached(
       `tecdoc:assembly-groups:${vehicleId}`,
       VEHICLE_TREE_TTL,
       () => this.tecdoc.getAssemblyGroupTree(vehicleId),
     );
+
+    return orderAssemblyGroups(groups);
   }
 
   /**

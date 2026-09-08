@@ -3,6 +3,7 @@ import { searchArticles } from "@/lib/api/search";
 import {
   buildSearchUrl,
   countActiveFilters,
+  hasSearchSubject,
   isNarrowedSearch,
   isPageOutOfRange,
   parseSearchUrl,
@@ -35,7 +36,9 @@ interface SearchPageProps {
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const state = parseSearchUrl(await searchParams);
 
-  if (!state.query) {
+  // Not `!state.query`: the catalogue page links here with a car and a category
+  // and nothing typed, which is a browse the API answers in full.
+  if (!hasSearchSubject(state)) {
     return (
       <div className="page-container py-8">
         <SearchEmptyState state={state} />

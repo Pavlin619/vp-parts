@@ -1,9 +1,16 @@
+import type { AssemblyGroupDto } from '@vp-parts-shop/shared'
 import { buildTree } from './category-nav'
 
-const cat = (id: string, parentId: string | null, name = id) => ({
+const cat = (
+  id: string,
+  parentId: string | null,
+  name = id,
+): AssemblyGroupDto => ({
   id,
   name,
   parentId,
+  articleCount: 0,
+  sortNo: 1,
 })
 
 describe('buildTree', () => {

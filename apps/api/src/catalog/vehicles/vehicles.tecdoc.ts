@@ -155,6 +155,21 @@ export class VehiclesTecDoc {
     return mapVehicleVariants(data);
   }
 
+  /**
+   * A vehicle's whole category tree, with an article count on every node. One
+   * facet-only `getArticles` — `perPage: 0` buys the tree and no article rows.
+   *
+   * **`maxDepth` is left unset, which is what returns every level.** The tree
+   * is four deep and the depth is not decoration: an Audi A3 (8L1) 1.8 T is 35
+   * roots over 257 / 313 / 168 nodes below them, so cutting it at two levels
+   * would withhold 62% of the categories — most of `двигател` among them — and
+   * a category not served is a part that cannot be found. Beware the schema
+   * here: `maxDepth` counts *levels* rather than edges, its documented default
+   * is wrong, and **`0` empties the facet**.
+   *
+   * **`includeCompleteTree` is a measured no-op under a vehicle linkage and is
+   * deliberately not sent.** See `docs/TECDOC.md` for both measurements.
+   */
   async getAssemblyGroupTree(vehicleId: number): Promise<AssemblyGroupDto[]> {
     const data = await this.transport.call<TecDocAssemblyGroupFacetResponse>(
       'getArticles',
@@ -166,7 +181,6 @@ export class VehiclesTecDoc {
         assemblyGroupFacetOptions: {
           enabled: true,
           assemblyGroupType: AssemblyGroupType.PassengerCar,
-          includeCompleteTree: true,
         },
         // Not SELECTOR_SCOPE: this is `getArticles`, which refuses a
         // concatenated code, and the narrowing has already happened upstream —

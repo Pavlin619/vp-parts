@@ -81,10 +81,24 @@ const PREFIX_NUMBER_EXECUTION: SearchExecution = {
 };
 
 /**
+ * The strategy a browse does not use. Nothing was typed, so no query reaches
+ * TecDoc and no strategy is applied to one — but a browse still resolves to a
+ * single {@link SearchCall}, so that browsing one category under two different
+ * modes is one cached match set rather than two entries for one identical
+ * request.
+ */
+const BROWSE_EXECUTION: SearchExecution = {
+  type: TecDocSearchType.FreeText,
+};
+
+/**
  * Resolves a parsed query + the client-selected {@link SearchMode} into the one
  * TecDoc call that answers it. The mode is chosen up front on the FE, so we
  * never guess number-vs-text.
  *
+ * - nothing typed → a browse, which ignores the mode entirely. The catalogue
+ *   page arrives with a vehicle and a category and no query; the narrowing
+ *   travels in the scope, so the call itself carries none.
  * - `generic` → `searchType 99` free-text over the **raw** query. Brand
  *   stripping is a number-search fix and free text needs none: TecDoc's own
  *   full-text handles a brand word in the query.
@@ -106,6 +120,10 @@ export function searchCallFor(
   parsed: ParsedQuery,
   searchMode: SearchMode,
 ): SearchCall {
+  if (parsed.raw === '') {
+    return { query: '', execution: BROWSE_EXECUTION };
+  }
+
   if (searchMode === SearchMode.Generic) {
     return { query: parsed.raw, execution: FREE_TEXT_EXECUTION };
   }

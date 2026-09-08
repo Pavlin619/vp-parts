@@ -1,5 +1,22 @@
-import { ModelSeriesDto, VehicleVariantDto } from '@vp-parts-shop/shared';
-import { orderModelSeries, orderVehicleVariants } from './vehicle-ordering';
+import {
+  AssemblyGroupDto,
+  ModelSeriesDto,
+  VehicleVariantDto,
+} from '@vp-parts-shop/shared';
+import {
+  orderAssemblyGroups,
+  orderModelSeries,
+  orderVehicleVariants,
+} from './vehicle-ordering';
+
+function group(
+  id: string,
+  name: string,
+  sortNo: number,
+  parentId: string | null = null,
+): AssemblyGroupDto {
+  return { id, name, parentId, sortNo, articleCount: 0 };
+}
 
 function series(id: string, name: string, yearFrom = 2000): ModelSeriesDto {
   return { id, manufacturerId: '5', name, yearFrom, yearTo: null };
@@ -166,5 +183,110 @@ describe('orderVehicleVariants', () => {
     orderVehicleVariants(arrival);
 
     expect(namesOf(arrival)).toEqual(['C 250', 'C 180']);
+  });
+});
+
+describe('orderAssemblyGroups', () => {
+  // The facet arrives alphabetically by the Bulgarian label, which opens every
+  // car on `вътрешно обурудване`; `sortNo` is TecDoc's mechanical order.
+  it('replaces the alphabetical arrival order with the mechanical one', () => {
+    const arrival = [
+      group('100341', 'вътрешно обурудване', 28),
+      group('100214', 'горивопроводна система', 5),
+      group('100002', 'двигател', 2),
+      group('100001', 'каросерия', 1),
+      group('100005', 'филтър', 3),
+    ];
+
+    expect(namesOf(orderAssemblyGroups(arrival))).toEqual([
+      'каросерия',
+      'двигател',
+      'филтър',
+      'горивопроводна система',
+      'вътрешно обурудване',
+    ]);
+  });
+
+  it('emits each node before its own children, depth first', () => {
+    const ordered = orderAssemblyGroups([
+      group('100259', 'маслен филтър', 1, '100005'),
+      group('100002', 'двигател', 2),
+      group('100005', 'филтър', 3),
+      group('100260', 'въздушен филтър', 2, '100005'),
+      group('100245', 'смазване', 14, '100002'),
+    ]);
+
+    expect(namesOf(ordered)).toEqual([
+      'двигател',
+      'смазване',
+      'филтър',
+      'маслен филтър',
+      'въздушен филтър',
+    ]);
+  });
+
+  // The real tree is four deep — an Audi A3 is 35 roots over 257 / 313 / 168
+  // nodes — so the walk has to keep going well past the level a page shows.
+  it('walks all four levels the catalogue actually has', () => {
+    const ordered = orderAssemblyGroups([
+      group('4', 'level four', 1, '3'),
+      group('1', 'level one', 1),
+      group('3', 'level three', 1, '2'),
+      group('2', 'level two', 1, '1'),
+    ]);
+
+    expect(namesOf(ordered)).toEqual([
+      'level one',
+      'level two',
+      'level three',
+      'level four',
+    ]);
+  });
+
+  // `sortNo` restarts at 1 in every sibling group, so it only ever orders one
+  // level — a flat sort by it would interleave roots with other roots' children.
+  it('orders siblings independently of another parent using the same numbers', () => {
+    const ordered = orderAssemblyGroups([
+      group('200', 'B', 2),
+      group('100', 'A', 1),
+      group('102', 'A2', 2, '100'),
+      group('101', 'A1', 1, '100'),
+      group('201', 'B1', 1, '200'),
+    ]);
+
+    expect(namesOf(ordered)).toEqual(['A', 'A1', 'A2', 'B', 'B1']);
+  });
+
+  /**
+   * `parentNodeId` arrives over an untyped transport, so a chain that loops
+   * back on itself is unreachable from the roots. Those nodes are appended
+   * rather than silently lost.
+   */
+  it('keeps a node whose parent chain never reaches a root', () => {
+    const ordered = orderAssemblyGroups([
+      group('100', 'root', 1),
+      group('900', 'loop-a', 1, '901'),
+      group('901', 'loop-b', 1, '900'),
+    ]);
+
+    expect(namesOf(ordered)).toEqual(['root', 'loop-a', 'loop-b']);
+  });
+
+  it('treats a parent outside the payload as a root, so nothing is dropped', () => {
+    expect(
+      namesOf(orderAssemblyGroups([group('101', 'orphan', 1, '999')])),
+    ).toEqual(['orphan']);
+  });
+
+  it('leaves the caller its own array', () => {
+    const arrival = [group('2', 'B', 2), group('1', 'A', 1)];
+
+    orderAssemblyGroups(arrival);
+
+    expect(namesOf(arrival)).toEqual(['B', 'A']);
+  });
+
+  it('orders an empty list', () => {
+    expect(orderAssemblyGroups([])).toEqual([]);
   });
 });

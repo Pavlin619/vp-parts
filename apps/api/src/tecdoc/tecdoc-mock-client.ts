@@ -385,28 +385,44 @@ const VEHICLE_VARIANTS: Record<string, VehicleVariantDto[]> = {
  * numbering had shifted, to none at all, emptying a result set whose facet
  * count still said otherwise.
  */
-const CATEGORY_TREE: AssemblyGroupDto[] = [
-  { id: '100', name: 'Филтри', parentId: null },
+interface MockCategoryNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+  /**
+   * TecDoc's mechanical order, which is neither alphabetical nor contiguous —
+   * the root numbers are the real catalogue's own (`филтър` 3, `спирачна
+   * уредба` 13, `окачване и управление` 15) so the mock exercises a comparator
+   * that cannot assume a dense sequence.
+   */
+  sortNo: number;
+}
+
+const CATEGORY_TREE: MockCategoryNode[] = [
+  { id: '100', name: 'Филтри', parentId: null, sortNo: 3 },
   {
     id: '100100',
     name: 'Маслен филтър / корпус / уплътнител',
     parentId: '100',
+    sortNo: 1,
   },
   {
     id: '100200',
     name: 'Горивен филтър / корпус / уплътнител',
     parentId: '100',
+    sortNo: 2,
   },
   {
     id: '100300',
     name: 'Въздушен филтър / корпус / уплътнител',
     parentId: '100',
+    sortNo: 3,
   },
-  { id: '200', name: 'Спирачна система', parentId: null },
-  { id: '200100', name: 'Спирачен диск', parentId: '200' },
-  { id: '200200', name: 'Накладки за спирачки', parentId: '200' },
-  { id: '300', name: 'Окачване', parentId: null },
-  { id: '300100', name: 'Амортисьор', parentId: '300' },
+  { id: '200', name: 'Спирачна система', parentId: null, sortNo: 13 },
+  { id: '200100', name: 'Спирачен диск', parentId: '200', sortNo: 1 },
+  { id: '200200', name: 'Накладки за спирачки', parentId: '200', sortNo: 2 },
+  { id: '300', name: 'Окачване', parentId: null, sortNo: 15 },
+  { id: '300100', name: 'Амортисьор', parentId: '300', sortNo: 1 },
 ];
 
 const CATEGORY_BY_ID = new Map(CATEGORY_TREE.map((node) => [node.id, node]));
@@ -428,6 +444,28 @@ function categoryAncestry(nodeId: string): string[] {
 
 function hasChildCategories(nodeId: string): boolean {
   return CATEGORY_TREE.some((node) => node.parentId === nodeId);
+}
+
+/**
+ * The category tree as the vehicle endpoint serves it. `articleCount` is
+ * derived rather than written down, so the mock cannot advertise a count its
+ * own fixture articles do not have — exactly the drift a hand-written tree
+ * would develop the first time an article was added.
+ *
+ * Counts are cumulative over a subtree, as TecDoc's are: an article filed on a
+ * leaf is counted against every node above it.
+ */
+function assemblyGroupTree(): AssemblyGroupDto[] {
+  return CATEGORY_TREE.map((node) => ({
+    ...node,
+    articleCount: articleCountUnder(node.id),
+  }));
+}
+
+function articleCountUnder(nodeId: string): number {
+  return Object.entries(ARTICLES_BY_CATEGORY)
+    .filter(([categoryId]) => categoryAncestry(categoryId).includes(nodeId))
+    .reduce((total, [, articles]) => total + articles.length, 0);
 }
 
 /**
@@ -1433,7 +1471,7 @@ export class TecDocMockClient {
   }
 
   getAssemblyGroupTree(_vehicleId: number): Promise<AssemblyGroupDto[]> {
-    return Promise.resolve(CATEGORY_TREE);
+    return Promise.resolve(assemblyGroupTree());
   }
 
   getBrands(): Promise<BrandDto[]> {
@@ -1907,15 +1945,8 @@ export class TecDocMockClient {
     execution: SearchExecution | undefined,
     filters: SearchFilters | undefined,
   ): ArticleSummaryDto[] {
-    // Free-text (type 99) matches on description/brand words; number searches
-    // (type 10) match on article/OE numbers — mirroring the real client's split.
-    const baseMatches =
-      execution?.type === TecDocSearchType.FreeText
-        ? this.findByDescription(query)
-        : this.findMatchingArticles(query);
-
     return (
-      baseMatches
+      this.matchesForQuery(query, execution)
         // The mock dataset has no per-vehicle linkage; a vehicle-scoped search
         // returns every other match so fit indicators show both states.
         .filter((_, index) => vehicleId == null || index % 2 === 0)
@@ -1941,6 +1972,30 @@ export class TecDocMockClient {
       legacyArticleIds: legacyArticleId === undefined ? [] : [legacyArticleId],
       articleStatusId: ArticleStatus.Normal,
     };
+  }
+
+  /**
+   * Which articles a query matches, before the vehicle scope and the filters
+   * narrow them.
+   *
+   * An empty query is a category browse — every article matches, and the
+   * narrowings are then the whole of the search. That mirrors the real endpoint,
+   * which answers a `getArticles` carrying no `searchQuery` with everything the
+   * remaining parameters allow.
+   */
+  private matchesForQuery(
+    query: string,
+    execution: SearchExecution | undefined,
+  ): MockArticleBase[] {
+    if (query === '') {
+      return Object.values(ARTICLES_BY_CATEGORY).flat();
+    }
+
+    // Free-text (type 99) matches on description/brand words; number searches
+    // (type 10) match on article/OE numbers — mirroring the real client's split.
+    return execution?.type === TecDocSearchType.FreeText
+      ? this.findByDescription(query)
+      : this.findMatchingArticles(query);
   }
 
   private findMatchingArticles(query: string) {
@@ -2152,7 +2207,7 @@ export class TecDocMockClient {
         ? String(filters.categoryNodeId)
         : undefined;
 
-    const toOption = (node: AssemblyGroupDto): CategoryOptionDto => ({
+    const toOption = (node: MockCategoryNode): CategoryOptionDto => ({
       id: node.id,
       label: node.name,
       count: countByNode.get(node.id) ?? 0,
@@ -2181,7 +2236,7 @@ export class TecDocMockClient {
    * The selected node's ancestors, outermost first — the mock's stand-in for
    * walking the `parentNodeId` links of a real `assemblyGroupFacets` block.
    */
-  private categoryAncestorsOf(nodeId: string): AssemblyGroupDto[] {
+  private categoryAncestorsOf(nodeId: string): MockCategoryNode[] {
     return categoryAncestry(nodeId)
       .slice(1)
       .reverse()

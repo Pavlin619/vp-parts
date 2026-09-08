@@ -183,11 +183,31 @@ export interface TecDocAssemblyGroupFacetResponse {
     counts?: Array<{
       assemblyGroupNodeId: number;
       assemblyGroupName: string;
-      parentNodeId: number | null;
+      /** Omitted on a root rather than sent as null. */
+      parentNodeId?: number | null;
+      /**
+       * TecDoc's own child count. Sent on every node and read on none: over the
+       * whole tree it agrees with the children the payload already carries, so
+       * see {@link mapAssemblyGroups}.
+       */
+      children?: number;
+      count?: number;
+      sortNo?: number;
     }>;
   };
 }
 
+/**
+ * `count` and `sortNo` are optional in the schema and measured present on every
+ * node of a vehicle-scoped read (773 of 773 on an Audi A3 8L1), so the
+ * fallbacks below are what an untyped transport owes rather than a case the
+ * catalogue produces.
+ *
+ * TecDoc's `children` count is deliberately not read. Now that the whole tree
+ * is served it agrees with the nodes the payload already carries — 773 of 773
+ * on an A3, 482 of 482 on an Ibiza, no node over-claiming — so mapping it would
+ * put a second, driftable answer to "is this a leaf" on the wire.
+ */
 export function mapAssemblyGroups(
   response: TecDocAssemblyGroupFacetResponse,
 ): AssemblyGroupDto[] {
@@ -195,5 +215,7 @@ export function mapAssemblyGroups(
     id: String(node.assemblyGroupNodeId),
     name: node.assemblyGroupName,
     parentId: node.parentNodeId != null ? String(node.parentNodeId) : null,
+    articleCount: node.count ?? 0,
+    sortNo: node.sortNo ?? 0,
   }));
 }

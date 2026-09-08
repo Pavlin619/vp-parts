@@ -546,6 +546,61 @@ describe('SearchService', () => {
     });
   });
 
+  /**
+   * How the catalogue page reaches results: a vehicle and a category, nothing
+   * typed. The narrowing does the work a query normally would, so the search
+   * runs as usual — it just has no query to spend anything on.
+   */
+  describe('search — browsing a category with nothing typed', () => {
+    it('enumerates the vehicle and category with no query', async () => {
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340')]),
+      );
+
+      await service.search({
+        query: '',
+        vehicleId: 11340,
+        filters: { categoryNodeId: 100259 },
+      });
+
+      expect(enumerateMock).toHaveBeenCalledTimes(1);
+      expect(enumerateMock).toHaveBeenCalledWith('', 11340, TERM, {
+        categoryNodeId: 100259,
+      });
+    });
+
+    it('does not read the brand dictionary for a query that does not exist', async () => {
+      getBrandsMock.mockResolvedValue(BRANDS);
+      enumerateMock.mockResolvedValueOnce(
+        enumerationOf([articleItem('WL6340')]),
+      );
+
+      await service.search({
+        query: '',
+        vehicleId: 11340,
+        filters: { categoryNodeId: 100259 },
+      });
+
+      expect(getBrandsMock).not.toHaveBeenCalled();
+    });
+
+    // Nothing was typed, so there is no spelling to have got wrong and nothing
+    // for a "did you mean" to be an alternative to.
+    it('offers no zero-result suggestions when the browse finds nothing', async () => {
+      enumerateMock.mockResolvedValueOnce(enumerationOf([]));
+
+      const result = await service.search({
+        query: '',
+        vehicleId: 11340,
+        filters: { categoryNodeId: 100259 },
+      });
+
+      expect(result.total).toBe(0);
+      expect(result.suggestions).toBeUndefined();
+      expect(getAutocompleteArticlesMock).not.toHaveBeenCalled();
+    });
+  });
+
   // The point of enumerating a set whole: a visitor searching for a part is
   // shown what we can actually ship first. Which rows outrank which is settled
   // in article-ordering.spec.ts — what matters here is that a search goes

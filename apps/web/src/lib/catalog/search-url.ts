@@ -245,6 +245,24 @@ export function hasActiveFilters(state: SearchUrlState): boolean {
 }
 
 /**
+ * Whether there is anything for the API to search: something typed, a vehicle,
+ * or a category. This is the page's copy of the API's own rule — `q` is
+ * optional exactly when a vehicle or a category narrows the search — which is
+ * what keeps its 400 unreachable from the UI.
+ *
+ * Deliberately narrower than {@link isNarrowedSearch}. A brand, a stock scope
+ * or an attribute narrows a result set but cannot stand alone as a subject:
+ * every part BOSCH makes is a catalogue-wide read, and the API refuses it.
+ */
+export function hasSearchSubject(state: SearchUrlState): boolean {
+  return (
+    state.query !== "" ||
+    state.vehicleId !== undefined ||
+    selectedCategoryId(state) !== undefined
+  );
+}
+
+/**
  * Whether anything beyond the query is narrowing the results — what an empty
  * result set has to know before it blames the query itself.
  *
