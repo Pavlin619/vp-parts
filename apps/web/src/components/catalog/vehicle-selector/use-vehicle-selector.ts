@@ -178,7 +178,7 @@ export function useVehicleSelector(onClose: () => void, onConfirm?: () => void):
       manufacturerName: selectedMake.name,
       seriesName: selectedSeries.name,
       variantName: pendingVariant.name,
-      engineCodes: pendingVariant.engineCodes ?? [],
+      engineCodes: pendingVariant.engineCodes,
       powerKw: pendingVariant.powerKw,
       powerHp: pendingVariant.powerHp,
       yearFrom: pendingVariant.yearFrom,

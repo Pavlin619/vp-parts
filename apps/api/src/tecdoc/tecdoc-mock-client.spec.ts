@@ -605,6 +605,22 @@ describe('TecDocMockClient', () => {
 
       expect(genericArticleIds).toEqual([OIL_FILTER_TYPE]);
     });
+
+    it('answers with the category trail the breadcrumb walks', async () => {
+      const { detail } = await mock.getArticleDetails(KNECHT, 'OX 982D');
+
+      expect(
+        detail.categoryPaths.map((path) => path.map((step) => step.label)),
+      ).toEqual([['Филтри', 'Маслен филтър / корпус / уплътнител']]);
+    });
+
+    // A part that exists only as a substitute is in no category the drill
+    // reaches, and an empty trail is the honest answer rather than a guess.
+    it('leaves the trail empty for a part outside the tree', async () => {
+      const { detail } = await mock.getArticleDetails(BOSCH, 'not-catalogued');
+
+      expect(detail.categoryPaths).toEqual([]);
+    });
   });
 
   describe('getCrossReferenceCandidates', () => {

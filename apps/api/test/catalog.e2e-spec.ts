@@ -124,6 +124,13 @@ const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
     },
   ],
   fitsVehicle: null,
+  categoryPaths: [
+    [
+      { id: '100006', label: 'спирачна уредба' },
+      { id: '100626', label: 'дискови спирачки' },
+      { id: '100032', label: 'спирачен диск' },
+    ],
+  ],
 };
 
 /** TecDoc's generic article for a brake disc — what the fixture part is. */
@@ -605,6 +612,8 @@ describe('CatalogController (e2e)', () => {
       expect(res.body.technicalSpecs).toEqual([
         { key: 'Diameter', value: '288 mm' },
       ]);
+      // Where the part sits in the category tree, for the breadcrumb.
+      expect(res.body.categoryPaths).toEqual(ARTICLE_DETAIL.categoryPaths);
       // Price/stock is fetched live and separately via
       // GET /catalog/articles-availability, so the detail payload carries none.
       expect(res.body).not.toHaveProperty('available');

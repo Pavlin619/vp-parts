@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ArticleDetailRead,
+  CATALOGUE_WIDE_TREES,
   CatalogArticlesPage,
   LinkageTargetType,
+  TecDocAssemblyGroupFacetCount,
   TecDocTransport,
   TecDocArticleRecord,
+  assemblyGroupPathsOf,
   genericArticleIdsOf,
   linkageRolesOf,
   mapArticleImages,
@@ -79,18 +82,27 @@ export class ArticlesTecDoc {
     // Reserved for the future per-vehicle fit lookup; fit is null until then.
     _vehicleId?: number,
   ): Promise<ArticleDetailRead> {
-    const data = await this.transport.call<ArticleLookupResponse>(
-      'getArticles',
-      {
-        ...articleLookupPayload(brandId, articleNumber),
-        // The list flags plus OE numbers: this is the one read whose surface
-        // renders them, and the one the part-numbers route reads them from.
-        includeGenericArticles: true,
-        includeImages: true,
-        includeArticleCriteria: true,
-        includeOEMNumbers: true,
+    const data = await this.transport.call<
+      ArticleLookupResponse & {
+        assemblyGroupFacets?: { counts: TecDocAssemblyGroupFacetCount[] };
+      }
+    >('getArticles', {
+      ...articleLookupPayload(brandId, articleNumber),
+      // The list flags plus OE numbers: this is the one read whose surface
+      // renders them, and the one the part-numbers route reads them from.
+      includeGenericArticles: true,
+      includeImages: true,
+      includeArticleCriteria: true,
+      includeOEMNumbers: true,
+      // The article's own place in the category tree, for the breadcrumb.
+      // Scoped to one article, so it costs a facet over a single row: measured
+      // at +986 bytes on a 9.5 KB response, with no second call. The tree has
+      // to be named — see {@link CATALOGUE_WIDE_TREES}.
+      assemblyGroupFacetOptions: {
+        enabled: true,
+        assemblyGroupType: CATALOGUE_WIDE_TREES,
       },
-    );
+    });
 
     const article = requireArticle(data, articleNumber, this.logger);
 
@@ -102,6 +114,7 @@ export class ArticlesTecDoc {
         ...mapArticleSummary(article),
         images: mapArticleImages(article.images),
         oemNumbers: mapOemNumbers(article.oemNumbers),
+        categoryPaths: assemblyGroupPathsOf(data.assemblyGroupFacets?.counts),
       },
       genericArticleIds: genericArticleIdsOf(article),
     };

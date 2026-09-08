@@ -1,3 +1,4 @@
+export { ArticleBreadcrumbs } from "./article-breadcrumbs";
 export { ArticleDetailSections } from "./article-detail-sections";
 export { ArticleHeader } from "./article-header";
 export { ArticleImages } from "./article-images";

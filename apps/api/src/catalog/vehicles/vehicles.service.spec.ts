@@ -97,21 +97,11 @@ describe('VehiclesService', () => {
   it('caches model series per manufacturer id', async () => {
     await service.getModelSeries(16);
     expect(cachedMock).toHaveBeenCalledWith(
-      'tecdoc:model-series:VL:v1:16',
+      'tecdoc:model-series:VL:16',
       WEEK,
       expect.any(Function),
     );
     expect(tecdoc.getModelSeries).toHaveBeenCalledWith(16);
-  });
-
-  // Series are held for a week, so an entry written before they carried a
-  // production window would serve seven days of rows reading "undefined+".
-  it('names the series DTO shape in the series key', async () => {
-    await service.getModelSeries(16);
-
-    const [key] = cachedMock.mock.calls.at(-1) as [string];
-
-    expect(key).toMatch(/:v\d+:/);
   });
 
   // Ordered outside the cache entry, so a changed comparator takes effect on
@@ -173,23 +163,12 @@ describe('VehiclesService', () => {
     const result = await service.getVehicleVariants(2);
 
     expect(cachedMock).toHaveBeenCalledWith(
-      'tecdoc:vehicle-types:VL:v3:2',
+      'tecdoc:vehicle-types:VL:2',
       DAY,
       expect.any(Function),
     );
     expect(tecdoc.getVehicleVariants).toHaveBeenCalledWith(2);
     expect(result).toEqual(['v']);
-  });
-
-  // An entry written before a field was added holds the shape from before it,
-  // so a key blind to the shape promises `kbaNumbers` and serves a day of
-  // variants without it.
-  it('names the variant DTO shape in the variant key', async () => {
-    await service.getVehicleVariants(2);
-
-    const [key] = cachedMock.mock.calls.at(-1) as [string];
-
-    expect(key).toMatch(/:v\d+:/);
   });
 
   it('caches the category tree per vehicle id', async () => {

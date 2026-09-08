@@ -137,6 +137,19 @@ export type PaginatedCatalogArticlesDto = PaginatedDto<ArticleSummaryDto>;
 export type PaginatedArticlesDto = PaginatedDto<ArticleListItemDto>;
 
 /**
+ * One category the article sits under, as a step in a breadcrumb trail.
+ *
+ * `id` is the TecDoc `assemblyGroupNodeId` the category filter takes — the same
+ * id space as `CategoryOptionDto.id`, so a trail links into the same navigation
+ * the search drills. It is **not** the `assemblyGroupNodeId` TecDoc files on a
+ * generic article, which is a legacy id the catalogue refuses as a filter.
+ */
+export interface ArticleCategoryNodeDto {
+  id: string;
+  label: string;
+}
+
+/**
  * Catalog metadata TecDoc owns for a single article.
  *
  * The vehicles it fits are not part of this: that list runs to thousands of
@@ -153,4 +166,14 @@ export interface ArticleCatalogDetailDto extends ArticleSummaryDto {
    * numbers section is opened.
    */
   oemNumbers: OemNumberDto[];
+  /**
+   * Every trail through the category tree that reaches this article, each
+   * outermost first. Plural because TecDoc's tree flattens several orthogonal
+   * axes — what a part is, where it sits on the car, why it is replaced — so an
+   * oil filter is filed under three of them at once and there is no single
+   * canonical home. Which one a breadcrumb shows is the client's rule; serving
+   * all of them is what lets that rule answer to the trail the visitor drilled
+   * without this read being cached per category.
+   */
+  categoryPaths: ArticleCategoryNodeDto[][];
 }

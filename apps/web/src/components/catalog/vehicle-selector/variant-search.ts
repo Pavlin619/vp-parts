@@ -26,16 +26,8 @@ export function matchesVariantSearch(
   );
 }
 
-/**
- * Optional-chained because the API caches variants for a day and the two apps
- * deploy separately, so a browser can be newer than the entry answering it.
- */
 function searchableValuesOf(variant: VehicleVariantDto): string[] {
-  return [
-    variant.name,
-    ...(variant.engineCodes ?? []),
-    ...(variant.kbaNumbers ?? []),
-  ];
+  return [variant.name, ...variant.engineCodes, ...variant.kbaNumbers];
 }
 
 /** Latin and Cyrillic both stay: TecDoc localises part of a description. */

@@ -5,38 +5,8 @@ import {
   FacetValueDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
-import { AssemblyGroupType } from '../tecdoc';
+import { AssemblyGroupType, TecDocAssemblyGroupFacetCount } from '../tecdoc';
 import { CATEGORY_AUTOCOMPLETE_LIMIT } from './search-types';
-
-/**
- * One node of a `getArticles` `assemblyGroupFacets` tree (TecDoc
- * `AssemblyGroupFacetCount`). `children` is TecDoc's count of the node's child
- * assembly groups — distinct from the child `options` the navigation builder
- * derives, and the authoritative leafness signal because the facet is scoped to
- * the match set and may omit children the node really has. `count` is optional
- * in the schema — "counts are only populated for a linkage filter's assembly
- * group type" — but measured populated on every node of both trees with no
- * linkage at all, so a null one is defensive rather than expected.
- *
- * **`assemblyGroupNodeId` is unique across trees**, which is why
- * {@link buildCategoryNavigation} keys its node map on the bare id. A
- * catalogue-wide search asks for the passenger-car and universal trees together
- * (the schema: "Multiple tree types can be combined"), so a reused number would
- * silently overwrite one node with another and hang a breadcrumb off a parent
- * from the other tree. Measured over 2,277 distinct ids drawn from all six tree
- * types (P, U, B, O, M, A): none is reused by two of them.
- *
- * The **names** are not unique, though, which is the one thing
- * `assemblyGroupType` is read for — see {@link qualifiedLabelsFor}.
- */
-export interface TecDocAssemblyGroupFacetCount {
-  assemblyGroupNodeId: number;
-  assemblyGroupName: string;
-  assemblyGroupType?: string;
-  parentNodeId?: number | null;
-  children?: number;
-  count?: number;
-}
 
 /**
  * One brand (`dataSupplier`) facet count from a `getArticles` response.

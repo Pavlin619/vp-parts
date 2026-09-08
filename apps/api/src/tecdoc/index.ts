@@ -44,3 +44,8 @@ export {
   LinkageFunctionTargetType,
   LinkageTargetType,
 } from './tecdoc-target-types';
+export {
+  CATALOGUE_WIDE_TREES,
+  assemblyGroupPathsOf,
+} from './assembly-group-facet';
+export type { TecDocAssemblyGroupFacetCount } from './assembly-group-facet';

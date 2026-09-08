@@ -28,6 +28,12 @@ interface ArticleRowProps {
    * render skeletons; pass `null` if it failed. See {@link RowAvailability}.
    */
   availability?: RowAvailability;
+  /**
+   * The category the list itself is standing in, carried into the detail URL so
+   * the part's breadcrumb continues the trail the visitor drilled rather than
+   * picking one of TecDoc's other trails for the same part.
+   */
+  categoryNodeId?: string;
   onAddToCart?: (articleNumber: string, quantity: number) => void;
 }
 
@@ -62,6 +68,7 @@ const NO_WAREHOUSES: WarehouseAvailabilityDto[] = [];
 export function ArticleRow({
   article,
   availability,
+  categoryNodeId,
   onAddToCart,
 }: ArticleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -71,7 +78,7 @@ export function ArticleRow({
   );
 
   const { articleNumber, brandId, brandName, description } = article;
-  const href = articleDetailHref(brandId, articleNumber);
+  const href = articleDetailHref(brandId, articleNumber, categoryNodeId);
   const specSummary = formatSpecSummary(article.technicalSpecs);
 
   return (

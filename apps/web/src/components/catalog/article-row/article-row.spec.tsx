@@ -118,6 +118,18 @@ describe('ArticleRow — catalog metadata', () => {
     )
   })
 
+  // TecDoc files one part under several category trails, so the detail page's
+  // breadcrumb can only continue the one the visitor drilled if the list says
+  // which that was.
+  it('carries the category the list is standing in into the article link', () => {
+    render(<ArticleRow article={article()} categoryNodeId="100259" />)
+
+    expect(screen.getByRole('link', { name: 'WL6340' })).toHaveAttribute(
+      'href',
+      '/catalog/articles/268/WL6340?categoryId=100259',
+    )
+  })
+
   it('URL-encodes special characters in the article link', () => {
     render(<ArticleRow article={article({ articleNumber: 'BD 0986/451' })} />)
 

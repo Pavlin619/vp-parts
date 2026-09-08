@@ -4,11 +4,11 @@ import type { ArticleCatalogDetailDto } from "@vp-parts-shop/shared";
 import { getArticleCatalogDetail } from "@/lib/api/catalog";
 import { ApiError } from "@/lib/api";
 import { decodeRouteParam } from "@/lib/utils";
-import { CatalogBreadcrumbs } from "@/components/catalog/listing/catalog-breadcrumbs";
 import {
   ArticleImages,
   ArticleHeader,
   ArticleSpecs,
+  ArticleBreadcrumbs,
   ArticleBuyBox,
   ArticleDetailSections,
 } from "@/components/catalog/article-detail";
@@ -51,7 +51,7 @@ export default async function ArticleDetailPage({
   const { brandId: rawBrandId, articleNumber: rawArticleNumber } = await params;
   const brandId = decodeRouteParam(rawBrandId);
   const articleNumber = decodeRouteParam(rawArticleNumber);
-  const { vehicleId } = await searchParams;
+  const { vehicleId, categoryId } = await searchParams;
 
   let article: ArticleCatalogDetailDto;
   try {
@@ -65,7 +65,12 @@ export default async function ArticleDetailPage({
 
   return (
     <div className="page-container py-8">
-      <CatalogBreadcrumbs />
+      <ArticleBreadcrumbs
+        categoryPaths={article.categoryPaths}
+        brandName={article.brandName}
+        articleNumber={article.articleNumber}
+        categoryNodeId={categoryId}
+      />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)_340px] lg:gap-y-6">
         <ArticleImages

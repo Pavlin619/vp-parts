@@ -83,6 +83,7 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 | Order detail | Client + SSE for live status |
 
 ### Key technical decisions
+- **Nothing is deployed yet, so never write code that defends against a previous release.** No cache-key shape versions, no field typed optional because an older entry lacks it, no migration shim, dual-read fallback or deprecation alias. A changed shape is answered by flushing Redis and redeploying, and a changed contract by editing both sides. Each of these costs a key, a test and a comment to protect against a release that has never happened, and every one of them then has to be kept true. Revisit the day there is a live deploy.
 - **Prisma** uses `?pgbouncer=true` in the pooled `DATABASE_URL` (runtime client) because PgBouncer runs in transaction mode. Migrations and other Prisma CLI commands need a direct, non-pooled connection via `DIRECT_URL` (used by `prisma.config.ts`); it falls back to `DATABASE_URL` for local/CI environments without a pooler.
 - **Pre-checkout availability check** is always fresh (no cache) to avoid selling unavailable stock.
 - **TecDoc data** is cached in Redis with TTL; no Postgres cache at launch.
@@ -107,7 +108,6 @@ Rules that apply to every TecDoc call:
 - **Never send `includeAll`.** Name the flags the call actually reads. It is the most expensive mistake available on this API: it adds PDFs, links, linkages, parts lists, GTINs, prices and OE numbers to every row, and no list renders any of them. Most list reads need only generic articles, images and criteria.
 - **Nothing orderable or filterable in TecDoc knows what we can ship.** No sort field or facet touches our stock, and `includePrices` returns the supplier's catalogue price, not ours. Sorting by price, availability or delivery has to be answered from backoffice inventory over a set we hold in full.
 - **`perPage` tops out at 1000 and `page` reaches only ~10,000 results.** There is no cursor. Size a pager on the response's `maxAllowedPage`, never on `ceil(total / perPage)`.
-- **Adding a field to a cached DTO means bumping its shape version in the cache key.** Entries written by the previous release otherwise make the API promise a field it does not send until they expire, which is a client crash rather than a missing row.
 - **`[VERIFY-TC]` marks an assumption the XSD cannot settle** — how repeated filters combine, what a sentinel default means. State what breaks if it is wrong. Close one by replacing it with the measurement, not by deleting it.
 
 `docs/TECDOC.md` holds the measured detail behind the features built on this — the vehicle selector's `'VL'` scope, make logos, the list and search pipeline, facet shaping, and the include flags each call needs. Read the relevant section before changing one of those surfaces, and record new findings there.

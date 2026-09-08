@@ -10,6 +10,7 @@ import {
   CategoryNavigationDto,
   CategoryOptionDto,
   ArticleCatalogDetailDto,
+  ArticleCategoryNodeDto,
   ArticleSummaryDto,
   LinkedVehicleDto,
   LinkedVehicleManufacturerDto,
@@ -1021,9 +1022,13 @@ function oem(articleNumber: string, manufacturerName: string): OemNumberDto {
  * Indexes the detail fixtures by brand + number and fills each one's `brandId`
  * from its brand name, so a fixture only has to state the brand once and the
  * collision pair below can carry genuinely different data.
+ *
+ * `categoryPaths` is seeded empty and filled on read, since it is derived from
+ * where the article sits in {@link CATEGORY_TREE} rather than written per
+ * fixture — the two could otherwise disagree.
  */
 function indexDetails(
-  details: Array<Omit<ArticleCatalogDetailDto, 'brandId'>>,
+  details: Array<Omit<ArticleCatalogDetailDto, 'brandId' | 'categoryPaths'>>,
 ): Record<string, ArticleCatalogDetailDto> {
   return Object.fromEntries(
     details.map((detail) => {
@@ -1031,7 +1036,7 @@ function indexDetails(
 
       return [
         articleKey(brandId, detail.articleNumber),
-        { ...detail, brandId },
+        { ...detail, brandId, categoryPaths: [] },
       ];
     }),
   );
@@ -1407,6 +1412,7 @@ const DEFAULT_ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   technicalSpecs: [],
   oemNumbers: [],
   fitsVehicle: null,
+  categoryPaths: [],
 };
 
 export class TecDocMockClient {
@@ -1654,10 +1660,36 @@ export class TecDocMockClient {
     const productTypeId = productTypeIdOf(detail);
 
     return Promise.resolve({
-      detail,
+      detail: { ...detail, categoryPaths: this.categoryPathsOf(detail) },
       genericArticleIds:
         productTypeId === undefined ? [] : [Number(productTypeId)],
     });
+  }
+
+  /**
+   * The trails the article's category sits on — the mock's stand-in for the
+   * real client's `assemblyGroupFacets` walk.
+   *
+   * Always at most one, because {@link CATEGORY_TREE} is a plain tree while
+   * TecDoc's files a part under several orthogonal roots at once. The contract
+   * is a list either way, so a client's choice-of-trail rule still runs here;
+   * what the mock cannot exercise is the choosing itself.
+   */
+  private categoryPathsOf(
+    detail: ArticleCatalogDetailDto,
+  ): ArticleCategoryNodeDto[][] {
+    const taxonomy = taxonomyOf(detail);
+
+    if (taxonomy === undefined) {
+      return [];
+    }
+
+    const trail = categoryAncestry(taxonomy.categoryNodeId)
+      .reverse()
+      .flatMap((nodeId) => CATEGORY_BY_ID.get(nodeId) ?? [])
+      .map((node) => ({ id: node.id, label: node.name }));
+
+    return trail.length > 0 ? [trail] : [];
   }
 
   /**

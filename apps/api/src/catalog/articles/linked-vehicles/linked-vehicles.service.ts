@@ -14,22 +14,15 @@ const LINKED_VEHICLES_MISS_TTL = 60 * 60;
 /**
  * A vehicle record is TecDoc master data and only moves on a data release, so a
  * day is conservative — but it is also the only thing bounding how long a stale
- * row survives, since nothing here invalidates on demand. Bump
- * {@link VEHICLE_MEMO_VERSION} to make a change land sooner than that.
+ * row survives, since nothing here invalidates on demand. The row's shape is
+ * decided by things the `carId` says nothing about (the fields the mapper reads,
+ * the detail blocks requested, the language), so changing one of those means
+ * flushing `tecdoc:vehicle:*` rather than waiting the day out.
  */
 const VEHICLE_TTL = 24 * 60 * 60;
 
-/**
- * What a memoised vehicle row was shaped by: the fields `mapLinkedVehicle`
- * reads, the detail blocks `LinkedVehiclesTecDoc` asks for, and the language the
- * names come back in. None of that is in the `carId` the row is keyed on, so a
- * change to any of it would otherwise be served the old shape for a full TTL —
- * and a second caller wanting different detail blocks would collide outright.
- */
-const VEHICLE_MEMO_VERSION = 'v1';
-
 function vehicleMemoKey(carId: number): string {
-  return `tecdoc:vehicle:${VEHICLE_MEMO_VERSION}:${carId}`;
+  return `tecdoc:vehicle:${carId}`;
 }
 
 function legacyArticleIdsMemoKey(
