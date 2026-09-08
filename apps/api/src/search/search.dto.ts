@@ -5,12 +5,15 @@ import {
   IsEnum,
   IsIn,
   IsInt,
-  IsNotEmpty,
   IsOptional,
   IsString,
   Max,
   MaxLength,
   Min,
+  Validate,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -87,14 +90,48 @@ function toOptionalBoolean({ value }: { value: unknown }): boolean | undefined {
   return undefined;
 }
 
+/**
+ * A search has to match on *something*, and typed text is not the only thing
+ * that can be it: the catalogue page sends a vehicle and a category with
+ * nothing typed, and TecDoc answers that in full — an Audi A3 (8L1) 1.8 T's oil
+ * filters come back as 119 articles with the brand, product-type and dimension
+ * facets all intact, indistinguishable from a query that narrowed to the same
+ * set.
+ *
+ * So an empty `q` is allowed exactly when a narrowing stands in for it. Empty
+ * with nothing else is the whole catalogue, which no surface asks for and
+ * TecDoc pages only the first ~10,000 of.
+ */
+@ValidatorConstraint({ name: 'searchHasSubject' })
+class SearchHasSubject implements ValidatorConstraintInterface {
+  validate(query: string, args: ValidationArguments): boolean {
+    const { vehicleId, categoryNodeId } = args.object as SearchQueryDto;
+
+    return (
+      query !== '' || vehicleId !== undefined || categoryNodeId !== undefined
+    );
+  }
+
+  defaultMessage(): string {
+    return 'q must not be empty unless a vehicle or a category narrows the search';
+  }
+}
+
 export class SearchQueryDto {
+  /**
+   * The typed query, empty for a category browse — see {@link SearchHasSubject}
+   * for when that is allowed. The default carries an absent param, which
+   * `@Transform` does not see at all, so that "nothing was typed" is one value
+   * inwards rather than both `undefined` and `''`. A value that is neither a
+   * string nor absent (a repeated `?q=a&q=b`) is left for `@IsString` to refuse.
+   */
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @IsNotEmpty()
   @MaxLength(200)
-  q!: string;
+  @Validate(SearchHasSubject)
+  q = '';
 
   /**
    * The selected vehicle (TecDoc linkageTargetId). Parsed to a number here so it

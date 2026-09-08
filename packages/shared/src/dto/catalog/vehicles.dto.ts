@@ -85,8 +85,39 @@ export interface VehicleVariantDto {
   imageUrl: string | null;
 }
 
+/**
+ * One node of a vehicle's category tree, flat — the tree is rebuilt from
+ * {@link AssemblyGroupDto.parentId}, and the list arrives depth first so a
+ * consumer that ignores the links still reads it in a sensible order.
+ *
+ * The whole tree is served, all four levels of it: the catalogue page
+ * illustrates the roots, but a visitor drilling into `двигател` reaches parts
+ * that are three levels down, and a node held back is a part that cannot be
+ * found. There is deliberately no leafness field — a node is a leaf when
+ * nothing else names it as a parent, which is the same answer from data the
+ * consumer already holds. See `VehiclesTecDoc.getAssemblyGroupTree`.
+ */
 export interface AssemblyGroupDto {
   id: string;
   name: string;
   parentId: string | null;
+  /**
+   * Articles TecDoc catalogues under this node for this vehicle.
+   *
+   * **Counts overlap and never sum to the vehicle's total.** TecDoc flattens
+   * what a part is, where it sits on the car and why it is replaced into one
+   * set of roots, so an article is filed under several: an Audi A3 (8L1) 1.8 T
+   * matches 30,367 articles while its 35 roots sum to 45,471. Anything
+   * rendering these as shares of a whole shows a number that does not add up.
+   */
+  articleCount: number;
+  /**
+   * TecDoc's own ordering, which is mechanical rather than alphabetical — body,
+   * engine, filters, belt drive, fuel, exhaust, cooling, clutch, transmission,
+   * brakes, suspension, steering, electrics. It is unique within a set of
+   * siblings and stable across vehicles, so it is the order the list arrives
+   * in; the raw facet arrives alphabetically instead, which puts `вътрешно
+   * обурудване` first.
+   */
+  sortNo: number;
 }

@@ -279,19 +279,80 @@ describe('mapAssemblyGroups', () => {
               assemblyGroupNodeId: 100001,
               assemblyGroupName: 'Brakes',
               parentNodeId: null,
+              children: 2,
+              count: 3373,
+              sortNo: 13,
             },
             {
               assemblyGroupNodeId: 100002,
               assemblyGroupName: 'Discs',
               parentNodeId: 100001,
+              children: 0,
+              count: 1824,
+              sortNo: 1,
             },
           ],
         },
       }),
     ).toEqual([
-      { id: '100001', name: 'Brakes', parentId: null },
-      { id: '100002', name: 'Discs', parentId: '100001' },
+      {
+        id: '100001',
+        name: 'Brakes',
+        parentId: null,
+        articleCount: 3373,
+        sortNo: 13,
+      },
+      {
+        id: '100002',
+        name: 'Discs',
+        parentId: '100001',
+        articleCount: 1824,
+        sortNo: 1,
+      },
     ]);
+  });
+
+  it('reads a root, whose parent link TecDoc omits rather than nulls', () => {
+    expect(
+      mapAssemblyGroups({
+        assemblyGroupFacets: {
+          counts: [
+            {
+              assemblyGroupNodeId: 100005,
+              assemblyGroupName: 'филтър',
+              children: 6,
+              count: 788,
+              sortNo: 3,
+            },
+          ],
+        },
+      })[0],
+    ).toMatchObject({ parentId: null });
+  });
+
+  /**
+   * Leafness is a property of the served tree, not a field on a node: TecDoc's
+   * `children` count agrees with the nodes the payload carries on every node
+   * measured, so mapping it would put a second answer on the wire that could
+   * only ever drift from the first.
+   */
+  it('does not put a leafness field on a node', () => {
+    expect(
+      mapAssemblyGroups({
+        assemblyGroupFacets: {
+          counts: [
+            {
+              assemblyGroupNodeId: 100626,
+              assemblyGroupName: 'дискови спирачки',
+              parentNodeId: 100006,
+              children: 4,
+              count: 1824,
+              sortNo: 1,
+            },
+          ],
+        },
+      })[0],
+    ).not.toHaveProperty('hasChildren');
   });
 
   it('reads an omitted facet as no categories', () => {

@@ -410,12 +410,7 @@ export class SearchTecDoc {
     return {
       articleCountry: 'BG',
       lang: 'bg',
-      searchQuery: query,
-      searchType: execution.type,
-      // Free-text (type 99) ignores match strategy; only number searches use it.
-      ...(execution.matchType != null && {
-        searchMatchType: execution.matchType,
-      }),
+      ...this.queryPayload(query, execution),
       // Makes TecDoc rule on whether each key-table criteria value is
       // permissible for the selected product type. It marks rather than
       // filters: the verdict lands on each value's `permittedKeyValue`, which
@@ -437,6 +432,34 @@ export class SearchTecDoc {
       }),
       ...(filters?.criteria?.length && {
         criteriaFilters: filters.criteria,
+      }),
+    };
+  }
+
+  /**
+   * The query half of a match set — absent altogether when nothing was typed,
+   * which is how the catalogue page browses a category.
+   *
+   * Sending an empty `searchQuery` under a `searchType` was measured to behave
+   * identically (byte-for-byte on an Audi A3's oil filters, whether the pair is
+   * omitted, sent with `searchType 99` alone, or sent as an empty string), so
+   * this is about saying what we mean: a browse runs no search, and its
+   * {@link SearchExecution} is the default the caller never chose.
+   */
+  private queryPayload(
+    query: string,
+    execution: SearchExecution,
+  ): Record<string, unknown> {
+    if (query === '') {
+      return {};
+    }
+
+    return {
+      searchQuery: query,
+      searchType: execution.type,
+      // Free-text (type 99) ignores match strategy; only number searches use it.
+      ...(execution.matchType != null && {
+        searchMatchType: execution.matchType,
       }),
     };
   }

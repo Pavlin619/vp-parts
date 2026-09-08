@@ -56,6 +56,31 @@ describe('SearchTecDoc', () => {
     });
 
     /**
+     * How the catalogue page browses a category: a vehicle and a node, nothing
+     * typed. TecDoc answers it in full — the Audi A3's oil filters are 119
+     * articles with every facet — so the request simply carries no query.
+     */
+    it('sends no query at all when nothing was typed', async () => {
+      call.mockResolvedValueOnce({ totalMatchingArticles: 0, articles: [] });
+
+      await tecdoc.enumerate(
+        '',
+        11340,
+        { type: 10, matchType: 'prefix_or_suffix' },
+        { categoryNodeId: 100259 },
+      );
+
+      const [, params] = call.mock.calls[0];
+      expect(params).toMatchObject({
+        linkageTargetId: 11340,
+        assemblyGroupNodeIds: [100259],
+      });
+      for (const key of ['searchQuery', 'searchType', 'searchMatchType']) {
+        expect(params).not.toHaveProperty(key);
+      }
+    });
+
+    /**
      * The whole basis of the split: a set is read whole so it can be ranked, so
      * it must be read cheaply. Images and criteria are what a *rendered* row
      * needs and cost roughly ten times as much per article — they are bought for
@@ -690,6 +715,22 @@ describe('SearchTecDoc', () => {
       });
       expect(page.items.map((item) => item.articleNumber)).toEqual(['WL6340']);
       expect(page.maxAllowedPage).toBe(500);
+    });
+
+    // Both reads share `matchSetPayload`, so a browse pages exactly as it
+    // enumerates — a page that reintroduced the query would describe a
+    // different set from the one the pager was sized on.
+    it('pages a browse without a query too', async () => {
+      call.mockResolvedValueOnce({ maxAllowedPage: 1, articles: [] });
+
+      await tecdoc.readRowsPage(
+        pageRequest({ query: '', filters: { categoryNodeId: 100259 } }),
+      );
+
+      const [, params] = call.mock.calls[0];
+      expect(params).toMatchObject({ assemblyGroupNodeIds: [100259] });
+      expect(params).not.toHaveProperty('searchQuery');
+      expect(params).not.toHaveProperty('searchType');
     });
 
     // Facets describe the whole match set, which the enumeration already read

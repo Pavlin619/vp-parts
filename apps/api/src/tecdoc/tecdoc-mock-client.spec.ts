@@ -51,6 +51,35 @@ describe('TecDocMockClient', () => {
       );
     });
 
+    /**
+     * A browse types nothing, so the narrowings are the whole of the search.
+     * The real endpoint answers a `getArticles` with no `searchQuery` the same
+     * way — everything the remaining parameters allow — and a mock that matched
+     * nothing would make the catalogue page look broken in dev.
+     */
+    it('matches every article when nothing was typed', async () => {
+      const browse = await mock.enumerate('', undefined, {
+        type: TecDocSearchType.FreeText,
+      });
+
+      expect(browse.total).toBeGreaterThan(0);
+    });
+
+    it('narrows a browse by its category alone', async () => {
+      const browse = await mock.enumerate(
+        '',
+        undefined,
+        { type: TecDocSearchType.FreeText },
+        { categoryNodeId: BRAKE_PAD_LEAF },
+      );
+      const everything = await mock.enumerate('', undefined, {
+        type: TecDocSearchType.FreeText,
+      });
+
+      expect(browse.total).toBeGreaterThan(0);
+      expect(browse.total).toBeLessThan(everything.total);
+    });
+
     it('matches on description words for a free-text search', async () => {
       const result = await mock.enumerate('oil filter mann', undefined, {
         type: TecDocSearchType.FreeText,
@@ -134,6 +163,45 @@ describe('TecDocMockClient', () => {
           (candidate) => candidate.brandName === brand!.label,
         ),
       ).toBe(true);
+    });
+  });
+
+  describe('getAssemblyGroupTree', () => {
+    // Derived from the fixture articles rather than written down, so the tree
+    // cannot advertise a count the mock's own data does not have.
+    it('counts a root over its whole subtree, not just its own articles', async () => {
+      const tree = await mock.getAssemblyGroupTree(10001);
+      const root = tree.find((node) => node.id === String(FILTERS_ROOT));
+      const children = tree.filter(
+        (node) => node.parentId === String(FILTERS_ROOT),
+      );
+
+      expect(root?.articleCount).toBe(
+        children.reduce((total, child) => total + child.articleCount, 0),
+      );
+      expect(root?.articleCount).toBeGreaterThan(0);
+    });
+
+    // Leafness is read off the served tree rather than a field, so the tree has
+    // to carry the parent links that answer it.
+    it('links every non-root to a parent that is in the payload', async () => {
+      const tree = await mock.getAssemblyGroupTree(10001);
+      const ids = new Set(tree.map((node) => node.id));
+      const children = tree.filter((node) => node.parentId !== null);
+
+      expect(children.length).toBeGreaterThan(0);
+      expect(children.every((node) => ids.has(node.parentId as string))).toBe(
+        true,
+      );
+      expect(
+        tree.some((node) => node.parentId === String(OIL_FILTER_LEAF)),
+      ).toBe(false);
+    });
+
+    it('gives every node the sort number the order is built from', async () => {
+      const tree = await mock.getAssemblyGroupTree(10001);
+
+      expect(tree.every((node) => Number.isInteger(node.sortNo))).toBe(true);
     });
   });
 

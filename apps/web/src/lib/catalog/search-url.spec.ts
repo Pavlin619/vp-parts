@@ -17,6 +17,7 @@ import {
   FIRST_PAGE,
   hasActiveFilters,
   hasDimensions,
+  hasSearchSubject,
   isAttributeSelected,
   isNarrowedSearch,
   isPageOutOfRange,
@@ -932,6 +933,56 @@ describe('isNarrowedSearch', () => {
 
   it('is true for any filter that clearing removes', () => {
     expect(isNarrowedSearch(state({ brandIds: ['268'] }))).toBe(true)
+  })
+})
+
+/**
+ * The API accepts an empty `q` exactly when a vehicle or a category narrows the
+ * search, and rejects it otherwise with a 400. This is the page's copy of that
+ * rule, so a state the page will fetch is always a state the API will answer.
+ */
+describe('hasSearchSubject', () => {
+  it('is true for something typed', () => {
+    expect(hasSearchSubject(state({ query: 'K20' }))).toBe(true)
+  })
+
+  it('is false when nothing was typed and nothing narrows', () => {
+    expect(hasSearchSubject(state({ query: '' }))).toBe(false)
+  })
+
+  // The catalogue page links straight here with no query at all.
+  it('is true for a category browse with nothing typed', () => {
+    expect(
+      hasSearchSubject(state({ query: '', categoryPath: ['100259'] })),
+    ).toBe(true)
+  })
+
+  it('is true for a vehicle browse with nothing typed', () => {
+    expect(hasSearchSubject(state({ query: '', vehicleId: '11340' }))).toBe(
+      true,
+    )
+  })
+
+  it('is true for a vehicle and a category together', () => {
+    expect(
+      hasSearchSubject(
+        state({ query: '', vehicleId: '11340', categoryPath: ['100259'] }),
+      ),
+    ).toBe(true)
+  })
+
+  /**
+   * Deliberately narrower than `isNarrowedSearch`: these axes narrow a result
+   * set but cannot stand alone as a subject, and the API refuses them — asking
+   * for every part BOSCH makes is a catalogue-wide read, not a search.
+   */
+  it.each([
+    ['a brand', { brandIds: ['268'] }],
+    ['a product type', { productTypeId: '7' }],
+    ['a stock scope', { stockScope: 'central' as const }],
+    ['an attribute', { attributes: [{ criteriaId: '20', value: '106.4' }] }],
+  ])('is false when narrowed only by %s', (_label, narrowing) => {
+    expect(hasSearchSubject(state({ query: '', ...narrowing }))).toBe(false)
   })
 })
 

@@ -103,7 +103,7 @@ describe('VehiclesTecDoc', () => {
     },
   );
 
-  it('getAssemblyGroupTree requests the complete tree and maps parent ids', async () => {
+  it('getAssemblyGroupTree maps a node with its article count and order', async () => {
     call.mockResolvedValueOnce({
       assemblyGroupFacets: {
         counts: [
@@ -111,6 +111,9 @@ describe('VehiclesTecDoc', () => {
             assemblyGroupNodeId: 100001,
             assemblyGroupName: 'Brakes',
             parentNodeId: null,
+            children: 17,
+            count: 3940,
+            sortNo: 13,
           },
         ],
       },
@@ -120,14 +123,47 @@ describe('VehiclesTecDoc', () => {
 
     expect(call).toHaveBeenCalledWith(
       'getArticles',
-      expect.objectContaining({
-        linkageTargetId: 10001,
-        assemblyGroupFacetOptions: expect.objectContaining({
-          includeCompleteTree: true,
-        }),
-      }),
+      expect.objectContaining({ linkageTargetId: 10001 }),
     );
-    expect(result).toEqual([{ id: '100001', name: 'Brakes', parentId: null }]);
+    expect(result).toEqual([
+      {
+        id: '100001',
+        name: 'Brakes',
+        parentId: null,
+        articleCount: 3940,
+        sortNo: 13,
+      },
+    ]);
+  });
+
+  /**
+   * The tree is four levels deep and every one of them is a category a visitor
+   * can reach — an A3 is 35 roots over 257 / 313 / 168 nodes beneath. A depth
+   * would withhold most of them, and the schema makes it easy to do by
+   * accident: `maxDepth` counts levels rather than edges and `0` empties the
+   * facet outright.
+   */
+  it('getAssemblyGroupTree asks for no depth, so every level comes back', async () => {
+    call.mockResolvedValue({ status: 200 });
+
+    await tecdoc.getAssemblyGroupTree(10001);
+
+    const [, payload] = call.mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.assemblyGroupFacetOptions).not.toHaveProperty('maxDepth');
+  });
+
+  // Measured a no-op under a vehicle linkage: naming no tree, 'P', 'PU' and
+  // includeCompleteTree all answer the identical 773 nodes / 110,096 bytes,
+  // because such a facet is anchored at the vehicle either way.
+  it('getAssemblyGroupTree does not ask for the complete tree', async () => {
+    call.mockResolvedValue({ status: 200 });
+
+    await tecdoc.getAssemblyGroupTree(10001);
+
+    const [, payload] = call.mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.assemblyGroupFacetOptions).not.toHaveProperty(
+      'includeCompleteTree',
+    );
   });
 
   // Not 'VL': `getArticles` refuses a concatenated code outright, and pairs the

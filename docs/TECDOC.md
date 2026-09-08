@@ -171,6 +171,53 @@ Note that this argument used to rest on motorcycles — ranked by count, `'P'` p
 
 **A step tab's number becomes a tick, not a second glyph beside one.** The badge is the step's state — grey for a step not yet reachable, dark for the one open, and a green tick for one already answered — so the numeral is what it replaces rather than something a tick is added to, and the tick is what lets a visitor scan for the first unanswered step without reading the labels. The selected value is muted next to its label so the label stays the thing being scanned, and the badge is `aria-hidden`: the tab already names its step in text, and a screen reader announcing "one Марка" reads the ordinal as part of the make.
 
+#### The catalogue page: a vehicle's category tree
+
+**Picking a car and landing on its categories is one call — `getArticles` at `perPage: 0` with `assemblyGroupFacetOptions` under the vehicle's linkage — served by `GET /catalog/vehicles/:vehicleId/categories`.** It answers the tree for that car alone, which is the whole point: an Audi A3 (8L1) 1.8 T gets 35 roots and a Tesla Model 3 a different set, so nothing is offered that the car cannot take. `scripts/vehicle-category-probe.mjs` is the measurement behind everything below.
+
+**TecDoc files no image for a category, and unlike the make logos there is not even a near-miss to reject.** `AssemblyGroupFacetCount` is `{assemblyGroupNodeId, assemblyGroupName, assemblyGroupType, parentNodeId, children, count, sortNo}` — no document id, no URL. Every image type in the schema belongs to an article (`images`, `articleThumbnails`), a data supplier (`dataSupplierLogo`, `brandLogoID`) or a vehicle (`vehicleImages`). So category illustrations are ours to ship, on the same pattern as `vehicle-make-mark.ts`: files registered by `assemblyGroupNodeId` in an explicit manifest, with a neutral tile for anything unregistered.
+
+**The asset set is bounded at 36, because that is the whole passenger-car tree.** A catalogue-wide `maxDepth: 1` read returns 36 roots, and root node ids are global and stable, so 36 illustrations cover every car we will ever sell. Level 2 is where that stops being true — 490 nodes catalogue-wide — which is why only roots are illustrated and every level below them is text. That is a rendering choice, not a limit on what is served: the API answers the whole tree and the page decides how much of it to open at once.
+
+The 36 to draw, in `sortNo` order, which is also the order they are rendered in. A car shows the subset it has parts for — an A3 gets 35 of them — so an illustration is drawn once and reused for every vehicle. Register each one by node id in `category-illustration.ts`; anything unregistered renders the neutral tile, so they can land one at a time. Re-read the list with `scripts/vehicle-category-probe.mjs roots`.
+
+| # | Node | Category | # | Node | Category |
+|---|---|---|---|---|---|
+| 1 | `100001` | каросерия | 19 | `100241` | отопление/вентилация |
+| 2 | `100002` | двигател | 20 | `100243` | климатична уредба |
+| 3 | `100005` | филтър | 21 | `100019` | части за сервиз/инспекция/обслужване |
+| 4 | `100016` | ремъчно задвижване | 22 | `100015` | теглич/монтажни части |
+| 5 | `100214` | горивопроводна система | 23 | `100343` | устройства за превоз на товари |
+| 6 | `100254` | гориво-смесителна с-ма | 24 | `100342` | почистване на фаровете |
+| 7 | `100004` | изпускателна система | 25 | `100018` | стъклопочистване |
+| 8 | `100007` | охлаждане | 26 | `100335` | система комфорт |
+| 9 | `100050` | съединител/монтажни части | 27 | `100339` | информационна/комуникационна система |
+| 10 | `100238` | трансмисия | 28 | `100341` | вътрешно обурудване |
+| 11 | `100014` | задвижване на колелата | 29 | `100417` | система за сигурност |
+| 12 | `100400` | задвижване на оста | 30 | `100685` | заключваща система |
+| 13 | `100006` | спирачна уредба | 31 | `100733` | принадлежности |
+| 14 | `100011` | пружини/амортисьори (окачване) | 32 | `103099` | колела/гуми |
+| 15 | `100013` | окачване и управление | 33 | `103168` | пневматична система |
+| 16 | `100012` | кормилно управление | 34 | `103202` | задвижваща кутия на прикачна техника |
+| 17 | `100010` | електрическа система | 35 | `706209` | хибридно/електрическо задвижване |
+| 18 | `100008` | запалителна/-подгревна система | 37 | `706365` | специализиран инструмент |
+
+`sortNo` 36 is absent, which is the ordering working as intended rather than a gap: it sorts what arrives and never indexes by position.
+
+**The whole tree is served, because the depth is where the parts are.** The A3's tree is four levels — 35 roots over 257 / 313 / 168 nodes — so a read cut at two levels answers 292 of 773 nodes and withholds 62% of the categories, most of `двигател` among them. A category not served is a part that cannot be found, and the page can hide a level far more cheaply than the API can withhold one. The cost of the other 481 nodes is the payload: 113,607 bytes from TecDoc, 90,786 as our DTO, ~23 KB over the wire compressed, against 43,419 / 4,892 at depths 2 and 1. That is one read per car, held for a week, versus a TecDoc round trip on every expander a visitor opens. `maxDepth` is therefore left unset, and the schema makes that easy to get wrong: "Defaults to 1 (no limit, full tree)" is wrong on both halves — it counts *levels* rather than edges, `1` gives the roots alone, and **`0` empties the facet**.
+
+**`children` is not mapped, because at full depth it answers a question the payload already answers.** TecDoc's per-node child count agrees with the children actually present on every node measured — 773 of 773 on the A3, 482 of 482 on a Seat Ibiza, none over-claiming — so a node is a leaf exactly when nothing else names it as its parent. It earned its place only while the read was cut, where it reported what had been trimmed. Serving it now would put a second, driftable answer to "is this a leaf" on the wire; `scripts/vehicle-category-probe.mjs children` re-runs the comparison. The search's `CategoryOptionDto.hasChildren` is a different case and stays — that view is one level deep by construction, so the children genuinely are not in the payload.
+
+**`includeCompleteTree` is a no-op under a vehicle linkage.** Naming no tree, `'P'`, `'PU'` and the flag itself all answer the identical 773 nodes / 110,096 bytes for the A3, because such a facet is anchored at the vehicle either way. Sending it costs nothing and proves nothing. (Under a *node*-filtered facet the flag is not a no-op but is still unwanted — see the search facet notes below.)
+
+**Roots overlap, so the counts must never be rendered as shares of a whole.** The A3 matches 30,367 articles while its 35 roots sum to 45,471, for the same reason the search's category options overlap: TecDoc flattens what a part is, where it sits and why it is replaced into one set of roots. Two further shapes the page has to survive: `почистване на фаровете` is a root with **no children at all**, so its tile leads straight to results rather than opening a list; and one label appears at two node ids under two parents — `филтър купе` is `100263` under `филтър` and `100346` under `отопление/вентилация`, both with the identical 262 articles — so a link has to carry the path rather than the leaf id alone.
+
+**Order the tree by `sortNo`, never by the label.** The facet arrives alphabetically by the Bulgarian name, which opens every car on `вътрешно обурудване`; `sortNo` is TecDoc's own mechanical sequence — body, engine, filters, belt drive, fuel, exhaust, cooling, clutch, transmission, brakes, suspension, steering, electrics — and is the order the competitor catalogues are in. It restarts at 1 in each sibling group, so it orders one level and not the list: `orderAssemblyGroups` walks the tree depth first, sorting siblings. It is applied outside the cache entry, like the series and variant orders, because the tree is held for a week.
+
+**A category browse is a search with no query, and TecDoc answers it in full.** `SearchQueryDto.q` is optional exactly when a vehicle or a category narrows the search, and `matchSetPayload` then sends no `searchQuery` and no `searchType` at all. Measured on the A3's oil filters (`100259`): 119 articles, 82 brand facets, 3 product-type facets, `maxAllowedPage: 1` — under `SEARCH_SORTABLE_LIMIT`, so it is fully rankable and every existing control works unchanged. Omitting the pair, sending `searchType 99` alone and sending an empty string are byte-identical, so the pair is omitted to say what is meant. Two wider shapes are not rankable and fall to the paged path as usual: a category with no vehicle (39,592) and a vehicle with no category (30,367). The mode is a property of a typed query, so `searchCallFor` resolves a browse to one call whatever mode was selected — otherwise one category would be several cache entries for one identical request.
+
+**Our own design and the competitors' show a curated taxonomy, not this tree — do not mistake one for the other.** InterCars renders ~20 roots for the A3 against TecDoc's 35, including `Офроуд` and `LPG`, which are not TecDoc categories at all, and `Тунинг`, which exists as node `103437` but is not a root; their `Филтри` count is 199 against TecDoc's 788, because they count their own assortment. The same gap is in our mockup, whose `Филтри` shows 193 articles in 7 groups including `Филтър АКПП` and `Филтър AdBlue / карбамид` — neither of which is in the A3's tree, which files 788 across 6 (маслен 119, въздушен 149, горивен 104, купе 262, к-кт 73, хидравличен 81). We render TecDoc's tree as it comes and keep the curation to presentation — an image manifest and, where a label needs one, an override — so there is never a second answer to "what categories exist".
+
 #### Article identity: an article number is not unique
 
 **A TecDoc article is identified by `(dataSupplierId, articleNumber)`, never by the number alone.** Two data suppliers can and do file the same number for different parts. A number-only `getArticles` lookup returns every one of them and the caller takes whichever the catalogue sorted first — which is a coin toss, not a lookup. This surfaced as an article detail page showing another company's specs and applicable vehicles.

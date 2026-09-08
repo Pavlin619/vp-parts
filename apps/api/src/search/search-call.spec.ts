@@ -26,6 +26,25 @@ function scope(): SearchScope {
 }
 
 describe('searchCallFor', () => {
+  /**
+   * The catalogue page arrives with a vehicle and a category and nothing typed.
+   * Its narrowing travels in the scope, so the call carries no query — and it
+   * resolves the same way whatever mode the client last had selected, or one
+   * category would be two cached match sets for one identical TecDoc request.
+   */
+  describe('a browse, with nothing typed', () => {
+    it.each([
+      SearchMode.PartNumber,
+      SearchMode.PartNumberExact,
+      SearchMode.Generic,
+    ])('resolves to the same call under %s', (mode) => {
+      expect(searchCallFor(parsed(''), mode)).toEqual({
+        query: '',
+        execution: TERM,
+      });
+    });
+  });
+
   describe('generic mode', () => {
     it('makes a free-text call over the raw query', () => {
       expect(

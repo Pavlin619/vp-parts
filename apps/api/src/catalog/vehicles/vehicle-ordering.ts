@@ -1,4 +1,8 @@
-import { ModelSeriesDto, VehicleVariantDto } from '@vp-parts-shop/shared';
+import {
+  AssemblyGroupDto,
+  ModelSeriesDto,
+  VehicleVariantDto,
+} from '@vp-parts-shop/shared';
 
 /**
  * Model names are half numbers, so the collator has to read them as numbers.
@@ -56,4 +60,59 @@ export function orderVehicleVariants(
       a.yearFrom - b.yearFrom ||
       a.vehicleId.localeCompare(b.vehicleId),
   );
+}
+
+/**
+ * A vehicle's category tree in the order it is read: each node immediately
+ * before its own children, siblings by TecDoc's `sortNo`.
+ *
+ * The facet arrives alphabetically by the Bulgarian label, which opens every
+ * car on `вътрешно обурудване`; `sortNo` is TecDoc's own mechanical sequence —
+ * body, engine, filters, belt drive, fuel, exhaust, cooling, clutch,
+ * transmission, brakes, suspension, steering, electrics — and is the order a
+ * catalogue page reads down. It restarts at 1 in every sibling group, so it
+ * orders one level and never the whole list: a flat sort by it would interleave
+ * roots with other roots' children.
+ *
+ * Applied outside the cache entry, like the series and variant orders and for
+ * the same reason: the tree is held for a week, so an order baked into the
+ * value could not be changed without waiting the TTL out.
+ */
+export function orderAssemblyGroups(
+  groups: AssemblyGroupDto[],
+): AssemblyGroupDto[] {
+  const ids = new Set(groups.map((group) => group.id));
+  const childrenByParent = new Map<string, AssemblyGroupDto[]>();
+  const ROOT = '';
+
+  for (const group of groups) {
+    const parentId =
+      group.parentId != null && ids.has(group.parentId) ? group.parentId : ROOT;
+    childrenByParent.set(parentId, [
+      ...(childrenByParent.get(parentId) ?? []),
+      group,
+    ]);
+  }
+
+  const ordered: AssemblyGroupDto[] = [];
+
+  const emitChildrenOf = (parentId: string): void => {
+    const siblings = [...(childrenByParent.get(parentId) ?? [])].sort(
+      (a, b) => a.sortNo - b.sortNo,
+    );
+
+    for (const group of siblings) {
+      ordered.push(group);
+      emitChildrenOf(group.id);
+    }
+  };
+
+  emitChildrenOf(ROOT);
+
+  // A parent chain that loops back on itself is unreachable from the roots, so
+  // its nodes are appended rather than lost. `parentId` arrives over an untyped
+  // transport, which is the only way such a chain gets here.
+  const emitted = new Set(ordered.map((group) => group.id));
+
+  return [...ordered, ...groups.filter((group) => !emitted.has(group.id))];
 }

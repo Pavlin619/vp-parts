@@ -614,17 +614,97 @@ describe('SearchController (e2e)', () => {
       );
     });
 
-    it('returns 400 when the q param is missing', async () => {
+    // Nothing typed and nothing to narrow it is the whole catalogue, which no
+    // surface asks for and TecDoc pages only the first ~10,000 of.
+    it('returns 400 when the q param is missing and nothing narrows the search', async () => {
       await request(app.getHttpServer()).get('/search').expect(400);
 
       expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
 
-    it('returns 400 when the q param is blank', async () => {
+    it('returns 400 when the q param is blank and nothing narrows the search', async () => {
       await request(app.getHttpServer()).get('/search?q=%20%20').expect(400);
 
       expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
     });
+
+    // A brand or a product type is only ever echoed back from a facet block a
+    // previous search served, so neither can be what a search starts from.
+    it.each([
+      ['brandIds', '/search?brandIds=4'],
+      ['productTypeIds', '/search?productTypeIds=7'],
+      ['stock', '/search?stock=central'],
+    ])(
+      'returns 400 for an empty query narrowed only by %s',
+      async (_p, url) => {
+        await request(app.getHttpServer()).get(url).expect(400);
+
+        expect(mockTecDocClient.enumerate).not.toHaveBeenCalled();
+      },
+    );
+
+    /**
+     * How the catalogue page reaches results: pick a car, pick a category, and
+     * arrive with nothing typed. The narrowing does the work the query normally
+     * would, so the search runs as usual and simply carries no query.
+     */
+    it('browses a vehicle category with no query at all', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/search?vehicleId=10001&categoryNodeId=200')
+        .expect(200);
+
+      expect(res.body.query).toBe('');
+      expect(res.body.results).toHaveLength(1);
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
+        '',
+        10001,
+        TERM,
+        expect.objectContaining({ categoryNodeId: 200 }),
+      );
+    });
+
+    it('browses a category with no vehicle chosen', async () => {
+      mockTecDocClient.enumerate.mockResolvedValueOnce(
+        enumerationOf([makeArticle('WL6340')]),
+      );
+
+      await request(app.getHttpServer())
+        .get('/search?categoryNodeId=200')
+        .expect(200);
+
+      expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
+        '',
+        undefined,
+        TERM,
+        expect.objectContaining({ categoryNodeId: 200 }),
+      );
+    });
+
+    // The mode is a property of a typed query, so a browse resolves the same
+    // way under any of them — one cached match set rather than three.
+    it.each(['part_number', 'part_number_exact', 'generic'])(
+      'browses identically under searchMode=%s',
+      async (mode) => {
+        mockTecDocClient.enumerate.mockResolvedValueOnce(
+          enumerationOf([makeArticle('WL6340')]),
+        );
+
+        await request(app.getHttpServer())
+          .get(`/search?vehicleId=10001&categoryNodeId=200&searchMode=${mode}`)
+          .expect(200);
+
+        expect(mockTecDocClient.enumerate).toHaveBeenCalledWith(
+          '',
+          10001,
+          TERM,
+          expect.objectContaining({ categoryNodeId: 200 }),
+        );
+      },
+    );
 
     it('returns 400 when the q param exceeds 200 characters', async () => {
       const longQuery = 'A'.repeat(201);

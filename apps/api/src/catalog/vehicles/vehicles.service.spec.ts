@@ -141,6 +141,22 @@ describe('VehiclesService', () => {
     expect(result.map((entry) => entry.name)).toEqual(['C 180', 'C 250']);
   });
 
+  it('orders the category tree it serves, whatever order TecDoc sent', async () => {
+    tecdoc.getAssemblyGroupTree.mockResolvedValue([
+      { id: '100341', name: 'вътрешно обурудване', parentId: null, sortNo: 28 },
+      { id: '100259', name: 'маслен филтър', parentId: '100005', sortNo: 1 },
+      { id: '100005', name: 'филтър', parentId: null, sortNo: 3 },
+    ]);
+
+    const result = await service.getCategoryTree(10001);
+
+    expect(result.map((entry) => entry.name)).toEqual([
+      'филтър',
+      'маслен филтър',
+      'вътрешно обурудване',
+    ]);
+  });
+
   // The tree is held for a week, so a key blind to the scope would go on
   // serving motorcycle makes for seven days after the scope was narrowed.
   it('names the selectable-vehicle scope in every enumerated key', async () => {

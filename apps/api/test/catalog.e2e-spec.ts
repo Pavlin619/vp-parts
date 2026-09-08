@@ -73,8 +73,20 @@ const VEHICLE_VARIANTS: VehicleVariantDto[] = [
 ];
 
 const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
-  { id: '100001', name: 'Brake System', parentId: null },
-  { id: '100002', name: 'Brake Discs', parentId: '100001' },
+  {
+    id: '100001',
+    name: 'Brake System',
+    parentId: null,
+    articleCount: 3940,
+    sortNo: 13,
+  },
+  {
+    id: '100002',
+    name: 'Brake Discs',
+    parentId: '100001',
+    articleCount: 1824,
+    sortNo: 1,
+  },
 ];
 
 const BOSCH_BRAND_ID = '30';
@@ -404,6 +416,48 @@ describe('CatalogController (e2e)', () => {
 
       expect(res.body).toEqual(ASSEMBLY_GROUPS);
       expect(mockTecDocClient.getAssemblyGroupTree).toHaveBeenCalledWith(10001);
+    });
+
+    // What the catalogue page renders a tile from: how many parts the category
+    // holds for this car, and where it sits in the tree.
+    it('carries the article count and parent link of every node', async () => {
+      mockTecDocClient.getAssemblyGroupTree.mockResolvedValueOnce(
+        ASSEMBLY_GROUPS,
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/vehicles/10001/categories')
+        .expect(200);
+
+      expect(res.body[0]).toMatchObject({
+        id: '100001',
+        parentId: null,
+        articleCount: 3940,
+        sortNo: 13,
+      });
+      expect(res.body[1]).toMatchObject({
+        parentId: '100001',
+        articleCount: 1824,
+      });
+    });
+
+    // TecDoc sends the facet alphabetically by the Bulgarian label, which opens
+    // every car on `вътрешно обурудване`; `sortNo` is its mechanical order.
+    it('serves each node before its children, siblings in TecDoc sort order', async () => {
+      mockTecDocClient.getAssemblyGroupTree.mockResolvedValueOnce([
+        { ...ASSEMBLY_GROUPS[1], id: '100003', name: 'Pads', sortNo: 2 },
+        { ...ASSEMBLY_GROUPS[0], id: '100009', name: 'Suspension', sortNo: 15 },
+        ASSEMBLY_GROUPS[1],
+        ASSEMBLY_GROUPS[0],
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/vehicles/10001/categories')
+        .expect(200);
+
+      expect(
+        (res.body as Array<{ name: string }>).map((node) => node.name),
+      ).toEqual(['Brake System', 'Brake Discs', 'Pads', 'Suspension']);
     });
   });
 

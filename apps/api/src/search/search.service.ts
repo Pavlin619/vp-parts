@@ -101,6 +101,12 @@ export class SearchService {
    * is unavailable, search still runs on the query as typed rather than 500ing.
    */
   private async parse(rawQuery: string): Promise<ParsedQuery> {
+    // A browse types nothing, so there is no brand token to strip — and no
+    // reason to spend the dictionary read that would look for one.
+    if (rawQuery === '') {
+      return { raw: '', brandStripped: '' };
+    }
+
     try {
       const brandTokens = buildBrandTokenSet(await this.brands.getBrands());
       return parseQuery(rawQuery, brandTokens);
@@ -117,12 +123,16 @@ export class SearchService {
    * total, never the narrowed one. A search emptied by its own stock filter
    * matched perfectly well, and offering to correct the spelling of a query that
    * worked sends the visitor away from the one click that would fix it.
+   *
+   * A browse is skipped for the same reason from the other direction: there is
+   * no query to have misspelled, so there is nothing to suggest an alternative
+   * to.
    */
   private suggestionsFor(
     total: number,
     query: string,
   ): Promise<ArticleAutocompleteItemDto[]> {
-    if (total > 0) {
+    if (total > 0 || query === '') {
       return Promise.resolve([]);
     }
 

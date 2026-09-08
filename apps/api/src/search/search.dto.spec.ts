@@ -118,6 +118,71 @@ describe('SearchQueryDto TecDoc ids', () => {
   });
 });
 
+describe('SearchQueryDto q', () => {
+  const toDto = (query: Record<string, unknown>) =>
+    plainToInstance(SearchQueryDto, query);
+
+  const failedProperties = (dto: SearchQueryDto) =>
+    validateSync(dto).map((error) => error.property);
+
+  it('trims the typed query', () => {
+    expect(toDto({ q: '  WL6340  ' }).q).toBe('WL6340');
+  });
+
+  // "Nothing was typed" is one value inwards, so no consumer has to handle both
+  // an absent param and an empty one.
+  it('reads an absent param as an empty query', () => {
+    expect(toDto({ vehicleId: '10001' }).q).toBe('');
+  });
+
+  /**
+   * The catalogue page sends a vehicle and a category with nothing typed. TecDoc
+   * answers it in full — the Audi A3's oil filters are 119 articles with every
+   * facet — so refusing it here was the only thing standing in the way.
+   */
+  it.each([
+    [
+      'a vehicle and a category',
+      { vehicleId: '11340', categoryNodeId: '100259' },
+    ],
+    ['a category alone', { categoryNodeId: '100259' }],
+    ['a vehicle alone', { vehicleId: '11340' }],
+  ])('accepts an empty query narrowed by %s', (_label, query) => {
+    expect(failedProperties(toDto(query))).toEqual([]);
+  });
+
+  // An empty query with nothing to narrow it is the whole catalogue, which no
+  // surface asks for and TecDoc pages only the first ~10,000 of.
+  it.each([{}, { q: '' }, { q: '   ' }, { q: '', sort: SearchSort.Catalogue }])(
+    'rejects an empty query with nothing to narrow it: %p',
+    (query) => {
+      expect(failedProperties(toDto(query))).toContain('q');
+    },
+  );
+
+  // A brand or a product type is only ever echoed back from a facet block a
+  // previous search served, so neither can be the thing a search starts from.
+  it.each([
+    ['brandIds', { brandIds: ['72'] }],
+    ['productTypeIds', { productTypeIds: ['1234'] }],
+    ['stock', { stock: 'central' }],
+  ])('does not accept %s as a substitute for a query', (_label, query) => {
+    expect(failedProperties(toDto(query))).toContain('q');
+  });
+
+  it('still bounds a query that is present', () => {
+    expect(
+      failedProperties(toDto({ q: 'x'.repeat(201), vehicleId: '11340' })),
+    ).toContain('q');
+  });
+
+  // Left for `@IsString` to refuse rather than collapsed to '', or a repeated
+  // param would quietly become a browse of the whole catalogue.
+  it('rejects a repeated q param instead of reading it as empty', () => {
+    expect(failedProperties(toDto({ q: ['a', 'b'] }))).toContain('q');
+  });
+});
+
 describe('SearchQueryDto searchMode', () => {
   const toDto = (query: Record<string, unknown>) =>
     plainToInstance(SearchQueryDto, query);

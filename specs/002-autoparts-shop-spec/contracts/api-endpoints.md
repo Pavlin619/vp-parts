@@ -80,17 +80,31 @@ Cache: Redis, 7 days.
 
 **`GET /catalog/vehicles/:vehicleId/categories`** `[PUBLIC]`
 
-Returns the top-level assembly group tree for the selected vehicle. Only groups that have at least one compatible article are returned.
+Returns the assembly group tree for the selected vehicle. Only groups that have
+at least one compatible article are returned, so the tree is the car's own —
+773 nodes over four levels for an Audi A3 (8L1) 1.8 T, ~23 KB compressed.
+
+The list is flat and the tree is rebuilt from `parentId`, but it arrives depth
+first with siblings in `sortNo` order — TecDoc's mechanical sequence (body,
+engine, filters, belt drive, …), not the alphabetical order the facet comes in —
+so a consumer that ignores the links still reads it sensibly.
+
+There is no leafness field: a node is a leaf when nothing else names it as a
+parent. `articleCount` is the compatible articles under that node **cumulative
+over its subtree**, and the roots overlap — an article is filed under several —
+so the counts never sum to the vehicle's total and must not be rendered as
+shares of one.
 
 Response `200`:
 ```json
 [
-  { "id": "1001", "name": "Brakes", "parentId": null },
-  { "id": "1002", "name": "Engine", "parentId": null },
-  { "id": "2001", "name": "Brake Discs", "parentId": "1001" }
+  { "id": "1002", "name": "Engine", "parentId": null, "articleCount": 8214, "sortNo": 2 },
+  { "id": "2010", "name": "Belt Drive", "parentId": "1002", "articleCount": 1190, "sortNo": 1 },
+  { "id": "1001", "name": "Brakes", "parentId": null, "articleCount": 3940, "sortNo": 13 },
+  { "id": "2001", "name": "Brake Discs", "parentId": "1001", "articleCount": 1824, "sortNo": 1 }
 ]
 ```
-Cache: Redis, 7 days.
+Cache: Redis, 7 days. The order is applied outside the cache entry.
 
 ---
 
