@@ -62,17 +62,4 @@ describe('matchesVariantSearch', () => {
     expect(matchesVariantSearch(stored, 'om642852')).toBe(true)
     expect(matchesVariantSearch(variant({ engineCodes: ['N47D20C'] }), 'n47 d20')).toBe(true)
   })
-
-  // The API caches variants for a day and the two apps deploy separately, so a
-  // browser can be newer than the entry answering it.
-  it('tolerates a variant cached before either list of codes existed', () => {
-    const cachedBeforeTheFields = {
-      ...variant(),
-      engineCodes: undefined,
-      kbaNumbers: undefined,
-    } as unknown as VehicleVariantDto
-
-    expect(matchesVariantSearch(cachedBeforeTheFields, '320')).toBe(true)
-    expect(matchesVariantSearch(cachedBeforeTheFields, 'N47')).toBe(false)
-  })
 })

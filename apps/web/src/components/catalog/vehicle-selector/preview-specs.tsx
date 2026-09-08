@@ -90,12 +90,7 @@ function previewSpecs(variant: VehicleVariantDto | null): PreviewSpec[] {
     // Empty for 4% of variants, and joined rather than truncated: a variant sold
     // under two type approvals carries both, and the visitor is matching this
     // against a registration document that names one of them.
-    //
-    // Chained through a required field on purpose: the API caches variants for a
-    // day, so a deploy that reaches the web first is answered from entries filed
-    // before the field existed. Absent has to read as unknown rather than blank
-    // the dialog out.
-    { label: "KBA код", value: variant?.kbaNumbers?.join(", ") || null, isCode: true },
+    { label: "KBA код", value: variant?.kbaNumbers.join(", ") || null, isCode: true },
     ...(displacement ? [{ label: "Обем", value: displacement }] : []),
     ...(variant ? [{ label: "Гориво", value: variant.fuelType }] : []),
   ];

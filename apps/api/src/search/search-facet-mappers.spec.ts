@@ -1,11 +1,10 @@
-import { AssemblyGroupType } from '../tecdoc';
+import { AssemblyGroupType, TecDocAssemblyGroupFacetCount } from '../tecdoc';
 import {
   buildCategoryNavigation,
   buildCategorySuggestions,
   mapBrandFacets,
   mapProductTypeFacets,
   PRODUCT_TYPE_FACET_LIMIT,
-  TecDocAssemblyGroupFacetCount,
   TecDocGenericArticleFacetCount,
 } from './search-facet-mappers';
 

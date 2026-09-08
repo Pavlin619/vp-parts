@@ -7,7 +7,7 @@ import {
   TermAutocompleteItemDto,
 } from '@vp-parts-shop/shared';
 import {
-  AssemblyGroupType,
+  CATALOGUE_WIDE_TREES,
   LinkageTargetType,
   TecDocTransport,
   TecDocArticleRecord,
@@ -31,7 +31,6 @@ import {
   buildCategorySuggestions,
   mapBrandFacets,
   mapProductTypeFacets,
-  TecDocAssemblyGroupFacetCount,
   TecDocBrandFacetCount,
   TecDocGenericArticleFacetCount,
 } from './search-facet-mappers';
@@ -39,15 +38,7 @@ import {
   mapAttributeFacets,
   TecDocCriteriaFacetCount,
 } from './dimension-facets';
-
-/**
- * The passenger-car and universal assembly-group trees in one request. TecDoc
- * concatenates the codes (see {@link AssemblyGroupType}), and both are needed
- * for a catalogue-wide search: oils, wipers and workshop consumables are filed
- * under Universal, so asking for the passenger-car tree alone returns those
- * articles as results while offering no category to narrow them by.
- */
-const CATALOGUE_WIDE_TREES = `${AssemblyGroupType.PassengerCar}${AssemblyGroupType.Universal}`;
+import type { TecDocAssemblyGroupFacetCount } from '../tecdoc';
 
 /**
  * The match-scoped category facet: only the assembly groups present in the

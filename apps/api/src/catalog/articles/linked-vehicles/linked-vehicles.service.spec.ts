@@ -264,9 +264,9 @@ describe('LinkedVehiclesService', () => {
       );
 
       expect(cache.readMemos).toHaveBeenCalledWith([
-        'tecdoc:vehicle:v1:10020',
-        'tecdoc:vehicle:v1:10021',
-        'tecdoc:vehicle:v1:10022',
+        'tecdoc:vehicle:10020',
+        'tecdoc:vehicle:10021',
+        'tecdoc:vehicle:10022',
       ]);
       expect(tecdoc.getVehiclesByIds).toHaveBeenCalledWith([10021]);
       expect(result[0].vehicles.map((v) => v.vehicleId)).toEqual([
@@ -286,7 +286,7 @@ describe('LinkedVehiclesService', () => {
       await service.getVehiclesByManufacturer(BOSCH, 'OF-OC115', 5);
 
       expect(cache.writeMemos).toHaveBeenCalledWith(
-        [{ key: 'tecdoc:vehicle:v1:10020', value: row }],
+        [{ key: 'tecdoc:vehicle:10020', value: row }],
         24 * 60 * 60,
       );
     });

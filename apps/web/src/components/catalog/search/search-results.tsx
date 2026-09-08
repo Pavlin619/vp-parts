@@ -7,7 +7,10 @@ import type {
 } from "@vp-parts-shop/shared";
 import { ArticleRow } from "@/components/catalog/article-row";
 import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
-import type { SearchUrlState } from "@/lib/catalog/search-url";
+import {
+  selectedCategoryId,
+  type SearchUrlState,
+} from "@/lib/catalog/search-url";
 import { SearchResultsHeader } from "./search-results-header";
 
 /** A search hit — the catalog metadata TecDoc owns, with no live inventory. */
@@ -84,6 +87,7 @@ export function SearchResults({
             <ArticleRow
               article={result}
               availability={selectArticleAvailability(availability, result)}
+              categoryNodeId={selectedCategoryId(state)}
             />
           </li>
         ))}

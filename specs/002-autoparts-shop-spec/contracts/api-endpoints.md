@@ -479,12 +479,10 @@ list is rebuilt from the ids afterwards so a cached row keeps its position. A
 `carId` TecDoc no longer holds is simply never memoised and rides along in the
 next batch; no tombstone, since it would outlive the vehicle coming back.
 
-The key carries a version segment (`tecdoc:vehicle:v1:<carId>`) because the row's
-shape is decided by things the `carId` says nothing about: the fields the mapper
-reads, the detail blocks the request asks for, and the language the names come
-back in. Change any of those and bump the segment; otherwise the old shape is
-served for a full day, and a second caller wanting different detail blocks would
-collide with the first outright.
+The row's shape is decided by things the `carId` the key names says nothing
+about: the fields the mapper reads, the detail blocks the request asks for, and
+the language the names come back in. Change any of those and flush
+`tecdoc:vehicle:*`, or the old shape is served for a full day.
 
 Scope: passenger cars (`linkingTargetType: 'P'`), across **every**
 generic-article role the part is filed under. TecDoc keys linkages by role, and

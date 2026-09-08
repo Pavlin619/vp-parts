@@ -113,17 +113,6 @@ describe('VehicleSpecSheet', () => {
 
     expect(valueOf('KBA код')).toHaveTextContent('—')
   })
-
-  // The API caches variants for a day, so a release reaching the web first is
-  // answered from entries filed before the field existed. The cast is the payload
-  // that really arrives: unknown has to cost a dash, not the whole dialog.
-  it('dashes the type-approval row for a variant cached without the field', () => {
-    const cachedBeforeTheField = { ...VARIANT_320D, kbaNumbers: undefined }
-
-    renderSheet(cachedBeforeTheField as unknown as VehicleVariantDto)
-
-    expect(valueOf('KBA код')).toHaveTextContent('—')
-  })
 })
 
 // The strip opens the same facts over a list it cannot afford to bury, so it

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ArticleImages } from './article-images'
 
@@ -49,5 +49,28 @@ describe('ArticleImages', () => {
       <ArticleImages images={['/a.jpg']} articleNumber="WL6340" brandName="WIX" />,
     )
     expect(screen.queryByLabelText('Снимки на продукта')).not.toBeInTheDocument()
+  })
+
+  it('keeps only the first five images when TecDoc files more', () => {
+    render(
+      <ArticleImages
+        images={[
+          '/a.jpg',
+          '/b.jpg',
+          '/c.jpg',
+          '/d.jpg',
+          '/e.jpg',
+          '/f.jpg',
+          '/g.jpg',
+        ]}
+        articleNumber="WL6340"
+        brandName="WIX"
+      />,
+    )
+
+    const strip = screen.getByLabelText('Снимки на продукта')
+
+    expect(within(strip).getAllByRole('listitem')).toHaveLength(5)
+    expect(screen.queryByLabelText('Снимка 6')).not.toBeInTheDocument()
   })
 })

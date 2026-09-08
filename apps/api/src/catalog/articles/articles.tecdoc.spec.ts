@@ -226,6 +226,65 @@ describe('ArticlesTecDoc', () => {
       );
     });
 
+    // The trail comes off the same call as the article — TecDoc will not answer
+    // a facet without being told which tree, because a lookup by number carries
+    // no linkage for it to infer one from.
+    it('asks for the category facet, naming both trees', async () => {
+      call.mockResolvedValueOnce({ articles: [record('A1')] });
+
+      await tecdoc.getArticleDetails(BOSCH, 'A1');
+
+      const [, params] = call.mock.calls[0];
+      expect(params).toMatchObject({
+        assemblyGroupFacetOptions: {
+          enabled: true,
+          assemblyGroupType: 'PU',
+        },
+      });
+    });
+
+    it('maps every category trail the article sits on', async () => {
+      call.mockResolvedValueOnce({
+        articles: [record('A1')],
+        assemblyGroupFacets: {
+          counts: [
+            { assemblyGroupNodeId: 100005, assemblyGroupName: 'филтър' },
+            {
+              assemblyGroupNodeId: 100259,
+              assemblyGroupName: 'маслен филтър',
+              parentNodeId: 100005,
+            },
+            {
+              assemblyGroupNodeId: 100597,
+              assemblyGroupName: 'Периодична подмяна',
+              parentNodeId: 100019,
+            },
+            {
+              assemblyGroupNodeId: 100019,
+              assemblyGroupName: 'части за сервиз',
+            },
+          ],
+        },
+      });
+
+      const { detail } = await tecdoc.getArticleDetails(BOSCH, 'A1');
+
+      expect(
+        detail.categoryPaths.map((path) => path.map((step) => step.label)),
+      ).toEqual([
+        ['филтър', 'маслен филтър'],
+        ['части за сервиз', 'Периодична подмяна'],
+      ]);
+    });
+
+    it('leaves the trail empty when TecDoc files no category', async () => {
+      call.mockResolvedValueOnce({ articles: [record('A1')] });
+
+      const { detail } = await tecdoc.getArticleDetails(BOSCH, 'A1');
+
+      expect(detail.categoryPaths).toEqual([]);
+    });
+
     it('reports an empty result as a typed article miss', async () => {
       call.mockResolvedValueOnce({ articles: [] });
 

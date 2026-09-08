@@ -38,6 +38,13 @@ function ImagePlaceholder({
 }
 
 /**
+ * TecDoc files up to a dozen photographs of one part, most of them the same
+ * angle from a different data variant. The strip does not wrap, so everything
+ * past the fifth would run out of the column.
+ */
+const GALLERY_IMAGE_LIMIT = 5;
+
+/**
  * Product gallery: a large main image plus a thumbnail strip. When no product
  * image is available it shows the striped placeholder — visually distinct from
  * a real product photo so the absence is unambiguous.
@@ -48,8 +55,9 @@ export function ArticleImages({
   brandName,
 }: ArticleImagesProps) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const gallery = images.slice(0, GALLERY_IMAGE_LIMIT);
 
-  if (images.length === 0) {
+  if (gallery.length === 0) {
     return (
       <div className="relative aspect-square w-full overflow-hidden rounded-[12px]">
         <ImagePlaceholder articleNumber={articleNumber} brandName={brandName} />
@@ -57,7 +65,7 @@ export function ArticleImages({
     );
   }
 
-  const activeImage = images[activeIndex] ?? images[0];
+  const activeImage = gallery[activeIndex] ?? gallery[0];
 
   return (
     <div className="flex flex-col gap-3">
@@ -72,9 +80,9 @@ export function ArticleImages({
         />
       </div>
 
-      {images.length > 1 && (
+      {gallery.length > 1 && (
         <ul className="flex gap-2" aria-label="Снимки на продукта">
-          {images.map((image, index) => (
+          {gallery.map((image, index) => (
             <li key={image}>
               <button
                 type="button"
