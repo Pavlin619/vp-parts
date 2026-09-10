@@ -6,7 +6,6 @@ export {
   ArticleStatus,
   genericArticleIdsOf,
   legacyArticleIdsOf,
-  linkageRolesOf,
   mapArticleCandidate,
   mapArticleImages,
   mapArticleSummary,
@@ -15,8 +14,6 @@ export {
 export type {
   ArticleCandidate,
   ArticleDetailRead,
-  ArticleLinkageRoles,
-  CatalogArticlesPage,
   TecDocArticleRecord,
 } from './article-mapper';
 export { mapCrossReferenceCandidate } from './cross-reference-mapper';

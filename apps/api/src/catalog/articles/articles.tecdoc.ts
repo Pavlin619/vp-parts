@@ -2,14 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ArticleDetailRead,
   CATALOGUE_WIDE_TREES,
-  CatalogArticlesPage,
-  LinkageTargetType,
   TecDocAssemblyGroupFacetCount,
   TecDocTransport,
-  TecDocArticleRecord,
   assemblyGroupPathsOf,
   genericArticleIdsOf,
-  linkageRolesOf,
   mapArticleImages,
   mapArticleSummary,
   mapOemNumbers,
@@ -21,60 +17,18 @@ import {
 } from './article-lookup';
 
 /**
- * TecDoc source for the article surfaces: the per-vehicle+category listing and
- * the single-article detail. Both are `getArticles` calls differing in how the
- * articles are selected and in how much of each one is asked for; the shared
- * {@link mapArticleSummary} maps every row meant for display.
+ * TecDoc source for the single-article detail — a `getArticles` call selecting
+ * one part, mapped for display by the shared {@link mapArticleSummary}.
  *
- * The read that resolves one specific part takes a `brandId` (TecDoc's
- * `dataSupplierId`) alongside the number, because a number on its own is not an
- * identity — see {@link articleLookupPayload}.
+ * It takes a `brandId` (TecDoc's `dataSupplierId`) alongside the number,
+ * because a number on its own is not an identity — see
+ * {@link articleLookupPayload}.
  */
 @Injectable()
 export class ArticlesTecDoc {
   private readonly logger = new Logger(ArticlesTecDoc.name);
 
   constructor(private readonly transport: TecDocTransport) {}
-
-  async getArticles(
-    vehicleId: number,
-    categoryId: number,
-    page: number,
-    pageSize: number,
-  ): Promise<CatalogArticlesPage> {
-    const data = await this.transport.call<{
-      totalMatchingArticles: number;
-      // Absent, not empty, when nothing matches — TecDoc omits the collection.
-      articles?: TecDocArticleRecord[];
-    }>('getArticles', {
-      articleCountry: 'BG',
-      lang: 'bg',
-      assemblyGroupNodeIds: categoryId,
-      linkageTargetType: LinkageTargetType.Vehicle,
-      linkageTargetId: vehicleId,
-      perPage: pageSize,
-      page,
-      // Exactly what a listing row renders, and nothing more — the same set the
-      // search payload asks for. `includeGenericArticles` doubles as the source
-      // of the `legacyArticleId`s pinned for the applicable-vehicles section, so
-      // keeping those costs no flag of its own.
-      includeGenericArticles: true,
-      includeImages: true,
-      includeArticleCriteria: true,
-    });
-
-    const records = data.articles ?? [];
-
-    return {
-      articles: {
-        total: data.totalMatchingArticles,
-        page,
-        pageSize,
-        items: records.map((article) => mapArticleSummary(article)),
-      },
-      roles: records.map((article) => linkageRolesOf(article)),
-    };
-  }
 
   async getArticleDetails(
     brandId: number,

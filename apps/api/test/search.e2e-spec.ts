@@ -112,7 +112,6 @@ const mockTecDocClient = {
   getVehicleVariants: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
   getBrands: jest.fn(),
-  getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
   enumerate: jest.fn(),
   readRowsPage: jest.fn(),

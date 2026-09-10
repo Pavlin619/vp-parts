@@ -117,11 +117,6 @@ export class LinkedVehiclesTecDoc {
    * surfaces as a 404 — the same verdict the article detail read reaches for the
    * same input. A known part with no generic article at all is a different
    * answer: an empty list.
-   *
-   * This is the fallback path. A catalog listing already carried these ids for
-   * every row it returned, on the `genericArticles` it reads the description
-   * from, so a part a visitor reached through the catalog is normally answered
-   * from that memo without coming back here.
    */
   async getLegacyArticleIds(
     brandId: number,

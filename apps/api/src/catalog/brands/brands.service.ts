@@ -17,8 +17,8 @@ interface SearchLogoJoin {
 
 /**
  * Reusable brand feature: the Redis-cached TecDoc data-supplier list plus the
- * brand -> logo join every list surface (catalog listing, article detail,
- * substitutes) and the search facets need. `getArticles` carries no logo and
+ * brand -> logo join every list surface (article detail, substitutes) and the
+ * search facets need. `getArticles` carries no logo and
  * `getBrands` carries nothing else, so the two are joined here on the
  * `dataSupplierId` both sides key on. This is a synchronous read-enrichment
  * dependency other features inject via the brands barrel.

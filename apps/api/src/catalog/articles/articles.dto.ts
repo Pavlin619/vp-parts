@@ -134,7 +134,7 @@ export const ARTICLE_DEFAULT_PAGE_SIZE = 20;
 export const ARTICLE_MAX_PAGE_SIZE = 50;
 
 /**
- * Highest page an article listing may ask for — TecDoc's own paging ceiling of
+ * Highest page an article list may ask for — TecDoc's own paging ceiling of
  * roughly 10,000 results, the same bound `SEARCH_MAX_PAGE` documents at length.
  * Without it `?page=9999999` reaches TecDoc, comes back a rejection that surfaces
  * as a 5xx, and mints a Redis key per attempt on the way.
@@ -142,7 +142,7 @@ export const ARTICLE_MAX_PAGE_SIZE = 50;
 export const ARTICLE_MAX_PAGE = 10_000;
 
 /**
- * Paging for the article listing and the substitutes route.
+ * Paging for an article list route.
  *
  * Bounded here rather than clamped in the controller so an out-of-range page is
  * a 400 the caller can see, the way every other query param on this module
@@ -175,10 +175,9 @@ export interface SubstitutesQuery {
 /**
  * Paging and ordering for the substitutes route.
  *
- * `sort` sits here rather than on {@link ArticlePageQueryDto} because the
- * article listing shares that one and serves TecDoc's own order — it would
- * accept a value it never honours, which is the one thing the shared sort
- * vocabulary exists to prevent.
+ * `sort` sits here rather than on the shared {@link ArticlePageQueryDto}, so a
+ * route that serves TecDoc's own order cannot accept a value it never honours —
+ * the one thing the shared sort vocabulary exists to prevent.
  */
 export class SubstitutesQueryDto
   extends ArticlePageQueryDto

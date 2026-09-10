@@ -22,12 +22,7 @@ import {
 } from '@vp-parts-shop/shared';
 import type { ManufacturerFacetEntry } from '../catalog/vehicles/vehicles.mapper';
 import { ArticleStatus } from './article-mapper';
-import type {
-  ArticleCandidate,
-  ArticleDetailRead,
-  ArticleLinkageRoles,
-  CatalogArticlesPage,
-} from './article-mapper';
+import type { ArticleCandidate, ArticleDetailRead } from './article-mapper';
 import type {
   CrossReferenceCandidate,
   CrossReferenceCitation,
@@ -1479,32 +1474,6 @@ export class TecDocMockClient {
   }
 
   /**
-   * Returns the same rows the real client does, plus the linkage roles it
-   * carries alongside them — mock mode has to warm the same memo, or it would
-   * exercise a fallback path production rarely takes.
-   */
-  getArticles(
-    _vehicleId: number,
-    categoryId: number,
-    page: number,
-    pageSize: number,
-  ): Promise<CatalogArticlesPage> {
-    const all = ARTICLES_BY_CATEGORY[categoryId] ?? [];
-    const start = (page - 1) * pageSize;
-    const rows = all.slice(start, start + pageSize);
-
-    return Promise.resolve({
-      articles: {
-        total: all.length,
-        page,
-        pageSize,
-        items: rows.map((base) => this.toSummary(base)),
-      },
-      roles: rows.map((base) => this.linkageRolesOf(base)),
-    });
-  }
-
-  /**
    * The whole match set of a search, as candidates plus facets — the mock's
    * stand-in for the identity-only `getArticles` read every search starts with.
    *
@@ -1920,18 +1889,6 @@ export class TecDocMockClient {
     productTypeId: number,
   ): boolean {
     return productTypeIdOf(detail) === String(productTypeId);
-  }
-
-  private linkageRolesOf(base: MockArticleBase): ArticleLinkageRoles {
-    const brandId = brandIdFor(base.brandName);
-    const legacyArticleId =
-      LEGACY_ARTICLE_ID_BY_KEY[articleKey(brandId, base.articleNumber)];
-
-    return {
-      brandId,
-      articleNumber: base.articleNumber,
-      legacyArticleIds: legacyArticleId === undefined ? [] : [legacyArticleId],
-    };
   }
 
   /**

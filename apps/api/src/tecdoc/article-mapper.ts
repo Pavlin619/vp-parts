@@ -2,7 +2,6 @@ import {
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
   OemNumberDto,
-  PaginatedCatalogArticlesDto,
   TechnicalSpecDto,
 } from '@vp-parts-shop/shared';
 
@@ -137,40 +136,12 @@ export function mapArticleCandidate(
 }
 
 /**
- * The `legacyArticleId`s one article resolves to, alongside the identity they
- * belong to.
- *
- * Carried beside the mapped rows rather than inside them: these are TecDoc's
- * internal linkage ids and {@link ArticleSummaryDto} deliberately exposes none
- * of them.
- */
-export interface ArticleLinkageRoles {
-  brandId: string;
-  articleNumber: string;
-  legacyArticleIds: number[];
-}
-
-/**
- * A mapped page of catalog rows and the linkage roles that came down with it.
- *
- * `includeGenericArticles` is what a listing already sets to name each row, and
- * the same field carries these ids — so they are in hand the moment a category
- * page is read. Keeping them is what saves the applicable-vehicles section a
- * `getArticles` of its own per article.
- */
-export interface CatalogArticlesPage {
-  articles: PaginatedCatalogArticlesDto;
-  roles: ArticleLinkageRoles[];
-}
-
-/**
  * One article's detail, plus what the DTO deliberately does not carry.
  *
  * `genericArticleIds` is TecDoc's answer to what the part *is*, and nothing
  * renders it — but the cross-reference search filters on it, and this read is
- * the only one that knows it. Carried beside the DTO rather than added to it,
- * the way {@link CatalogArticlesPage} carries linkage roles beside its rows: an
- * internal side-channel, not a new public field.
+ * the only one that knows it. Carried beside the DTO rather than added to it:
+ * an internal side-channel, not a new public field.
  */
 export interface ArticleDetailRead {
   detail: ArticleCatalogDetailDto;
@@ -197,16 +168,6 @@ export function genericArticleIdsOf(article: TecDocArticleRecord): number[] {
   return (article.genericArticles ?? [])
     .map((genericArticle) => genericArticle.genericArticleId)
     .filter((id): id is number => id !== undefined);
-}
-
-export function linkageRolesOf(
-  article: TecDocArticleRecord,
-): ArticleLinkageRoles {
-  return {
-    brandId: String(article.dataSupplierId),
-    articleNumber: article.articleNumber,
-    legacyArticleIds: legacyArticleIdsOf(article),
-  };
 }
 
 /**

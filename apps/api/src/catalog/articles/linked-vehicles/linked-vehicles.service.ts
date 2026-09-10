@@ -4,7 +4,7 @@ import {
   LinkedVehicleSeriesDto,
 } from '@vp-parts-shop/shared';
 import { RedisCache } from '../../../redis';
-import { ArticleLinkageRoles, LinkedVehicleWithSeries } from '../../../tecdoc';
+import { LinkedVehicleWithSeries } from '../../../tecdoc';
 import { LinkedVehiclesTecDoc } from './linked-vehicles.tecdoc';
 import { groupVehiclesBySeries } from './vehicle-series-grouping';
 
@@ -36,11 +36,7 @@ function legacyArticleIdsMemoKey(
  * The applicable-vehicles section: which makes an article fits, and which of a
  * make's model series and modifications.
  *
- * Owns the `tecdoc:article-legacy-ids:*` namespace, including the entries the
- * catalog listing warms on its way past via {@link rememberLinkageRoles}. Both
- * paths key it the same way because both go through this class — a second
- * writer building the key itself could drift from the reader with nothing
- * failing, leaving the section silently re-reading TecDoc per row.
+ * Owns the `tecdoc:article-legacy-ids:*` namespace.
  */
 @Injectable()
 export class LinkedVehiclesService {
@@ -91,29 +87,6 @@ export class LinkedVehiclesService {
       LINKED_VEHICLES_MISS_TTL,
       () => this.collectVehicles(brandId, articleNumber, manufacturerId),
     );
-  }
-
-  /**
-   * Pins the linkage ids a catalog listing already carried, so expanding a row
-   * does not re-read the article it came from.
-   *
-   * The listing asks for `includeGenericArticles` to name each row, and the same
-   * field carries the linkage ids — exactly what {@link resolveLegacyArticleIds}
-   * would otherwise fetch one article at a time the first time a visitor opens
-   * the section.
-   *
-   * Rows with no role are skipped rather than memoised as an empty list: that
-   * answer belongs at the shorter miss TTL, which only the read path applies.
-   */
-  rememberLinkageRoles(roles: ArticleLinkageRoles[]): Promise<void> {
-    const entries = roles
-      .filter((role) => role.legacyArticleIds.length > 0)
-      .map((role) => ({
-        key: legacyArticleIdsMemoKey(role.brandId, role.articleNumber),
-        value: role.legacyArticleIds,
-      }));
-
-    return this.cache.writeMemos(entries, LINKED_VEHICLES_TTL);
   }
 
   /**
@@ -248,10 +221,6 @@ export class LinkedVehiclesService {
    * only moves when TecDoc ships a data release. Only a resolved article is
    * written: an unknown number throws before the cache is touched, so a part
    * TecDoc adds tomorrow is not remembered as missing.
-   *
-   * Usually a hit rather than a read: the catalog listing pins the same memo for
-   * every row of a page via {@link rememberLinkageRoles}, and the catalog is how
-   * a visitor reaches this section.
    */
   private resolveLegacyArticleIds(
     brandId: number,

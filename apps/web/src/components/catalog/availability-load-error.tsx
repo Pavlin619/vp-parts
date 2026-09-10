@@ -14,7 +14,7 @@ interface AvailabilityLoadErrorProps {
 /**
  * Scoped "try again" state for a client-side availability read that failed
  * closed (503 / INVENTORY_UNAVAILABLE). Shared by every surface that fetches
- * live price/stock — the buy box, listing grid, and substitutes — so a
+ * live price/stock — the buy box, search results, and substitutes — so a
  * transient stock-DB blip degrades only that section rather than the page.
  * Retrying calls `onRetry` (a query `refetch`), so recovery needs no reload.
  */

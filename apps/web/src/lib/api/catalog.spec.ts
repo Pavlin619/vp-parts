@@ -4,7 +4,6 @@ import {
   getModelSeries,
   getVariants,
   getCategories,
-  getArticlesMetadata,
   getArticlesAvailability,
   getArticleCatalogDetail,
   getSubstitutes,
@@ -67,22 +66,6 @@ describe('getCategories', () => {
     getCategories('vehicle-789')
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/catalog/vehicles/vehicle-789/categories',
-    )
-  })
-})
-
-describe('getArticlesMetadata', () => {
-  it('builds URL with default page and pageSize', () => {
-    getArticlesMetadata('v-1', 'cat-1')
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/vehicles/v-1/categories/cat-1/articles?page=1&pageSize=20',
-    )
-  })
-
-  it('builds URL with explicit page and pageSize', () => {
-    getArticlesMetadata('v-1', 'cat-1', 3, 50)
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/catalog/vehicles/v-1/categories/cat-1/articles?page=3&pageSize=50',
     )
   })
 })
