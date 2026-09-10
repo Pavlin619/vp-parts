@@ -1,66 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import {
-  PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleIdentityDto,
   ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared';
-import { RedisCache } from '../../redis';
 import { InventoryService } from '../../inventory';
 import { BrandsService } from '../brands';
 import { ArticleReadCache } from './article-read';
-import {
-  ARTICLE_DEFAULT_PAGE,
-  ARTICLE_DEFAULT_PAGE_SIZE,
-} from './articles.dto';
-import { ArticlesTecDoc } from './articles.tecdoc';
-import { LinkedVehiclesService } from './linked-vehicles';
-
-/** A listing page is TecDoc catalog data, which moves on a data release. */
-const ARTICLE_PAGE_TTL = 24 * 60 * 60;
 
 @Injectable()
 export class ArticlesService {
   constructor(
-    private readonly tecdoc: ArticlesTecDoc,
-    private readonly cache: RedisCache,
     private readonly brands: BrandsService,
     private readonly inventory: InventoryService,
-    private readonly linkedVehicles: LinkedVehiclesService,
     private readonly articleRead: ArticleReadCache,
   ) {}
 
   /**
-   * Cacheable catalog metadata for a category page — article identity, brand,
-   * description, and thumbnail, with **no** live inventory. The grid caches this
-   * (stable TecDoc data) and hydrates it with fresh price/availability via
-   * {@link getArticlesAvailability}, mirroring the article detail page's
-   * cached-metadata / live-availability split. Keeping inventory out of the
-   * cached payload is what lets us never serve a stale delivery date.
-   */
-  async listArticleMetadata(
-    vehicleId: number,
-    categoryId: number,
-    page: number = ARTICLE_DEFAULT_PAGE,
-    pageSize: number = ARTICLE_DEFAULT_PAGE_SIZE,
-  ): Promise<PaginatedCatalogArticlesDto> {
-    const articles = await this.loadArticlePage(
-      vehicleId,
-      categoryId,
-      page,
-      pageSize,
-    );
-
-    const items = await this.brands.attachLogos(articles.items);
-
-    return { ...articles, items };
-  }
-
-  /**
    * Live price/availability for a batch of articles, keyed by brand and number.
    * This is the single, uncached availability read behind every list surface —
-   * the catalog grid, search, and substitutes all hydrate their cached metadata
-   * with it client-side. It fails closed: a DB read error throws
+   * search and substitutes both hydrate their cached metadata with it
+   * client-side. It fails closed: a DB read error throws
    * InventoryUnavailableException so a whole list never renders as falsely out
    * of stock.
    */
@@ -90,41 +50,6 @@ export class ArticlesService {
     vehicleId?: number,
   ): Promise<ArticleCatalogDetailDto> {
     return this.loadCatalogDetail(brandId, articleNumber, vehicleId);
-  }
-
-  /**
-   * A page of catalog rows, with each row's `legacyArticleId`s pinned on the
-   * way past.
-   *
-   * The listing already carries those ids on the `genericArticles` it names each
-   * row from, and the applicable-vehicles section needs exactly them — without
-   * this it re-reads each article the first time a visitor expands a row.
-   * Warming from inside the loader ties it to the TecDoc read itself, so the
-   * memos are written when the page is, and the two entries then age out
-   * together.
-   */
-  private loadArticlePage(
-    vehicleId: number,
-    categoryId: number,
-    page: number,
-    pageSize: number,
-  ): Promise<PaginatedCatalogArticlesDto> {
-    return this.cache.cached(
-      `tecdoc:articles:${vehicleId}:${categoryId}:${page}:${pageSize}`,
-      ARTICLE_PAGE_TTL,
-      async () => {
-        const catalogPage = await this.tecdoc.getArticles(
-          vehicleId,
-          categoryId,
-          page,
-          pageSize,
-        );
-
-        await this.linkedVehicles.rememberLinkageRoles(catalogPage.roles);
-
-        return catalogPage.articles;
-      },
-    );
   }
 
   /**

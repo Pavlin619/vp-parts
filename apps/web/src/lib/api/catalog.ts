@@ -49,26 +49,8 @@ export function getCategories(vehicleId: string): Promise<AssemblyGroupDto[]> {
 }
 
 /**
- * Cacheable catalog metadata for a category page — no live inventory. The grid
- * caches this (stable TecDoc data) and hydrates it with fresh price/stock via
- * {@link getArticlesAvailability}, so a cached page never serves a stale
- * delivery date (mirrors the article detail page's metadata/availability split).
- */
-export function getArticlesMetadata(
-  vehicleId: string,
-  categoryId: string,
-  page = 1,
-  pageSize = 20,
-): Promise<PaginatedCatalogArticlesDto> {
-  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return apiFetch<PaginatedCatalogArticlesDto>(
-    `/catalog/vehicles/${vehicleId}/categories/${categoryId}/articles?${params}`,
-  );
-}
-
-/**
  * Live price/availability for a batch of articles, keyed by
- * {@link articleIdentityKey}. Never cache — the cached metadata grid calls this
+ * {@link articleIdentityKey}. Never cache — a cached metadata list calls this
  * per request to attach fresh delivery/stock data. Short-circuits an empty
  * request to skip the round trip.
  *
@@ -138,7 +120,7 @@ const SUBSTITUTES_PAGE_SIZE = 20;
 /**
  * One page of substitutes — the other brands' parts replacing this one, as
  * cacheable catalog metadata only. Live price/availability is fetched separately
- * via {@link getArticlesAvailability}, mirroring the listing grid's metadata /
+ * via {@link getArticlesAvailability}, mirroring the search list's metadata /
  * live-availability split.
  *
  * Paged rather than capped: `total` counts every alternative, so the section can
@@ -264,8 +246,8 @@ export const categoriesQueryOptions = (vehicleId: string) =>
 
 /**
  * Live price/availability for one or many articles, fetched client-side. Serves
- * every surface — the buy box (a single article), listing grid, search, and
- * substitutes — so identical sets share one cache entry. The key carries brand
+ * every surface — the buy box (a single article), search, and substitutes — so
+ * identical sets share one cache entry. The key carries brand
  * and number per article and sorts them, so neither order nor a number shared by
  * two brands forks the cache. `staleTime` keeps browse data fresh enough without
  * polling; checkout is the binding re-check.

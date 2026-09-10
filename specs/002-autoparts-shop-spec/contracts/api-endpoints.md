@@ -108,54 +108,16 @@ Cache: Redis, 7 days. The order is applied outside the cache entry.
 
 ---
 
-### Article Listing
-
-**`GET /catalog/vehicles/:vehicleId/categories/:categoryId/articles`** `[PUBLIC]`
-
-Returns the **cacheable catalog metadata** (TecDoc) for all articles compatible
-with the vehicle in the given assembly group. It carries **no** live inventory:
-the grid caches this and hydrates it with a separate live availability read
-(`GET /catalog/articles-availability` below), mirroring the article detail page's
-cached-metadata / live-availability split so a cached page never serves a stale
-delivery date. Shape: `PaginatedCatalogArticlesDto`.
-
-Query params (`ArticlePageQueryDto`, shared with *Substitutes*):
-- `page` — `1…10000`, default 1. The ceiling is TecDoc's own paging limit.
-- `pageSize` — `1…50`, default 20.
-
-Out of range or not an integer is a `400` / `VALIDATION_ERROR`, so nothing absurd
-reaches TecDoc and spends a call and a cache key on the way to being refused.
-
-Response `200`:
-```json
-{
-  "total": 42,
-  "page": 1,
-  "pageSize": 20,
-  "items": [
-    {
-      "articleNumber": "WL6340",
-      "brandId": "268",
-      "brandName": "WIX",
-      "description": "Oil Filter",
-      "thumbnailUrl": "https://cdn.example.com/img/WL6340.jpg"
-    }
-  ]
-}
-```
-
----
-
 ### Bulk Availability
 
 **`GET /catalog/articles-availability?articles=268:WL6340,77:OC123`** `[PUBLIC]`
 
 Live, never-cached (`Cache-Control: no-store`) price/availability for a batch of
-articles, keyed by `brandId:articleNumber`. The cached listing grid calls this per
+articles, keyed by `brandId:articleNumber`. A cached list calls this per
 request to hydrate its metadata rows with fresh price + per-warehouse delivery
-data, and it is the single availability read every list surface (grid, search,
+data, and it is the single availability read every list surface (search,
 substitutes) shares. **Fails closed**: a stock-DB read error returns `503` /
-`INVENTORY_UNAVAILABLE` so a whole grid never renders as falsely out of stock.
+`INVENTORY_UNAVAILABLE` so a whole list never renders as falsely out of stock.
 A requested article with genuinely no stock resolves to `available: false` and is
 still present in the map. Shape: `ArticlesAvailabilityDto`
 (`Record<string, ArticleInventoryDetailDto>`).
@@ -348,8 +310,8 @@ like every other query param in this module: `page` is `1…10000` and `pageSize
 `1…50`, and anything outside those — or not an integer at all — is a `400` /
 `VALIDATION_ERROR`. Bounded rather than clamped, so a caller asking for a page of
 500 is told we will not serve it instead of receiving 50 rows labelled 500. Shape:
-`PaginatedCatalogArticlesDto` — the same paginated row shape the category listing
-returns, so every list surface shares one row component.
+`PaginatedCatalogArticlesDto` — the same paginated row shape every list surface
+returns, so they share one row component.
 
 **Paginated rather than capped.** `total` is the size of the whole cross-reference
 set, so the section can offer every alternative and say how many are left, while
@@ -433,14 +395,7 @@ article's `legacyArticleId`s, cached on a key of their own. A brand/number pair
 TecDoc does not know is a `404` / `ARTICLE_NOT_FOUND`; a part with no catalogued
 linkages is a `200` with `[]`.
 
-That lookup is normally already answered. The catalog listing is an `includeAll`
-read, so every row it returns carries its own `genericArticles` — and with them
-the `legacyArticleId`s — which the listing pins onto the same memo key as it
-maps the page. A visitor who reaches the section through the catalog therefore
-opens it without any `getArticles` of its own; `getLegacyArticleIds` remains as
-the fallback for a part reached some other way. Rows TecDoc files no generic
-article against are skipped rather than pinned as an empty list, so "no roles"
-keeps the shorter miss TTL the read path gives it.
+`getLegacyArticleIds` answers it, cached on the same memo key the section reads.
 
 The TecDoc chain is the one the Functions guide documents under *Article direct
 search → "Find linked vehicles, motors, axles and linked vehicle, motor, axle
@@ -741,7 +696,7 @@ zero-result response:
   strictly match-scoped.
 
 Returns cacheable TecDoc **metadata + fit + facets — no live inventory**,
-mirroring the listing grid / article detail split. `available` and price are not
+mirroring the article detail split. `available` and price are not
 on the search response; the client fetches live price/availability for the
 result articles — brand and number both — via
 `GET /catalog/articles-availability` and merges it
@@ -852,9 +807,9 @@ exposed via `CatalogService.getArticlesAvailability` — which toggles only the 
 query by input size (single-row vs batch) and **always fails closed**: on a read
 error it throws `InventoryUnavailableException` (`INVENTORY_UNAVAILABLE`, 503) rather
 than reporting stock as unavailable. Every surface fetches cached metadata separately
-and hydrates it with this read client-side (the product-page buy box, listing grid,
-search, and substitutes), and each shows a scoped "try again" state on the 503 rather
-than a silently wrong "unavailable" or a grid of false "out of stock" rows. (An
+and hydrates it with this read client-side (the product-page buy box, search, and
+substitutes), and each shows a scoped "try again" state on the 503 rather
+than a silently wrong "unavailable" or a list of false "out of stock" rows. (An
 article that genuinely has no stock still resolves to `available: false`; only a read
 *failure* throws.)
 

@@ -86,57 +86,6 @@ describe('LinkedVehiclesService', () => {
     expect(tecdoc.getLinkedManufacturers).not.toHaveBeenCalled();
   });
 
-  describe('rememberLinkageRoles', () => {
-    // The catalog listing already carries these ids. Without pinning them, the
-    // section re-reads each article the first time a visitor expands a row.
-    //
-    // Written here rather than by the listing itself so that one class owns the
-    // key: a second writer building it independently could drift from the reader
-    // with nothing failing.
-    it('pins every row’s ids under the key the read path uses', async () => {
-      await service.rememberLinkageRoles([
-        { brandId: '30', articleNumber: 'A1', legacyArticleIds: [555] },
-        { brandId: '77', articleNumber: 'A2', legacyArticleIds: [900, 901] },
-      ]);
-
-      expect(cache.writeMemos).toHaveBeenCalledWith(
-        [
-          { key: 'tecdoc:article-legacy-ids:30:A1', value: [555] },
-          { key: 'tecdoc:article-legacy-ids:77:A2', value: [900, 901] },
-        ],
-        24 * 60 * 60,
-      );
-    });
-
-    // "No roles" belongs at the shorter miss TTL, which only the read path
-    // applies — pinning it here would remember it for a whole day.
-    it('skips a row with no ids rather than pinning an empty list', async () => {
-      await service.rememberLinkageRoles([
-        { brandId: '30', articleNumber: 'A1', legacyArticleIds: [] },
-      ]);
-
-      expect(cache.writeMemos).toHaveBeenCalledWith([], 24 * 60 * 60);
-    });
-
-    // The warmed entry and the read use the same key, so a page a visitor
-    // browsed answers the section without a further TecDoc read.
-    it('warms the entry the manufacturers read then hits', async () => {
-      await service.rememberLinkageRoles([
-        { brandId: '30', articleNumber: 'A1', legacyArticleIds: [555] },
-      ]);
-      const [[warmed]] = cache.writeMemos.mock.calls as [
-        [Array<{ key: string }>],
-      ];
-
-      await service.getManufacturers(BOSCH, 'A1');
-      const readKeys = (cache.cachedArray.mock.calls as [string][]).map(
-        ([key]) => key,
-      );
-
-      expect(readKeys).toContain(warmed[0].key);
-    });
-  });
-
   describe('getManufacturers', () => {
     it('caches by brand and article number (24h hit / 1h miss)', async () => {
       await service.getManufacturers(BOSCH, 'OF-OC115');

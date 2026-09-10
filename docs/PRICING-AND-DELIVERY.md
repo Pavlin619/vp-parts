@@ -190,7 +190,7 @@ All money is handled as **integer EUR cents** everywhere.
   which toggles only the DB query by input size (single-row vs batch) — and it
   **always fails closed**: on a read error it throws `InventoryUnavailableException`
   (503 / `INVENTORY_UNAVAILABLE`) rather than marking anything as falsely out of
-  stock. Every surface that uses it (the product-page buy box, listing grid, search,
+  stock. Every surface that uses it (the product-page buy box, search,
   substitutes, and the cart/checkout re-validation) shows a scoped "try again later"
   state on that error. Note this is *only* about read failures: an article that
   genuinely has no stock always resolves to `available: false`. See

@@ -17,9 +17,9 @@ export const UNAVAILABLE_DETAIL: ArticleInventoryDetailDto = {
 /**
  * Joins cached catalog metadata rows with a live availability map into a single
  * enriched row shape. Works for any metadata that carries the article's identity
- * — the listing grid and substitutes (catalog list items), search hits, etc. A
- * row the availability read had no entry for degrades to the neutral unavailable
- * state rather than dropping out, so the metadata order is always preserved.
+ * — substitutes (catalog list items), search hits, etc. A row the availability
+ * read had no entry for degrades to the neutral unavailable state rather than
+ * dropping out, so the metadata order is always preserved.
  *
  * Matched on brand *and* number: two suppliers filing one number are two parts,
  * and a number-only join would show one of them the other's price.

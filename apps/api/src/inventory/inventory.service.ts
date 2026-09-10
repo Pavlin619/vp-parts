@@ -73,7 +73,7 @@ export class InventoryService {
    * {@link articleIdentityKey}.
    *
    * This is the single availability read behind every surface — the buy box,
-   * listing grid, search, substitutes, and the checkout re-check. It toggles
+   * search, substitutes, and the checkout re-check. It toggles
    * only the DB query by input size: one article takes the single-row read, many
    * take the batch read. Every entry then runs the same offer selection and
    * per-warehouse projection, so the request-time delivery dates are always

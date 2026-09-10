@@ -15,7 +15,6 @@ import {
 import { REDIS_CLIENT } from '../src/redis';
 import {
   ArticleStatus,
-  CatalogArticlesPage,
   CatalogUnavailableException,
   CrossReferenceCandidate,
 } from '../src/tecdoc';
@@ -25,7 +24,6 @@ import {
   VehicleVariantDto,
   AssemblyGroupDto,
   BrandDto,
-  PaginatedCatalogArticlesDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
 } from '@vp-parts-shop/shared';
@@ -90,34 +88,6 @@ const ASSEMBLY_GROUPS: AssemblyGroupDto[] = [
 ];
 
 const BOSCH_BRAND_ID = '30';
-
-const PAGINATED_ARTICLES: PaginatedCatalogArticlesDto = {
-  total: 2,
-  page: 1,
-  pageSize: 20,
-  items: [
-    {
-      articleNumber: 'BD-001',
-      brandId: BOSCH_BRAND_ID,
-      brandName: 'Bosch',
-      brandLogoUrl: null,
-      description: 'Brake Disc',
-      thumbnailUrl: null,
-      technicalSpecs: [],
-      fitsVehicle: null,
-    },
-    {
-      articleNumber: 'BD-002',
-      brandId: '101',
-      brandName: 'Ferodo',
-      brandLogoUrl: null,
-      description: 'Brake Disc',
-      thumbnailUrl: null,
-      technicalSpecs: [],
-      fitsVehicle: null,
-    },
-  ],
-};
 
 const ARTICLE_DETAIL: ArticleCatalogDetailDto = {
   articleNumber: 'BD-001',
@@ -234,20 +204,6 @@ const BRANDS: BrandDto[] = [
   },
 ];
 
-/**
- * What `getArticles` answers with: the mapped page plus the linkage roles that
- * came down with it, which the service pins so the applicable-vehicles section
- * need not read them again.
- */
-const ARTICLES_PAGE: CatalogArticlesPage = {
-  articles: PAGINATED_ARTICLES,
-  roles: PAGINATED_ARTICLES.items.map((row) => ({
-    brandId: row.brandId,
-    articleNumber: row.articleNumber,
-    legacyArticleIds: [555],
-  })),
-};
-
 const mockTecDocClient = {
   getManufacturerFacet: jest.fn(),
   getPopularManufacturerIds: jest.fn(),
@@ -255,7 +211,6 @@ const mockTecDocClient = {
   getVehicleVariants: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
   getBrands: jest.fn(),
-  getArticles: jest.fn(),
   getArticleDetails: jest.fn(),
   getCrossReferenceCandidates: jest.fn(),
   getArticleRowsByLegacyIds: jest.fn(),
@@ -469,81 +424,10 @@ describe('CatalogController (e2e)', () => {
       ['/catalog/manufacturers/abc/model-series', 'getModelSeries'],
       ['/catalog/model-series/0/variants', 'getVehicleVariants'],
       ['/catalog/vehicles/1.5/categories', 'getAssemblyGroupTree'],
-      ['/catalog/vehicles/-1/categories/100001/articles', 'getArticles'],
     ] as const)('returns 400 for %s', async (url, method) => {
       await request(app.getHttpServer()).get(url).expect(400);
 
       expect(mockTecDocClient[method]).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('GET /catalog/vehicles/:vehicleId/categories/:categoryId/articles', () => {
-    it('returns cacheable catalog metadata without live inventory', async () => {
-      mockTecDocClient.getArticles.mockResolvedValueOnce(ARTICLES_PAGE);
-
-      const res = await request(app.getHttpServer())
-        .get('/catalog/vehicles/10001/categories/100001/articles')
-        .expect(200);
-
-      expect(res.body.total).toBe(2);
-      expect(res.body.items).toHaveLength(2);
-      expect(res.body.items[0].articleNumber).toBe('BD-001');
-      // Inventory is fetched live and separately (GET /catalog/articles-availability),
-      // so the cached metadata payload carries no price/stock fields.
-      expect(res.body.items[0]).not.toHaveProperty('available');
-      expect(res.body.items[0]).not.toHaveProperty('bestPriceExVat');
-      expect(res.body.items[0]).not.toHaveProperty('availabilityByWarehouse');
-    });
-
-    it('forwards page and pageSize query params to TecDoc', async () => {
-      mockTecDocClient.getArticles.mockResolvedValueOnce({
-        articles: { ...PAGINATED_ARTICLES, page: 2, pageSize: 10, items: [] },
-        roles: [],
-      });
-
-      await request(app.getHttpServer())
-        .get(
-          '/catalog/vehicles/10001/categories/100001/articles?page=2&pageSize=10',
-        )
-        .expect(200);
-
-      expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
-        10001,
-        100001,
-        2,
-        10,
-      );
-    });
-
-    it('defaults to page 1 and pageSize 20 when query params are absent', async () => {
-      mockTecDocClient.getArticles.mockResolvedValueOnce(ARTICLES_PAGE);
-
-      await request(app.getHttpServer())
-        .get('/catalog/vehicles/10001/categories/100001/articles')
-        .expect(200);
-
-      expect(mockTecDocClient.getArticles).toHaveBeenCalledWith(
-        10001,
-        100001,
-        1,
-        20,
-      );
-    });
-
-    // Paging is bounded at the boundary, so nothing out of range reaches TecDoc
-    // — which is where an absurd page number would otherwise cost us a call and
-    // a cache key before being refused.
-    it.each([
-      ['a page size above the ceiling', 'pageSize=500'],
-      ['a page of zero', 'page=0'],
-      ['a page beyond the paging ceiling', 'page=10001'],
-      ['paging that is not a number', 'page=abc'],
-    ])('rejects %s', async (_label, query) => {
-      await request(app.getHttpServer())
-        .get(`/catalog/vehicles/10001/categories/100001/articles?${query}`)
-        .expect(400, { statusCode: 400, errorCode: 'VALIDATION_ERROR' });
-
-      expect(mockTecDocClient.getArticles).not.toHaveBeenCalled();
     });
   });
 

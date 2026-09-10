@@ -49,9 +49,8 @@ const NO_WAREHOUSES: WarehouseAvailabilityDto[] = [];
 
 /**
  * One article as a wide catalog row: identity, brand, delivery promise, stock
- * and the buy action, with an expander for the technical detail. Built to back
- * every list surface — search hits, and the substitutes a row expands into —
- * though the listing grid still uses `ArticleCard`.
+ * and the buy action, with an expander for the technical detail. Backs every
+ * list surface — search hits, and the substitutes a row expands into.
  *
  * The collapsed row renders from catalog metadata alone. Live price/stock
  * arrives on its own schedule via `availability`, which lets a cacheable catalog

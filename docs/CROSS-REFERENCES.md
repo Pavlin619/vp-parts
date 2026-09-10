@@ -345,7 +345,7 @@ padding to fifteen from a looser relation is not.
 
 **`GET /catalog/brands/:brandId/articles/:articleNumber/substitutes`** is
 paginated: `?page=1&pageSize=20` (`pageSize` clamped to `1…50`), returning
-`PaginatedCatalogArticlesDto` — the same shape the listing grid returns — where it
+`PaginatedCatalogArticlesDto` — the same shape every list surface returns — where it
 used to return `ArticleSummaryDto[]`. `total` is the candidate count after step 2,
 so the section names how many alternatives are left and offers *show more* until
 they are exhausted. `SUBSTITUTES_LIMIT` is gone. This was a breaking change to a
@@ -398,8 +398,7 @@ no more than five minutes: a page-number key would serve the ordering the rows
 were first cut into, and an id-set key would miss whenever stock moved a row
 across a page boundary. Per-row caching also means a part appearing in two
 different lists is fetched once. This needed one new primitive on `RedisCache` —
-`cachedMany`, an `mget` followed by a pipelined write — which is also what the
-listing grid will want later.
+`cachedMany`, an `mget` followed by a pipelined write.
 
 ---
 
