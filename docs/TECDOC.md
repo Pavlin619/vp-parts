@@ -218,6 +218,27 @@ The 36 to draw, in `sortNo` order, which is also the order they are rendered in.
 
 **Our own design and the competitors' show a curated taxonomy, not this tree — do not mistake one for the other.** InterCars renders ~20 roots for the A3 against TecDoc's 35, including `Офроуд` and `LPG`, which are not TecDoc categories at all, and `Тунинг`, which exists as node `103437` but is not a root; their `Филтри` count is 199 against TecDoc's 788, because they count their own assortment. The same gap is in our mockup, whose `Филтри` shows 193 articles in 7 groups including `Филтър АКПП` and `Филтър AdBlue / карбамид` — neither of which is in the A3's tree, which files 788 across 6 (маслен 119, въздушен 149, горивен 104, купе 262, к-кт 73, хидравличен 81). We render TecDoc's tree as it comes and keep the curation to presentation — an image manifest and, where a label needs one, an override — so there is never a second answer to "what categories exist".
 
+#### The same tree with no vehicle: how big the whole taxonomy is
+
+**Drop the linkage and the identical facet answers the catalogue-wide tree — for cars and vans, 1,315 nodes over four levels.** `getArticles` at `perPage: 0` with `assemblyGroupFacetOptions: { enabled: true, assemblyGroupType: 'P' }` and no `linkageTargetId` is accepted (7,860,478 matching articles, 193,535 bytes) and needs no query, no vehicle and no category to narrow it. Roots first, the levels are **36 / 454 / 536 / 289**, of which 35 / 78 / 65 have children and the rest are leaves. `scripts/category-tree-probe.mjs` is the measurement.
+
+**Four levels is the passenger-car tree's real depth, not a limit of the read.** `maxDepth` 4, 5 and 6 answer the identical 1,315 nodes; the flag counts *levels*, so `1` gives the 36 roots (5,144 bytes), `2` gives 490, `3` gives 1,026, and `0` empties the facet. The per-vehicle tree is the same four levels because it is a subset of this one — an A3's 773 nodes are drawn from these 1,315.
+
+**How wide a node gets depends on its level, and the ceiling is 26.** Level-1 parents hold a median of 11 children and at most 26 (`електрическа система`, then `спирачна уредба` 24 and `вътрешно обурудване` 23); level-2 parents a median of 5 and at most 22 (`задница на автомобила`, `подготовка горивна смес`); level-3 parents a median of 3 and at most 16. Two shapes at the extremes have to render: `почистване на фаровете` is a root with **no children at all**, and 230 labels are reused across more than one node id (820 distinct labels over 1,315 nodes) — which is why a link carries the path and never the leaf label.
+
+**Each `assemblyGroupType` is a separate tree, and they are disjoint.** `'PU'` returns exactly 1,315 + 1,675 nodes and `'PBOMAU'` exactly the sum of all six, so combining codes unions whole trees rather than merging them.
+
+| Type | Tree | Nodes | Levels | Nodes per level | Widest node |
+|---|---|---|---|---|---|
+| `P` | Passenger car / LCV | 1,315 | 4 | 36 / 454 / 536 / 289 | 26 |
+| `U` | Universal | 1,675 | 5 | 42 / 451 / 822 / 354 / 6 | 68 (`инструменти`) |
+| `O` | Commercial vehicle | 1,022 | 4 | 33 / 358 / 490 / 141 | 27 |
+| `M` | Engine | 317 | 4 | 29 / 145 / 126 / 17 | 20 |
+| `B` | Motorcycle | 265 | 4 | 20 / 116 / 127 / 2 | 17 |
+| `A` | Axle | 80 | 3 | 8 / 36 / 36 | 8 |
+
+**These are the categories that hold parts, which is a smaller set than the published taxonomy.** Every node the facet returns carries a count of at least 1 (the largest is `двигател` at 1,889,788), because a facet counts articles. The full taxonomy is the legacy `getChildNodesAllLinkingTarget2` recursed with `linked: false`, which answers 1,636 nodes over five levels for `linkingTargetType: 'P'`: 278 of the extra 321 are a `двуколесни ПС` root carrying the motorcycle tree — the legacy letter includes bikes where `assemblyGroupType: 'P'` excludes them — and the remaining 43 are nodes with no article filed against them anywhere. Asking that call for the linked subset instead is refused without a vehicle (`400 Field 'linkingTargetId' must be not null`), so the facet is the only vehicle-free way to ask which categories are actually populated.
+
 #### Article identity: an article number is not unique
 
 **A TecDoc article is identified by `(dataSupplierId, articleNumber)`, never by the number alone.** Two data suppliers can and do file the same number for different parts. A number-only `getArticles` lookup returns every one of them and the caller takes whichever the catalogue sorted first — which is a coin toss, not a lookup. This surfaced as an article detail page showing another company's specs and applicable vehicles.
