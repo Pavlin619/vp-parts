@@ -94,7 +94,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         <main className="min-w-0">
           {/* Above both branches: a narrowing that empties the list is exactly
               when the term is worth restating. */}
-          <SearchResultsTitle query={state.query} />
+          <SearchResultsTitle
+            query={state.query}
+            categoryLabel={response.categoryNavigation?.current?.label}
+          />
 
           {response.results.length > 0 ? (
             <SearchResultsAvailability

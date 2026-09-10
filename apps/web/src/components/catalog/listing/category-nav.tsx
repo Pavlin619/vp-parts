@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { AssemblyGroupDto } from "@vp-parts-shop/shared";
+import {
+  buildCategoryTree,
+  type CategoryTreeNode,
+} from "@/lib/catalog/category-tree";
 import { cn } from "@/lib/utils";
 
 interface CategoryNavProps {
@@ -11,43 +15,13 @@ interface CategoryNavProps {
   onSelectCategory: (categoryId: string) => void;
 }
 
-interface TreeNode {
-  category: AssemblyGroupDto;
-  children: TreeNode[];
-}
-
-export function buildTree(categories: AssemblyGroupDto[]): TreeNode[] {
-  const nodeMap = new Map<string, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  for (const cat of categories) {
-    nodeMap.set(cat.id, { category: cat, children: [] });
-  }
-
-  for (const cat of categories) {
-    const node = nodeMap.get(cat.id)!;
-    if (cat.parentId === null) {
-      roots.push(node);
-    } else {
-      const parent = nodeMap.get(cat.parentId);
-      if (parent) {
-        parent.children.push(node);
-      } else {
-        roots.push(node);
-      }
-    }
-  }
-
-  return roots;
-}
-
 function CategoryItem({
   node,
   activeCategoryId,
   onSelectCategory,
   depth = 0,
 }: {
-  node: TreeNode;
+  node: CategoryTreeNode;
   activeCategoryId?: string;
   onSelectCategory: (id: string) => void;
   depth?: number;
@@ -103,7 +77,7 @@ export function CategoryNav({
   activeCategoryId,
   onSelectCategory,
 }: CategoryNavProps) {
-  const tree = buildTree(categories);
+  const tree = buildCategoryTree(categories);
 
   return (
     <nav aria-label="Категории части">
