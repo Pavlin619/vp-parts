@@ -157,7 +157,7 @@ npm run type-check
 
 **Frontend unit tests** — `apps/web` uses Jest + React Testing Library (configured via `next/jest`). Test strategy by type:
 - **Pure functions** (`lib/utils.ts`, `lib/api/*.ts`): Jest only — mock `fetch`/`apiFetch`, assert URL construction, headers, and error handling.
-- **Algorithms** (e.g. `buildTree` in `category-nav.tsx`): export the function and test it in isolation with Jest. No rendering needed.
+- **Algorithms** (e.g. `buildCategoryTree` in `lib/catalog/category-tree.ts`): export the function and test it in isolation with Jest. No rendering needed.
 - **Zustand stores** (`hooks/use-vehicle-context.ts`): call `store.getState()` and `store.setState()` directly — no React rendering needed.
 - **Client Components** with conditional rendering logic (e.g. `ArticleRow`): use React Testing Library — `render()`, query by role/label/text, simulate events with `userEvent`.
 - **Skip tests for**: loading skeletons, thin route wrappers with no logic, shadcn UI primitives under `components/ui/`.

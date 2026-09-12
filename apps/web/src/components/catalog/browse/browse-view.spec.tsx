@@ -23,6 +23,13 @@ jest.mock('@/components/catalog/vehicle-selector', () => ({
     isOpen ? <div data-testid="vehicle-selector" /> : null,
 }))
 
+// The categories fetch the car's tree; that is browse-categories.spec's subject.
+jest.mock('./categories', () => ({
+  BrowseCategories: ({ vehicle }: { vehicle: SelectedVehicle }) => (
+    <div data-testid="browse-categories">{vehicle.vehicleId}</div>
+  ),
+}))
+
 // The hero fetches its own photo and variant; neither is what this file covers.
 jest.mock('./vehicle-hero', () => ({
   VehicleHero: ({ vehicle, onClear }: { vehicle: SelectedVehicle; onClear: () => void }) => (
@@ -64,6 +71,7 @@ describe('BrowseView — before a car is picked', () => {
     render(<BrowseView />)
     expect(screen.getByText('Изберете автомобил')).toBeInTheDocument()
     expect(screen.queryByTestId('vehicle-hero')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('browse-categories')).not.toBeInTheDocument()
   })
 
   it('opens the selector from the prompt', async () => {
@@ -80,6 +88,14 @@ describe('BrowseView — with a car', () => {
 
     expect(screen.getByRole('heading', { name: 'Каталог' })).toBeInTheDocument()
     expect(screen.getByTestId('vehicle-hero')).toHaveTextContent('A3 (8L1)')
+  })
+
+  // The tree is answered per vehicle, so the categories only exist once one is
+  // picked — and they are asked for that car and no other.
+  it('scopes the categories to it', () => {
+    render(<BrowseView />)
+
+    expect(screen.getByTestId('browse-categories')).toHaveTextContent('13074')
   })
 
   it('clears the car from the hero', async () => {

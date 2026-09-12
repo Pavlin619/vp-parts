@@ -1,20 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Breadcrumbs } from "@/components/common/breadcrumbs";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
 import { useHydration, useVehicleContext } from "@/hooks/use-vehicle-context";
-import type { BreadcrumbItem } from "@/lib/breadcrumbs";
+import { BrowseCategories } from "./categories";
 import { VehiclePrompt } from "./vehicle-prompt";
 import { VehicleHero } from "./vehicle-hero";
 
-const CATALOG_TRAIL: BreadcrumbItem[] = [
-  { key: "home", label: "Начало", href: "/" },
-  { key: "catalog", label: "Каталог" },
-];
-
 /**
- * The catalog: for now the car everything below it will be scoped to.
+ * The catalogue: the car everything below it is scoped to, and that car's
+ * categories.
  *
  * Client-rendered because the vehicle lives in a persisted store the server
  * cannot read.
@@ -26,7 +21,7 @@ export function BrowseView() {
 
   const [isSelectorOpen, setSelectorOpen] = useState(false);
 
-  function renderVehicle() {
+  function renderCatalog() {
     if (!isHydrated) {
       return <VehicleHeroSkeleton />;
     }
@@ -36,23 +31,27 @@ export function BrowseView() {
     }
 
     return (
-      <VehicleHero
-        vehicle={vehicle}
-        onEdit={() => setSelectorOpen(true)}
-        onClear={clearVehicle}
-      />
+      <>
+        <VehicleHero
+          vehicle={vehicle}
+          onEdit={() => setSelectorOpen(true)}
+          onClear={clearVehicle}
+        />
+
+        {/* Keyed so a new car starts on a cleared finder and a closed panel,
+            rather than on the previous car's place in a tree it has left. */}
+        <BrowseCategories key={vehicle.vehicleId} vehicle={vehicle} />
+      </>
     );
   }
 
   return (
-    <div className="page-container pb-8">
-      <Breadcrumbs items={CATALOG_TRAIL} />
-
-      <h1 className="mb-6 pt-3.5 font-display text-[44px] font-semibold leading-none tracking-[-0.025em]">
+    <div className="page-container py-8">
+      <h1 className="mb-6 font-display text-[44px] font-semibold leading-none tracking-[-0.025em]">
         Каталог
       </h1>
 
-      {renderVehicle()}
+      {renderCatalog()}
 
       <VehicleSelector
         isOpen={isSelectorOpen}
