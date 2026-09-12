@@ -1,4 +1,5 @@
 import { ArticleCategoryNodeDto } from '@vp-parts-shop/shared';
+import { catalogLabelOf } from './catalog-label';
 import { AssemblyGroupType } from './tecdoc-target-types';
 
 /**
@@ -106,7 +107,7 @@ function trailTo(
     seen.add(node.assemblyGroupNodeId);
     trail.unshift({
       id: String(node.assemblyGroupNodeId),
-      label: node.assemblyGroupName,
+      label: catalogLabelOf(node.assemblyGroupName),
     });
   }
 

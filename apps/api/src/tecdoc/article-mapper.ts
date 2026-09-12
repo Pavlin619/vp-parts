@@ -4,6 +4,7 @@ import {
   OemNumberDto,
   TechnicalSpecDto,
 } from '@vp-parts-shop/shared';
+import { catalogLabelOf } from './catalog-label';
 
 /**
  * The subset of a TecDoc `getArticles` article record the catalog surfaces
@@ -129,7 +130,7 @@ export function mapArticleCandidate(
     brandId: String(article.dataSupplierId),
     brandName: article.mfrName,
     articleNumber: article.articleNumber,
-    description: article.genericArticles?.[0]?.genericArticleDescription ?? '',
+    description: descriptionOf(article),
     legacyArticleIds: legacyArticleIdsOf(article),
     articleStatusId: article.misc?.articleStatusId ?? null,
   };
@@ -196,7 +197,7 @@ export function mapArticleSummary(
     brandId: String(article.dataSupplierId),
     brandName: article.mfrName,
     brandLogoUrl: null,
-    description: article.genericArticles?.[0]?.genericArticleDescription ?? '',
+    description: descriptionOf(article),
     thumbnailUrl: article.images?.[0]?.imageURL800 ?? null,
     technicalSpecs: mapTechnicalSpecs(article.articleCriteria),
     fitsVehicle: null,
@@ -204,15 +205,31 @@ export function mapArticleSummary(
 }
 
 /**
+ * What the part is called. The generic-article name is the only title TecDoc
+ * files — there is no `articleName` — and it arrives lower case (`маслен
+ * филтър`, measured on every row of the A3's oil filters).
+ */
+function descriptionOf(article: TecDocArticleRecord): string {
+  const name = article.genericArticles?.[0]?.genericArticleDescription;
+
+  return name ? catalogLabelOf(name) : '';
+}
+
+/**
  * A criterion can arrive more than once, since TecDoc lists it per data variant
  * of the article. Only an exact repeat is dropped: the same label with a
  * different value (two `Note` lines, say) is two distinct facts about the part.
+ *
+ * The key is raised and the value is not: a spec table's left column is a set
+ * of headings, which TecDoc files inconsistently (39 of the A3 oil filters' 52
+ * criteria names lower against 13 upper), while the right column is data and
+ * mostly numeric.
  */
 function mapTechnicalSpecs(
   criteria: TecDocArticleRecord['articleCriteria'],
 ): TechnicalSpecDto[] {
   const specs = (criteria ?? []).map((criterion) => ({
-    key: criterion.criteriaDescription,
+    key: catalogLabelOf(criterion.criteriaDescription),
     value: criterion.formattedValue,
   }));
 

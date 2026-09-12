@@ -24,7 +24,7 @@ describe('assemblyGroupPathsOf', () => {
     ]);
 
     expect(trails(paths)).toEqual([
-      ['спирачна уредба', 'дискови спирачки', 'спирачен диск'],
+      ['Спирачна уредба', 'Дискови спирачки', 'Спирачен диск'],
     ]);
   });
 
@@ -43,9 +43,9 @@ describe('assemblyGroupPathsOf', () => {
     ]);
 
     expect(trails(paths)).toEqual([
-      ['филтър', 'маслен филтър'],
-      ['двигател', 'смазване', 'маслен филтър'],
-      ['части за сервиз/ инспекция/ обслужване', 'Периодична подмяна'],
+      ['Филтър', 'Маслен филтър'],
+      ['Двигател', 'Смазване', 'Маслен филтър'],
+      ['Части за сервиз/ инспекция/ обслужване', 'Периодична подмяна'],
     ]);
   });
 
@@ -80,7 +80,7 @@ describe('assemblyGroupPathsOf', () => {
   it('keeps a trail whose parent is missing from the facet', () => {
     const paths = assemblyGroupPathsOf([node(100259, 'маслен филтър', 100005)]);
 
-    expect(trails(paths)).toEqual([['маслен филтър']]);
+    expect(trails(paths)).toEqual([['Маслен филтър']]);
   });
 
   // `parentNodeId` arrives over an untyped JSON transport, so a chain that
@@ -92,6 +92,6 @@ describe('assemblyGroupPathsOf', () => {
       node(3, 'c', 1),
     ]);
 
-    expect(trails(paths)).toEqual([['b', 'a', 'c']]);
+    expect(trails(paths)).toEqual([['B', 'A', 'C']]);
   });
 });

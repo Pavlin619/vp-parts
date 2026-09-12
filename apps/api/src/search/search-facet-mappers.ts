@@ -5,7 +5,11 @@ import {
   FacetValueDto,
   SearchFacetDto,
 } from '@vp-parts-shop/shared';
-import { AssemblyGroupType, TecDocAssemblyGroupFacetCount } from '../tecdoc';
+import {
+  AssemblyGroupType,
+  TecDocAssemblyGroupFacetCount,
+  catalogLabelOf,
+} from '../tecdoc';
 import { CATEGORY_AUTOCOMPLETE_LIMIT } from './search-types';
 
 /**
@@ -85,7 +89,7 @@ export function mapProductTypeFacets(
     ...selectedBeyond(byCount, capped, selectedIds),
   ].map((c) => ({
     id: String(c.genericArticleId),
-    label: c.genericArticleDescription,
+    label: catalogLabelOf(c.genericArticleDescription),
     count: c.count,
   }));
 
@@ -262,8 +266,11 @@ export function buildCategoryNavigation(
     const childList = childrenByParent.get(id) ?? [];
     return {
       id,
-      label:
+      // Wraps the qualified label too, so a collision's suffix does not decide
+      // whether the name in front of it is capitalised.
+      label: catalogLabelOf(
         qualifiedLabels.get(raw.assemblyGroupNodeId) ?? raw.assemblyGroupName,
+      ),
       count: raw.count ?? null,
       hasChildren: childList.length > 0 || (raw.children ?? 0) > 0,
     };
@@ -363,7 +370,7 @@ export function buildCategorySuggestions(
       kind: 'category',
       term,
       categoryNodeId: String(raw.assemblyGroupNodeId),
-      label: raw.assemblyGroupName,
+      label: catalogLabelOf(raw.assemblyGroupName),
       count: raw.count ?? null,
     }));
 }

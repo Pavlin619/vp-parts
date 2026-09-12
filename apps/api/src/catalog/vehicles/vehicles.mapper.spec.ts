@@ -312,6 +312,35 @@ describe('mapAssemblyGroups', () => {
     ]);
   });
 
+  /**
+   * TecDoc's casing is inconsistent within a single level, so the grid renders
+   * a mix until the names are normalised: these three arrive exactly so on an
+   * Audi A3 (8L1), among 35 roots.
+   */
+  it('serves every name as a heading, whatever case TecDoc filed it in', () => {
+    const names = mapAssemblyGroups({
+      assemblyGroupFacets: {
+        counts: [
+          { assemblyGroupNodeId: 100005, assemblyGroupName: 'филтър' },
+          {
+            assemblyGroupNodeId: 100050,
+            assemblyGroupName: 'Съединител/монтажни части',
+          },
+          {
+            assemblyGroupNodeId: 100019,
+            assemblyGroupName: 'части за сервиз/ инспекция/ обслужване',
+          },
+        ],
+      },
+    }).map((group) => group.name);
+
+    expect(names).toEqual([
+      'Филтър',
+      'Съединител/монтажни части',
+      'Части за сервиз/ инспекция/ обслужване',
+    ]);
+  });
+
   it('reads a root, whose parent link TecDoc omits rather than nulls', () => {
     expect(
       mapAssemblyGroups({

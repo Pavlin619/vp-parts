@@ -2,6 +2,7 @@ import {
   AttributeFacetDto,
   AttributeFacetValueDto,
 } from '@vp-parts-shop/shared';
+import { catalogLabelOf } from '../tecdoc';
 import { fittingPositionZoneFor } from './fitting-position-zones';
 import { attributeRoleFor, CriteriaFilter } from './search-types';
 
@@ -193,7 +194,9 @@ function mapCriterion(
 
   return {
     id,
-    label: criteria.criteriaDescription,
+    // The group heading is raised; its values are not — they are data, and
+    // mostly numeric. See {@link catalogLabelOf}.
+    label: catalogLabelOf(criteria.criteriaDescription),
     unit: criteria.criteriaUnitDescription ?? null,
     type: criteria.criteriaType,
     isInterval: criteria.isInterval,

@@ -37,6 +37,52 @@ describe('mapArticleSummary', () => {
     });
   });
 
+  /**
+   * The values below are what the A3's oil filters actually return. TecDoc
+   * files no `articleName`, so the generic-article name is the row title, and
+   * it arrives lower case on every row measured; the criteria names arrive
+   * mixed (39 of 52 lower). The brand and the criteria *values* are left as
+   * they came — a trademark carries its own casing, and a value is data.
+   */
+  it('raises the title and the spec keys, not the brand or the values', () => {
+    const raw: TecDocArticleRecord = {
+      articleNumber: 'OC-115',
+      dataSupplierId: 4426,
+      mfrName: 'A.Z. Meisterteile',
+      genericArticles: [
+        { genericArticleDescription: 'уплътнение, маслен филтър' },
+      ],
+      articleCriteria: [
+        { criteriaDescription: 'височина [mm]', formattedValue: '123' },
+        {
+          criteriaDescription: 'изпълнение на филтъра',
+          formattedValue: 'навиващ филтър',
+        },
+        { criteriaDescription: 'Тегло [kg]', formattedValue: '0,3' },
+      ],
+    };
+
+    expect(mapArticleSummary(raw)).toMatchObject({
+      brandName: 'A.Z. Meisterteile',
+      description: 'Уплътнение, маслен филтър',
+      technicalSpecs: [
+        { key: 'Височина [mm]', value: '123' },
+        { key: 'Изпълнение на филтъра', value: 'навиващ филтър' },
+        { key: 'Тегло [kg]', value: '0,3' },
+      ],
+    });
+  });
+
+  it('reads an article TecDoc files no generic name for as untitled', () => {
+    expect(
+      mapArticleSummary({
+        articleNumber: 'OC-115',
+        dataSupplierId: 72,
+        mfrName: 'MANN-FILTER',
+      }).description,
+    ).toBe('');
+  });
+
   // They are the bulkiest field on an article and no list row renders them, so
   // the list calls do not request them and the summary does not carry them.
   it('leaves OE numbers out even when the record carries them', () => {
