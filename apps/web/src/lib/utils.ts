@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Picks the Bulgarian noun form for a count. Only two forms exist, but a count
+ * of one needs the singular: `1 категории` reads as broken in a way `1
+ * categories` never would, and a TecDoc level holding one subgroup is ordinary.
+ */
+export function plural(count: number, one: string, many: string): string {
+  return count === 1 ? one : many;
+}
+
 export function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat("bg-BG", {
     day: "2-digit",

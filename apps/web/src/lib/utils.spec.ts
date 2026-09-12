@@ -1,4 +1,4 @@
-import { cn, formatDate, decodeRouteParam } from './utils'
+import { cn, formatDate, decodeRouteParam, plural } from './utils'
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -31,6 +31,18 @@ describe('formatDate', () => {
   it('pads single-digit day and month with a leading zero', () => {
     const date = new Date(2024, 0, 5)
     expect(formatDate(date)).toBe('05.01.2024 г.')
+  })
+})
+
+describe('plural', () => {
+  it('takes the singular for exactly one', () => {
+    expect(plural(1, 'категория', 'категории')).toBe('категория')
+  })
+
+  it('takes the plural for none and for many', () => {
+    expect(plural(0, 'категория', 'категории')).toBe('категории')
+    expect(plural(2, 'категория', 'категории')).toBe('категории')
+    expect(plural(773, 'категория', 'категории')).toBe('категории')
   })
 })
 
