@@ -6,7 +6,7 @@ import { ArrowRight, X } from "lucide-react";
 import { formatCount } from "@vp-parts-shop/shared";
 import { categorySearchHref } from "@/lib/catalog/category-href";
 import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
-import { plural } from "@/lib/utils";
+import { cn, plural } from "@/lib/utils";
 import { CategoryPanelRow } from "./category-panel-row";
 import { CategoryPathBar } from "./category-path-bar";
 
@@ -17,6 +17,8 @@ interface CategoryPanelProps {
   /** The car the counts below are for, named once at the top of the panel. */
   vehicleName: string;
   onClose: () => void;
+  /** Where the panel sits when the layout around it is not the full grid. */
+  className?: string;
 }
 
 /**
@@ -33,6 +35,7 @@ export function CategoryPanel({
   vehicleId,
   vehicleName,
   onClose,
+  className,
 }: CategoryPanelProps) {
   const [path, setPath] = useState<CategoryTreeNode[]>([]);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -58,7 +61,10 @@ export function CategoryPanel({
     <section
       id={id}
       aria-label={`Групи в ${root.category.name}`}
-      className="col-span-full rounded-xl border border-ink bg-bg-card p-5 sm:px-6"
+      className={cn(
+        "col-span-full rounded-xl border border-ink bg-bg-card p-5 sm:px-6",
+        className,
+      )}
     >
       <div className="mb-4 flex flex-wrap items-start gap-x-3 gap-y-2">
         <div className="min-w-[200px] flex-1">

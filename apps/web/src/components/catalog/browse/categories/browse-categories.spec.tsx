@@ -45,14 +45,14 @@ const AUDI: SelectedVehicle = {
   yearTo: 2003,
 }
 
-function renderCategories() {
+function renderCategories(scopedCategoryId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <BrowseCategories vehicle={AUDI} />
+      <BrowseCategories vehicle={AUDI} scopedCategoryId={scopedCategoryId} />
     </QueryClientProvider>,
   )
 }
@@ -187,6 +187,82 @@ describe('BrowseCategories', () => {
 
     expect(
       await screen.findByText(/не връща категории за този автомобил/),
+    ).toBeInTheDocument()
+  })
+})
+
+/**
+ * A homepage tile hands over a root id and nothing else. The narrowed page is
+ * the same screen — same card, same panel, same finder — with the grid cut down
+ * to the one root and the panel already open.
+ */
+describe('BrowseCategories — narrowed to one category', () => {
+  it('shows that category and none of the others', async () => {
+    renderCategories('100006')
+
+    expect(
+      await screen.findByRole('button', { name: /спирачна уредба/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /филтър/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('titles the page with the category and counts what is inside it', async () => {
+    renderCategories('100006')
+
+    expect(
+      await screen.findByRole('heading', { name: 'спирачна уредба', level: 2 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/1 група · 100 артикула/)).toBeInTheDocument()
+  })
+
+  it('opens the level below it without a click', async () => {
+    renderCategories('100006')
+
+    // The panel's own heading, which is only rendered while it is open.
+    expect(
+      await screen.findByRole('heading', { name: 'спирачна уредба', level: 3 }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /накладки/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers the way back to the whole catalogue', async () => {
+    renderCategories('100006')
+
+    await screen.findByRole('button', { name: /спирачна уредба/ })
+    expect(
+      screen.getByRole('link', { name: 'Всички категории' }),
+    ).toHaveAttribute('href', '/catalog')
+    expect(screen.getByText('2 категории в каталога')).toBeInTheDocument()
+  })
+
+  // Searching from inside a category is searching that category — the rest of
+  // the tree is not what the visitor is looking at.
+  it('keeps the finder inside the narrowing', async () => {
+    renderCategories('100006')
+    await screen.findByRole('button', { name: /спирачна уредба/ })
+
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Търси категория' }),
+      'филт',
+    )
+
+    expect(screen.getByText(/Нищо за „филт“/)).toBeInTheDocument()
+  })
+
+  // A stale link, or a category this model takes no parts from. The scope bar
+  // above it is the way on, so the page is not a dead end.
+  it('says so when the car has no such category', async () => {
+    renderCategories('999999')
+
+    expect(
+      await screen.findByText(/Тази категория няма части за AUDI A3/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Всички категории' }),
     ).toBeInTheDocument()
   })
 })

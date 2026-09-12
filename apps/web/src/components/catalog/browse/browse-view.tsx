@@ -7,6 +7,11 @@ import { BrowseCategories } from "./categories";
 import { VehiclePrompt } from "./vehicle-prompt";
 import { VehicleHero } from "./vehicle-hero";
 
+interface BrowseViewProps {
+  /** The root category the URL narrows the page to, if it names one. */
+  scopedCategoryId?: string;
+}
+
 /**
  * The catalogue: the car everything below it is scoped to, and that car's
  * categories.
@@ -14,7 +19,7 @@ import { VehicleHero } from "./vehicle-hero";
  * Client-rendered because the vehicle lives in a persisted store the server
  * cannot read.
  */
-export function BrowseView() {
+export function BrowseView({ scopedCategoryId }: BrowseViewProps) {
   const isHydrated = useHydration();
   const vehicle = useVehicleContext((state) => state.selectedVehicle);
   const clearVehicle = useVehicleContext((state) => state.clearVehicle);
@@ -38,9 +43,14 @@ export function BrowseView() {
           onClear={clearVehicle}
         />
 
-        {/* Keyed so a new car starts on a cleared finder and a closed panel,
-            rather than on the previous car's place in a tree it has left. */}
-        <BrowseCategories key={vehicle.vehicleId} vehicle={vehicle} />
+        {/* Keyed so a new car — or a new narrowing — starts on a cleared
+            finder and a closed panel, rather than on the previous one's place
+            in a tree it has left. */}
+        <BrowseCategories
+          key={`${vehicle.vehicleId}:${scopedCategoryId ?? ""}`}
+          vehicle={vehicle}
+          scopedCategoryId={scopedCategoryId}
+        />
       </>
     );
   }

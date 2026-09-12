@@ -53,11 +53,13 @@ describe("PopularCategoryCard", () => {
     );
   });
 
-  // The category page it will point at does not exist yet; a tile that looks
-  // clickable and goes nowhere is worse than a still one.
-  it("does not navigate yet", () => {
+  // The whole tile is the target, not the name inside it.
+  it("opens the catalogue narrowed to the category", () => {
     renderCard(category());
 
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByRole("link")).toHaveAttribute(
+      "href",
+      "/catalog?category=100005",
+    );
   });
 });

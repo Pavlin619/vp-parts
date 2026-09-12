@@ -5,6 +5,8 @@ import { Search, X } from "lucide-react";
 interface CategoryFinderProps {
   value: string;
   onChange: (value: string) => void;
+  /** Names the branch being searched when the catalogue is narrowed to one. */
+  placeholder?: string;
 }
 
 /**
@@ -15,7 +17,11 @@ interface CategoryFinderProps {
  * levels down unfindable without knowing which root holds it. This is that way
  * in.
  */
-export function CategoryFinder({ value, onChange }: CategoryFinderProps) {
+export function CategoryFinder({
+  value,
+  onChange,
+  placeholder = "Търси категория… накладки, филтър",
+}: CategoryFinderProps) {
   return (
     <div className="flex h-12 w-full items-center gap-2 rounded-full border border-line bg-bg-card pl-4 pr-1.5 transition-colors focus-within:border-ink sm:w-[360px]">
       <Search className="h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
@@ -25,7 +31,7 @@ export function CategoryFinder({ value, onChange }: CategoryFinderProps) {
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Търси категория"
-        placeholder="Търси категория… накладки, филтър"
+        placeholder={placeholder}
         className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-4"
       />
 

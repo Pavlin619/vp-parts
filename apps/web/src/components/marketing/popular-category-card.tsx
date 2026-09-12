@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { formatCount } from "@vp-parts-shop/shared";
 import { CategoryThumb } from "@/components/catalog/browse/categories";
+import { catalogCategoryHref } from "@/lib/catalog/catalog-url";
 import type { PopularCategory } from "@/lib/catalog/popular-categories";
 import { plural } from "@/lib/utils";
 
@@ -11,28 +13,33 @@ interface PopularCategoryCardProps {
 }
 
 /**
- * One homepage category tile.
+ * One homepage category tile, leading into the catalogue narrowed to it.
  *
- * Deliberately not a link yet: the category page it belongs to does not exist,
- * and a tile that lifts under the cursor and then goes nowhere is worse than a
- * still one. Give it the `href` when that page lands.
+ * The counts here are catalogue-wide and the catalogue's are per car, so the
+ * tile hands over an id and nothing else — what the narrowed page then says
+ * about the category is what the visitor's own car takes.
  */
 export function PopularCategoryCard({ category }: PopularCategoryCardProps) {
   return (
-    <li className="flex flex-col rounded-xl border border-line bg-bg-card p-2.5 pb-3.5">
-      <CategoryThumb
-        categoryId={category.id}
-        sizes={THUMB_SIZES}
-        className="mb-3 aspect-[16/10] rounded-md"
-      />
+    <li className="flex">
+      <Link
+        href={catalogCategoryHref(category.id)}
+        className="flex w-full flex-col rounded-xl border border-line bg-bg-card p-2.5 pb-3.5 transition-colors hover:border-ink"
+      >
+        <CategoryThumb
+          categoryId={category.id}
+          sizes={THUMB_SIZES}
+          className="mb-3 aspect-[16/10] rounded-md"
+        />
 
-      <span className="block px-1 font-display text-[17px] font-semibold leading-tight tracking-[-0.01em] text-ink">
-        {category.name}
-      </span>
+        <span className="block px-1 font-display text-[17px] font-semibold leading-tight tracking-[-0.01em] text-ink">
+          {category.name}
+        </span>
 
-      <span className="mt-1.5 block px-1 font-display text-[12.5px] tabular-nums text-ink-4">
-        {cardSummary(category)}
-      </span>
+        <span className="mt-1.5 block px-1 font-display text-[12.5px] tabular-nums text-ink-4">
+          {cardSummary(category)}
+        </span>
+      </Link>
     </li>
   );
 }
