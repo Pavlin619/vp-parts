@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
 import { HeroSection } from "@/components/marketing/hero-section";
-import { CategoryGrid } from "@/components/marketing/category-grid";
+import { PopularCategories } from "@/components/marketing/popular-categories";
 
 export const metadata: Metadata = {
   title: "VP Parts — Резервни части за автомобили",
@@ -19,7 +19,7 @@ export default async function HomePage() {
   return (
     <div className="bg-canvas">
       <HeroSection />
-      <CategoryGrid />
+      <PopularCategories />
     </div>
   );
 }

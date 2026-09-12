@@ -9,6 +9,8 @@ const THUMB_SIZES = "(max-width: 680px) 45vw, (max-width: 1000px) 30vw, 300px";
 interface CategoryThumbProps {
   categoryId: string;
   className?: string;
+  /** Override for a grid whose columns are not the catalogue's own. */
+  sizes?: string;
 }
 
 /**
@@ -16,7 +18,11 @@ interface CategoryThumbProps {
  * files no image for a category — not even a near-miss to reject — so all 36 are
  * ours to ship; see `category-illustration.ts`.
  */
-export function CategoryThumb({ categoryId, className }: CategoryThumbProps) {
+export function CategoryThumb({
+  categoryId,
+  className,
+  sizes = THUMB_SIZES,
+}: CategoryThumbProps) {
   const illustrationSrc = categoryIllustrationSrc(categoryId);
 
   return (
@@ -32,7 +38,7 @@ export function CategoryThumb({ categoryId, className }: CategoryThumbProps) {
           src={illustrationSrc}
           alt=""
           fill
-          sizes={THUMB_SIZES}
+          sizes={sizes}
           className="object-cover"
         />
       ) : (

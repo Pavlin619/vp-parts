@@ -42,6 +42,15 @@ export function getVariants(seriesId: string): Promise<VehicleVariantDto[]> {
   );
 }
 
+/**
+ * The catalogue-wide category tree — every category that holds parts, counted
+ * over the whole catalogue rather than one car. What a surface with no vehicle
+ * behind it reads; the API answers it from a single shared cache entry.
+ */
+export function getCatalogCategories(): Promise<AssemblyGroupDto[]> {
+  return apiFetch<AssemblyGroupDto[]>("/catalog/categories");
+}
+
 export function getCategories(vehicleId: string): Promise<AssemblyGroupDto[]> {
   return apiFetch<AssemblyGroupDto[]>(
     `/catalog/vehicles/${vehicleId}/categories`,
