@@ -1,4 +1,7 @@
-import { categorySearchHref } from './category-href'
+import {
+  categorySearchHref,
+  categoryTrailSearchHref,
+} from './category-href'
 import type { CategoryTreeNode } from './category-tree'
 import { hasSearchSubject, parseSearchUrl } from './search-url'
 
@@ -79,5 +82,44 @@ describe('categorySearchHref — with no car picked', () => {
 
   it('leaves the vehicle out of the URL rather than sending an empty one', () => {
     expect(categorySearchHref(undefined, [FILTERS])).not.toContain('vehicleId')
+  })
+})
+
+/**
+ * The article breadcrumb's listing link. It holds the trail the part is filed
+ * under and no tree around it, so the ids are all it can carry.
+ */
+describe('categoryTrailSearchHref', () => {
+  it('scopes the search to the whole trail and the car', () => {
+    const state = stateFor(
+      categoryTrailSearchHref('13074', ['100005', '100259']),
+    )
+
+    expect(state.vehicleId).toBe('13074')
+    expect(state.categoryPath).toEqual(['100005', '100259'])
+    expect(state.query).toBe('')
+  })
+
+  it('is a search the page accepts with nothing typed', () => {
+    expect(
+      hasSearchSubject(stateFor(categoryTrailSearchHref(undefined, ['100259']))),
+    ).toBe(true)
+  })
+
+  // Whether the node is a leaf is not on the trail, and only an explicit
+  // `false` asks the API to compute the dimension facets — so the trail claims
+  // a branch rather than guessing at one.
+  it('never claims the trail ends on a leaf', () => {
+    expect(
+      stateFor(categoryTrailSearchHref('13074', ['100005', '100259']))
+        .categoryHasChildren,
+    ).toBe(true)
+  })
+
+  it('carries the trail alone when the article arrived with no car', () => {
+    const href = categoryTrailSearchHref(undefined, ['100005'])
+
+    expect(href).not.toContain('vehicleId')
+    expect(stateFor(href).categoryPath).toEqual(['100005'])
   })
 })

@@ -7,6 +7,7 @@ interface ArticleBreadcrumbsProps {
   brandName: string;
   articleNumber: string;
   categoryNodeId?: string;
+  vehicleId?: string;
 }
 
 /** Where the part sits in the category tree, above the detail layout. */

@@ -1,5 +1,7 @@
 import type { ArticleCategoryNodeDto } from "@vp-parts-shop/shared";
 import { markLastAsCurrent, type BreadcrumbItem } from "../breadcrumbs";
+import { CATALOG_PATH, catalogCategoryHref } from "./catalog-url";
+import { categoryTrailSearchHref } from "./category-href";
 
 const HOME_CRUMB: BreadcrumbItem = { key: "home", label: "Начало", href: "/" };
 
@@ -12,32 +14,53 @@ interface ArticleBreadcrumbsInput {
   articleNumber: string;
   /** The category the visitor drilled to reach the part, when they drilled one. */
   categoryNodeId?: string;
+  /** The car the article URL arrived scoped to, which its listing then keeps. */
+  vehicleId?: string;
 }
 
-/**
- * The trail from the catalogue root down to the part on screen.
- *
- * Only the home crumb links anywhere. Nothing yet serves a category on its own
- * — `/search` needs a query and there is no catalogue page — and a crumb whose
- * link lands on an empty state is worse than one that is plainly text.
- */
+/** The trail from the catalogue root down to the part on screen. */
 export function buildArticleBreadcrumbs({
   categoryPaths,
   brandName,
   articleNumber,
   categoryNodeId,
+  vehicleId,
 }: ArticleBreadcrumbsInput): BreadcrumbItem[] {
   const categoryPath = selectArticleCategoryPath(categoryPaths, categoryNodeId);
 
   return markLastAsCurrent([
     HOME_CRUMB,
-    { key: "all-categories", label: ALL_CATEGORIES_LABEL },
-    ...categoryPath.map((node) => ({
-      key: `category-${node.id}`,
-      label: node.label,
-    })),
+    { key: "all-categories", label: ALL_CATEGORIES_LABEL, href: CATALOG_PATH },
+    ...categoryCrumbs(categoryPath, vehicleId),
     { key: "article", label: `${brandName} ${articleNumber}` },
   ]);
+}
+
+/**
+ * Where each step of the trail leads, which is two destinations rather than one.
+ *
+ * Every step above the last has something under it — the trail runs through it
+ * — so it opens the catalogue there, with the drill panel already inside that
+ * category. The last step is where TecDoc files the part, so it goes to that
+ * listing instead, the one search certain to hold the article on screen.
+ */
+function categoryCrumbs(
+  categoryPath: ArticleCategoryNodeDto[],
+  vehicleId: string | undefined,
+): BreadcrumbItem[] {
+  const listingHref = categoryTrailSearchHref(
+    vehicleId,
+    categoryPath.map((node) => node.id),
+  );
+
+  return categoryPath.map((node, index) => ({
+    key: `category-${node.id}`,
+    label: node.label,
+    href:
+      index === categoryPath.length - 1
+        ? listingHref
+        : catalogCategoryHref(node.id),
+  }));
 }
 
 /**

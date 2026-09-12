@@ -5,8 +5,14 @@ import {
 } from "./catalog-url";
 
 describe("catalogCategoryHref", () => {
-  it("points at the catalogue narrowed to the root", () => {
+  it("points at the catalogue narrowed to the category", () => {
     expect(catalogCategoryHref("100006")).toBe("/catalog?category=100006");
+  });
+
+  // A subcategory links the same way a root does: the page resolves the root to
+  // show and the levels to open from the id alone.
+  it("says nothing about how deep the category sits", () => {
+    expect(catalogCategoryHref("100249")).toBe("/catalog?category=100249");
   });
 
   it("encodes an id that would otherwise break the query string", () => {
@@ -41,5 +47,18 @@ describe("parseCatalogCategoryId", () => {
 
   it("treats a blank value as no narrowing", () => {
     expect(parseCatalogCategoryId({ category: "   " })).toBeUndefined();
+  });
+
+  // A node id is a number. The page offers a category it cannot place as a link
+  // into the search, where anything else is refused `400` — so a value that
+  // could not be an id widens the page back to the whole tree instead.
+  it("refuses a value that could not be a node id", () => {
+    expect(parseCatalogCategoryId({ category: "100 006&x" })).toBeUndefined();
+    expect(parseCatalogCategoryId({ category: "накладки" })).toBeUndefined();
+    expect(parseCatalogCategoryId({ category: "100006;" })).toBeUndefined();
+  });
+
+  it("keeps the surrounding whitespace of a real id out of the way", () => {
+    expect(parseCatalogCategoryId({ category: " 100006 " })).toBe("100006");
   });
 });

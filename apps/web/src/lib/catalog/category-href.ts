@@ -4,7 +4,9 @@ import {
   buildSearchUrl,
   drillIntoCategory,
   newSearch,
+  selectCategoryPath,
   withVehicle,
+  type SearchUrlState,
 } from "./search-url";
 
 /**
@@ -25,9 +27,6 @@ export function categorySearchHref(
   vehicleId: string | undefined,
   path: CategoryTreeNode[],
 ): string {
-  const search = newSearch({ query: "", mode: DEFAULT_SEARCH_MODE });
-  const browse = vehicleId ? withVehicle(search, vehicleId) : search;
-
   return buildSearchUrl(
     path.reduce(
       (state, node) =>
@@ -35,7 +34,32 @@ export function categorySearchHref(
           id: node.category.id,
           hasChildren: node.children.length > 0,
         }),
-      browse,
+      browseFor(vehicleId),
     ),
   );
+}
+
+/**
+ * The same listing, for a trail of bare ids — the article breadcrumb's case,
+ * which knows the chain the part is filed under but holds no tree around it.
+ *
+ * Leafness cannot be read off such a trail: the facet behind it is scoped to
+ * the one article, so it reports the node the part hangs off and its ancestors,
+ * never that node's children. The URL therefore claims a branch, which is what
+ * {@link selectCategoryPath} writes anyway and what leaves the dimension facets
+ * alone — only an explicit `false` asks the API for them, and a wrong one would
+ * have TecDoc compute criteria over a whole mid-level subtree.
+ */
+export function categoryTrailSearchHref(
+  vehicleId: string | undefined,
+  categoryIds: string[],
+): string {
+  return buildSearchUrl(selectCategoryPath(browseFor(vehicleId), categoryIds));
+}
+
+/** A search with nothing typed, scoped to the car where there is one. */
+function browseFor(vehicleId: string | undefined): SearchUrlState {
+  const search = newSearch({ query: "", mode: DEFAULT_SEARCH_MODE });
+
+  return vehicleId ? withVehicle(search, vehicleId) : search;
 }

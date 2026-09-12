@@ -163,6 +163,77 @@ describe('CategoryPanel', () => {
   })
 })
 
+/**
+ * An article's breadcrumb names the category the part is filed under, which is
+ * usually several levels below a root. The panel opens there rather than at the
+ * top, so the visitor arrives where the link pointed.
+ */
+describe('CategoryPanel — opened on a level below the root', () => {
+  function renderDeepPanel(markedCategoryId?: string) {
+    render(
+      <CategoryPanel
+        id="category-panel-100002"
+        root={ENGINE}
+        scope={AUDI}
+        initialPath={[LUBRICATION]}
+        markedCategoryId={markedCategoryId}
+        onClose={jest.fn()}
+      />,
+    )
+  }
+
+  it('opens on the named level with its own groups', () => {
+    renderDeepPanel()
+
+    expect(
+      screen.getByRole('heading', { name: 'смазване' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /^маслен филтър/ }),
+    ).toBeInTheDocument()
+  })
+
+  // Where the visitor is standing and every level back out of it — the panel's
+  // own answer to "how did I get here".
+  it('offers the way back up to the root', async () => {
+    renderDeepPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(
+      screen.getByRole('heading', { name: 'двигател' }),
+    ).toBeInTheDocument()
+  })
+
+  // Arriving is not the same as drilling: the caret belongs where the visitor
+  // left it, which on a fresh page is the top.
+  it('does not take focus merely by opening deep', () => {
+    renderDeepPanel()
+
+    expect(screen.getByRole('heading', { name: 'смазване' })).not.toHaveFocus()
+  })
+
+  it('links a leaf with the whole path that reached it, not just this level', () => {
+    renderDeepPanel()
+
+    expect(
+      paramsOf(screen.getByRole('link', { name: /^маслен филтър/ })).getAll(
+        'cat',
+      ),
+    ).toEqual(['100002', '100248', '100259'])
+  })
+
+  it('marks the row the link named', () => {
+    renderDeepPanel('100259')
+
+    expect(
+      screen.getByRole('link', { name: /^маслен филтър/ }),
+    ).toHaveAttribute('aria-current', 'true')
+    expect(
+      screen.getByRole('link', { name: /^корпус/ }),
+    ).not.toHaveAttribute('aria-current')
+  })
+})
+
 describe('CategoryPanel — with no car picked', () => {
   beforeEach(() => {
     render(
