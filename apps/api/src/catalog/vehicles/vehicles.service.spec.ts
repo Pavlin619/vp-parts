@@ -18,6 +18,7 @@ describe('VehiclesService', () => {
     getModelSeries: jest.Mock;
     getVehicleVariants: jest.Mock;
     getAssemblyGroupTree: jest.Mock;
+    getCatalogueAssemblyGroupTree: jest.Mock;
   };
   let cachedMock: jest.Mock;
   let service: VehiclesService;
@@ -29,6 +30,7 @@ describe('VehiclesService', () => {
       getModelSeries: jest.fn().mockResolvedValue(['s']),
       getVehicleVariants: jest.fn().mockResolvedValue(['v']),
       getAssemblyGroupTree: jest.fn().mockResolvedValue(['g']),
+      getCatalogueAssemblyGroupTree: jest.fn().mockResolvedValue(['g']),
     };
     cachedMock = jest.fn((_key: string, _ttl: number, loader: () => unknown) =>
       loader(),
@@ -194,5 +196,34 @@ describe('VehiclesService', () => {
       WEEK,
       expect.any(Function),
     );
+  });
+
+  // One entry for every visitor rather than one per car, so its key carries no
+  // id — a vehicle id leaking into it would fork the catalogue tree per car.
+  it('caches the catalogue-wide tree under one keyless entry', async () => {
+    await service.getCatalogueCategoryTree();
+
+    expect(cachedMock).toHaveBeenCalledWith(
+      'tecdoc:assembly-groups:catalogue',
+      WEEK,
+      expect.any(Function),
+    );
+    expect(tecdoc.getCatalogueAssemblyGroupTree).toHaveBeenCalledTimes(1);
+  });
+
+  it('orders the catalogue-wide tree it serves', async () => {
+    tecdoc.getCatalogueAssemblyGroupTree.mockResolvedValue([
+      { id: '100341', name: 'вътрешно обурудване', parentId: null, sortNo: 28 },
+      { id: '100259', name: 'маслен филтър', parentId: '100005', sortNo: 1 },
+      { id: '100005', name: 'филтър', parentId: null, sortNo: 3 },
+    ]);
+
+    const result = await service.getCatalogueCategoryTree();
+
+    expect(result.map((entry) => entry.name)).toEqual([
+      'филтър',
+      'маслен филтър',
+      'вътрешно обурудване',
+    ]);
   });
 });

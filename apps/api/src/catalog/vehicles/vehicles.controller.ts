@@ -33,6 +33,11 @@ export class VehiclesController {
     return this.vehicles.getVehicleVariants(seriesId);
   }
 
+  @Get('categories')
+  getCatalogueCategoryTree(): Promise<AssemblyGroupDto[]> {
+    return this.vehicles.getCatalogueCategoryTree();
+  }
+
   @Get('vehicles/:vehicleId/categories')
   getCategoryTree(
     @Param('vehicleId', ParseTecDocIdPipe) vehicleId: number,

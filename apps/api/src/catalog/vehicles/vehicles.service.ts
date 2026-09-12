@@ -24,8 +24,9 @@ const VEHICLE_VARIANT_TTL = 24 * 60 * 60;
 
 /**
  * Vehicle-selection tree reads. Manufacturers, model series and the category
- * tree are Redis-cached for 7 days (stable TecDoc data); variants get a day
- * — see {@link VehiclesService.getVehicleVariants}.
+ * tree — per vehicle and catalogue-wide — are Redis-cached for 7 days (stable
+ * TecDoc data); variants get a day — see
+ * {@link VehiclesService.getVehicleVariants}.
  *
  * Three of the four steps are a cached pass-through to {@link VehiclesTecDoc}.
  * The make list is the one that is not: TecDoc answers it in two calls that
@@ -102,6 +103,21 @@ export class VehiclesService {
       `tecdoc:assembly-groups:${vehicleId}`,
       VEHICLE_TREE_TTL,
       () => this.tecdoc.getAssemblyGroupTree(vehicleId),
+    );
+
+    return orderAssemblyGroups(groups);
+  }
+
+  /**
+   * The catalogue-wide tree, which is one entry for every visitor rather than
+   * one per car — so it is the read a page with no vehicle behind it can afford
+   * on every request.
+   */
+  async getCatalogueCategoryTree(): Promise<AssemblyGroupDto[]> {
+    const groups = await this.cache.cached(
+      'tecdoc:assembly-groups:catalogue',
+      VEHICLE_TREE_TTL,
+      () => this.tecdoc.getCatalogueAssemblyGroupTree(),
     );
 
     return orderAssemblyGroups(groups);

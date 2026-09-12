@@ -210,6 +210,7 @@ const mockTecDocClient = {
   getModelSeries: jest.fn(),
   getVehicleVariants: jest.fn(),
   getAssemblyGroupTree: jest.fn(),
+  getCatalogueAssemblyGroupTree: jest.fn(),
   getBrands: jest.fn(),
   getArticleDetails: jest.fn(),
   getCrossReferenceCandidates: jest.fn(),
@@ -356,6 +357,44 @@ describe('CatalogController (e2e)', () => {
 
       expect(res.body).toEqual(VEHICLE_VARIANTS);
       expect(mockTecDocClient.getVehicleVariants).toHaveBeenCalledWith(2);
+    });
+  });
+
+  describe('GET /catalog/categories', () => {
+    it('returns the catalogue-wide tree, asking TecDoc for no vehicle', async () => {
+      mockTecDocClient.getCatalogueAssemblyGroupTree.mockResolvedValueOnce(
+        ASSEMBLY_GROUPS,
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/catalog/categories')
+        .expect(200);
+
+      expect(res.body).toEqual(ASSEMBLY_GROUPS);
+      expect(
+        mockTecDocClient.getCatalogueAssemblyGroupTree,
+      ).toHaveBeenCalledWith();
+      expect(mockTecDocClient.getAssemblyGroupTree).not.toHaveBeenCalled();
+    });
+
+    // The route is a sibling of `vehicles/:vehicleId/categories` and must not
+    // be reached by it: a shared entry would serve one car's counts to
+    // everyone.
+    it('answers from an entry the per-vehicle tree does not share', async () => {
+      mockTecDocClient.getCatalogueAssemblyGroupTree.mockResolvedValue(
+        ASSEMBLY_GROUPS,
+      );
+      mockTecDocClient.getAssemblyGroupTree.mockResolvedValue([
+        { ...ASSEMBLY_GROUPS[0], articleCount: 12 },
+      ]);
+
+      await request(app.getHttpServer()).get('/catalog/categories').expect(200);
+      const scoped = await request(app.getHttpServer())
+        .get('/catalog/vehicles/10001/categories')
+        .expect(200);
+
+      expect(scoped.body).toHaveLength(1);
+      expect(scoped.body[0]).toMatchObject({ articleCount: 12 });
     });
   });
 

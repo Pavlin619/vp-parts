@@ -166,6 +166,67 @@ describe('VehiclesTecDoc', () => {
     );
   });
 
+  /**
+   * The catalogue-wide tree is the same facet with the car taken out, which is
+   * what makes a vehicle's tree a subset of it. A linkage left on would scope
+   * the counts to one car and serve them from the shared cache entry.
+   */
+  it('getCatalogueAssemblyGroupTree asks the same facet with no linkage', async () => {
+    call.mockResolvedValue({ status: 200 });
+
+    await tecdoc.getCatalogueAssemblyGroupTree();
+
+    const [functionName, payload] = call.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(functionName).toBe('getArticles');
+    expect(payload).not.toHaveProperty('linkageTargetId');
+    expect(payload).not.toHaveProperty('linkageTargetType');
+    expect(payload).toMatchObject({
+      perPage: 0,
+      assemblyGroupFacetOptions: {
+        enabled: true,
+        assemblyGroupType: 'P',
+      },
+    });
+  });
+
+  it('getCatalogueAssemblyGroupTree asks for no depth either', async () => {
+    call.mockResolvedValue({ status: 200 });
+
+    await tecdoc.getCatalogueAssemblyGroupTree();
+
+    const [, payload] = call.mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.assemblyGroupFacetOptions).not.toHaveProperty('maxDepth');
+  });
+
+  it('getCatalogueAssemblyGroupTree maps the nodes it is served', async () => {
+    call.mockResolvedValueOnce({
+      assemblyGroupFacets: {
+        counts: [
+          {
+            assemblyGroupNodeId: 100005,
+            assemblyGroupName: 'филтър',
+            children: 6,
+            count: 39592,
+            sortNo: 3,
+          },
+        ],
+      },
+    });
+
+    await expect(tecdoc.getCatalogueAssemblyGroupTree()).resolves.toEqual([
+      {
+        id: '100005',
+        name: 'Филтър',
+        parentId: null,
+        articleCount: 39592,
+        sortNo: 3,
+      },
+    ]);
+  });
+
   // Not 'VL': `getArticles` refuses a concatenated code outright, and pairs the
   // type against the id — a car id under 'V' and a van id under 'L' are both
   // rejected, so 'P' is the only single code that accepts either.
@@ -190,6 +251,10 @@ describe('VehiclesTecDoc', () => {
       ['getModelSeries', () => tecdoc.getModelSeries(99999999)],
       ['getVehicleVariants', () => tecdoc.getVehicleVariants(99999999)],
       ['getAssemblyGroupTree', () => tecdoc.getAssemblyGroupTree(99999999)],
+      [
+        'getCatalogueAssemblyGroupTree',
+        () => tecdoc.getCatalogueAssemblyGroupTree(),
+      ],
     ])('%s returns an empty list', async (_name, load) => {
       call.mockResolvedValue({ status: 200 });
 

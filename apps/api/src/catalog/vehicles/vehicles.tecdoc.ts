@@ -50,9 +50,33 @@ const SELECTOR_SCOPE = {
 } as const;
 
 /**
+ * The facet-only `getArticles` both category-tree reads are built from —
+ * `perPage: 0` buys the tree and no article rows. What a caller adds to it is
+ * the linkage, or nothing at all.
+ *
+ * **`maxDepth` is left unset, which is what returns every level.** The tree is
+ * four deep and the depth is not decoration: an Audi A3 (8L1) 1.8 T is 35 roots
+ * over 257 / 313 / 168 nodes below them, so cutting it at two levels would
+ * withhold 62% of the categories — most of `двигател` among them — and a category
+ * not served is a part that cannot be found. Beware the schema here: `maxDepth`
+ * counts *levels* rather than edges, its documented default is wrong, and **`0`
+ * empties the facet**.
+ */
+const CATEGORY_TREE_CALL = {
+  articleCountry: 'BG',
+  lang: 'bg',
+  perPage: 0,
+  page: 1,
+  assemblyGroupFacetOptions: {
+    enabled: true,
+    assemblyGroupType: AssemblyGroupType.PassengerCar,
+  },
+} as const;
+
+/**
  * TecDoc source for the vehicle-selection tree: the make facet, the makes
  * TecDoc favours, a make's model series, a series' variants, and the
- * per-vehicle assembly-group (category) tree.
+ * assembly-group (category) tree, per vehicle and catalogue-wide.
  *
  * One method is one TecDoc call plus the request params it takes. Reading the
  * response envelopes belongs to `vehicles.mapper.ts`; merging the two
@@ -156,39 +180,44 @@ export class VehiclesTecDoc {
   }
 
   /**
-   * A vehicle's whole category tree, with an article count on every node. One
-   * facet-only `getArticles` — `perPage: 0` buys the tree and no article rows.
-   *
-   * **`maxDepth` is left unset, which is what returns every level.** The tree
-   * is four deep and the depth is not decoration: an Audi A3 (8L1) 1.8 T is 35
-   * roots over 257 / 313 / 168 nodes below them, so cutting it at two levels
-   * would withhold 62% of the categories — most of `двигател` among them — and
-   * a category not served is a part that cannot be found. Beware the schema
-   * here: `maxDepth` counts *levels* rather than edges, its documented default
-   * is wrong, and **`0` empties the facet**.
+   * A vehicle's whole category tree, with an article count on every node.
    *
    * **`includeCompleteTree` is a measured no-op under a vehicle linkage and is
-   * deliberately not sent.** See `docs/TECDOC.md` for both measurements.
+   * deliberately not sent.** See `docs/TECDOC.md` for that measurement and for
+   * the depth one behind {@link CATEGORY_TREE_CALL}.
    */
   async getAssemblyGroupTree(vehicleId: number): Promise<AssemblyGroupDto[]> {
+    return this.readAssemblyGroups({
+      // Not SELECTOR_SCOPE: this is `getArticles`, which refuses a
+      // concatenated code, and the narrowing has already happened upstream —
+      // `vehicleId` can only have come from a scoped enumeration. 'P' is also
+      // the only single code that accepts both a car and a van id here.
+      linkageTargetType: LinkageTargetType.Vehicle,
+      linkageTargetId: vehicleId,
+    });
+  }
+
+  /**
+   * The same tree with no car behind it — every category the catalogue holds
+   * parts in, measured at 1,315 nodes over four levels with 36 roots.
+   *
+   * Dropping the linkage is the entire difference, which is what makes a
+   * vehicle's tree a subset of this one: the counts are catalogue-wide instead
+   * of per car, and no node is missing because one model never had the part.
+   * It is the only vehicle-free way to ask which categories are populated —
+   * the legacy `getChildNodesAllLinkingTarget2` refuses the linked subset
+   * without a vehicle.
+   */
+  async getCatalogueAssemblyGroupTree(): Promise<AssemblyGroupDto[]> {
+    return this.readAssemblyGroups();
+  }
+
+  private async readAssemblyGroups(
+    linkage: Record<string, unknown> = {},
+  ): Promise<AssemblyGroupDto[]> {
     const data = await this.transport.call<TecDocAssemblyGroupFacetResponse>(
       'getArticles',
-      {
-        articleCountry: 'BG',
-        lang: 'bg',
-        perPage: 0,
-        page: 1,
-        assemblyGroupFacetOptions: {
-          enabled: true,
-          assemblyGroupType: AssemblyGroupType.PassengerCar,
-        },
-        // Not SELECTOR_SCOPE: this is `getArticles`, which refuses a
-        // concatenated code, and the narrowing has already happened upstream —
-        // `vehicleId` can only have come from a scoped enumeration. 'P' is also
-        // the only single code that accepts both a car and a van id here.
-        linkageTargetType: LinkageTargetType.Vehicle,
-        linkageTargetId: vehicleId,
-      },
+      { ...CATEGORY_TREE_CALL, ...linkage },
     );
 
     return mapAssemblyGroups(data);

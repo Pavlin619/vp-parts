@@ -86,9 +86,14 @@ export interface VehicleVariantDto {
 }
 
 /**
- * One node of a vehicle's category tree, flat — the tree is rebuilt from
+ * One node of a category tree, flat — the tree is rebuilt from
  * {@link AssemblyGroupDto.parentId}, and the list arrives depth first so a
  * consumer that ignores the links still reads it in a sensible order.
+ *
+ * Two reads serve this shape and they differ only in what they are counted
+ * over: a vehicle's tree, and the catalogue-wide tree with no car behind it.
+ * The second is a superset of the first — 1,315 nodes against an A3's 773 —
+ * so a consumer holding one is holding the same structure either way.
  *
  * The whole tree is served, all four levels of it: the catalogue page
  * illustrates the roots, but a visitor drilling into `двигател` reaches parts
@@ -102,7 +107,8 @@ export interface AssemblyGroupDto {
   name: string;
   parentId: string | null;
   /**
-   * Articles TecDoc catalogues under this node for this vehicle.
+   * Articles TecDoc catalogues under this node — for the vehicle the tree was
+   * read against, or catalogue-wide where it was read against none.
    *
    * **Counts overlap and never sum to the vehicle's total.** TecDoc flattens
    * what a part is, where it sits on the car and why it is replaced into one

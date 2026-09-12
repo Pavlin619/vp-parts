@@ -1469,6 +1469,14 @@ export class TecDocMockClient {
     return Promise.resolve(assemblyGroupTree());
   }
 
+  /**
+   * The fixture tree is not scoped to a car, so the catalogue-wide read is the
+   * same answer — which is also true of the real facet, minus the narrowing.
+   */
+  getCatalogueAssemblyGroupTree(): Promise<AssemblyGroupDto[]> {
+    return Promise.resolve(assemblyGroupTree());
+  }
+
   getBrands(): Promise<BrandDto[]> {
     return Promise.resolve(BRANDS);
   }
