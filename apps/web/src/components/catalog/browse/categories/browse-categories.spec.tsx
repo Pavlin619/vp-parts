@@ -2,14 +2,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { AssemblyGroupDto } from '@vp-parts-shop/shared'
-import type { SelectedVehicle } from '@/hooks/use-vehicle-context'
+import type { CategoryScope } from '@/lib/catalog/category-scope'
 import { BrowseCategories } from './browse-categories'
 
 const getCategoriesMock = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
-  categoriesQueryOptions: (vehicleId: string) => ({
-    queryKey: ['catalog', 'categories', vehicleId],
+  categoriesQueryOptions: (vehicleId?: string) => ({
+    queryKey: ['catalog', 'categories', vehicleId ?? 'catalogue'],
     queryFn: () => getCategoriesMock(vehicleId) as Promise<AssemblyGroupDto[]>,
   }),
 }))
@@ -31,31 +31,28 @@ const TREE: AssemblyGroupDto[] = [
   group('100270', 'накладки', '100006', 1),
 ]
 
-const AUDI: SelectedVehicle = {
+const AUDI: CategoryScope = {
   vehicleId: '13074',
-  manufacturerId: '5',
-  seriesId: '2439',
-  manufacturerName: 'AUDI',
-  seriesName: 'A3 (8L1)',
-  variantName: '1.8 T',
-  engineCodes: ['AGU'],
-  powerKw: 110,
-  powerHp: 150,
-  yearFrom: 1996,
-  yearTo: 2003,
+  vehicleName: 'AUDI A3 (8L1)',
 }
 
-function renderCategories(scopedCategoryId?: string) {
+function renderCategories(
+  scopedCategoryId?: string,
+  scope: CategoryScope | null = AUDI,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <BrowseCategories vehicle={AUDI} scopedCategoryId={scopedCategoryId} />
+      <BrowseCategories scope={scope} scopedCategoryId={scopedCategoryId} />
     </QueryClientProvider>,
   )
 }
+
+const paramsOf = (link: HTMLElement) =>
+  new URLSearchParams(link.getAttribute('href')!.split('?')[1])
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -263,6 +260,69 @@ describe('BrowseCategories — narrowed to one category', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Всички категории' }),
+    ).toBeInTheDocument()
+  })
+})
+
+/**
+ * Removing the car widens the catalogue rather than closing it: the same grid,
+ * the same panel and the same finder over the whole taxonomy instead of one
+ * car's subset. Every count then belongs to the catalogue, and no search link
+ * may carry a vehicle the visitor no longer has.
+ */
+describe('BrowseCategories — with no car picked', () => {
+  it('asks for the catalogue-wide tree', async () => {
+    renderCategories(undefined, null)
+
+    await screen.findByRole('button', { name: /филтър/ })
+    expect(getCategoriesMock).toHaveBeenCalledWith(undefined)
+  })
+
+  it('counts the roots against the catalogue rather than a car', async () => {
+    renderCategories(undefined, null)
+
+    expect(
+      await screen.findByText('2 категории с части в каталога'),
+    ).toBeInTheDocument()
+  })
+
+  it('leaves the car out of the links it builds', async () => {
+    getCategoriesMock.mockResolvedValue([
+      group('100342', 'почистване на фаровете', null, 1),
+    ])
+    renderCategories(undefined, null)
+
+    const params = paramsOf(await screen.findByRole('link'))
+
+    expect(params.has('vehicleId')).toBe(false)
+    expect(params.getAll('cat')).toEqual(['100342'])
+  })
+
+  // Without a car there is no model to blame, so the id is simply not one the
+  // catalogue holds.
+  it('says a narrowing is not in the catalogue at all', async () => {
+    renderCategories('999999', null)
+
+    expect(
+      await screen.findByText(/Тази категория не е в каталога/),
+    ).toBeInTheDocument()
+  })
+
+  it('narrows to a root the catalogue does hold', async () => {
+    renderCategories('100006', null)
+
+    expect(
+      await screen.findByRole('heading', { name: 'спирачна уредба', level: 2 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/1 група · 100 артикула в каталога/)).toBeInTheDocument()
+  })
+
+  it('says so when the catalogue returns no categories', async () => {
+    getCategoriesMock.mockResolvedValue([])
+    renderCategories(undefined, null)
+
+    expect(
+      await screen.findByText(/Каталогът не връща категории/),
     ).toBeInTheDocument()
   })
 })

@@ -23,14 +23,15 @@ const ENGINE = node('100002', 'двигател', 4211, [
   node('100249', 'уплътнения', 806),
 ])
 
+const AUDI = { vehicleId: '13074', vehicleName: 'AUDI A3 (8L1)' }
+
 function renderPanel() {
   const onClose = jest.fn()
   render(
     <CategoryPanel
       id="category-panel-100002"
       root={ENGINE}
-      vehicleId="13074"
-      vehicleName="AUDI A3 (8L1)"
+      scope={AUDI}
       onClose={onClose}
     />,
   )
@@ -144,8 +145,7 @@ describe('CategoryPanel', () => {
       <CategoryPanel
         id="category-panel-100002"
         root={node('100002', 'двигател', 4211, wide)}
-        vehicleId="13074"
-        vehicleName="AUDI A3 (8L1)"
+        scope={AUDI}
         onClose={jest.fn()}
       />,
     )
@@ -160,5 +160,38 @@ describe('CategoryPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Затвори' }))
     expect(onClose).toHaveBeenCalled()
+  })
+})
+
+describe('CategoryPanel — with no car picked', () => {
+  beforeEach(() => {
+    render(
+      <CategoryPanel
+        id="category-panel-100002"
+        root={ENGINE}
+        scope={null}
+        onClose={jest.fn()}
+      />,
+    )
+  })
+
+  it('counts against the catalogue instead of naming a car', () => {
+    expect(
+      screen.getByText('2 групи · 4 211 артикула в каталога'),
+    ).toBeInTheDocument()
+  })
+
+  it('links the level and its leaves without a vehicle', async () => {
+    expect(
+      paramsOf(screen.getByRole('link', { name: /Всички 4\s211 части/ })).has(
+        'vehicleId',
+      ),
+    ).toBe(false)
+
+    await userEvent.click(screen.getByRole('button', { name: /смазване/ }))
+    const leaf = paramsOf(screen.getByRole('link', { name: /^маслен филтър/ }))
+
+    expect(leaf.has('vehicleId')).toBe(false)
+    expect(leaf.getAll('cat')).toEqual(['100002', '100248', '100259'])
   })
 })

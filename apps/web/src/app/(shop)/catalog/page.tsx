@@ -5,7 +5,7 @@ import { parseCatalogCategoryId } from "@/lib/catalog/catalog-url";
 export const metadata: Metadata = {
   title: "Каталог — VP Parts",
   description:
-    "Разгледайте всички категории резервни части, съвместими с вашия автомобил.",
+    "Разгледайте всички категории резервни части или изберете автомобил, за да видите само съвместимите с него.",
 };
 
 interface CatalogPageProps {

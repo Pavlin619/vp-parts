@@ -39,6 +39,9 @@ function renderCard(root: CategoryTreeNode, isOpen = false) {
   return onToggle
 }
 
+const paramsOf = (link: HTMLElement) =>
+  new URLSearchParams(link.getAttribute('href')!.split('?')[1])
+
 describe('CategoryCard — a root with groups under it', () => {
   it('previews the groups inside it and how many are left over', () => {
     renderCard(FILTERS)
@@ -93,14 +96,31 @@ describe('CategoryCard — a root with nothing under it', () => {
   it('links straight to the listing, scoped to the car and the category', () => {
     renderCard(HEADLIGHT_CLEANING)
 
-    const link = screen.getByRole('link', { name: /почистване на фаровете/ })
-    const params = new URLSearchParams(
-      link.getAttribute('href')!.split('?')[1],
+    const params = paramsOf(
+      screen.getByRole('link', { name: /почистване на фаровете/ }),
     )
 
     expect(params.get('vehicleId')).toBe('13074')
     expect(params.getAll('cat')).toEqual(['100342'])
     expect(params.get('catHasChildren')).toBe('false')
+  })
+
+  it('links to the category alone when no car is picked', () => {
+    render(
+      <CategoryCard
+        node={HEADLIGHT_CLEANING}
+        isOpen={false}
+        panelId="category-panel-100342"
+        onToggle={jest.fn()}
+      />,
+    )
+
+    const params = paramsOf(
+      screen.getByRole('link', { name: /почистване на фаровете/ }),
+    )
+
+    expect(params.has('vehicleId')).toBe(false)
+    expect(params.getAll('cat')).toEqual(['100342'])
   })
 
   it('says how many parts it holds instead of listing groups', () => {

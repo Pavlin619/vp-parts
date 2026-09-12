@@ -60,7 +60,10 @@ const resizeTo = (width: number) =>
 
 function renderGrid() {
   return render(
-    <CategoryGrid roots={ROOTS} vehicleId="13074" vehicleName="AUDI A3" />,
+    <CategoryGrid
+      roots={ROOTS}
+      scope={{ vehicleId: '13074', vehicleName: 'AUDI A3' }}
+    />,
   )
 }
 

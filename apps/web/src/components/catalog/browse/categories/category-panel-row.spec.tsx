@@ -89,4 +89,23 @@ describe('CategoryPanelRow — a leaf', () => {
 
     expect(screen.getByText('1 част')).toBeInTheDocument()
   })
+
+  it('carries the path alone when no car is picked', () => {
+    render(
+      <ul>
+        <CategoryPanelRow
+          node={OIL_FILTER}
+          ancestors={[ENGINE]}
+          onDrill={jest.fn()}
+        />
+      </ul>,
+    )
+
+    const params = new URLSearchParams(
+      screen.getByRole('link').getAttribute('href')!.split('?')[1],
+    )
+
+    expect(params.has('vehicleId')).toBe(false)
+    expect(params.getAll('cat')).toEqual(['100002', '100259'])
+  })
 })

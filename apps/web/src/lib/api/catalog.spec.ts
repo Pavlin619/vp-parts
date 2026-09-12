@@ -408,6 +408,24 @@ describe('categoriesQueryOptions', () => {
       categoriesQueryOptions('v-1').queryKey,
     )
   })
+
+  // No car is a tree of its own — the whole catalogue's — so it gets its own
+  // entry rather than sharing one with a car's subset.
+  it('keys the catalogue-wide tree apart from every car', () => {
+    expect(categoriesQueryOptions().queryKey).toEqual([
+      'catalog',
+      'categories',
+      'catalogue',
+    ])
+  })
+
+  it('reads the car tree with a vehicle and the catalogue tree without one', async () => {
+    await categoriesQueryOptions('v-1').queryFn!({} as never)
+    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/vehicles/v-1/categories')
+
+    await categoriesQueryOptions().queryFn!({} as never)
+    expect(mockApiFetch).toHaveBeenCalledWith('/catalog/categories')
+  })
 })
 
 describe('autocompleteQueryOptions', () => {
