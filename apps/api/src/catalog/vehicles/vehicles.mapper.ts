@@ -18,6 +18,7 @@ import {
   ModelSeriesDto,
   VehicleVariantDto,
 } from '@vp-parts-shop/shared';
+import { catalogLabelOf } from '../../tecdoc';
 
 /**
  * One make in the `getLinkageTargets` manufacturer facet.
@@ -213,7 +214,7 @@ export function mapAssemblyGroups(
 ): AssemblyGroupDto[] {
   return (response.assemblyGroupFacets?.counts ?? []).map((node) => ({
     id: String(node.assemblyGroupNodeId),
-    name: node.assemblyGroupName,
+    name: catalogLabelOf(node.assemblyGroupName),
     parentId: node.parentNodeId != null ? String(node.parentNodeId) : null,
     articleCount: node.count ?? 0,
     sortNo: node.sortNo ?? 0,

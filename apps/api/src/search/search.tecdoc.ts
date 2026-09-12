@@ -11,6 +11,7 @@ import {
   LinkageTargetType,
   TecDocTransport,
   TecDocArticleRecord,
+  catalogLabelOf,
   mapArticleCandidate,
   mapArticleSummary,
 } from '../tecdoc';
@@ -346,8 +347,9 @@ export class SearchTecDoc {
         // not identify one.
         brandId: String(article.dataSupplierId),
         brandName: article.mfrName,
-        description:
+        description: catalogLabelOf(
           article.genericArticles?.[0]?.genericArticleDescription ?? '',
+        ),
         // The 100px width, for a slot a fraction of that: a dropdown row is not
         // a list row, and the 800px asset every other surface reads would be
         // fetched and re-encoded per keystroke to be shown at 28px.

@@ -66,6 +66,22 @@ describe('isOfferableCriterion', () => {
 });
 
 describe('mapAttributeFacets', () => {
+  /**
+   * 39 of the 52 criteria names on the A3's oil filters arrive lower case and
+   * 13 capitalised, so a sidebar of unraised headings reads as a mix. The
+   * values keep TecDoc's spelling — they are data, and mostly numeric.
+   */
+  it('raises the group heading and leaves its values alone', () => {
+    const [facet] = mapAttributeFacets([
+      criteriaFacet({ criteriaId: 206, criteriaDescription: 'височина [mm]' }, [
+        { rawValue: '123', formattedValue: '123', count: 4 },
+      ]),
+    ]);
+
+    expect(facet.label).toBe('Височина [mm]');
+    expect(facet.values.map((value) => value.label)).toEqual(['123']);
+  });
+
   it('reads the criterion from `criteria` and its values from `criteriaValueCounts`', () => {
     const [facet] = mapAttributeFacets([
       criteriaFacet(

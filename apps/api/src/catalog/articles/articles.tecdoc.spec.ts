@@ -174,8 +174,8 @@ describe('ArticlesTecDoc', () => {
       expect(
         detail.categoryPaths.map((path) => path.map((step) => step.label)),
       ).toEqual([
-        ['филтър', 'маслен филтър'],
-        ['части за сервиз', 'Периодична подмяна'],
+        ['Филтър', 'Маслен филтър'],
+        ['Части за сервиз', 'Периодична подмяна'],
       ]);
     });
 

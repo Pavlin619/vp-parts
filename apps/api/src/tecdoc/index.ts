@@ -41,6 +41,7 @@ export {
   LinkageFunctionTargetType,
   LinkageTargetType,
 } from './tecdoc-target-types';
+export { catalogLabelOf } from './catalog-label';
 export {
   CATALOGUE_WIDE_TREES,
   assemblyGroupPathsOf,

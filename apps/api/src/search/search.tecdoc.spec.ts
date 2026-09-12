@@ -894,6 +894,17 @@ describe('SearchTecDoc', () => {
       ]);
     });
 
+    it('raises the description TecDoc files lower case', async () => {
+      call.mockResolvedValueOnce({
+        totalMatchingArticles: 1,
+        articles: [articleRecord('WL6340', 'маслен филтър')],
+      });
+
+      const result = await tecdoc.getAutocompleteArticles('WL63');
+
+      expect(result[0]).toMatchObject({ description: 'Маслен филтър' });
+    });
+
     it('runs a prefix number search capped at 8, requesting the category facet, and maps to article suggestions', async () => {
       call.mockResolvedValueOnce({
         totalMatchingArticles: 1,
@@ -1112,6 +1123,24 @@ describe('SearchTecDoc', () => {
       expect(result).toEqual([
         { kind: 'term', term: 'Oil Filter' },
         { kind: 'term', term: 'Oil Filter Housing' },
+      ]);
+    });
+
+    /**
+     * The one TecDoc string deliberately left as it came, though 7 of 10
+     * measured suggestions for `фил` are lower case. A term is not a label: it
+     * travels back as `searchQuery` and into a search cache key, so raising it
+     * would make two entries of one search and print a capital in the box the
+     * visitor is still typing in.
+     */
+    it('leaves a term as TecDoc spelled it, unlike a label', async () => {
+      call.mockResolvedValueOnce({
+        suggestions: ['филтър за вторичен въздух', 'Филтър к-кт'],
+      });
+
+      expect(await tecdoc.getAutocompleteTerms('фил')).toEqual([
+        { kind: 'term', term: 'филтър за вторичен въздух' },
+        { kind: 'term', term: 'Филтър к-кт' },
       ]);
     });
 

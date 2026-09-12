@@ -65,6 +65,28 @@ describe('mapProductTypeFacets', () => {
     ]);
   });
 
+  // Every generic-article name measured on the A3's oil filters arrives lower
+  // case, and this label is both a sidebar row and the search results heading.
+  it('raises the label TecDoc files lower case', () => {
+    const [facet] = mapProductTypeFacets([
+      {
+        genericArticleId: 7,
+        genericArticleDescription: 'маслен филтър',
+        count: 12,
+      },
+      {
+        genericArticleId: 8,
+        genericArticleDescription: 'уплътнение, маслен филтър',
+        count: 3,
+      },
+    ]);
+
+    expect(facet.values.map((value) => value.label)).toEqual([
+      'Маслен филтър',
+      'Уплътнение, маслен филтър',
+    ]);
+  });
+
   // Product types have no logo, and an explicit null would invite the brands
   // layer to fill one in from an id that means something else entirely.
   it('leaves imageUrl off the values rather than setting it null', () => {
@@ -206,7 +228,7 @@ describe('buildCategoryNavigation', () => {
 
       expect(
         buildCategoryNavigation(counts).options.map((o) => o.label),
-      ).toEqual(['двигател', 'двигател (универсални части)']);
+      ).toEqual(['Двигател', 'Двигател (универсални части)']);
     });
 
     // Suppressing one side would sometimes hide the larger category: measured
@@ -219,10 +241,10 @@ describe('buildCategoryNavigation', () => {
       ];
 
       expect(buildCategoryNavigation(counts).options).toEqual([
-        { id: '100243', label: 'кл', count: 87, hasChildren: false },
+        { id: '100243', label: 'Кл', count: 87, hasChildren: false },
         {
           id: '701187',
-          label: 'кл (универсални части)',
+          label: 'Кл (универсални части)',
           count: 114,
           hasChildren: false,
         },
@@ -237,7 +259,7 @@ describe('buildCategoryNavigation', () => {
 
       expect(
         buildCategoryNavigation(counts).options.map((o) => o.label),
-      ).toEqual(['двигател', 'масла']);
+      ).toEqual(['Двигател', 'Масла']);
     });
 
     // Siblings are what one level renders side by side. The same name under two
@@ -256,8 +278,8 @@ describe('buildCategoryNavigation', () => {
 
       const children = buildCategoryNavigation(counts, 1).options;
 
-      expect(children.map((o) => o.label)).toEqual(['ремък']);
-      expect(buildCategoryNavigation(counts, 2).options[0].label).toBe('ремък');
+      expect(children.map((o) => o.label)).toEqual(['Ремък']);
+      expect(buildCategoryNavigation(counts, 2).options[0].label).toBe('Ремък');
     });
 
     // The breadcrumb has to read the same as the option that was clicked.
@@ -271,7 +293,7 @@ describe('buildCategoryNavigation', () => {
       const navigation = buildCategoryNavigation(counts, 705973);
 
       expect(navigation.ancestors.map((a) => a.label)).toEqual([
-        'двигател (универсални части)',
+        'Двигател (универсални части)',
       ]);
     });
 
@@ -286,7 +308,7 @@ describe('buildCategoryNavigation', () => {
 
       expect(
         buildCategoryNavigation(counts).options.map((o) => o.label),
-      ).toEqual(['двигател', 'двигател']);
+      ).toEqual(['Двигател', 'Двигател']);
     });
   });
 
