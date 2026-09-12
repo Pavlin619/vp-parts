@@ -5,17 +5,18 @@ import Link from "next/link";
 import { ArrowRight, X } from "lucide-react";
 import { formatCount } from "@vp-parts-shop/shared";
 import { categorySearchHref } from "@/lib/catalog/category-href";
+import type { CategoryScope } from "@/lib/catalog/category-scope";
 import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
 import { cn, plural } from "@/lib/utils";
 import { CategoryPanelRow } from "./category-panel-row";
 import { CategoryPathBar } from "./category-path-bar";
+import { ScopeNote } from "./scope-note";
 
 interface CategoryPanelProps {
   id: string;
   root: CategoryTreeNode;
-  vehicleId: string;
-  /** The car the counts below are for, named once at the top of the panel. */
-  vehicleName: string;
+  /** What the counts below are for, stated once at the top of the panel. */
+  scope: CategoryScope | null;
   onClose: () => void;
   /** Where the panel sits when the layout around it is not the full grid. */
   className?: string;
@@ -32,8 +33,7 @@ interface CategoryPanelProps {
 export function CategoryPanel({
   id,
   root,
-  vehicleId,
-  vehicleName,
+  scope,
   onClose,
   className,
 }: CategoryPanelProps) {
@@ -84,13 +84,13 @@ export function CategoryPanel({
           <p className="mt-1 text-[13px] text-ink-3">
             {level.length} {levelKind(level, path.length)} ·{" "}
             {formatCount(articleCount)}{" "}
-            {plural(articleCount, "артикул", "артикула")} за{" "}
-            <b className="font-medium text-ink">{vehicleName}</b>
+            {plural(articleCount, "артикул", "артикула")}{" "}
+            <ScopeNote scope={scope} />
           </p>
         </div>
 
         <Link
-          href={categorySearchHref(vehicleId, trail)}
+          href={categorySearchHref(scope?.vehicleId, trail)}
           prefetch={false}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-ink transition-colors hover:border-ink"
         >
@@ -115,7 +115,7 @@ export function CategoryPanel({
             key={node.category.id}
             node={node}
             ancestors={trail}
-            vehicleId={vehicleId}
+            vehicleId={scope?.vehicleId}
             onDrill={(child) => setPath((drill) => [...drill, child])}
           />
         ))}

@@ -108,4 +108,24 @@ describe('CategorySearchResults', () => {
     expect(screen.getByText('Нищо за „накладки“')).toBeInTheDocument()
     expect(screen.queryAllByRole('link')).toHaveLength(0)
   })
+
+  it('links without a vehicle when no car is picked', () => {
+    render(
+      <CategorySearchResults
+        matches={MATCHES}
+        total={MATCHES.length}
+        term="филтър"
+      />,
+    )
+
+    const params = new URLSearchParams(
+      screen
+        .getByRole('link', { name: /^маслен филтър/ })
+        .getAttribute('href')!
+        .split('?')[1],
+    )
+
+    expect(params.has('vehicleId')).toBe(false)
+    expect(params.getAll('cat')).toEqual(['100005', '100259'])
+  })
 })

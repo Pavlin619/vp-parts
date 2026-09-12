@@ -14,7 +14,8 @@ interface CategoryPanelRowProps {
   node: CategoryTreeNode;
   /** The chain above `node`, root first — what a link has to carry with it. */
   ancestors: CategoryTreeNode[];
-  vehicleId: string;
+  /** The car a leaf's listing is scoped to, where one is picked. */
+  vehicleId?: string;
   onDrill: (node: CategoryTreeNode) => void;
 }
 

@@ -23,17 +23,17 @@ jest.mock('@/components/catalog/vehicle-selector', () => ({
     isOpen ? <div data-testid="vehicle-selector" /> : null,
 }))
 
-// The categories fetch the car's tree; that is browse-categories.spec's subject.
+// The categories fetch their own tree; that is browse-categories.spec's subject.
 jest.mock('./categories', () => ({
   BrowseCategories: ({
-    vehicle,
+    scope,
     scopedCategoryId,
   }: {
-    vehicle: SelectedVehicle
+    scope: { vehicleId: string; vehicleName: string } | null
     scopedCategoryId?: string
   }) => (
     <div data-testid="browse-categories" data-scope={scopedCategoryId ?? ''}>
-      {vehicle.vehicleId}
+      {scope ? `${scope.vehicleId} ${scope.vehicleName}` : 'целият каталог'}
     </div>
   ),
 }))
@@ -70,16 +70,35 @@ beforeEach(() => {
   isStoreHydrated = true
 })
 
+/**
+ * A car narrows the catalogue; it does not unlock it. Without one the page
+ * reads the catalogue-wide tree and asks for a car alongside it, so a visitor
+ * who removes their car — or has never picked one — still has a catalogue to
+ * browse and a way back to the narrowed version of it.
+ */
 describe('BrowseView — before a car is picked', () => {
   beforeEach(() => {
     storedVehicle = null
   })
 
-  it('asks for one instead of showing the hero', () => {
+  it('shows the whole catalogue and asks for a car above it', () => {
     render(<BrowseView />)
+
     expect(screen.getByText('Изберете автомобил')).toBeInTheDocument()
     expect(screen.queryByTestId('vehicle-hero')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('browse-categories')).not.toBeInTheDocument()
+    expect(screen.getByTestId('browse-categories')).toHaveTextContent(
+      'целият каталог',
+    )
+  })
+
+  it('narrows a category page to nothing but still renders it', () => {
+    render(<BrowseView scopedCategoryId="100006" />)
+
+    expect(screen.getByTestId('browse-categories')).toHaveAttribute(
+      'data-scope',
+      '100006',
+    )
+    expect(screen.getByText('Изберете автомобил')).toBeInTheDocument()
   })
 
   it('opens the selector from the prompt', async () => {
@@ -98,12 +117,14 @@ describe('BrowseView — with a car', () => {
     expect(screen.getByTestId('vehicle-hero')).toHaveTextContent('A3 (8L1)')
   })
 
-  // The tree is answered per vehicle, so the categories only exist once one is
-  // picked — and they are asked for that car and no other.
+  // The tree is answered per vehicle, so the categories are asked for that car
+  // and no other, and its name is what their counts are labelled with.
   it('scopes the categories to it', () => {
     render(<BrowseView />)
 
-    expect(screen.getByTestId('browse-categories')).toHaveTextContent('13074')
+    expect(screen.getByTestId('browse-categories')).toHaveTextContent(
+      '13074 AUDI A3 (8L1)',
+    )
   })
 
   // The narrowing is URL state read on the server; this screen only carries it
@@ -141,6 +162,9 @@ describe('BrowseView — before hydration', () => {
 
   // The store is read only on the client, so anything derived from it must be
   // held back until it has been — the title and trail are not.
+  // Which tree to read is decided by the store, so the categories wait for it
+  // too — starting the catalogue-wide read only to replace it with the car's
+  // would pay for both and flash the wrong one.
   it('keeps the page shell and skeletons only what the store decides', () => {
     render(<BrowseView />)
 
@@ -148,5 +172,6 @@ describe('BrowseView — before hydration', () => {
     expect(screen.getByLabelText('Зареждане на автомобила')).toBeInTheDocument()
     expect(screen.queryByTestId('vehicle-hero')).not.toBeInTheDocument()
     expect(screen.queryByText('Изберете автомобил')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('browse-categories')).not.toBeInTheDocument()
   })
 })

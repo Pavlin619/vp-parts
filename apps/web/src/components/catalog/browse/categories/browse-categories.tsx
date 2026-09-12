@@ -4,13 +4,13 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatCount } from "@vp-parts-shop/shared";
 import { ErrorState } from "@/components/ui/error-state";
-import type { SelectedVehicle } from "@/hooks/use-vehicle-context";
 import { categoriesQueryOptions } from "@/lib/api/catalog";
 import { CATEGORY_GRID_MAX_COLUMNS } from "@/lib/catalog/category-grid-layout";
 import {
   CATEGORY_SEARCH_MIN_LENGTH,
   searchCategoryTree,
 } from "@/lib/catalog/category-search";
+import type { CategoryScope } from "@/lib/catalog/category-scope";
 import {
   buildCategoryTree,
   type CategoryTreeNode,
@@ -20,34 +20,41 @@ import { CategoryFinder } from "./category-finder";
 import { CategoryGrid } from "./category-grid";
 import { CategoryScopeBar } from "./category-scope-bar";
 import { CategorySearchResults } from "./category-search-results";
+import { ScopeNote } from "./scope-note";
 import { ScopedCategoryView } from "./scoped-category-view";
 
 interface BrowseCategoriesProps {
-  vehicle: SelectedVehicle;
+  /** The car the tree is read for; `null` reads the whole catalogue's. */
+  scope: CategoryScope | null;
   /** The root the page is narrowed to, from the URL. Absent shows all of them. */
   scopedCategoryId?: string;
 }
 
 /**
- * The catalogue's categories for one car, either all of them or the one root
- * the URL names.
+ * The catalogue's categories, either all of them or the one root the URL names.
  *
- * The whole tree arrives in a single read — four levels, some 773 nodes for an
- * A3 — and the page opens one level at a time. Only the number of roots is
- * printed as a total: TecDoc files an article under several roots at once, so
- * summing their counts states half again the articles the car actually matches.
+ * One car or none reaches the same screen: the vehicle-scoped tree is a subset
+ * of the catalogue-wide one — an A3's 773 nodes are drawn from the catalogue's
+ * 1,315 — so both are the same four-level shape and the grid, the panel and the
+ * finder over them do not differ. What changes is which read answers, which
+ * counts the numbers are, and whether a search link carries a vehicle.
+ *
+ * The whole tree arrives in a single read and the page opens one level at a
+ * time. Only the number of roots is printed as a total: TecDoc files an article
+ * under several roots at once, so summing their counts states half again the
+ * articles actually matched.
  *
  * Narrowing is a state of this screen rather than a page of its own: the card,
  * the panel and the finder are the same, and dropping the narrowing is one
  * click on the scope bar.
  */
 export function BrowseCategories({
-  vehicle,
+  scope,
   scopedCategoryId,
 }: BrowseCategoriesProps) {
   const [term, setTerm] = useState("");
   const { data, isPending, isError, refetch } = useQuery(
-    categoriesQueryOptions(vehicle.vehicleId),
+    categoriesQueryOptions(scope?.vehicleId),
   );
 
   const roots = useMemo(() => buildCategoryTree(data ?? []), [data]);
@@ -82,26 +89,19 @@ export function BrowseCategories({
     );
   }
 
-  const vehicleName = `${vehicle.manufacturerName} ${vehicle.seriesName}`;
-
   function renderCategories() {
     if (roots.length === 0) {
-      return (
-        <Notice>
-          TecDoc не връща категории за този автомобил. Опитайте с друг вариант
-          на модела.
-        </Notice>
-      );
+      return <Notice>{emptyTreeNotice(scope)}</Notice>;
     }
 
-    // A root id the car's tree does not carry: a stale link, or a category
-    // whose parts this model takes none of. Either way the catalogue has it,
-    // this car does not, and the scope bar above is the way on.
+    // A root id the tree in hand does not carry: a stale link, or — under a car
+    // — a category whose parts this model takes none of. Either way the scope
+    // bar above is the way on, so the page is not a dead end.
     if (scopedCategoryId && !scopedRoot) {
       return (
         <Notice>
-          Тази категория няма части за {vehicleName}. Разгледайте останалите{" "}
-          {roots.length} {plural(roots.length, "категория", "категории")}.
+          {missingRootNotice(scope)} Разгледайте останалите {roots.length}{" "}
+          {plural(roots.length, "категория", "категории")}.
         </Notice>
       );
     }
@@ -112,7 +112,7 @@ export function BrowseCategories({
           matches={matches}
           total={total}
           term={trimmedTerm}
-          vehicleId={vehicle.vehicleId}
+          vehicleId={scope?.vehicleId}
         />
       );
     }
@@ -131,19 +131,12 @@ export function BrowseCategories({
         <ScopedCategoryView
           key={scopedRoot.category.id}
           root={scopedRoot}
-          vehicleId={vehicle.vehicleId}
-          vehicleName={vehicleName}
+          scope={scope}
         />
       );
     }
 
-    return (
-      <CategoryGrid
-        roots={roots}
-        vehicleId={vehicle.vehicleId}
-        vehicleName={vehicleName}
-      />
-    );
+    return <CategoryGrid roots={roots} scope={scope} />;
   }
 
   return (
@@ -160,7 +153,7 @@ export function BrowseCategories({
           </h2>
           <p className="mt-1 text-sm text-ink-3">
             {scopedRoot ? scopeSummary(scopedRoot) : rootsSummary(roots.length)}{" "}
-            за <b className="font-medium text-ink">{vehicleName}</b>
+            <ScopeNote scope={scope} />
           </p>
         </div>
 
@@ -182,6 +175,24 @@ export function BrowseCategories({
 
 function rootsSummary(rootCount: number): string {
   return `${rootCount} ${plural(rootCount, "категория", "категории")} с части`;
+}
+
+/**
+ * An empty tree means different things per scope. Under a car it is ordinary —
+ * a variant TecDoc files no linked articles for, which another variant of the
+ * same model usually fixes. Catalogue-wide it cannot happen, so there is
+ * nothing to suggest but trying again.
+ */
+function emptyTreeNotice(scope: CategoryScope | null): string {
+  return scope
+    ? "TecDoc не връща категории за този автомобил. Опитайте с друг вариант на модела."
+    : "Каталогът не връща категории в момента. Опитайте отново по-късно.";
+}
+
+function missingRootNotice(scope: CategoryScope | null): string {
+  return scope
+    ? `Тази категория няма части за ${scope.vehicleName}.`
+    : "Тази категория не е в каталога.";
 }
 
 /**

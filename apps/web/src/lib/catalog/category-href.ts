@@ -9,8 +9,10 @@ import {
 
 /**
  * Where a category on the catalogue page leads: the search, scoped to that node
- * and the car, with nothing typed. That is a subject the API accepts in full —
- * `q` is optional exactly when a vehicle or a category narrows the search.
+ * and — where one is picked — the car, with nothing typed. Either is a subject
+ * the API accepts in full: `q` is optional exactly when a vehicle *or* a
+ * category narrows the search, so browsing the catalogue without a car leads to
+ * results rather than to the search's empty state.
  *
  * The whole drilled chain travels, not the node alone. A label sits at two node
  * ids under two parents — `филтър купе` is `100263` under `филтър` and `100346`
@@ -20,13 +22,11 @@ import {
  * dimension facets are worth computing.
  */
 export function categorySearchHref(
-  vehicleId: string,
+  vehicleId: string | undefined,
   path: CategoryTreeNode[],
 ): string {
-  const browse = withVehicle(
-    newSearch({ query: "", mode: DEFAULT_SEARCH_MODE }),
-    vehicleId,
-  );
+  const search = newSearch({ query: "", mode: DEFAULT_SEARCH_MODE });
+  const browse = vehicleId ? withVehicle(search, vehicleId) : search;
 
   return buildSearchUrl(
     path.reduce(

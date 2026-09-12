@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
 import { useHydration, useVehicleContext } from "@/hooks/use-vehicle-context";
+import { categoryScopeOf } from "@/lib/catalog/category-scope";
 import { BrowseCategories } from "./categories";
 import { VehiclePrompt } from "./vehicle-prompt";
 import { VehicleHero } from "./vehicle-hero";
@@ -13,8 +14,12 @@ interface BrowseViewProps {
 }
 
 /**
- * The catalogue: the car everything below it is scoped to, and that car's
- * categories.
+ * The catalogue: the car it is answering for, and the categories under it.
+ *
+ * A car narrows the page rather than unlocking it — without one the categories
+ * are the catalogue-wide tree and the prompt takes the hero's place, so
+ * removing a car widens the catalogue instead of emptying it, and the offer to
+ * pick one again is on the same screen.
  *
  * Client-rendered because the vehicle lives in a persisted store the server
  * cannot read.
@@ -26,29 +31,32 @@ export function BrowseView({ scopedCategoryId }: BrowseViewProps) {
 
   const [isSelectorOpen, setSelectorOpen] = useState(false);
 
+  // Which of the two trees to read is the store's answer, so the categories
+  // wait for it as the hero does: starting the catalogue-wide read only to
+  // replace it with the car's would pay for both and flash the wrong one.
   function renderCatalog() {
     if (!isHydrated) {
       return <VehicleHeroSkeleton />;
     }
 
-    if (!vehicle) {
-      return <VehiclePrompt onOpenSelector={() => setSelectorOpen(true)} />;
-    }
-
     return (
       <>
-        <VehicleHero
-          vehicle={vehicle}
-          onEdit={() => setSelectorOpen(true)}
-          onClear={clearVehicle}
-        />
+        {vehicle ? (
+          <VehicleHero
+            vehicle={vehicle}
+            onEdit={() => setSelectorOpen(true)}
+            onClear={clearVehicle}
+          />
+        ) : (
+          <VehiclePrompt onOpenSelector={() => setSelectorOpen(true)} />
+        )}
 
-        {/* Keyed so a new car — or a new narrowing — starts on a cleared
+        {/* Keyed so a new scope — or a new narrowing — starts on a cleared
             finder and a closed panel, rather than on the previous one's place
             in a tree it has left. */}
         <BrowseCategories
-          key={`${vehicle.vehicleId}:${scopedCategoryId ?? ""}`}
-          vehicle={vehicle}
+          key={`${vehicle?.vehicleId ?? "catalogue"}:${scopedCategoryId ?? ""}`}
+          scope={categoryScopeOf(vehicle)}
           scopedCategoryId={scopedCategoryId}
         />
       </>

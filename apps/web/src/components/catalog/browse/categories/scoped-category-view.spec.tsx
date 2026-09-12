@@ -21,7 +21,10 @@ const BRAKES = node("100006", "спирачна уредба", [
 
 const renderScoped = (root: CategoryTreeNode) =>
   render(
-    <ScopedCategoryView root={root} vehicleId="13074" vehicleName="AUDI A3" />,
+    <ScopedCategoryView
+      root={root}
+      scope={{ vehicleId: "13074", vehicleName: "AUDI A3" }}
+    />,
   );
 
 describe("ScopedCategoryView", () => {

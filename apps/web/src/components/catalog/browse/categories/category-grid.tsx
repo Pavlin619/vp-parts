@@ -6,14 +6,14 @@ import {
   categoryGridColumns,
   chunkIntoRows,
 } from "@/lib/catalog/category-grid-layout";
+import type { CategoryScope } from "@/lib/catalog/category-scope";
 import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
 import { CategoryCard } from "./category-card";
 import { CategoryPanel } from "./category-panel";
 
 interface CategoryGridProps {
   roots: CategoryTreeNode[];
-  vehicleId: string;
-  vehicleName: string;
+  scope: CategoryScope | null;
 }
 
 const panelIdFor = (categoryId: string) => `category-panel-${categoryId}`;
@@ -32,11 +32,7 @@ const panelIdFor = (categoryId: string) => `category-panel-${categoryId}`;
  * resize then moves the panel instead of remounting it, which is what keeps the
  * level it is drilled to.
  */
-export function CategoryGrid({
-  roots,
-  vehicleId,
-  vehicleName,
-}: CategoryGridProps) {
+export function CategoryGrid({ roots, scope }: CategoryGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState(CATEGORY_GRID_MAX_COLUMNS);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
@@ -80,7 +76,7 @@ export function CategoryGrid({
           <CategoryCard
             key={node.category.id}
             node={node}
-            vehicleId={vehicleId}
+            vehicleId={scope?.vehicleId}
             isOpen={node.category.id === openCategoryId}
             panelId={panelIdFor(node.category.id)}
             onToggle={() => toggle(node.category.id)}
@@ -101,8 +97,7 @@ export function CategoryGrid({
             key={`panel-${openInRow.category.id}`}
             id={panelIdFor(openInRow.category.id)}
             root={openInRow}
-            vehicleId={vehicleId}
-            vehicleName={vehicleName}
+            scope={scope}
             onClose={() => setOpenCategoryId(null)}
           />,
         ];

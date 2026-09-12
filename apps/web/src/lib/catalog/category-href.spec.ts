@@ -57,3 +57,27 @@ describe('categorySearchHref', () => {
     expect(state.page).toBe(1)
   })
 })
+
+/**
+ * The catalogue is browsable with no car picked, so the same links have to lead
+ * somewhere without one. The category alone is a subject the API accepts, and
+ * the search page then offers the narrowing in its own sidebar.
+ */
+describe('categorySearchHref — with no car picked', () => {
+  it('scopes the search to the path alone', () => {
+    const state = stateFor(categorySearchHref(undefined, [FILTERS, OIL_FILTERS]))
+
+    expect(state.vehicleId).toBeUndefined()
+    expect(state.categoryPath).toEqual(['100005', '100259'])
+  })
+
+  it('is still a search the page accepts with nothing typed', () => {
+    expect(
+      hasSearchSubject(stateFor(categorySearchHref(undefined, [FILTERS]))),
+    ).toBe(true)
+  })
+
+  it('leaves the vehicle out of the URL rather than sending an empty one', () => {
+    expect(categorySearchHref(undefined, [FILTERS])).not.toContain('vehicleId')
+  })
+})

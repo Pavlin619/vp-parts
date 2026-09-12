@@ -13,7 +13,8 @@ const PREVIEW_CHILDREN = 3;
 
 interface CategoryCardProps {
   node: CategoryTreeNode;
-  vehicleId: string;
+  /** The car a leaf's listing is scoped to, where one is picked. */
+  vehicleId?: string;
   isOpen: boolean;
   /** The panel this card expands, which sits after its whole row rather than
    * directly below it — too far for the reading order alone to connect them. */

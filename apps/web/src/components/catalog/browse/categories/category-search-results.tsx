@@ -13,7 +13,8 @@ interface CategorySearchResultsProps {
   total: number;
   /** The term as typed, already trimmed — printed back and highlighted. */
   term: string;
-  vehicleId: string;
+  /** The car every hit's listing is scoped to, where one is picked. */
+  vehicleId?: string;
 }
 
 /**
