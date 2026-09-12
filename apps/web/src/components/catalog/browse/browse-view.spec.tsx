@@ -25,8 +25,16 @@ jest.mock('@/components/catalog/vehicle-selector', () => ({
 
 // The categories fetch the car's tree; that is browse-categories.spec's subject.
 jest.mock('./categories', () => ({
-  BrowseCategories: ({ vehicle }: { vehicle: SelectedVehicle }) => (
-    <div data-testid="browse-categories">{vehicle.vehicleId}</div>
+  BrowseCategories: ({
+    vehicle,
+    scopedCategoryId,
+  }: {
+    vehicle: SelectedVehicle
+    scopedCategoryId?: string
+  }) => (
+    <div data-testid="browse-categories" data-scope={scopedCategoryId ?? ''}>
+      {vehicle.vehicleId}
+    </div>
   ),
 }))
 
@@ -96,6 +104,26 @@ describe('BrowseView — with a car', () => {
     render(<BrowseView />)
 
     expect(screen.getByTestId('browse-categories')).toHaveTextContent('13074')
+  })
+
+  // The narrowing is URL state read on the server; this screen only carries it
+  // down to the categories, which are the only thing that can resolve it.
+  it('hands the narrowing from the URL to the categories', () => {
+    render(<BrowseView scopedCategoryId="100006" />)
+
+    expect(screen.getByTestId('browse-categories')).toHaveAttribute(
+      'data-scope',
+      '100006',
+    )
+  })
+
+  it('leaves the categories unnarrowed when the URL names none', () => {
+    render(<BrowseView />)
+
+    expect(screen.getByTestId('browse-categories')).toHaveAttribute(
+      'data-scope',
+      '',
+    )
   })
 
   it('clears the car from the hero', async () => {

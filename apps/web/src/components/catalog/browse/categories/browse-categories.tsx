@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { formatCount } from "@vp-parts-shop/shared";
 import { ErrorState } from "@/components/ui/error-state";
 import type { SelectedVehicle } from "@/hooks/use-vehicle-context";
 import { categoriesQueryOptions } from "@/lib/api/catalog";
@@ -10,36 +11,61 @@ import {
   CATEGORY_SEARCH_MIN_LENGTH,
   searchCategoryTree,
 } from "@/lib/catalog/category-search";
-import { buildCategoryTree } from "@/lib/catalog/category-tree";
+import {
+  buildCategoryTree,
+  type CategoryTreeNode,
+} from "@/lib/catalog/category-tree";
 import { plural } from "@/lib/utils";
 import { CategoryFinder } from "./category-finder";
 import { CategoryGrid } from "./category-grid";
+import { CategoryScopeBar } from "./category-scope-bar";
 import { CategorySearchResults } from "./category-search-results";
+import { ScopedCategoryView } from "./scoped-category-view";
 
 interface BrowseCategoriesProps {
   vehicle: SelectedVehicle;
+  /** The root the page is narrowed to, from the URL. Absent shows all of them. */
+  scopedCategoryId?: string;
 }
 
 /**
- * The catalogue's categories for one car.
+ * The catalogue's categories for one car, either all of them or the one root
+ * the URL names.
  *
  * The whole tree arrives in a single read — four levels, some 773 nodes for an
  * A3 — and the page opens one level at a time. Only the number of roots is
  * printed as a total: TecDoc files an article under several roots at once, so
  * summing their counts states half again the articles the car actually matches.
+ *
+ * Narrowing is a state of this screen rather than a page of its own: the card,
+ * the panel and the finder are the same, and dropping the narrowing is one
+ * click on the scope bar.
  */
-export function BrowseCategories({ vehicle }: BrowseCategoriesProps) {
+export function BrowseCategories({
+  vehicle,
+  scopedCategoryId,
+}: BrowseCategoriesProps) {
   const [term, setTerm] = useState("");
   const { data, isPending, isError, refetch } = useQuery(
     categoriesQueryOptions(vehicle.vehicleId),
   );
 
   const roots = useMemo(() => buildCategoryTree(data ?? []), [data]);
+  const scopedRoot = useMemo(
+    () =>
+      roots.find((root) => root.category.id === scopedCategoryId) ?? null,
+    [roots, scopedCategoryId],
+  );
+
   const trimmedTerm = term.trim();
   const isSearching = trimmedTerm.length >= CATEGORY_SEARCH_MIN_LENGTH;
   const { matches, total } = useMemo(
-    () => searchCategoryTree(roots, isSearching ? trimmedTerm : ""),
-    [roots, trimmedTerm, isSearching],
+    () =>
+      searchCategoryTree(
+        scopedRoot ? [scopedRoot] : roots,
+        isSearching ? trimmedTerm : "",
+      ),
+    [roots, scopedRoot, trimmedTerm, isSearching],
   );
 
   if (isPending) {
@@ -61,10 +87,22 @@ export function BrowseCategories({ vehicle }: BrowseCategoriesProps) {
   function renderCategories() {
     if (roots.length === 0) {
       return (
-        <p className="rounded-xl border border-line bg-bg-card px-4 py-10 text-center text-sm text-ink-3">
+        <Notice>
           TecDoc не връща категории за този автомобил. Опитайте с друг вариант
           на модела.
-        </p>
+        </Notice>
+      );
+    }
+
+    // A root id the car's tree does not carry: a stale link, or a category
+    // whose parts this model takes none of. Either way the catalogue has it,
+    // this car does not, and the scope bar above is the way on.
+    if (scopedCategoryId && !scopedRoot) {
+      return (
+        <Notice>
+          Тази категория няма части за {vehicleName}. Разгледайте останалите{" "}
+          {roots.length} {plural(roots.length, "категория", "категории")}.
+        </Notice>
       );
     }
 
@@ -81,10 +119,21 @@ export function BrowseCategories({ vehicle }: BrowseCategoriesProps) {
 
     if (trimmedTerm !== "") {
       return (
-        <p className="rounded-xl border border-line bg-bg-card px-4 py-10 text-center text-sm text-ink-3">
+        <Notice>
           Въведете поне {CATEGORY_SEARCH_MIN_LENGTH} знака, за да търсите
           категория.
-        </p>
+        </Notice>
+      );
+    }
+
+    if (scopedRoot) {
+      return (
+        <ScopedCategoryView
+          key={scopedRoot.category.id}
+          root={scopedRoot}
+          vehicleId={vehicle.vehicleId}
+          vehicleName={vehicleName}
+        />
       );
     }
 
@@ -99,26 +148,65 @@ export function BrowseCategories({ vehicle }: BrowseCategoriesProps) {
 
   return (
     <section aria-labelledby="catalog-categories" className="pb-10">
+      {scopedCategoryId && <CategoryScopeBar rootCount={roots.length} />}
+
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2
             id="catalog-categories"
             className="font-display text-2xl font-semibold tracking-[-0.02em]"
           >
-            Категории
+            {scopedRoot ? scopedRoot.category.name : "Категории"}
           </h2>
           <p className="mt-1 text-sm text-ink-3">
-            {roots.length} {plural(roots.length, "категория", "категории")} с
-            части за{" "}
-            <b className="font-medium text-ink">{vehicleName}</b>
+            {scopedRoot ? scopeSummary(scopedRoot) : rootsSummary(roots.length)}{" "}
+            за <b className="font-medium text-ink">{vehicleName}</b>
           </p>
         </div>
 
-        <CategoryFinder value={term} onChange={setTerm} />
+        <CategoryFinder
+          value={term}
+          onChange={setTerm}
+          placeholder={
+            scopedRoot
+              ? `Търси в „${scopedRoot.category.name}“…`
+              : undefined
+          }
+        />
       </div>
 
       {renderCategories()}
     </section>
+  );
+}
+
+function rootsSummary(rootCount: number): string {
+  return `${rootCount} ${plural(rootCount, "категория", "категории")} с части`;
+}
+
+/**
+ * What the narrowed page counts instead of roots: the groups directly inside
+ * the category, and the articles it holds. A root's own count is the one total
+ * that is safe to print — it is the overlap *between* roots that makes a sum of
+ * them wrong.
+ */
+function scopeSummary(root: CategoryTreeNode): string {
+  const articleCount = root.category.articleCount;
+  const articles = `${formatCount(articleCount)} ${plural(articleCount, "артикул", "артикула")}`;
+  const groupCount = root.children.length;
+
+  if (groupCount === 0) {
+    return articles;
+  }
+
+  return `${groupCount} ${plural(groupCount, "група", "групи")} · ${articles}`;
+}
+
+function Notice({ children }: { children: ReactNode }) {
+  return (
+    <p className="rounded-xl border border-line bg-bg-card px-4 py-10 text-center text-sm text-ink-3">
+      {children}
+    </p>
   );
 }
 
