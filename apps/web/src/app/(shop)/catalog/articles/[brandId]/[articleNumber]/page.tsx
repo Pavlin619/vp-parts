@@ -70,6 +70,7 @@ export default async function ArticleDetailPage({
         brandName={article.brandName}
         articleNumber={article.articleNumber}
         categoryNodeId={categoryId}
+        vehicleId={vehicleId}
       />
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)_340px] lg:gap-y-6">

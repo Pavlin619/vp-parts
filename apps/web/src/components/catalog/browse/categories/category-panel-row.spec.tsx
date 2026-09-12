@@ -90,6 +90,32 @@ describe('CategoryPanelRow — a leaf', () => {
     expect(screen.getByText('1 част')).toBeInTheDocument()
   })
 
+  /**
+   * A leaf has no level of its own to open, so a deep link into it stops on
+   * this level — and the row has to say which one was asked for, or the visitor
+   * lands on a list of siblings with no sign of their own category.
+   */
+  it('marks itself as the row arrived on', () => {
+    render(
+      <ul>
+        <CategoryPanelRow
+          node={OIL_FILTER}
+          ancestors={[ENGINE]}
+          isMarked
+          onDrill={jest.fn()}
+        />
+      </ul>,
+    )
+
+    expect(screen.getByRole('link')).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('marks nothing when the visitor drilled here themselves', () => {
+    renderRow(OIL_FILTER)
+
+    expect(screen.getByRole('link')).not.toHaveAttribute('aria-current')
+  })
+
   it('carries the path alone when no car is picked', () => {
     render(
       <ul>

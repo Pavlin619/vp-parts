@@ -262,6 +262,86 @@ describe('BrowseCategories — narrowed to one category', () => {
       screen.getByRole('link', { name: 'Всички категории' }),
     ).toBeInTheDocument()
   })
+
+  // The category the car lacks may still hold parts for other models, and the
+  // listing is the one place that can say — the tree here is this car's alone.
+  it('offers the category widened to every car', async () => {
+    renderCategories('999999')
+
+    const params = paramsOf(
+      await screen.findByRole('link', {
+        name: 'Търси в нея за всички автомобили',
+      }),
+    )
+
+    expect(params.getAll('cat')).toEqual(['999999'])
+    expect(params.has('vehicleId')).toBe(false)
+  })
+})
+
+/**
+ * An article's breadcrumb names the category the part is filed under, which is
+ * rarely a root. The narrowing takes any category: the root's card, the panel
+ * already inside the one that was named, and — where nothing sits below it —
+ * the row itself marked.
+ */
+describe('BrowseCategories — narrowed to a subcategory', () => {
+  /** `спирачна уредба › дискови спирачки › накладки`, three levels deep. */
+  const DEEP_TREE: AssemblyGroupDto[] = [
+    group('100006', 'спирачна уредба', null, 13),
+    group('100269', 'дискови спирачки', '100006', 1),
+    group('100270', 'накладки', '100269', 1),
+    group('100271', 'барабанни спирачки', '100006', 2),
+  ]
+
+  beforeEach(() => {
+    getCategoriesMock.mockResolvedValue(DEEP_TREE)
+  })
+
+  it('shows the root that holds it and opens the panel inside it', async () => {
+    renderCategories('100269')
+
+    expect(
+      await screen.findByRole('heading', { name: 'спирачна уредба', level: 2 }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'дискови спирачки', level: 3 }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /накладки/ })).toBeInTheDocument()
+  })
+
+  // A category with nothing under it has no level to open, so the panel stops
+  // on its parent and says which row was asked for.
+  it('marks a category with nothing under it on its parent level', async () => {
+    renderCategories('100270')
+
+    expect(
+      await screen.findByRole('heading', { name: 'дискови спирачки', level: 3 }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /накладки/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+  })
+
+  it('leaves the way back to the whole catalogue in place', async () => {
+    renderCategories('100269')
+
+    await screen.findByRole('heading', { name: 'спирачна уредба', level: 2 })
+    expect(
+      screen.getByRole('link', { name: 'Всички категории' }),
+    ).toHaveAttribute('href', '/catalog')
+  })
+
+  // Under a car, a subcategory this model takes no parts from is as absent as a
+  // stale id — the tree simply does not hold it.
+  it('says so when the car has no such subcategory', async () => {
+    renderCategories('999999')
+
+    expect(
+      await screen.findByText(/Тази категория няма части за AUDI A3/),
+    ).toBeInTheDocument()
+  })
 })
 
 /**
@@ -298,14 +378,20 @@ describe('BrowseCategories — with no car picked', () => {
     expect(params.getAll('cat')).toEqual(['100342'])
   })
 
-  // Without a car there is no model to blame, so the id is simply not one the
-  // catalogue holds.
-  it('says a narrowing is not in the catalogue at all', async () => {
+  // Without a car there is no model to blame: the catalogue browses the
+  // passenger-car tree, and the universal one — where oils and wipers are filed
+  // — is reachable only through the search.
+  it('sends a category it does not browse to the search', async () => {
     renderCategories('999999', null)
 
     expect(
-      await screen.findByText(/Тази категория не е в каталога/),
+      await screen.findByText(/Тази категория не се разглежда в каталога/),
     ).toBeInTheDocument()
+
+    const params = paramsOf(
+      screen.getByRole('link', { name: 'Търси части в нея' }),
+    )
+    expect(params.getAll('cat')).toEqual(['999999'])
   })
 
   it('narrows to a root the catalogue does hold', async () => {

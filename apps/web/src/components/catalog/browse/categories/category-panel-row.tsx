@@ -16,6 +16,8 @@ interface CategoryPanelRowProps {
   ancestors: CategoryTreeNode[];
   /** The car a leaf's listing is scoped to, where one is picked. */
   vehicleId?: string;
+  /** Whether this is the row the visitor arrived on — see `categoryDrillOf`. */
+  isMarked?: boolean;
   onDrill: (node: CategoryTreeNode) => void;
 }
 
@@ -27,6 +29,7 @@ export function CategoryPanelRow({
   node,
   ancestors,
   vehicleId,
+  isMarked,
   onDrill,
 }: CategoryPanelRowProps) {
   const hasChildren = node.children.length > 0;
@@ -39,6 +42,7 @@ export function CategoryPanelRow({
           "text-[15px] text-ink-2 transition-colors group-hover:text-ink",
           hasChildren &&
             "font-display text-[16px] font-semibold tracking-[-0.01em] text-ink",
+          isMarked && "font-medium text-accent-hover group-hover:text-accent",
         )}
       >
         {node.category.name}
@@ -53,9 +57,19 @@ export function CategoryPanelRow({
   );
 
   return (
-    <li className="break-inside-avoid border-b border-line">
+    <li
+      className={cn(
+        "break-inside-avoid border-b border-line",
+        isMarked && "bg-accent-soft",
+      )}
+    >
       {hasChildren ? (
-        <button type="button" onClick={() => onDrill(node)} className={ROW_SHELL}>
+        <button
+          type="button"
+          onClick={() => onDrill(node)}
+          aria-current={isMarked ? "true" : undefined}
+          className={ROW_SHELL}
+        >
           {label}
           <ChevronRight
             className="h-3.5 w-3.5 shrink-0 text-ink-4"
@@ -66,6 +80,7 @@ export function CategoryPanelRow({
         <Link
           href={categorySearchHref(vehicleId, [...ancestors, node])}
           prefetch={false}
+          aria-current={isMarked ? "true" : undefined}
           className={ROW_SHELL}
         >
           {label}

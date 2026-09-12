@@ -17,6 +17,12 @@ interface CategoryPanelProps {
   root: CategoryTreeNode;
   /** What the counts below are for, stated once at the top of the panel. */
   scope: CategoryScope | null;
+  /** The levels to open through on mount, when a link named one below the root. */
+  initialPath?: CategoryTreeNode[];
+  /** The row on the opening level the visitor arrived on, if any. */
+  markedCategoryId?: string;
+  /** The level the panel has moved to, for a caller that records where it is. */
+  onLevelChange?: (categoryId: string) => void;
   onClose: () => void;
   /** Where the panel sits when the layout around it is not the full grid. */
   className?: string;
@@ -34,10 +40,13 @@ export function CategoryPanel({
   id,
   root,
   scope,
+  initialPath = [],
+  markedCategoryId,
+  onLevelChange,
   onClose,
   className,
 }: CategoryPanelProps) {
-  const [path, setPath] = useState<CategoryTreeNode[]>([]);
+  const [path, setPath] = useState<CategoryTreeNode[]>(initialPath);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const renderedDepth = useRef(path.length);
 
@@ -57,6 +66,11 @@ export function CategoryPanel({
     headingRef.current?.focus();
   }, [path.length]);
 
+  function moveTo(nextPath: CategoryTreeNode[]) {
+    setPath(nextPath);
+    onLevelChange?.(nextPath.at(-1)?.category.id ?? root.category.id);
+  }
+
   return (
     <section
       id={id}
@@ -71,7 +85,7 @@ export function CategoryPanel({
           <CategoryPathBar
             rootName={root.category.name}
             path={path}
-            onNavigate={(depth) => setPath((drill) => drill.slice(0, depth))}
+            onNavigate={(depth) => moveTo(path.slice(0, depth))}
           />
 
           <h3
@@ -116,7 +130,8 @@ export function CategoryPanel({
             node={node}
             ancestors={trail}
             vehicleId={scope?.vehicleId}
-            onDrill={(child) => setPath((drill) => [...drill, child])}
+            isMarked={node.category.id === markedCategoryId}
+            onDrill={(child) => moveTo([...path, child])}
           />
         ))}
       </ul>

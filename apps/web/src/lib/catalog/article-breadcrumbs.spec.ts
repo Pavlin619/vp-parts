@@ -29,6 +29,13 @@ const OIL_FILTER_PATHS = [
 const labels = (items: Array<{ label: string }>) =>
   items.map((item) => item.label)
 
+const hrefOf = (
+  crumbs: Array<{ label: string; href?: string }>,
+  label: string,
+) => crumbs.find((crumb) => crumb.label === label)?.href
+
+const paramsOf = (href: string) => new URLSearchParams(href.split('?')[1])
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('selectArticleCategoryPath', () => {
@@ -104,9 +111,7 @@ describe('buildArticleBreadcrumbs', () => {
     ])
   })
 
-  // Only the home page exists to link to today. The category crumbs get their
-  // hrefs when the catalogue page does; a link to nowhere is worse than text.
-  it('links home and nothing else', () => {
+  it('links home and the catalogue root', () => {
     const crumbs = buildArticleBreadcrumbs({
       categoryPaths: OIL_FILTER_PATHS,
       brandName: 'MAHLE',
@@ -114,9 +119,75 @@ describe('buildArticleBreadcrumbs', () => {
     })
 
     expect(crumbs[0].href).toBe('/')
-    expect(crumbs.slice(1).every((crumb) => crumb.href === undefined)).toBe(
-      true,
+    expect(crumbs[1].href).toBe('/catalog')
+  })
+
+  // A category the trail runs through has something under it, so the catalogue
+  // can open it: the root's card with the drill panel already inside.
+  it('opens the catalogue inside every category above the last', () => {
+    const crumbs = buildArticleBreadcrumbs({
+      categoryPaths: OIL_FILTER_PATHS,
+      brandName: 'MAHLE',
+      articleNumber: 'OX 389/1D',
+      categoryNodeId: '100245',
+    })
+
+    expect(hrefOf(crumbs, 'двигател')).toBe('/catalog?category=100002')
+    expect(hrefOf(crumbs, 'смазване')).toBe('/catalog?category=100245')
+  })
+
+  // The last category is where TecDoc files the part, so its listing is the one
+  // search certain to contain the article the visitor is looking at.
+  it('sends the category the part is filed under to its listing', () => {
+    const crumbs = buildArticleBreadcrumbs({
+      categoryPaths: OIL_FILTER_PATHS,
+      brandName: 'MAHLE',
+      articleNumber: 'OX 389/1D',
+    })
+    const params = paramsOf(hrefOf(crumbs, 'маслен филтър')!)
+
+    expect(params.getAll('cat')).toEqual(['100005', '100259'])
+    expect(params.get('q')).toBe('')
+    expect(params.has('vehicleId')).toBe(false)
+  })
+
+  // The saved car never scopes a search on its own, so the listing is only
+  // narrowed when the article was being read for a car.
+  it('keeps the car the article arrived scoped to', () => {
+    const crumbs = buildArticleBreadcrumbs({
+      categoryPaths: OIL_FILTER_PATHS,
+      brandName: 'MAHLE',
+      articleNumber: 'OX 389/1D',
+      vehicleId: '13074',
+    })
+
+    expect(paramsOf(hrefOf(crumbs, 'маслен филтър')!).get('vehicleId')).toBe(
+      '13074',
     )
+  })
+
+  // A single-step trail is both the first category and the last, and what it
+  // means is "where the part is filed" rather than "a root to browse".
+  it('reads a one-step trail as the listing', () => {
+    const crumbs = buildArticleBreadcrumbs({
+      categoryPaths: [path(['100342', 'почистване на фаровете'])],
+      brandName: 'MAHLE',
+      articleNumber: 'OX 389/1D',
+    })
+
+    expect(
+      paramsOf(hrefOf(crumbs, 'почистване на фаровете')!).getAll('cat'),
+    ).toEqual(['100342'])
+  })
+
+  it('leaves the part itself as text rather than a link to this page', () => {
+    const crumbs = buildArticleBreadcrumbs({
+      categoryPaths: OIL_FILTER_PATHS,
+      brandName: 'MAHLE',
+      articleNumber: 'OX 389/1D',
+    })
+
+    expect(crumbs.at(-1)?.href).toBeUndefined()
   })
 
   it('continues the trail the visitor drilled', () => {
@@ -150,6 +221,7 @@ describe('buildArticleBreadcrumbs', () => {
       'Всички категории',
       'MAHLE OX 389/1D',
     ])
+    expect(crumbs[1].href).toBe('/catalog')
   })
 
   // Two brands file one number, so the number alone does not name the part.
