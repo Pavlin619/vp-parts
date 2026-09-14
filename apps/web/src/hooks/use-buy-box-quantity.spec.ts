@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import type { WarehouseAvailabilityDto, WarehouseId } from "@vp-parts-shop/shared";
-import { MAX_QUANTITY, useBuyBoxQuantity } from "./use-buy-box-quantity";
+import { MAX_QUANTITY } from "@/lib/delivery/availability";
+import { useBuyBoxQuantity } from "./use-buy-box-quantity";
 
 function warehouse(
   warehouseId: WarehouseId,

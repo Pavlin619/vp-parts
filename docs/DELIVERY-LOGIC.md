@@ -154,10 +154,16 @@ The frontend never recomputes dates — it formats what the backend sends and
 chooses which warehouse to quote:
 
 - **Quantity-aware single date.** There is **one** delivery date per order line.
-  `selectWarehouseForQuantity` (`lib/availability.ts`) walks warehouses
+  `selectWarehouseForQuantity` (`lib/delivery/availability.ts`) walks warehouses
   fastest-first, accumulates quantity, and returns the warehouse where the
   cumulative quantity first covers the requested quantity. If stock is
   insufficient it falls back to the slowest warehouse, so we always show a date.
+- **One place applies that rule.** Every surface showing a line's promise — the
+  buy box, the catalog row — goes through `resolveLineFulfilment`, which pairs
+  the chosen warehouse with the stock rollup behind it. Reading
+  `availabilityByWarehouse` directly is how a row ends up quoting the fastest
+  warehouse's speed for a quantity that warehouse cannot ship, so the delivery
+  chip and the stock figure beside it must come from the same call.
 - **Quantity cap.** The buy-box stepper is capped at the total quantity across
   all warehouses (`summariseWarehouses(...).totalQuantity`), so the customer can
   never order more than is deliverable. The effective amount is derived (clamped)
