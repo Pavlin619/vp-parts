@@ -1,4 +1,8 @@
-import type { WarehouseAvailabilityDto, WarehouseId } from "@vp-parts-shop/shared";
+import type {
+  ArticlesAvailabilityDto,
+  WarehouseAvailabilityDto,
+  WarehouseId,
+} from "@vp-parts-shop/shared";
 
 /**
  * Customer-facing warehouse names. The backend already groups supplier stock
@@ -148,6 +152,29 @@ export function resolveLineFulfilment(
     totalQuantity,
     warehouse: selectWarehouseForQuantity(warehouses, quantity),
   };
+}
+
+/**
+ * Every order cut-off in a batch availability read, de-duplicated and in
+ * chronological order — what a surface schedules its re-validation against.
+ *
+ * De-duplicated because a page of fifty articles carries the same handful of
+ * warehouse deadlines fifty times over, and the caller keys an effect on this.
+ */
+export function collectCutoffAts(
+  availability: ArticlesAvailabilityDto | null | undefined,
+): string[] {
+  if (!availability) {
+    return [];
+  }
+
+  const cutoffAts = Object.values(availability).flatMap((detail) =>
+    detail.availabilityByWarehouse.map((warehouse) => warehouse.cutoffAt),
+  );
+
+  // ISO UTC instants sort chronologically as strings, and sorting makes the
+  // list canonical so a reordered read does not read as a changed one.
+  return [...new Set(cutoffAts)].sort();
 }
 
 /**

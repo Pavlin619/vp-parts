@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useCutoffRefresh } from "./use-cutoff-refresh";
 
 /**
  * Minimum snapshot age before a focus/visibility change triggers a refresh, so
@@ -8,8 +9,8 @@ import { useEffect } from "react";
  */
 const REFRESH_TTL_MS = 60_000;
 
-/** Land just after a cut-off boundary so the recompute sees the new band. */
-const CUTOFF_GRACE_MS = 1_000;
+/** A snapshot with no cut-offs to schedule against, as one stable reference. */
+const NO_CUTOFFS: string[] = [];
 
 /**
  * Keeps a live delivery snapshot honest on a long-lived detail page. The buy
@@ -18,30 +19,22 @@ const CUTOFF_GRACE_MS = 1_000;
  * (quantity, toggles) — no full navigation.
  *
  * It refreshes:
- *  - proactively, via a timer set to the soonest upcoming order cut-off (the
- *    moment a shown date would change);
+ *  - proactively, when an order cut-off passes (see {@link useCutoffRefresh});
  *  - reactively, when the tab regains focus after the snapshot has aged.
+ *
+ * The focus half is this page's alone: a detail page is the one a visitor
+ * leaves open, and it holds a date rather than the relative band a list shows.
  */
 export function useDeliveryRefresh(
   computedAt: string | null | undefined,
   cutoffAts: string[],
   onRefresh: () => void,
 ): void {
+  useCutoffRefresh(computedAt ? cutoffAts : NO_CUTOFFS, onRefresh);
+
   useEffect(() => {
     if (!computedAt) {
       return;
-    }
-
-    const now = Date.now();
-
-    const nextCutoff = cutoffAts
-      .map((iso) => new Date(iso).getTime())
-      .filter((ms) => ms > now)
-      .sort((a, b) => a - b)[0];
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (nextCutoff !== undefined) {
-      timer = setTimeout(onRefresh, nextCutoff - now + CUTOFF_GRACE_MS);
     }
 
     function refreshIfAged() {
@@ -57,11 +50,8 @@ export function useDeliveryRefresh(
     window.addEventListener("focus", refreshIfAged);
 
     return () => {
-      if (timer) {
-        clearTimeout(timer);
-      }
       document.removeEventListener("visibilitychange", refreshIfAged);
       window.removeEventListener("focus", refreshIfAged);
     };
-  }, [computedAt, cutoffAts, onRefresh]);
+  }, [computedAt, onRefresh]);
 }

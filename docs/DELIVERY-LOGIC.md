@@ -169,6 +169,15 @@ chooses which warehouse to quote:
   never order more than is deliverable. The effective amount is derived (clamped)
   during render, so a re-validation that shrinks stock silently pulls an
   over-selection back down.
+- **A passing cut-off re-reads, it does not re-derive.** `useCutoffRefresh`
+  (`hooks/use-cutoff-refresh.ts`) times the soonest `cutoffAt` in a read and
+  refetches when it passes. Every surface holding live availability wires it —
+  search, substitutes, and the buy box through `useDeliveryRefresh`. It has to
+  be a read: once a cut-off passes, the band the snapshot carries is simply
+  wrong, and correcting it needs the working-day calendar, which is the
+  backend's. One timer covers a whole page however many articles it holds,
+  because the first boundary is the first moment anything on screen could be
+  wrong and the read it triggers refreshes every row at once.
 - **Near-cut-off panel.** `DeliveryCutoffNotice`
   (`components/catalog/delivery-cutoff-notice.tsx`, logic in `lib/cutoff.ts`)
   shows an actionable countdown — "Поръчай до 11:00 ч. за доставка днес · остават

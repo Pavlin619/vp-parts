@@ -9,7 +9,9 @@ import type {
 } from "@vp-parts-shop/shared";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
+import { useCutoffRefresh } from "@/hooks/use-cutoff-refresh";
 import type { SearchUrlState } from "@/lib/catalog/search-url";
+import { collectCutoffAts } from "@/lib/delivery/availability";
 import { SearchResults } from "./search-results";
 
 interface SearchResultsAvailabilityProps {
@@ -54,6 +56,8 @@ export function SearchResultsAvailability({
   const { data, isError, refetch } = useQuery(
     availabilityQueryOptions(results),
   );
+
+  useCutoffRefresh(collectCutoffAts(data), refetch);
 
   return (
     <>

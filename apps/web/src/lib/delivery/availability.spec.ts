@@ -1,5 +1,10 @@
-import type { WarehouseAvailabilityDto, WarehouseId } from "@vp-parts-shop/shared";
+import type {
+  ArticleInventoryDetailDto,
+  WarehouseAvailabilityDto,
+  WarehouseId,
+} from "@vp-parts-shop/shared";
 import {
+  collectCutoffAts,
   deliveryBand,
   formatStockQuantity,
   isStockCapped,
@@ -193,6 +198,70 @@ describe("deliveryBand", () => {
   it("clamps anything slower than three days to the orange band", () => {
     expect(deliveryBand(warehouse("POLAND", 4, { deliveryWorkDays: 5 }))).toBe(
       "day3",
+    );
+  });
+});
+
+describe("collectCutoffAts", () => {
+  function detail(
+    availabilityByWarehouse: WarehouseAvailabilityDto[],
+  ): ArticleInventoryDetailDto {
+    return {
+      available: true,
+      bestPriceExVat: 1000,
+      bestPriceIncVat: 1200,
+      availabilityByWarehouse,
+      computedAt: "2026-06-25T07:00:00.000Z",
+    };
+  }
+
+  it("has nothing to schedule against without a read", () => {
+    expect(collectCutoffAts(undefined)).toEqual([]);
+    expect(collectCutoffAts(null)).toEqual([]);
+    expect(collectCutoffAts({})).toEqual([]);
+  });
+
+  it("gathers the cut-offs of every warehouse of every article", () => {
+    const cutoffs = collectCutoffAts({
+      "268:WL6340": detail([
+        warehouse("CENTRAL", 2, { cutoffAt: "2026-06-25T15:00:00.000Z" }),
+        warehouse("POLAND", 9, { cutoffAt: "2026-06-25T09:00:00.000Z" }),
+      ]),
+      "72:OC115": detail([
+        warehouse("ROMANIA", 1, { cutoffAt: "2026-06-25T12:00:00.000Z" }),
+      ]),
+    });
+
+    expect(cutoffs).toEqual([
+      "2026-06-25T09:00:00.000Z",
+      "2026-06-25T12:00:00.000Z",
+      "2026-06-25T15:00:00.000Z",
+    ]);
+  });
+
+  // A page of fifty articles carries the same handful of deadlines fifty times,
+  // and the caller keys an effect on this list.
+  it("reports one entry per distinct cut-off", () => {
+    const shared = "2026-06-25T15:00:00.000Z";
+
+    expect(
+      collectCutoffAts({
+        "268:WL6340": detail([warehouse("CENTRAL", 2, { cutoffAt: shared })]),
+        "72:OC115": detail([warehouse("CENTRAL", 4, { cutoffAt: shared })]),
+      }),
+    ).toEqual([shared]);
+  });
+
+  it("is unchanged by the order the articles arrive in", () => {
+    const first = detail([
+      warehouse("CENTRAL", 2, { cutoffAt: "2026-06-25T15:00:00.000Z" }),
+    ]);
+    const second = detail([
+      warehouse("POLAND", 9, { cutoffAt: "2026-06-25T09:00:00.000Z" }),
+    ]);
+
+    expect(collectCutoffAts({ a: first, b: second })).toEqual(
+      collectCutoffAts({ b: second, a: first }),
     );
   });
 });
