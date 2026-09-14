@@ -1,3 +1,4 @@
+export { ArticleIdentity } from "./article-identity";
 export { ArticleRow } from "./article-row";
 export { ArticleRowAvailability } from "./article-row-availability";
 export { ArticleRowBuy } from "./article-row-buy";
@@ -5,6 +6,10 @@ export { ArticleRowDetail } from "./article-row-detail";
 export { ArticleRowNumbers } from "./article-row-numbers";
 export { ArticleRowSubstitutes } from "./article-row-substitutes";
 export { ArticleRowVehicles } from "./article-row-vehicles";
+export { ArticleThumbnail } from "./article-thumbnail";
+export { BrandLogo } from "./brand-logo";
+export { DeliveryChip } from "./delivery-chip";
 export { PartNumberChip } from "./part-number-chip";
+export { RowCell } from "./row-cell";
 export { SectionLoadError } from "./section-load-error";
 export { SubstitutesSortToggle } from "./substitutes-sort-toggle";
