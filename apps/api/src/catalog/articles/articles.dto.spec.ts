@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { AVAILABILITY_MAX_ARTICLES } from '@vp-parts-shop/shared';
 import {
   ARTICLE_MAX_PAGE,
   ARTICLE_MAX_PAGE_SIZE,
   ArticlePageQueryDto,
   ArticlesAvailabilityQueryDto,
-  AVAILABILITY_MAX_ARTICLES,
   parseArticleIdentities,
 } from './articles.dto';
 

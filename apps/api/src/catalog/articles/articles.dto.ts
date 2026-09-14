@@ -16,22 +16,11 @@ import {
 import { Transform, Type } from 'class-transformer';
 import {
   ArticleIdentityDto,
+  AVAILABILITY_MAX_ARTICLES,
   SEARCH_SORTS,
   articleIdentityKey,
   type SearchSort,
 } from '@vp-parts-shop/shared';
-
-/**
- * Upper bound on the articles one availability request may carry.
- *
- * Every caller hydrates exactly one rendered page: the catalog grid, search and
- * the substitutes tab all cap their page size at 50, and the buy box asks for a
- * single article — so nothing legitimate comes close.
- * The cap exists because this endpoint is deliberately never cached and fans one
- * request out into a single `IN (...)` against the shared database, which makes
- * an unbounded list the cheapest way to make that database everyone's problem.
- */
-export const AVAILABILITY_MAX_ARTICLES = 50;
 
 /**
  * Longest article number accepted. Real TecDoc numbers are well under this; the
