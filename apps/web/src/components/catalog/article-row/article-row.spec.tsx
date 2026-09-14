@@ -6,6 +6,7 @@ import type {
   WarehouseAvailabilityDto,
   WarehouseId,
 } from '@vp-parts-shop/shared'
+import { MAX_CART_LINES, useCart } from '@/hooks/use-cart'
 import { ArticleRow } from './article-row'
 
 function article(
@@ -266,16 +267,13 @@ describe('ArticleRow — availability states', () => {
 })
 
 describe('ArticleRow — interactions', () => {
+  beforeEach(() => {
+    useCart.setState({ lines: [] })
+  })
+
   it('adds the article and its selected quantity to the cart', async () => {
     const user = userEvent.setup()
-    const onAddToCart = jest.fn()
-    render(
-      <ArticleRow
-        article={article()}
-        availability={detail()}
-        onAddToCart={onAddToCart}
-      />,
-    )
+    render(<ArticleRow article={article()} availability={detail()} />)
 
     await user.click(
       screen.getByRole('button', { name: 'Увеличи количеството за WL6340' }),
@@ -284,7 +282,105 @@ describe('ArticleRow — interactions', () => {
       screen.getByRole('button', { name: /Добави Маслен филтър в кошницата/ }),
     )
 
-    expect(onAddToCart).toHaveBeenCalledWith('WL6340', 2)
+    expect(useCart.getState().lines).toEqual([
+      {
+        brandId: '268',
+        articleNumber: 'WL6340',
+        brandName: 'WIX',
+        brandLogoUrl: null,
+        description: 'Маслен филтър',
+        thumbnailUrl: null,
+        quantity: 2,
+        isSelected: true,
+      },
+    ])
+  })
+
+  // The cart row renders from what the line stores, so the line has to carry
+  // the catalog metadata the list already had rather than just the identity.
+  it('stores the part photo the list was showing', async () => {
+    const user = userEvent.setup()
+    render(
+      <ArticleRow
+        article={article({ thumbnailUrl: 'https://images.example/wl.jpg' })}
+        availability={detail()}
+      />,
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: /Добави Маслен филтър в кошницата/ }),
+    )
+
+    expect(useCart.getState().lines[0].thumbnailUrl).toBe(
+      'https://images.example/wl.jpg',
+    )
+  })
+
+  it('raises the line instead of adding a second one for the same part', async () => {
+    const user = userEvent.setup()
+    render(<ArticleRow article={article()} availability={detail()} />)
+
+    const addToCart = screen.getByRole('button', {
+      name: /Добави Маслен филтър в кошницата/,
+    })
+    await user.click(addToCart)
+    await user.click(addToCart)
+
+    expect(useCart.getState().lines).toHaveLength(1)
+    expect(useCart.getState().lines[0].quantity).toBe(2)
+  })
+
+  // A full cart prices none of its lines rather than some, so the row stops
+  // offering the add instead of letting it silently do nothing.
+  describe('with a full cart', () => {
+    /** Fills every slot but `spare` with parts other than the row's. */
+    function fillCartWithOtherParts(spare = 0) {
+      useCart.setState({
+        lines: Array.from({ length: MAX_CART_LINES - spare }, (_, index) => ({
+          brandId: '268',
+          articleNumber: `OTHER-${index}`,
+          brandName: 'WIX',
+          brandLogoUrl: null,
+          description: 'Друга част',
+          thumbnailUrl: null,
+          quantity: 1,
+          isSelected: true,
+        })),
+      })
+    }
+
+    it('disables the add and says why', () => {
+      fillCartWithOtherParts()
+      render(<ArticleRow article={article()} availability={detail()} />)
+
+      expect(
+        screen.getByRole('button', { name: /Кошницата е пълна/ }),
+      ).toBeDisabled()
+    })
+
+    // Topping up raises a line rather than adding one, so it costs the batch
+    // nothing and a full cart must not block it.
+    it('still offers the add for a part already in the cart', () => {
+      fillCartWithOtherParts(1)
+      useCart.getState().addLine(
+        {
+          brandId: '268',
+          articleNumber: 'WL6340',
+          brandName: 'WIX',
+          brandLogoUrl: null,
+          description: 'Маслен филтър',
+          thumbnailUrl: null,
+        },
+        1,
+      )
+
+      render(<ArticleRow article={article()} availability={detail()} />)
+
+      expect(useCart.getState().lines).toHaveLength(MAX_CART_LINES)
+      expect(
+        screen.getByRole('button', { name: /Добави Маслен филтър в кошницата/ }),
+      ).toBeEnabled()
+    })
   })
 
   it('clamps the quantity to the stock the warehouses actually hold', async () => {
