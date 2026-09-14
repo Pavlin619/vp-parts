@@ -40,6 +40,7 @@ function renderBuy(
     <ArticleRowBuy
       availability={availability}
       quantity={overrides.quantity ?? quantityControl()}
+      articleNumber="WL6340"
       articleName="Маслен филтър"
       onAddToCart={overrides.onAddToCart}
     />,
@@ -85,13 +86,15 @@ describe('ArticleRowBuy — resolved', () => {
     expect(onAddToCart).toHaveBeenCalledWith(3)
   })
 
-  it('steps the quantity through the shared control', async () => {
+  // A results page holds one of these per row, so the labels have to name the
+  // part — fifty buttons all announced as "increase quantity" name nothing.
+  it('steps the quantity through the shared control, named for the part', async () => {
     const user = userEvent.setup()
     const changeQuantity = jest.fn()
     renderBuy(detail(), { quantity: quantityControl({ changeQuantity }) })
 
     await user.click(
-      screen.getByRole('button', { name: 'Увеличи количеството' }),
+      screen.getByRole('button', { name: 'Увеличи количеството за WL6340' }),
     )
 
     expect(changeQuantity).toHaveBeenCalledWith(1)
@@ -103,10 +106,10 @@ describe('ArticleRowBuy — resolved', () => {
     })
 
     expect(
-      screen.getByRole('button', { name: 'Намали количеството' }),
+      screen.getByRole('button', { name: 'Намали количеството за WL6340' }),
     ).toBeDisabled()
     expect(
-      screen.getByRole('button', { name: 'Увеличи количеството' }),
+      screen.getByRole('button', { name: 'Увеличи количеството за WL6340' }),
     ).toBeDisabled()
   })
 
