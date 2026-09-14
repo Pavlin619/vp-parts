@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react";
 import { SiteLogo } from "./site-logo";
 import { MainNav } from "./main-nav";
 import { HeaderSearch } from "./header-search";
 import { VehiclePill } from "./vehicle-pill";
+import { CartLink } from "./cart-link";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
 
 export function ShopHeader() {
@@ -49,13 +49,7 @@ export function ShopHeader() {
               </svg>
             </Link>
 
-            <Link
-              href="/cart"
-              className="p-2 rounded-lg hover:bg-bg-sunken transition-colors"
-              aria-label="Кошница"
-            >
-              <ShoppingCart className="w-5 h-5 text-ink" aria-hidden="true" />
-            </Link>
+            <CartLink />
           </div>
         </div>
       </header>

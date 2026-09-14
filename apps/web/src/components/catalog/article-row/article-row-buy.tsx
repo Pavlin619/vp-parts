@@ -33,6 +33,8 @@ interface ArticleRowBuyProps {
   /** Names the part in the stepper's labels — a list holds one per row. */
   articleNumber: string;
   articleName: string;
+  /** False once the cart is full of other parts — see `MAX_CART_LINES`. */
+  canAddToCart?: boolean;
   onAddToCart?: (quantity: number) => void;
 }
 
@@ -46,6 +48,7 @@ export function ArticleRowBuy({
   quantity,
   articleNumber,
   articleName,
+  canAddToCart = true,
   onAddToCart,
 }: ArticleRowBuyProps) {
   const includesVat = usePricesIncludeVat();
@@ -89,7 +92,12 @@ export function ArticleRowBuy({
           <Button
             type="button"
             onClick={() => onAddToCart?.(quantity.selectedQuantity)}
-            aria-label={`Добави ${articleName} в кошницата`}
+            disabled={!canAddToCart}
+            aria-label={
+              canAddToCart
+                ? `Добави ${articleName} в кошницата`
+                : `Кошницата е пълна — премахнете артикул, за да добавите ${articleName}`
+            }
             className="h-8 gap-1.5 rounded-md bg-accent px-3 text-white hover:bg-accent-hover"
           >
             <ShoppingCart className="h-4 w-4" aria-hidden="true" />

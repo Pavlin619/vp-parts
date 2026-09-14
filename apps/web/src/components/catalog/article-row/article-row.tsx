@@ -8,6 +8,7 @@ import type {
   WarehouseAvailabilityDto,
 } from "@vp-parts-shop/shared";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
+import { useCanAddLine, useCart } from "@/hooks/use-cart";
 import { articleDetailHref } from "@/lib/catalog/article-href";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,6 @@ interface ArticleRowProps {
    * picking one of TecDoc's other trails for the same part.
    */
   categoryNodeId?: string;
-  onAddToCart?: (articleNumber: string, quantity: number) => void;
 }
 
 /** Specs shown on the collapsed row; the rest live in the expander. */
@@ -57,6 +57,10 @@ const NO_WAREHOUSES: WarehouseAvailabilityDto[] = [];
  * inventory read; the expander's sections are the only other reads, and each
  * waits until a visitor opens it.
  *
+ * The buy action writes straight to the cart store rather than reporting up to
+ * the list: what "add to cart" means is the same on every list surface, and a
+ * handler threaded through each one is a way for them to disagree.
+ *
  * Deliberately shows no vehicle-fit verdict even though `ArticleSummaryDto`
  * carries one: list surfaces are vehicle-agnostic, and resolving fit per row
  * would cost a lookup per hit. Fit is rendered only on the article detail page.
@@ -67,9 +71,10 @@ export function ArticleRow({
   article,
   availability,
   categoryNodeId,
-  onAddToCart,
 }: ArticleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const addLine = useCart((state) => state.addLine);
+  const canAddToCart = useCanAddLine(article);
 
   const quantity = useBuyBoxQuantity(
     availability?.availabilityByWarehouse ?? NO_WAREHOUSES,
@@ -142,7 +147,20 @@ export function ArticleRow({
               quantity={quantity}
               articleNumber={articleNumber}
               articleName={description}
-              onAddToCart={(selected) => onAddToCart?.(articleNumber, selected)}
+              canAddToCart={canAddToCart}
+              onAddToCart={(selected) =>
+                addLine(
+                  {
+                    brandId,
+                    articleNumber,
+                    brandName,
+                    brandLogoUrl: article.brandLogoUrl,
+                    description,
+                    thumbnailUrl: article.thumbnailUrl,
+                  },
+                  selected,
+                )
+              }
             />
           </div>
         </div>
