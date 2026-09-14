@@ -1,7 +1,8 @@
 "use client";
 
-import { Minus, Plus, ShoppingCart } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import { formatPrice } from "@vp-parts-shop/shared";
+import { QuantityStepper } from "@/components/common/quantity-stepper";
 import { Button } from "@/components/ui/button";
 import type { BuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { usePricesIncludeVat } from "@/hooks/use-price-display";
@@ -29,6 +30,8 @@ interface ArticleRowBuyProps {
   availability: RowAvailability;
   /** Shared with the stock cell so the dialog dims what it cannot fulfil. */
   quantity: BuyBoxQuantity;
+  /** Names the part in the stepper's labels — a list holds one per row. */
+  articleNumber: string;
   articleName: string;
   onAddToCart?: (quantity: number) => void;
 }
@@ -41,6 +44,7 @@ interface ArticleRowBuyProps {
 export function ArticleRowBuy({
   availability,
   quantity,
+  articleNumber,
   articleName,
   onAddToCart,
 }: ArticleRowBuyProps) {
@@ -73,36 +77,14 @@ export function ArticleRowBuy({
 
       {canBuy && (
         <div className="flex shrink-0 items-center gap-1.5 @row-split:mt-1">
-          <div className="flex h-8 items-center rounded-md border border-line">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => quantity.changeQuantity(-1)}
-              disabled={quantity.selectedQuantity <= 1}
-              aria-label="Намали количеството"
-              className="h-8 w-[26px] rounded-l-md rounded-r-none text-ink"
-            >
-              <Minus className="h-3 w-3" aria-hidden="true" />
-            </Button>
-            <span
-              className="w-[26px] text-center font-display text-xs font-medium tabular-nums text-ink"
-              aria-label="Количество"
-            >
-              {quantity.selectedQuantity}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => quantity.changeQuantity(1)}
-              disabled={quantity.selectedQuantity >= quantity.maxQuantity}
-              aria-label="Увеличи количеството"
-              className="h-8 w-[26px] rounded-l-none rounded-r-md text-ink"
-            >
-              <Plus className="h-3 w-3" aria-hidden="true" />
-            </Button>
-          </div>
+          <QuantityStepper
+            value={quantity.selectedQuantity}
+            max={quantity.maxQuantity}
+            onChange={(next) =>
+              quantity.changeQuantity(next - quantity.selectedQuantity)
+            }
+            itemLabel={articleNumber}
+          />
 
           <Button
             type="button"

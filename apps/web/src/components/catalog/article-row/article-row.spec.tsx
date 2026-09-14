@@ -248,7 +248,7 @@ describe('ArticleRow — interactions', () => {
     )
 
     await user.click(
-      screen.getByRole('button', { name: 'Увеличи количеството' }),
+      screen.getByRole('button', { name: 'Увеличи количеството за WL6340' }),
     )
     await user.click(
       screen.getByRole('button', { name: /Добави Маслен филтър в кошницата/ }),
@@ -269,11 +269,11 @@ describe('ArticleRow — interactions', () => {
     )
 
     const increment = screen.getByRole('button', {
-      name: 'Увеличи количеството',
+      name: 'Увеличи количеството за WL6340',
     })
     await user.click(increment)
 
-    expect(screen.getByLabelText('Количество')).toHaveTextContent('2')
+    expect(screen.getByLabelText('Количество за WL6340')).toHaveTextContent('2')
     expect(increment).toBeDisabled()
   })
 

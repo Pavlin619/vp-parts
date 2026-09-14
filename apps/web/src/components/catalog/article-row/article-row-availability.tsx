@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPin, Truck } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import type { ArticleInventoryDetailDto } from "@vp-parts-shop/shared";
 import { WarehouseAvailabilityDialog } from "@/components/catalog/availability/warehouse-availability-dialog";
 import {
@@ -13,6 +13,8 @@ import {
 import { DELIVERY_BAND, DELIVERY_BAND_LABEL } from "@/lib/delivery/bands";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
 import { cn } from "@/lib/utils";
+import { DeliveryChip } from "./delivery-chip";
+import { RowCell } from "./row-cell";
 
 interface ArticleRowAvailabilityProps {
   availability: RowAvailability;
@@ -152,26 +154,6 @@ function AvailabilityCells({
   );
 }
 
-/** The delivery cell's badge; `className` carries the state's tone. */
-function DeliveryChip({
-  className,
-  children,
-}: {
-  className: string;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex w-fit items-center gap-1.5 rounded-[5px] px-2 py-[5px] text-[11.5px] font-semibold leading-[1.2]",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
 /** The stock cell's speed dot with its headline and optional warehouse name. */
 function StockHeadline({
   dotClassName,
@@ -241,17 +223,5 @@ function AvailabilityUnknown() {
         <span className="text-[11.5px] text-ink-3">Няма данни</span>
       </RowCell>
     </>
-  );
-}
-
-/** One labelled column. */
-function RowCell({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <p className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.05em] text-ink-4">
-        {title}
-      </p>
-      {children}
-    </div>
   );
 }
