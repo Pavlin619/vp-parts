@@ -10,7 +10,6 @@ import {
   ArticleRowsTecDoc,
   LinkedVehiclesTecDoc,
   ArticleNotFoundException,
-  AVAILABILITY_MAX_ARTICLES,
 } from '../src/catalog';
 import { REDIS_CLIENT } from '../src/redis';
 import {
@@ -26,6 +25,7 @@ import {
   BrandDto,
   ArticleCatalogDetailDto,
   ArticleSummaryDto,
+  AVAILABILITY_MAX_ARTICLES,
 } from '@vp-parts-shop/shared';
 
 /** The two halves the route merges: the make facet, and TecDoc's own curation. */

@@ -96,3 +96,16 @@ export function articleIdentityKey(
  * inventory row.
  */
 export type ArticlesAvailabilityDto = Record<string, ArticleInventoryDetailDto>;
+
+/**
+ * Upper bound on the articles one availability request may carry.
+ *
+ * The cap exists because that endpoint is deliberately never cached and fans one
+ * request out into a single `IN (...)` against the shared database, which makes
+ * an unbounded list the cheapest way to make that database everyone's problem.
+ *
+ * Shared rather than owned by the API, because it bounds what a caller may
+ * *build*, not just what the route accepts: a catalog page is bounded by its
+ * page size, but a cart grows one add at a time and has to stop itself.
+ */
+export const AVAILABILITY_MAX_ARTICLES = 50;
