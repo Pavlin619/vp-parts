@@ -7,8 +7,8 @@ import { WarehouseAvailabilityDialog } from "@/components/catalog/availability/w
 import {
   deliveryBand,
   formatStockQuantity,
+  resolveLineFulfilment,
   STOCK_DISPLAY_LIMIT,
-  summariseWarehouses,
 } from "@/lib/delivery/availability";
 import { DELIVERY_BAND, DELIVERY_BAND_LABEL } from "@/lib/delivery/bands";
 import type { RowAvailability } from "@/lib/catalog/merge-availability";
@@ -20,7 +20,7 @@ interface ArticleRowAvailabilityProps {
   availability: RowAvailability;
   articleNumber: string;
   articleName: string;
-  /** Selected line quantity — dims warehouses that can't fulfil it in the dialog. */
+  /** Selected line quantity — decides which warehouse the whole line ships from. */
   quantity: number;
 }
 
@@ -70,11 +70,10 @@ function AvailabilityCells({
 }) {
   // Memoised because a list re-renders every row whenever anything above it
   // changes, and the rollup is the only real work a row does.
-  const { warehouses, totalQuantity } = useMemo(
-    () => summariseWarehouses(availability.availabilityByWarehouse),
-    [availability.availabilityByWarehouse],
+  const { warehouses, totalQuantity, warehouse } = useMemo(
+    () => resolveLineFulfilment(availability.availabilityByWarehouse, quantity),
+    [availability.availabilityByWarehouse, quantity],
   );
-  const fastest = warehouses[0];
 
   if (!availability.available) {
     return (
@@ -96,7 +95,7 @@ function AvailabilityCells({
   // It is genuinely in stock, so no red chip — but the payload says nothing
   // about how fast it ships, and a delivery band here would promise a date we
   // have no data for.
-  if (!fastest) {
+  if (!warehouse) {
     return (
       <>
         <RowCell title="Доставка">
@@ -112,9 +111,9 @@ function AvailabilityCells({
     );
   }
 
-  const band = deliveryBand(fastest);
+  const band = deliveryBand(warehouse);
   const tone = DELIVERY_BAND[band];
-  const otherStock = totalQuantity - fastest.quantity;
+  const otherStock = totalQuantity - warehouse.quantity;
 
   // The trigger's own leading "+" carries the cap, so this is a bare 9 where
   // every other surface renders "9+".
@@ -132,8 +131,8 @@ function AvailabilityCells({
       <RowCell title="Наличност">
         <StockHeadline
           dotClassName={tone.dot}
-          headline={`${formatStockQuantity(fastest.quantity)} бр.`}
-          detail={fastest.name}
+          headline={`${formatStockQuantity(warehouse.quantity)} бр.`}
+          detail={warehouse.name}
         />
 
         <WarehouseAvailabilityDialog

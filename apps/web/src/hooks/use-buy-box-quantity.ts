@@ -2,15 +2,12 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { WarehouseAvailabilityDto } from "@vp-parts-shop/shared";
-import { summariseWarehouses } from "@/lib/delivery/availability";
-
-/** Absolute ceiling for the quantity stepper, regardless of stock. */
-export const MAX_QUANTITY = 99;
+import { stockCeiling } from "@/lib/delivery/availability";
 
 export interface BuyBoxQuantity {
   /** The effective, always-deliverable selection (stock- and ceiling-clamped). */
   selectedQuantity: number;
-  /** Highest quantity the current stock allows, capped at {@link MAX_QUANTITY}. */
+  /** Highest quantity the current stock allows, capped at the absolute ceiling. */
   maxQuantity: number;
   /** Steps the selection by `delta`, kept within `[1, maxQuantity]`. */
   changeQuantity: (delta: number) => void;
@@ -28,13 +25,10 @@ export function useBuyBoxQuantity(
 ): BuyBoxQuantity {
   const [quantity, setQuantity] = useState(1);
 
-  const { totalQuantity } = useMemo(
-    () => summariseWarehouses(availabilityByWarehouse),
+  const maxQuantity = useMemo(
+    () => stockCeiling(availabilityByWarehouse),
     [availabilityByWarehouse],
   );
-
-  const maxQuantity =
-    totalQuantity > 0 ? Math.min(totalQuantity, MAX_QUANTITY) : MAX_QUANTITY;
 
   const selectedQuantity = Math.min(quantity, maxQuantity);
 

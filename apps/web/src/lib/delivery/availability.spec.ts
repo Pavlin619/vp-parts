@@ -4,6 +4,7 @@ import {
   formatStockQuantity,
   isStockCapped,
   isWarehouseSnapshotStale,
+  resolveLineFulfilment,
   selectWarehouseForQuantity,
   summariseWarehouses,
 } from "./availability";
@@ -108,6 +109,49 @@ describe("selectWarehouseForQuantity", () => {
 
   it("returns null when nothing is in stock", () => {
     expect(selectWarehouseForQuantity([warehouse("CENTRAL", 0)], 1)).toBeNull();
+  });
+});
+
+describe("resolveLineFulfilment", () => {
+  const rows = [
+    warehouse("CENTRAL", 1),
+    warehouse("REGIONAL_1", 5, { deliveryWorkDays: 1 }),
+  ];
+
+  it("quotes the fastest warehouse when it covers the line on its own", () => {
+    expect(resolveLineFulfilment(rows, 1).warehouse?.warehouseId).toBe("CENTRAL");
+  });
+
+  // The line ships as one parcel, so two pieces cannot come from a warehouse
+  // holding one — the promise is the slower warehouse's, not the fastest.
+  it("advances to the slower warehouse the whole line needs", () => {
+    expect(resolveLineFulfilment(rows, 2).warehouse).toMatchObject({
+      warehouseId: "REGIONAL_1",
+      name: "Регионален склад 1",
+    });
+  });
+
+  it("still quotes the slowest warehouse when stock cannot cover the line", () => {
+    expect(resolveLineFulfilment(rows, 99).warehouse?.warehouseId).toBe(
+      "REGIONAL_1",
+    );
+  });
+
+  it("has nothing to quote when no warehouse holds stock", () => {
+    expect(resolveLineFulfilment([warehouse("CENTRAL", 0)], 1)).toMatchObject({
+      warehouse: null,
+      totalQuantity: 0,
+    });
+  });
+
+  it("keeps every stocked warehouse and the total for the breakdown", () => {
+    const fulfilment = resolveLineFulfilment(rows, 2);
+
+    expect(fulfilment.warehouses.map((row) => row.warehouseId)).toEqual([
+      "CENTRAL",
+      "REGIONAL_1",
+    ]);
+    expect(fulfilment.totalQuantity).toBe(6);
   });
 });
 

@@ -36,6 +36,9 @@ export function isStockCapped(quantity: number): boolean {
   return quantity > STOCK_DISPLAY_LIMIT;
 }
 
+/** Absolute ceiling for any quantity stepper, regardless of stock. */
+export const MAX_QUANTITY = 99;
+
 export function formatStockQuantity(quantity: number): string {
   return isStockCapped(quantity) ? `${STOCK_DISPLAY_LIMIT}+` : String(quantity);
 }
@@ -71,6 +74,20 @@ export function summariseWarehouses(
 }
 
 /**
+ * Highest quantity the given stock allows, capped at {@link MAX_QUANTITY}. An
+ * empty breakdown means we cannot know the stock, so the ceiling falls back to
+ * the absolute UI maximum — callers holding an `available: false` read must
+ * answer that case themselves rather than pass the empty list here.
+ */
+export function stockCeiling(
+  availabilityByWarehouse: WarehouseAvailabilityDto[],
+): number {
+  const { totalQuantity } = summariseWarehouses(availabilityByWarehouse);
+
+  return totalQuantity > 0 ? Math.min(totalQuantity, MAX_QUANTITY) : MAX_QUANTITY;
+}
+
+/**
  * Picks the single warehouse that fulfils the requested quantity. Walking the
  * fastest-first rows and accumulating stock means the promise for the whole line
  * is the slowest band we have to reach — so a customer asking for more than the
@@ -79,10 +96,10 @@ export function summariseWarehouses(
  * Falls back to the slowest warehouse when total stock is insufficient, so the
  * UI always shows the best-case date for the part rather than nothing.
  */
-export function selectWarehouseForQuantity(
-  availabilityByWarehouse: WarehouseAvailabilityDto[],
+export function selectWarehouseForQuantity<T extends WarehouseAvailabilityDto>(
+  availabilityByWarehouse: T[],
   quantity: number,
-): WarehouseAvailabilityDto | null {
+): T | null {
   const stocked = availabilityByWarehouse.filter((warehouse) => warehouse.quantity > 0);
   if (stocked.length === 0) {
     return null;
@@ -97,6 +114,40 @@ export function selectWarehouseForQuantity(
   }
 
   return stocked[stocked.length - 1];
+}
+
+/** What a line's live inventory means for the quantity actually being ordered. */
+export interface LineFulfilment {
+  /** Every stocked warehouse, fastest-first — the breakdown dialog's rows. */
+  warehouses: WarehouseRow[];
+  /** Stock across every warehouse. */
+  totalQuantity: number;
+  /**
+   * The single warehouse the whole line would ship from, and so the one whose
+   * band is the line's delivery promise. Null when nothing is stocked.
+   */
+  warehouse: WarehouseRow | null;
+}
+
+/**
+ * Everything a row needs to describe one line of `quantity` pieces.
+ *
+ * The single place the quantity-aware rule from `docs/DELIVERY-LOGIC.md` is
+ * applied: a line ships as one parcel, so its promise is the slowest band the
+ * order has to reach, never the fastest warehouse's. A surface that reads the
+ * warehouse breakdown itself quotes a speed for a quantity it cannot ship.
+ */
+export function resolveLineFulfilment(
+  availabilityByWarehouse: WarehouseAvailabilityDto[],
+  quantity: number,
+): LineFulfilment {
+  const { warehouses, totalQuantity } = summariseWarehouses(availabilityByWarehouse);
+
+  return {
+    warehouses,
+    totalQuantity,
+    warehouse: selectWarehouseForQuantity(warehouses, quantity),
+  };
 }
 
 /**

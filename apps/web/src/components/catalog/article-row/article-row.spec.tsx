@@ -27,11 +27,12 @@ function article(
 function warehouse(
   warehouseId: WarehouseId,
   quantity: number,
+  deliveryWorkDays = 0,
 ): WarehouseAvailabilityDto {
   return {
     warehouseId,
     quantity,
-    deliveryWorkDays: 0,
+    deliveryWorkDays,
     orderCutoffTime: '18:00',
     cutoffAt: '2099-06-25T15:00:00.000Z',
     pickup: { earliestAt: '2099-06-26T08:00:00.000Z', granularity: 'DAY' },
@@ -232,6 +233,35 @@ describe('ArticleRow — availability states', () => {
 
     expect(screen.getByText('Няма данни')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'WL6340' })).toBeInTheDocument()
+  })
+
+  // The line ships as one parcel, so raising the quantity past what the fastest
+  // warehouse holds slows the promise — and the stock cell has to follow it, or
+  // the row names one warehouse while its dot carries another's band.
+  it('slows the delivery promise when the quantity outgrows the fastest warehouse', async () => {
+    const user = userEvent.setup()
+    render(
+      <ArticleRow
+        article={article()}
+        availability={detail({
+          availabilityByWarehouse: [
+            warehouse('CENTRAL', 1),
+            warehouse('REGIONAL_1', 5, 1),
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('за днес')).toBeInTheDocument()
+    expect(screen.getByText('Централен склад')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Увеличи количеството за WL6340' }),
+    )
+
+    expect(screen.getByText('за 1 работен ден')).toBeInTheDocument()
+    expect(screen.getByText('5 бр.')).toBeInTheDocument()
+    expect(screen.getByText('Регионален склад 1')).toBeInTheDocument()
   })
 })
 
