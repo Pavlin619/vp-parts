@@ -159,11 +159,17 @@ chooses which warehouse to quote:
   cumulative quantity first covers the requested quantity. If stock is
   insufficient it falls back to the slowest warehouse, so we always show a date.
 - **One place applies that rule.** Every surface showing a line's promise — the
-  buy box, the catalog row — goes through `resolveLineFulfilment`, which pairs
-  the chosen warehouse with the stock rollup behind it. Reading
+  buy box, the catalog row, the cart row — goes through `resolveLineFulfilment`,
+  which pairs the chosen warehouse with the stock rollup behind it. Reading
   `availabilityByWarehouse` directly is how a row ends up quoting the fastest
   warehouse's speed for a quantity that warehouse cannot ship, so the delivery
   chip and the stock figure beside it must come from the same call.
+- **Whether a line is deliverable is a separate question, and the warehouse
+  rollup alone cannot answer it.** An empty breakdown on an `available: true`
+  part means the depth is unknown, not that there is none, so a bare
+  `totalQuantity >= quantity` would warn about a part that is fine. The cart
+  answers it in `lib/cart/cart-totals.ts`, which reads `available` first and
+  only then the rollup, and reports `null` for the case we genuinely cannot see.
 - **Quantity cap.** The buy-box stepper is capped at the total quantity across
   all warehouses (`summariseWarehouses(...).totalQuantity`), so the customer can
   never order more than is deliverable. The effective amount is derived (clamped)
@@ -172,9 +178,9 @@ chooses which warehouse to quote:
 - **A passing cut-off re-reads, it does not re-derive.** `useCutoffRefresh`
   (`hooks/use-cutoff-refresh.ts`) times the soonest `cutoffAt` in a read and
   refetches when it passes. Every surface holding live availability wires it —
-  search, substitutes, and the buy box through `useDeliveryRefresh`. It has to
-  be a read: once a cut-off passes, the band the snapshot carries is simply
-  wrong, and correcting it needs the working-day calendar, which is the
+  search, substitutes, the cart, and the buy box through `useDeliveryRefresh`.
+  It has to be a read: once a cut-off passes, the band the snapshot carries is
+  simply wrong, and correcting it needs the working-day calendar, which is the
   backend's. One timer covers a whole page however many articles it holds,
   because the first boundary is the first moment anything on screen could be
   wrong and the read it triggers refreshes every row at once.

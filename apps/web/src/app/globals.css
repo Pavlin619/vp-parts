@@ -223,6 +223,16 @@
   --container-row-wide: 820px;
 }
 
+/* A cart line is the same anatomy with three columns the catalog row does not
+   carry — quantity, unit price and line total — so it needs more width before
+   it can lay out on one line than `row-wide` asks for. 832px is what the eight
+   columns measure; this is that plus slack. Above it the cart reads as a table,
+   with the column names printed once above the list; below it each cell carries
+   its own label and the line wraps, exactly like a catalog row. */
+@theme {
+  --container-cart-wide: 840px;
+}
+
 /* The narrow gutter is not a cosmetic choice: the results controls and the
    pager are laid out from fixed-width parts, and at 360px the 24px gutter is
    the difference between them fitting the column and overflowing it. */
