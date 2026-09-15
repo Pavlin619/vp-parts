@@ -6,7 +6,7 @@ import type {
   StockScopeCountsDto,
 } from "@vp-parts-shop/shared";
 import { ArticleRow } from "@/components/catalog/article-row";
-import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
+import { selectArticleAvailability } from "@/lib/inventory/merge-availability";
 import {
   selectedCategoryId,
   type SearchUrlState,

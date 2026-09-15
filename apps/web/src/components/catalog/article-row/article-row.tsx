@@ -10,7 +10,7 @@ import type {
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { useCanAddLine, useCart } from "@/hooks/use-cart";
 import { articleDetailHref } from "@/lib/catalog/links/article-href";
-import type { RowAvailability } from "@/lib/catalog/merge-availability";
+import type { RowAvailability } from "@/lib/inventory/merge-availability";
 import { cn } from "@/lib/utils";
 import { ArticleIdentity } from "./article-identity";
 import { ArticleRowAvailability } from "./article-row-availability";

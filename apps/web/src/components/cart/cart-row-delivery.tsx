@@ -10,7 +10,7 @@ import {
   resolveLineFulfilment,
 } from "@/lib/delivery/availability";
 import { DELIVERY_BAND, DELIVERY_BAND_LABEL } from "@/lib/delivery/bands";
-import type { RowAvailability } from "@/lib/catalog/merge-availability";
+import type { RowAvailability } from "@/lib/inventory/merge-availability";
 import { cn } from "@/lib/utils";
 
 interface CartRowDeliveryProps {

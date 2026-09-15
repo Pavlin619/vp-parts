@@ -6,7 +6,7 @@ import { QuantityStepper } from "@/components/common/quantity-stepper";
 import { Button } from "@/components/ui/button";
 import type { BuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { usePricesIncludeVat } from "@/hooks/use-price-display";
-import type { RowAvailability } from "@/lib/catalog/merge-availability";
+import type { RowAvailability } from "@/lib/inventory/merge-availability";
 
 /**
  * Two layouts for one cell, chosen by the row's own width. Wherever the cell

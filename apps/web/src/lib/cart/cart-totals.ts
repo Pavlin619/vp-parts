@@ -3,7 +3,7 @@ import type { CartLine } from "@/hooks/use-cart";
 import {
   selectArticleAvailability,
   type RowAvailability,
-} from "@/lib/catalog/merge-availability";
+} from "@/lib/inventory/merge-availability";
 import { MAX_QUANTITY, summariseWarehouses } from "@/lib/delivery/availability";
 
 /** Why a line cannot be ordered as it stands. */
