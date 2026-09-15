@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import { formatCount } from "@vp-parts-shop/shared";
-import { categorySearchHref } from "@/lib/catalog/category-href";
-import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
+import { categorySearchHref } from "@/lib/catalog/links/category-href";
+import type { CategoryTreeNode } from "@/lib/catalog/categories/category-tree";
 import { cn, plural } from "@/lib/utils";
 
 const ROW_SHELL =

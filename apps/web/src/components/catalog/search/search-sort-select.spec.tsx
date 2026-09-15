@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SearchSort, type SearchOrdering } from '@vp-parts-shop/shared'
-import { parseSearchUrl, type SearchUrlState } from '@/lib/catalog/search-url'
+import { parseSearchUrl, type SearchUrlState } from '@/lib/catalog/url/search-url'
 import { SearchSortSelect } from './search-sort-select'
 
 const push = jest.fn()

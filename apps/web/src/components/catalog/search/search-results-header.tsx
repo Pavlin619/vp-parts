@@ -13,7 +13,7 @@ import {
   buildSearchUrl,
   withVehicle,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { SearchSortSelect } from "./search-sort-select";
 import { SearchStockFilter } from "./search-stock-filter";
 import { SearchVatToggle } from "./search-vat-toggle";

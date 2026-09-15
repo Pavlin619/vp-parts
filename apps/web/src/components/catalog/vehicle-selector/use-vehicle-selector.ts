@@ -6,8 +6,8 @@ import {
   modelSeriesQueryOptions,
   variantsQueryOptions,
 } from "@/lib/api/catalog";
-import { seriesPhotoUrlOf } from "@/lib/catalog/vehicle-series-photo";
-import { formatEngineCodes } from "@/lib/catalog/vehicle-specs";
+import { seriesPhotoUrlOf } from "@/lib/catalog/display/vehicle-series-photo";
+import { formatEngineCodes } from "@/lib/catalog/display/vehicle-specs";
 import { useVehicleContext, type SelectedVehicle } from "@/hooks/use-vehicle-context";
 import { matchesVariantSearch } from "./variant-search";
 

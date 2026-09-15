@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
 import { useHydration, useVehicleContext } from "@/hooks/use-vehicle-context";
-import { categoryScopeOf } from "@/lib/catalog/category-scope";
+import { categoryScopeOf } from "@/lib/catalog/categories/category-scope";
 import { BrowseCategories } from "./categories";
 import { VehiclePrompt } from "./vehicle-prompt";
 import { VehicleHero } from "./vehicle-hero";

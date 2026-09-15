@@ -7,9 +7,7 @@ import {
 
 const ILLUSTRATION_DIRECTORY = join(
   __dirname,
-  '..',
-  '..',
-  '..',
+  '../../../..',
   'public',
   'category-illustrations',
 )

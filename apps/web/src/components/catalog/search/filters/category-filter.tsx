@@ -13,7 +13,7 @@ import {
   drillIntoCategory,
   selectProductType,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 
 interface CategoryFilterProps {
   state: SearchUrlState;

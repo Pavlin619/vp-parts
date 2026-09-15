@@ -17,14 +17,14 @@ import {
 import {
   SERIES_PHOTO_HEIGHT,
   SERIES_PHOTO_WIDTH,
-} from "@/lib/catalog/vehicle-series-photo";
-import { formatPower, formatYearRange } from "@/lib/catalog/vehicle-specs";
+} from "@/lib/catalog/display/vehicle-series-photo";
+import { formatPower, formatYearRange } from "@/lib/catalog/display/vehicle-specs";
 import {
   buildSearchUrl,
   withoutVehicle,
   withVehicle,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 
 const CARD = "rounded-md border p-4";

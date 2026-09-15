@@ -1,7 +1,7 @@
 import type { ArticleCategoryNodeDto } from "@vp-parts-shop/shared";
-import { markLastAsCurrent, type BreadcrumbItem } from "../breadcrumbs";
-import { CATALOG_PATH, catalogCategoryHref } from "./catalog-url";
-import { categoryTrailSearchHref } from "./category-href";
+import { markLastAsCurrent, type BreadcrumbItem } from "@/lib/breadcrumbs";
+import { categoryTrailSearchHref } from "../links/category-href";
+import { CATALOG_PATH, catalogCategoryHref } from "../url/catalog-url";
 
 const HOME_CRUMB: BreadcrumbItem = { key: "home", label: "Начало", href: "/" };
 

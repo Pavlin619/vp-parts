@@ -11,7 +11,7 @@ import {
   formatEngineCodes,
   formatPower,
   formatYearRange,
-} from "@/lib/catalog/vehicle-specs";
+} from "@/lib/catalog/display/vehicle-specs";
 
 interface VehiclePillProps {
   onOpenSelector: () => void;

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { catalogCategoryHref } from "@/lib/catalog/catalog-url";
-import type { CategoryScope } from "@/lib/catalog/category-scope";
-import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
+import { catalogCategoryHref } from "@/lib/catalog/url/catalog-url";
+import type { CategoryScope } from "@/lib/catalog/categories/category-scope";
+import type { CategoryTreeNode } from "@/lib/catalog/categories/category-tree";
 import { CategoryCard } from "./category-card";
 import { CategoryPanel } from "./category-panel";
 

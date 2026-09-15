@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { BrowseView } from "@/components/catalog/browse";
-import { parseCatalogCategoryId } from "@/lib/catalog/catalog-url";
+import { parseCatalogCategoryId } from "@/lib/catalog/url/catalog-url";
 
 export const metadata: Metadata = {
   title: "Каталог — VP Parts",

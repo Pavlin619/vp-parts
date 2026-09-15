@@ -4,7 +4,7 @@ import {
   buildSearchUrl,
   withPage,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 import { SearchPageStep } from "./search-page-step";
 

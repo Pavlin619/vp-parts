@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import type { StockScopeCountsDto } from '@vp-parts-shop/shared'
-import { parseSearchUrl, type SearchUrlState } from '@/lib/catalog/search-url'
+import { parseSearchUrl, type SearchUrlState } from '@/lib/catalog/url/search-url'
 import { SearchStockFilter } from './search-stock-filter'
 
 const COUNTS: StockScopeCountsDto = { all: 14, central: 12, external: 6 }

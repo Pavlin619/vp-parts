@@ -3,7 +3,7 @@ import {
   articleIdentityKey,
   type ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared'
-import { parseSearchUrl } from '@/lib/catalog/search-url'
+import { parseSearchUrl } from '@/lib/catalog/url/search-url'
 import { SearchResults, type SearchResultRow } from './search-results'
 
 jest.mock('next/navigation', () => ({

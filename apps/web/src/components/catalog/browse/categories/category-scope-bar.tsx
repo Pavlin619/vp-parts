@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { CATALOG_PATH } from "@/lib/catalog/catalog-url";
+import { CATALOG_PATH } from "@/lib/catalog/url/catalog-url";
 import { plural } from "@/lib/utils";
 
 interface CategoryScopeBarProps {

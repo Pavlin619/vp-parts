@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import type { PopularCategory } from "@/lib/catalog/popular-categories";
+import type { PopularCategory } from "@/lib/catalog/categories/popular-categories";
 import { PopularCategoryCard } from "./popular-category-card";
 
 const category = (overrides: Partial<PopularCategory> = {}): PopularCategory => ({

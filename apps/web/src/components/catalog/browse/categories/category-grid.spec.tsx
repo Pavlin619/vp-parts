@@ -1,6 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { CategoryTreeNode } from '@/lib/catalog/category-tree'
+import type { CategoryTreeNode } from '@/lib/catalog/categories/category-tree'
 import { CategoryGrid } from './category-grid'
 
 function node(

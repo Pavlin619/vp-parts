@@ -9,7 +9,7 @@ import {
   buildSearchUrl,
   toggleAttributeGroup,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 
 /** One clickable place on the outline, with everything filed under it. */

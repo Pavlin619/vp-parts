@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Car } from "lucide-react";
-import { vehicleMakeLogoSrc } from "@/lib/catalog/vehicle-make-mark";
+import { vehicleMakeLogoSrc } from "@/lib/catalog/display/vehicle-make-mark";
 import { cn } from "@/lib/utils";
 
 /** The largest tile any caller renders, for the source-set hint. */

@@ -1,6 +1,6 @@
 import type { ArticleCategoryNodeDto } from "@vp-parts-shop/shared";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
-import { buildArticleBreadcrumbs } from "@/lib/catalog/article-breadcrumbs";
+import { buildArticleBreadcrumbs } from "@/lib/catalog/breadcrumbs/article-breadcrumbs";
 
 interface ArticleBreadcrumbsProps {
   categoryPaths: ArticleCategoryNodeDto[][];

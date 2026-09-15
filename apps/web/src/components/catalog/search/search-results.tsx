@@ -10,7 +10,7 @@ import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
 import {
   selectedCategoryId,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { SearchResultsHeader } from "./search-results-header";
 
 /** A search hit — the catalog metadata TecDoc owns, with no live inventory. */

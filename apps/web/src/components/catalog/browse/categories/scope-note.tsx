@@ -1,4 +1,4 @@
-import type { CategoryScope } from "@/lib/catalog/category-scope";
+import type { CategoryScope } from "@/lib/catalog/categories/category-scope";
 
 /**
  * Who the count in front of it belongs to.

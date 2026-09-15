@@ -4,7 +4,7 @@ import {
   formatEngineCodes,
   formatPower,
   formatYearRange,
-} from "@/lib/catalog/vehicle-specs";
+} from "@/lib/catalog/display/vehicle-specs";
 import { cn } from "@/lib/utils";
 
 /** An answer the visitor has not reached yet, rather than one we do not have. */

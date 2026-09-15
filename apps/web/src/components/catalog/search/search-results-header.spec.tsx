@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { StockScopeCountsDto } from '@vp-parts-shop/shared'
-import { parseSearchUrl } from '@/lib/catalog/search-url'
+import { parseSearchUrl } from '@/lib/catalog/url/search-url'
 import { SearchResultsHeader } from './search-results-header'
 
 const pushMock = jest.fn()

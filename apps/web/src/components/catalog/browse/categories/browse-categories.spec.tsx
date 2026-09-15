@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { AssemblyGroupDto } from '@vp-parts-shop/shared'
-import type { CategoryScope } from '@/lib/catalog/category-scope'
+import type { CategoryScope } from '@/lib/catalog/categories/category-scope'
 import { BrowseCategories } from './browse-categories'
 
 const getCategoriesMock = jest.fn()

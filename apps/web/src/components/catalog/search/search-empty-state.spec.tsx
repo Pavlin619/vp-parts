@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { SearchMode, type AutocompleteItemDto } from '@vp-parts-shop/shared'
-import { newSearch } from '@/lib/catalog/search-url'
+import { newSearch } from '@/lib/catalog/url/search-url'
 import { SearchEmptyState } from './search-empty-state'
 
 function numberSearch(query: string) {

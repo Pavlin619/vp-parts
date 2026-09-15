@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
+import type { CategoryTreeNode } from "@/lib/catalog/categories/category-tree";
 import { ScopedCategoryView } from "./scoped-category-view";
 
 function node(

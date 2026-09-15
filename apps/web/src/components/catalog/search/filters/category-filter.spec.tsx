@@ -4,7 +4,7 @@ import {
   type CategoryNavigationDto,
   type FacetValueDto,
 } from '@vp-parts-shop/shared'
-import { newSearch, type SearchUrlState } from '@/lib/catalog/search-url'
+import { newSearch, type SearchUrlState } from '@/lib/catalog/url/search-url'
 import { CategoryFilter } from './category-filter'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

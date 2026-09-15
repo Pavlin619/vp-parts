@@ -5,9 +5,9 @@ import {
   CATEGORY_GRID_MAX_COLUMNS,
   categoryGridColumns,
   chunkIntoRows,
-} from "@/lib/catalog/category-grid-layout";
-import type { CategoryScope } from "@/lib/catalog/category-scope";
-import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
+} from "@/lib/catalog/display/category-grid-layout";
+import type { CategoryScope } from "@/lib/catalog/categories/category-scope";
+import type { CategoryTreeNode } from "@/lib/catalog/categories/category-tree";
 import { CategoryCard } from "./category-card";
 import { CategoryPanel } from "./category-panel";
 

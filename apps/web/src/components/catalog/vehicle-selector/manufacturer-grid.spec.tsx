@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ManufacturerDto } from '@vp-parts-shop/shared'
 import { ManufacturerGrid } from './manufacturer-grid'
-import { VEHICLE_MAKE_LOGO_FILES } from '@/lib/catalog/vehicle-make-mark'
+import { VEHICLE_MAKE_LOGO_FILES } from '@/lib/catalog/display/vehicle-make-mark'
 
 jest.mock('next/image', () => ({
   __esModule: true,

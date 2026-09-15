@@ -2,8 +2,8 @@ import {
   SearchMode,
   type AutocompleteItemDto,
 } from "@vp-parts-shop/shared";
+import { buildSearchUrl, drillIntoCategory, newSearch } from "../url/search-url";
 import { articleDetailHref } from "./article-href";
-import { buildSearchUrl, drillIntoCategory, newSearch } from "./search-url";
 
 interface SuggestionContext {
   mode: SearchMode;

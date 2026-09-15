@@ -10,13 +10,13 @@ import type { SelectedVehicle } from "@/hooks/use-vehicle-context";
 import {
   SERIES_PHOTO_HEIGHT,
   SERIES_PHOTO_WIDTH,
-} from "@/lib/catalog/vehicle-series-photo";
+} from "@/lib/catalog/display/vehicle-series-photo";
 import {
   formatDisplacement,
   formatEngineCodes,
   formatPower,
   formatYearRange,
-} from "@/lib/catalog/vehicle-specs";
+} from "@/lib/catalog/display/vehicle-specs";
 import { cn } from "@/lib/utils";
 
 interface HeroSpec {

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { formatCount } from "@vp-parts-shop/shared";
 import { CategoryThumb } from "@/components/catalog/browse/categories";
-import { catalogCategoryHref } from "@/lib/catalog/catalog-url";
-import type { PopularCategory } from "@/lib/catalog/popular-categories";
+import { catalogCategoryHref } from "@/lib/catalog/url/catalog-url";
+import type { PopularCategory } from "@/lib/catalog/categories/popular-categories";
 import { plural } from "@/lib/utils";
 
 /** Four columns inside the page container, two below 1000px. */

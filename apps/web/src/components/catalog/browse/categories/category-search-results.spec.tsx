@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
-import type { CategoryMatch } from '@/lib/catalog/category-search'
-import type { CategoryTreeNode } from '@/lib/catalog/category-tree'
+import type { CategoryMatch } from '@/lib/catalog/categories/category-search'
+import type { CategoryTreeNode } from '@/lib/catalog/categories/category-tree'
 import { CategorySearchResults } from './category-search-results'
 
 function node(

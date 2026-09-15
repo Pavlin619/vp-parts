@@ -10,7 +10,7 @@ import type {
 import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { useCutoffRefresh } from "@/hooks/use-cutoff-refresh";
-import type { SearchUrlState } from "@/lib/catalog/search-url";
+import type { SearchUrlState } from "@/lib/catalog/url/search-url";
 import { collectCutoffAts } from "@/lib/delivery/availability";
 import { SearchResults } from "./search-results";
 

@@ -11,7 +11,7 @@ import {
   isAttributeSelected,
   toggleAttribute,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 
 /**
