@@ -2,7 +2,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { VEHICLE_MAKE_LOGO_FILES, vehicleMakeLogoSrc } from './vehicle-make-mark'
 
-const LOGO_DIRECTORY = join(__dirname, '..', '..', '..', 'public', 'vehicle-makes')
+const LOGO_DIRECTORY = join(__dirname, '../../../..', 'public', 'vehicle-makes')
 
 describe('vehicleMakeLogoSrc', () => {
   it('reports no logo for a make that has none bundled', () => {

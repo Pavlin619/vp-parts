@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { variantsQueryOptions } from "@/lib/api/catalog";
-import { seriesPhotoUrlOf } from "@/lib/catalog/vehicle-series-photo";
+import { seriesPhotoUrlOf } from "@/lib/catalog/display/vehicle-series-photo";
 
 /**
  * The series photo for a vehicle the store restored, fetched rather than saved

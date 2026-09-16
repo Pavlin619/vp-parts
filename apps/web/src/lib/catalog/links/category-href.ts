@@ -1,5 +1,5 @@
 import { DEFAULT_SEARCH_MODE } from "@vp-parts-shop/shared";
-import type { CategoryTreeNode } from "./category-tree";
+import type { CategoryTreeNode } from "../categories/category-tree";
 import {
   buildSearchUrl,
   drillIntoCategory,
@@ -7,7 +7,7 @@ import {
   selectCategoryPath,
   withVehicle,
   type SearchUrlState,
-} from "./search-url";
+} from "../url/search-url";
 
 /**
  * Where a category on the catalogue page leads: the search, scoped to that node

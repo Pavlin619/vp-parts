@@ -209,7 +209,7 @@ All money is handled as **integer EUR cents** everywhere.
 | Reading supplier stock | `apps/api/src/inventory/supplier-stock.repository.ts` |
 | Wiring it together + VAT + the fail-closed availability read | `apps/api/src/inventory/inventory.service.ts` (`getAvailability`) |
 | Cached metadata / live availability split | `apps/api/src/catalog/catalog.service.ts` (`getArticlesAvailability`) |
-| Merging cached grid metadata with the live availability read | `apps/web/src/lib/catalog/merge-availability.ts` |
+| Merging cached grid metadata with the live availability read | `apps/web/src/lib/inventory/merge-availability.ts` |
 | The shape returned to the frontend | `packages/shared/src/dto/inventory.dto.ts` |
 
 ---

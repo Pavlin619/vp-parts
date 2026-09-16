@@ -10,8 +10,8 @@ import {
   type AutocompleteItemDto,
 } from "@vp-parts-shop/shared";
 import { autocompleteQueryOptions } from "@/lib/api/catalog";
-import { buildSearchUrl, newSearch } from "@/lib/catalog/search-url";
-import { suggestionHref } from "@/lib/catalog/suggestion-href";
+import { buildSearchUrl, newSearch } from "@/lib/catalog/url/search-url";
+import { suggestionHref } from "@/lib/catalog/links/suggestion-href";
 import { useHydration } from "@/hooks/use-vehicle-context";
 import {
   looksLikeDescription,

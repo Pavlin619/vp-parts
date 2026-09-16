@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MakeMark } from './make-mark'
-import { VEHICLE_MAKE_LOGO_FILES } from '@/lib/catalog/vehicle-make-mark'
+import { VEHICLE_MAKE_LOGO_FILES } from '@/lib/catalog/display/vehicle-make-mark'
 
 jest.mock('next/image', () => ({
   __esModule: true,

@@ -6,7 +6,7 @@ import {
   formatEngineCodes,
   formatPower,
   formatYearRange,
-} from "@/lib/catalog/vehicle-specs";
+} from "@/lib/catalog/display/vehicle-specs";
 import { ManufacturerGrid } from "./manufacturer-grid";
 import { ModelSeriesList } from "./model-series-list";
 import { STEP_EMPTY_LABELS, STEP_PLACEHOLDERS, type Step } from "./use-vehicle-selector";

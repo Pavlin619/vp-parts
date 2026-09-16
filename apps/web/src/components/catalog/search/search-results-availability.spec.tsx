@@ -8,7 +8,7 @@ import {
   type ArticlesAvailabilityDto,
   type ArticleSummaryDto,
 } from '@vp-parts-shop/shared'
-import { parseSearchUrl } from '@/lib/catalog/search-url'
+import { parseSearchUrl } from '@/lib/catalog/url/search-url'
 import { SearchResultsAvailability } from './search-results-availability'
 
 jest.mock('next/navigation', () => ({

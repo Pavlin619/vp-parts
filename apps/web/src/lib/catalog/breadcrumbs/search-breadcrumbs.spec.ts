@@ -5,7 +5,7 @@ import {
   type SearchFacetDto,
 } from '@vp-parts-shop/shared'
 import { buildSearchBreadcrumbs } from './search-breadcrumbs'
-import { newSearch, type SearchUrlState } from './search-url'
+import { newSearch, type SearchUrlState } from '../url/search-url'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

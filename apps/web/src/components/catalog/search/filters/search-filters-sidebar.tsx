@@ -3,7 +3,7 @@ import type {
   CategoryNavigationDto,
   SearchFacetDto,
 } from "@vp-parts-shop/shared";
-import type { SearchUrlState } from "@/lib/catalog/search-url";
+import type { SearchUrlState } from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 import { CategoryFilter } from "./category-filter";
 import { BrandFilter } from "./brand-filter";

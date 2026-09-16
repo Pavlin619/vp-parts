@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import type { AssemblyGroupDto } from "@vp-parts-shop/shared";
 import { getCatalogCategories } from "@/lib/api/catalog";
-import { POPULAR_CATEGORY_IDS } from "@/lib/catalog/popular-categories";
+import { POPULAR_CATEGORY_IDS } from "@/lib/catalog/categories/popular-categories";
 import { PopularCategories } from "./popular-categories";
 
 jest.mock("@/lib/api/catalog", () => ({

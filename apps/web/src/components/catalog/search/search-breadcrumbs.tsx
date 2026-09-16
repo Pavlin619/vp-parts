@@ -3,8 +3,8 @@ import type {
   SearchFacetDto,
 } from "@vp-parts-shop/shared";
 import { Breadcrumbs } from "@/components/common/breadcrumbs";
-import { buildSearchBreadcrumbs } from "@/lib/catalog/search-breadcrumbs";
-import type { SearchUrlState } from "@/lib/catalog/search-url";
+import { buildSearchBreadcrumbs } from "@/lib/catalog/breadcrumbs/search-breadcrumbs";
+import type { SearchUrlState } from "@/lib/catalog/url/search-url";
 
 interface SearchBreadcrumbsProps {
   state: SearchUrlState;

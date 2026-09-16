@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { SearchX } from "lucide-react";
 import { SearchMode, type AutocompleteItemDto } from "@vp-parts-shop/shared";
-import { articleDetailHref } from "@/lib/catalog/article-href";
+import { articleDetailHref } from "@/lib/catalog/links/article-href";
 import {
   buildSearchUrl,
   withMode,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 
 const PRIMARY_ACTION =
   "h-10 px-4 inline-flex items-center bg-ink text-white rounded-lg text-sm font-medium hover:bg-ink/90 transition-colors";

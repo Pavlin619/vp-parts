@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { Boxes } from "lucide-react";
-import { categoryIllustrationSrc } from "@/lib/catalog/category-illustration";
+import { categoryIllustrationSrc } from "@/lib/catalog/display/category-illustration";
 import { cn } from "@/lib/utils";
 
 /** The widest a card gets across the four-, three- and two-column layouts. */

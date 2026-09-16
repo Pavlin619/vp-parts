@@ -3,7 +3,7 @@ import Image from "next/image";
 import {
   SERIES_PHOTO_HEIGHT,
   SERIES_PHOTO_WIDTH,
-} from "@/lib/catalog/vehicle-series-photo";
+} from "@/lib/catalog/display/vehicle-series-photo";
 import { cn } from "@/lib/utils";
 import { MakeMark } from "./make-mark";
 import type { SelectedMake, SelectedSeries } from "./use-vehicle-selector";

@@ -10,7 +10,7 @@ import {
   SEARCH_PAGE_SIZE,
   toSearchRequest,
   withPage,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { SearchResultsAvailability } from "@/components/catalog/search/search-results-availability";
 import { SearchBreadcrumbs } from "@/components/catalog/search/search-breadcrumbs";
 import { SearchEmptyState } from "@/components/catalog/search/search-empty-state";

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { SearchUrlState } from "@/lib/catalog/search-url";
+import type { SearchUrlState } from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 import { SearchPageStep } from "./search-page-step";
 

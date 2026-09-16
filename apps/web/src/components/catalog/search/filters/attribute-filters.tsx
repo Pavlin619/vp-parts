@@ -16,7 +16,7 @@ import {
   hasDimensions,
   withPage,
   type SearchUrlState,
-} from "@/lib/catalog/search-url";
+} from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 import { AttributeValueList } from "./attribute-value-list";
 import { FilterBlock } from "./filter-block";

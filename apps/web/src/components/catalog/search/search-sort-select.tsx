@@ -8,8 +8,8 @@ import {
   requiresRankedSet,
   type SearchOrdering,
 } from "@vp-parts-shop/shared";
-import { buildSearchUrl, withSort } from "@/lib/catalog/search-url";
-import type { SearchUrlState } from "@/lib/catalog/search-url";
+import { buildSearchUrl, withSort } from "@/lib/catalog/url/search-url";
+import type { SearchUrlState } from "@/lib/catalog/url/search-url";
 import { cn } from "@/lib/utils";
 
 interface SearchSortSelectProps {

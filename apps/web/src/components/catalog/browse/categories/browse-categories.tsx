@@ -6,18 +6,18 @@ import { useQuery } from "@tanstack/react-query";
 import { formatCount } from "@vp-parts-shop/shared";
 import { ErrorState } from "@/components/ui/error-state";
 import { categoriesQueryOptions } from "@/lib/api/catalog";
-import { categoryTrailSearchHref } from "@/lib/catalog/category-href";
-import { CATEGORY_GRID_MAX_COLUMNS } from "@/lib/catalog/category-grid-layout";
+import { categoryTrailSearchHref } from "@/lib/catalog/links/category-href";
+import { CATEGORY_GRID_MAX_COLUMNS } from "@/lib/catalog/display/category-grid-layout";
 import {
   CATEGORY_SEARCH_MIN_LENGTH,
   searchCategoryTree,
-} from "@/lib/catalog/category-search";
-import type { CategoryScope } from "@/lib/catalog/category-scope";
-import { categoryDrillOf } from "@/lib/catalog/category-trail";
+} from "@/lib/catalog/categories/category-search";
+import type { CategoryScope } from "@/lib/catalog/categories/category-scope";
+import { categoryDrillOf } from "@/lib/catalog/categories/category-drill";
 import {
   buildCategoryTree,
   type CategoryTreeNode,
-} from "@/lib/catalog/category-tree";
+} from "@/lib/catalog/categories/category-tree";
 import { plural } from "@/lib/utils";
 import { CategoryFinder } from "./category-finder";
 import { CategoryGrid } from "./category-grid";

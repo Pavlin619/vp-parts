@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react'
-import { VEHICLE_MAKE_LOGO_FILES } from '@/lib/catalog/vehicle-make-mark'
+import { VEHICLE_MAKE_LOGO_FILES } from '@/lib/catalog/display/vehicle-make-mark'
 import { VehicleMakeBadge } from './vehicle-make-badge'
 
 /**

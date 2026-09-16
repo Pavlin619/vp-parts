@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { SearchMode } from '@vp-parts-shop/shared'
-import { newSearch, type SearchUrlState } from '@/lib/catalog/search-url'
+import { newSearch, type SearchUrlState } from '@/lib/catalog/url/search-url'
 import { SearchPaginationCompact } from './search-pagination-compact'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

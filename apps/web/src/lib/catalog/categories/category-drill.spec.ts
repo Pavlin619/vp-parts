@@ -1,4 +1,4 @@
-import { categoryDrillOf } from "./category-trail";
+import { categoryDrillOf } from "./category-drill";
 import type { CategoryTreeNode } from "./category-tree";
 
 function node(

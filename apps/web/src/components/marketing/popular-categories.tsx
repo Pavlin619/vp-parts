@@ -4,7 +4,7 @@ import { getCatalogCategories } from "@/lib/api/catalog";
 import {
   countCategoryRoots,
   selectPopularCategories,
-} from "@/lib/catalog/popular-categories";
+} from "@/lib/catalog/categories/popular-categories";
 import { plural } from "@/lib/utils";
 import { PopularCategoryCard } from "./popular-category-card";
 

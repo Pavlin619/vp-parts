@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { formatCount } from "@vp-parts-shop/shared";
-import { categorySearchHref } from "@/lib/catalog/category-href";
-import type { CategoryMatch } from "@/lib/catalog/category-search";
+import { categorySearchHref } from "@/lib/catalog/links/category-href";
+import type { CategoryMatch } from "@/lib/catalog/categories/category-search";
 import { plural } from "@/lib/utils";
 
 interface CategorySearchResultsProps {

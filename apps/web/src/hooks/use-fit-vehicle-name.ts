@@ -1,6 +1,6 @@
 "use client";
 
-import { formatEngineCodes } from "@/lib/catalog/vehicle-specs";
+import { formatEngineCodes } from "@/lib/catalog/display/vehicle-specs";
 import { useHydration, useVehicleContext } from "./use-vehicle-context";
 
 /**

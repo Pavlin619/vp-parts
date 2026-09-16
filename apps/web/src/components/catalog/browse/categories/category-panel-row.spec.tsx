@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { CategoryTreeNode } from '@/lib/catalog/category-tree'
+import type { CategoryTreeNode } from '@/lib/catalog/categories/category-tree'
 import { CategoryPanelRow } from './category-panel-row'
 
 function node(

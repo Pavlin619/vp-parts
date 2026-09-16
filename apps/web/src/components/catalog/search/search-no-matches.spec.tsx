@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { SearchMode } from '@vp-parts-shop/shared'
-import { newSearch } from '@/lib/catalog/search-url'
+import { newSearch } from '@/lib/catalog/url/search-url'
 import { SearchNoMatches } from './search-no-matches'
 
 describe('SearchNoMatches', () => {

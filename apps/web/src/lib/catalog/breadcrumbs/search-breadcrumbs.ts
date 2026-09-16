@@ -2,12 +2,12 @@ import type {
   CategoryNavigationDto,
   SearchFacetDto,
 } from "@vp-parts-shop/shared";
-import { markLastAsCurrent, type BreadcrumbItem } from "../breadcrumbs";
+import { markLastAsCurrent, type BreadcrumbItem } from "@/lib/breadcrumbs";
 import {
   buildSearchUrl,
   selectCategoryPath,
   type SearchUrlState,
-} from "./search-url";
+} from "../url/search-url";
 
 const HOME_CRUMB: BreadcrumbItem = { key: "home", label: "Начало", href: "/" };
 

@@ -6,7 +6,7 @@ import type { TechnicalSpecDto } from "@vp-parts-shop/shared";
 import {
   ARTICLE_SECTION_LABEL,
   type ArticleSectionId,
-} from "@/lib/catalog/article-sections";
+} from "@/lib/catalog/display/article-sections";
 import { cn } from "@/lib/utils";
 import { ArticleRowNumbers } from "./article-row-numbers";
 import { ArticleRowSubstitutes } from "./article-row-substitutes";

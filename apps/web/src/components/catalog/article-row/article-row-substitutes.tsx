@@ -13,7 +13,7 @@ import {
   substitutesQueryOptions,
 } from "@/lib/api/catalog";
 import { useCutoffRefresh } from "@/hooks/use-cutoff-refresh";
-import { selectArticleAvailability } from "@/lib/catalog/merge-availability";
+import { selectArticleAvailability } from "@/lib/inventory/merge-availability";
 import { collectCutoffAts } from "@/lib/delivery/availability";
 import { cn } from "@/lib/utils";
 import { ArticleRow } from "./article-row";

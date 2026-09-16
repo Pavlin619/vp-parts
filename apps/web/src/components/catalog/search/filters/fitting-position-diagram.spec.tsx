@@ -4,7 +4,7 @@ import type {
   FittingPositionZone,
 } from "@vp-parts-shop/shared";
 import { DEFAULT_SEARCH_MODE } from "@vp-parts-shop/shared";
-import { newSearch, type SearchUrlState } from "@/lib/catalog/search-url";
+import { newSearch, type SearchUrlState } from "@/lib/catalog/url/search-url";
 import {
   diagramZones,
   FittingPositionDiagram,

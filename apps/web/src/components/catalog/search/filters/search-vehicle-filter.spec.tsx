@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { VehicleVariantDto } from '@vp-parts-shop/shared'
 import type { SelectedVehicle } from '@/hooks/use-vehicle-context'
-import { parseSearchUrl } from '@/lib/catalog/search-url'
+import { parseSearchUrl } from '@/lib/catalog/url/search-url'
 import { SearchVehicleFilter } from './search-vehicle-filter'
 
 const pushMock = jest.fn()

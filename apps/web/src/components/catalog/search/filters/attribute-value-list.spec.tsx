@@ -5,7 +5,7 @@ import {
   type AttributeFacetDto,
   type AttributeFacetValueDto,
 } from "@vp-parts-shop/shared";
-import { newSearch, type SearchUrlState } from "@/lib/catalog/search-url";
+import { newSearch, type SearchUrlState } from "@/lib/catalog/url/search-url";
 import { AttributeValueList } from "./attribute-value-list";
 
 const COLLAPSED_LIMIT = 12;

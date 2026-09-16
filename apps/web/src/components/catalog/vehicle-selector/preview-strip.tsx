@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { VehicleVariantDto } from "@vp-parts-shop/shared";
-import { formatPower } from "@/lib/catalog/vehicle-specs";
+import { formatPower } from "@/lib/catalog/display/vehicle-specs";
 import { cn } from "@/lib/utils";
 import { PreviewFrame } from "./preview-frame";
 import { UNKNOWN_VALUE, VehicleSpecGrid } from "./preview-specs";

@@ -10,7 +10,7 @@ import {
 } from "@/components/catalog/article-row";
 import { Checkbox } from "@/components/common/checkbox";
 import { QuantityStepper } from "@/components/common/quantity-stepper";
-import { articleDetailHref } from "@/lib/catalog/article-href";
+import { articleDetailHref } from "@/lib/catalog/links/article-href";
 import type { CartLineIssue, CartRowModel } from "@/lib/cart/cart-totals";
 import { cn } from "@/lib/utils";
 import { CartRowDelivery } from "./cart-row-delivery";

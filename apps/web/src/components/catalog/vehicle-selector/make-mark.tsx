@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { vehicleMakeLogoSrc } from "@/lib/catalog/vehicle-make-mark";
+import { vehicleMakeLogoSrc } from "@/lib/catalog/display/vehicle-make-mark";
 import type { SelectedMake } from "./use-vehicle-selector";
 
 interface MakeMarkProps {

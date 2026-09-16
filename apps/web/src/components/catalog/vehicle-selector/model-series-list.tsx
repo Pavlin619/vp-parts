@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import type { ModelSeriesDto } from "@vp-parts-shop/shared";
-import { formatYearRange } from "@/lib/catalog/vehicle-specs";
+import { formatYearRange } from "@/lib/catalog/display/vehicle-specs";
 
 interface ModelSeriesListProps {
   series: ModelSeriesDto[];

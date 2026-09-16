@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { articleIdentityKey } from "@vp-parts-shop/shared";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
-import { UNAVAILABLE_DETAIL } from "@/lib/catalog/merge-availability";
+import { UNAVAILABLE_DETAIL } from "@/lib/inventory/merge-availability";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { ArticleBuyBoxContent } from "./article-buy-box-content";
 import { ArticleBuyBoxSkeleton } from "./article-buy-box-skeleton";

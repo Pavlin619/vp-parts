@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft } from "lucide-react";
-import type { CategoryTreeNode } from "@/lib/catalog/category-tree";
+import type { CategoryTreeNode } from "@/lib/catalog/categories/category-tree";
 
 const SEGMENT =
   "rounded-full px-2 py-0.5 text-xs text-ink-3 transition-colors hover:bg-canvas hover:text-ink";

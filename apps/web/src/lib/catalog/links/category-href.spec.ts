@@ -2,8 +2,8 @@ import {
   categorySearchHref,
   categoryTrailSearchHref,
 } from './category-href'
-import type { CategoryTreeNode } from './category-tree'
-import { hasSearchSubject, parseSearchUrl } from './search-url'
+import type { CategoryTreeNode } from '../categories/category-tree'
+import { hasSearchSubject, parseSearchUrl } from '../url/search-url'
 
 function node(
   id: string,
