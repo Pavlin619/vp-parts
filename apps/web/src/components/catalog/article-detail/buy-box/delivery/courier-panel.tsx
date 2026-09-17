@@ -1,19 +1,16 @@
 "use client";
 
 import { Check, Truck } from "lucide-react";
-import type { WarehouseAvailabilityDto } from "@vp-parts-shop/shared";
-import { DeliveryCutoffNotice } from "./delivery-cutoff-notice";
 
 /** Free-shipping threshold copy for the courier panel. */
 const FREE_SHIPPING_THRESHOLD_LABEL = "120 лв";
 
 interface CourierPanelProps {
-  warehouse: WarehouseAvailabilityDto;
   dateLabel: string;
 }
 
-/** Courier-to-address delivery detail: projected date, cut-off, free shipping. */
-export function CourierPanel({ warehouse, dateLabel }: CourierPanelProps) {
+/** Courier-to-address delivery detail: projected date and free shipping. */
+export function CourierPanel({ dateLabel }: CourierPanelProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-3">
@@ -36,8 +33,6 @@ export function CourierPanel({ warehouse, dateLabel }: CourierPanelProps) {
           <p className="mt-[3px] text-xs text-ink-3">До адрес · Еконт / Спиди</p>
         </div>
       </div>
-
-      <DeliveryCutoffNotice warehouse={warehouse} />
 
       <div className="border-t border-dashed border-line pt-3">
         <p className="inline-flex items-center gap-1.5 rounded-sm bg-ok-soft px-[9px] py-[5px] text-xs font-semibold text-ok">

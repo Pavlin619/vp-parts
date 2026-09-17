@@ -6,16 +6,16 @@ import type {
   DeliveryProjectionDto,
   WarehouseAvailabilityDto,
 } from "@vp-parts-shop/shared";
+import { DeliveryCutoffPromise } from "@/components/delivery";
 import {
   isWarehouseSnapshotStale,
-  selectWarehouseForQuantity,
+  resolveLineFulfilment,
 } from "@/lib/delivery/availability";
 import { formatDeliveryLabel } from "@/lib/delivery/format";
+import { warehousePromise, type Fulfilment } from "@/lib/delivery/promise";
 import { cn } from "@/lib/utils";
 import { CourierPanel } from "./courier-panel";
 import { StorePanel } from "./store-panel";
-
-type Fulfilment = "courier" | "store";
 
 /** Shown while a stale snapshot is being re-validated (see useDeliveryRefresh). */
 const STALE_LABEL = "обновяване…";
@@ -39,8 +39,9 @@ interface DeliveryEstimateProps {
  * The B2C delivery module for the buy box. A segmented toggle switches between
  * courier delivery to an address (one working day extra) and free pickup from
  * the shop; each panel shows the projected date for the selected quantity plus
- * its own logistics detail. The backend owns every date computation — this only
- * formats the chosen projection.
+ * its own logistics detail, and the cut-off promise below counts down to the
+ * deadline that buys the selected method's date. The backend owns every date
+ * computation — this only formats the chosen projection.
  *
  * TODO(b2b): mechanics get car delivery; add a car-delivery panel once Clerk
  * roles are wired in.
@@ -53,20 +54,19 @@ export function DeliveryEstimate({
 }: DeliveryEstimateProps) {
   const [fulfilment, setFulfilment] = useState<Fulfilment>("courier");
 
-  const warehouse = selectWarehouseForQuantity(availabilityByWarehouse, quantity);
+  const { warehouse } = resolveLineFulfilment(availabilityByWarehouse, quantity);
   if (!warehouse) {
     return null;
   }
 
+  const isStale =
+    now === null || isWarehouseSnapshotStale(warehouse, computedAt, now);
+
   // Never show a confidently-wrong date: with no live clock yet, or once the
   // snapshot has aged past a cut-off (or the within-the-hour moment), show a
   // neutral label until the page re-validates.
-  const dateLabel = (projection: DeliveryProjectionDto) => {
-    if (now === null || isWarehouseSnapshotStale(warehouse, computedAt, now)) {
-      return STALE_LABEL;
-    }
-    return formatDeliveryLabel(projection, now);
-  };
+  const dateLabel = (projection: DeliveryProjectionDto) =>
+    isStale ? STALE_LABEL : formatDeliveryLabel(projection, now);
 
   return (
     <div className="mt-[18px] border-t border-line pt-[18px]">
@@ -84,21 +84,23 @@ export function DeliveryEstimate({
         <FulfilmentTab
           icon={<Store className="h-[17px] w-[17px]" aria-hidden="true" />}
           label="От магазин"
-          active={fulfilment === "store"}
-          onClick={() => setFulfilment("store")}
+          active={fulfilment === "pickup"}
+          onClick={() => setFulfilment("pickup")}
         />
       </div>
 
       <div className="mt-3.5">
         {fulfilment === "courier" ? (
-          <CourierPanel
-            warehouse={warehouse}
-            dateLabel={dateLabel(warehouse.courier)}
-          />
+          <CourierPanel dateLabel={dateLabel(warehouse.courier)} />
         ) : (
           <StorePanel readyLabel={dateLabel(warehouse.pickup)} />
         )}
       </div>
+
+      <DeliveryCutoffPromise
+        promise={isStale ? null : warehousePromise(warehouse, fulfilment)}
+        className="mt-3"
+      />
 
       <div className="mt-4 flex items-center gap-2.5 border-t border-line pt-3.5 text-[13px]">
         <ShieldCheck className="h-[18px] w-[18px] shrink-0 text-ink-3" aria-hidden="true" />

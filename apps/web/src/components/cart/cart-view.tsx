@@ -14,13 +14,15 @@ import {
 } from "@/hooks/use-cart";
 import { useHydration } from "@/hooks/use-vehicle-context";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
-import { collectCutoffAts } from "@/lib/delivery/availability";
+import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import {
   buildCartRows,
   cartTotals,
   type CartRowModel,
   type CartTotals,
 } from "@/lib/cart/cart-totals";
+import { collectCutoffAts } from "@/lib/delivery/availability";
+import type { DeliveryPromise } from "@/lib/delivery/promise";
 import { CartListHeader } from "./cart-list-header";
 import { CartEmpty } from "./cart-empty";
 import { CartListActions } from "./cart-list-actions";
@@ -68,7 +70,9 @@ export function CartView() {
   const rows = buildCartRows(lines, data ?? (isError ? null : undefined));
   // The summary answers "what am I about to order", so it counts only the
   // selected lines; the heading counts what the cart holds.
-  const totals = cartTotals(rows.filter((row) => row.line.isSelected));
+  const selectedRows = rows.filter((row) => row.line.isSelected);
+  const totals = cartTotals(selectedRows);
+  const promise = resolveOrderPromise(selectedRows);
   const isPending = lines.length > 0 && data === undefined && !isError;
 
   return (
@@ -86,6 +90,7 @@ export function CartView() {
         <CartLines
           rows={rows}
           totals={totals}
+          promise={promise}
           isPending={isPending}
           isError={isError}
           hasPrices={data !== undefined}
@@ -104,6 +109,8 @@ export function CartView() {
 interface CartLinesProps {
   rows: CartRowModel[];
   totals: CartTotals;
+  /** The deadline the selected lines are racing, if there is one. */
+  promise: DeliveryPromise | null;
   isPending: boolean;
   isError: boolean;
   /** Whether prices are already on screen, which changes what a failure means. */
@@ -125,6 +132,7 @@ interface CartLinesProps {
 function CartLines({
   rows,
   totals,
+  promise,
   isPending,
   isError,
   hasPrices,
@@ -180,7 +188,7 @@ function CartLines({
         </div>
 
         <aside className="xl:sticky xl:top-24">
-          <CartSummary totals={totals} isPending={isPending} />
+          <CartSummary totals={totals} isPending={isPending} promise={promise} />
         </aside>
       </div>
     </>

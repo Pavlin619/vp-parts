@@ -184,34 +184,59 @@ chooses which warehouse to quote:
   backend's. One timer covers a whole page however many articles it holds,
   because the first boundary is the first moment anything on screen could be
   wrong and the read it triggers refreshes every row at once.
-- **Near-cut-off panel.** `DeliveryCutoffNotice`
-  (`components/catalog/delivery-cutoff-notice.tsx`, logic in `lib/cutoff.ts`)
-  shows an actionable countdown — "Поръчай до 11:00 ч. за доставка днес · остават
-  40 мин" — but **only when it is worth showing**. It gates on two conditions so
-  it never manufactures false urgency:
+- **Near-cut-off promise.** `DeliveryCutoffPromise`
+  (`components/delivery/delivery-cutoff-promise.tsx`, logic in
+  `lib/delivery/cutoff.ts`) is the order-now nudge: the day the customer gets the
+  goods, phrased as the question ordering answers ("Да пристигне утре?" /
+  "Готова за вземане днес?"), over a live countdown to the deadline that buys it
+  ("Поръчайте в рамките на 40 мин 12 сек · до 11:00 ч. от Централен склад").
+
+  **One component serves the buy box and the cart summary**, so a deadline can
+  never read one way beside a part and another way beside the basket holding it.
+  All that differs is which `DeliveryPromise` (`lib/delivery/promise.ts`) they
+  resolve — see *Promising a whole basket* below.
+
+  It shows **only when it is worth showing**, gating on two conditions so it
+  never manufactures false urgency:
   1. the cut-off is **today** in the shop timezone (`shopDateKey`), and
   2. it is within `SHOW_CUTOFF_WINDOW_MINUTES` (3 h) of the deadline.
 
   This suppresses the misleading case where the shop is closed (Sunday, after
   hours, past Saturday 14:00) and the backend has rolled `cutoffAt` to the next
   open day — which would otherwise read as "order in 23 h" urgency. Inside the
-  window it turns to a warning tone in the final `NEAR_CUTOFF_THRESHOLD_MINUTES`
-  (2 h), the progress bar spans the show window so it visibly depletes, and the
-  copy anchors the countdown to the delivery day it buys. It ticks via `useNow`
-  so the countdown stays live and hides itself once the cut-off passes (the page
-  re-validates then via `useDeliveryRefresh`).
-- **Pickup/courier chip.** `DeliveryEstimate` (`components/catalog/delivery-estimate.tsx`)
-  is a two-state toggle — **Вземи от магазин** vs **С куриер** — that re-quotes
-  the selected warehouse's `pickup` / `courier` projection for the chosen
-  quantity. It guards against a stale snapshot (see *Snapshot freshness*) and
-  shows "обновяване…" while the page re-validates. `TODO(b2b)`: swap the courier
+  window the countdown underlines and the progress bar turns to the danger tone
+  in the final `NEAR_CUTOFF_THRESHOLD_MINUTES` (2 h), and the bar spans the show
+  window so it visibly depletes. It ticks every second via `useNow` — seconds are
+  the nudge; a minute-grained timer reads as an estimate — and hides itself once
+  the cut-off passes (the page re-validates then via `useDeliveryRefresh`).
+- **Promising a whole basket.** One line's promise is
+  `warehousePromise(warehouse, fulfilment)`: the covering warehouse's cut-off
+  paired with the projection for the chosen method. A basket's is
+  `resolveOrderPromise` (`lib/cart/cart-promise.ts`), which takes the two halves
+  from **different lines** — the order ships as one consignment, so every line
+  has to be picked before its own warehouse closes (the **earliest** cut-off
+  binds) while the order is only complete once its **slowest** line is (that is
+  the date it can be promised for). It covers exactly the lines the summary's
+  money covers — the orderable ones — and quotes a **pickup** date, because the
+  cart is the step before a delivery method is chosen; the panel says so and that
+  courier adds a working day. A line we hold no warehouse breakdown for (read in
+  flight, or in stock without one) makes the whole basket unpromisable: a
+  deadline that quietly leaves a line out is one the order cannot meet.
+- **Pickup/courier chip.** `DeliveryEstimate`
+  (`components/catalog/article-detail/buy-box/delivery/delivery-estimate.tsx`)
+  is a two-state toggle — **От магазин** vs **С куриер** — that re-quotes the
+  selected warehouse's `pickup` / `courier` projection for the chosen quantity,
+  with the cut-off promise below it counting down against that same method. It
+  guards against a stale snapshot (see *Snapshot freshness*) and shows
+  "обновяване…" while the page re-validates; the promise hides entirely rather
+  than print a date it cannot stand behind. `TODO(b2b)`: swap the courier
   state for car delivery once roles land.
-- **Label formatting.** `formatDeliveryLabel` (`lib/delivery-format.ts`) renders a
+- **Label formatting.** `formatDeliveryLabel` (`lib/delivery/format.ts`) renders a
   projection in `Europe/Sofia`: `HOUR` → `за 11:12 ч.`, `DAY` → `днес` / `утре` /
   a full Bulgarian date (`пн, 6 юли`). It uses `Intl.DateTimeFormat` only, so it
   is correct regardless of the visitor's locale or Vercel's region.
 - **Per-warehouse breakdown.** `ArticleAvailability`
-  (`components/catalog/article-availability.tsx`) maps warehouse ids to BG names
+  (`.../buy-box/availability/article-availability.tsx`) maps warehouse ids to BG names
   (`WAREHOUSE_NAMES`) and lists quantity, projected pickup date and order cut-off
   per warehouse — Intercars-style, without exposing any supplier.
 
@@ -345,12 +370,14 @@ dates out of any cached payload.
 | Inherent rule + clock-resolved band per supplier line | `apps/api/src/inventory/delivery-speed.resolver.ts`, `delivery.ts` |
 | Grouping stock into warehouses + wiring | `apps/api/src/inventory/inventory.service.ts` |
 | The shape returned to the frontend | `packages/shared/src/dto/inventory.dto.ts` |
-| FE: warehouse summary + quantity-aware selection + staleness predicate | `apps/web/src/lib/availability.ts` |
-| FE: shop-timezone label formatting | `apps/web/src/lib/delivery-format.ts` |
-| FE: pickup/courier chip (with staleness guard) | `apps/web/src/components/catalog/delivery-estimate.tsx` |
-| FE: per-warehouse breakdown | `apps/web/src/components/catalog/article-availability.tsx` |
-| FE: near-cut-off urgency panel (live countdown) | `apps/web/src/components/catalog/delivery-cutoff-notice.tsx`, `apps/web/src/lib/cutoff.ts` |
-| FE: snapshot re-validation (cut-off timer + focus) | `apps/web/src/hooks/use-delivery-refresh.ts` |
+| FE: warehouse summary + quantity-aware selection + staleness predicate | `apps/web/src/lib/delivery/availability.ts` |
+| FE: shop-timezone label formatting | `apps/web/src/lib/delivery/format.ts` |
+| FE: pickup/courier chip (with staleness guard) | `apps/web/src/components/catalog/article-detail/buy-box/delivery/delivery-estimate.tsx` |
+| FE: per-warehouse breakdown | `apps/web/src/components/catalog/article-detail/buy-box/availability/article-availability.tsx` |
+| FE: near-cut-off promise (live countdown), shared by buy box + cart | `apps/web/src/components/delivery/delivery-cutoff-promise.tsx`, `apps/web/src/lib/delivery/cutoff.ts` |
+| FE: one line's promise + combining several into one | `apps/web/src/lib/delivery/promise.ts` |
+| FE: the basket's binding promise | `apps/web/src/lib/cart/cart-promise.ts` |
+| FE: snapshot re-validation (cut-off timer + focus) | `apps/web/src/hooks/use-delivery-refresh.ts`, `apps/web/src/hooks/use-cutoff-refresh.ts` |
 | FE: ticking clock for live countdowns | `apps/web/src/hooks/use-now.ts` |
 
 ---

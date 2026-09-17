@@ -1,4 +1,3 @@
-import type { WarehouseAvailabilityDto } from "@vp-parts-shop/shared";
 import { shopDateKey } from "./format";
 
 /** Below this many minutes to the cut-off we treat the countdown as urgent. */
@@ -13,9 +12,21 @@ export const NEAR_CUTOFF_THRESHOLD_MINUTES = 120;
  */
 export const SHOW_CUTOFF_WINDOW_MINUTES = 180;
 
+/**
+ * The two fields a countdown reads. Both a warehouse row and a resolved
+ * delivery promise satisfy it, so one line and a whole basket time the same
+ * way.
+ */
+export interface CutoffSource {
+  cutoffAt: string;
+  orderCutoffTime: string;
+}
+
 export interface CutoffCountdown {
   /** The customer-facing cut-off clock, e.g. "11:00". */
   orderCutoffTime: string;
+  /** Milliseconds left until the cut-off — what a seconds display counts. */
+  millisRemaining: number;
   /** Whole minutes left until the cut-off (always >= 1). */
   minutesRemaining: number;
   /** 0–1 share of the countdown window still left — drives the progress bar. */
@@ -25,10 +36,10 @@ export interface CutoffCountdown {
 }
 
 /**
- * Describes the live countdown to the selected warehouse's order cut-off, or
- * null when the notice is not worth showing. We only surface it when ordering
- * now actually beats a real deadline: the cut-off must be today (shop timezone)
- * and within SHOW_CUTOFF_WINDOW_MINUTES. This suppresses the misleading case
+ * Describes the live countdown to an order cut-off, or null when the notice is
+ * not worth showing. We only surface it when ordering now actually beats a real
+ * deadline: the cut-off must be today (shop timezone) and within
+ * SHOW_CUTOFF_WINDOW_MINUTES. This suppresses the misleading case
  * where the shop is closed (e.g. Sunday) and the backend has rolled cutoffAt to
  * the next open day, which would otherwise read as "order in 23 h" urgency.
  *
@@ -38,10 +49,10 @@ export interface CutoffCountdown {
  * deadline.
  */
 export function describeCutoffCountdown(
-  warehouse: WarehouseAvailabilityDto,
+  source: CutoffSource,
   now: Date = new Date(),
 ): CutoffCountdown | null {
-  const cutoffAt = new Date(warehouse.cutoffAt);
+  const cutoffAt = new Date(source.cutoffAt);
 
   const remainingMs = cutoffAt.getTime() - now.getTime();
   if (remainingMs <= 0) {
@@ -67,7 +78,8 @@ export function describeCutoffCountdown(
   const isUrgent = minutesRemaining < NEAR_CUTOFF_THRESHOLD_MINUTES;
 
   return {
-    orderCutoffTime: warehouse.orderCutoffTime,
+    orderCutoffTime: source.orderCutoffTime,
+    millisRemaining: remainingMs,
     minutesRemaining,
     fraction,
     isUrgent,
