@@ -147,7 +147,7 @@ describe('CartView', () => {
     renderView()
 
     await user.click(await screen.findByText('Изпразни кошницата'))
-    await user.click(screen.getByRole('button', { name: 'Да, изпразни' }))
+    await user.click(await screen.findByRole('button', { name: 'Изпразни' }))
 
     expect(await screen.findByText('Кошницата е празна')).toBeInTheDocument()
   })
