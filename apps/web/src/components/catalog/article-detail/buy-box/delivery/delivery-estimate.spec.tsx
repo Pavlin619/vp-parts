@@ -138,4 +138,52 @@ describe("DeliveryEstimate", () => {
       screen.getByTestId("delivery-estimate-chip-courier"),
     ).toHaveTextContent("обновяване…");
   });
+
+  // The same panel the cart summary renders — here it counts down against the
+  // method the customer has selected, so the two can never disagree.
+  it("counts down to the cut-off that buys the selected method's date", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-01T08:00:00.000Z"));
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    const closing = [
+      warehouse(
+        "REGIONAL_1",
+        5,
+        projection("2026-07-01T14:00:00.000Z", "DAY"),
+        projection("2026-07-02T14:00:00.000Z", "DAY"),
+        "2026-07-01T08:45:00.000Z",
+      ),
+    ];
+
+    render(
+      <DeliveryEstimate
+        availabilityByWarehouse={closing}
+        quantity={1}
+        now={new Date("2026-07-01T08:00:00.000Z")}
+      />,
+    );
+
+    const panel = screen.getByTestId("delivery-cutoff-promise");
+    expect(panel).toHaveTextContent("Да пристигне утре?");
+    expect(panel).toHaveTextContent("до 18:00 ч. от Регионален склад 1");
+
+    await user.click(screen.getByRole("button", { name: /От магазин/ }));
+
+    expect(screen.getByTestId("delivery-cutoff-promise")).toHaveTextContent(
+      "Готова за вземане днес?",
+    );
+
+    jest.useRealTimers();
+  });
+
+  it("makes no promise while the snapshot is being re-validated", () => {
+    render(
+      <DeliveryEstimate availabilityByWarehouse={rows} quantity={1} now={null} />,
+    );
+
+    expect(
+      screen.queryByTestId("delivery-cutoff-promise"),
+    ).not.toBeInTheDocument();
+  });
 });

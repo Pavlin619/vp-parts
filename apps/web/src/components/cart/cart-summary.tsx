@@ -3,12 +3,23 @@
 import { ArrowRight, Info } from "lucide-react";
 import { formatCount, formatPrice } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
+import { DeliveryCutoffPromise } from "@/components/delivery";
 import type { CartTotals } from "@/lib/cart/cart-totals";
+import type { DeliveryPromise } from "@/lib/delivery/promise";
+
+/**
+ * Why the deadline shown is a pickup one: the method is step two, and courier
+ * adds a working day on top of it.
+ */
+const METHOD_NOTE =
+  "Изберете метод на доставка на следващата стъпка — с куриер добавя 1 работен ден.";
 
 interface CartSummaryProps {
   totals: CartTotals;
   /** True while the availability read is in flight — the figures are not final. */
   isPending: boolean;
+  /** The deadline the whole basket is racing; null when there is none to show. */
+  promise: DeliveryPromise | null;
 }
 
 /**
@@ -21,7 +32,7 @@ interface CartSummaryProps {
  * reaches us as an amount, so printing "20%" here would be a second claim to
  * keep true.
  */
-export function CartSummary({ totals, isPending }: CartSummaryProps) {
+export function CartSummary({ totals, isPending, promise }: CartSummaryProps) {
   return (
     <div className="rounded-[12px] border border-line bg-bg-card p-5">
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
@@ -65,6 +76,8 @@ export function CartSummary({ totals, isPending }: CartSummaryProps) {
           Сумата не включва артикулите без актуална цена.
         </p>
       )}
+
+      <DeliveryCutoffPromise promise={promise} note={METHOD_NOTE} className="mt-4" />
 
       {/* Disabled until the delivery and payment step exists. The steps
           indicator above the list says the same thing, so the button staying
