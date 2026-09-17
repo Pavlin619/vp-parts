@@ -90,6 +90,7 @@ export function CartView() {
         <CartLines
           rows={rows}
           totals={totals}
+          itemCount={itemCount}
           promise={promise}
           isPending={isPending}
           isError={isError}
@@ -109,6 +110,7 @@ export function CartView() {
 interface CartLinesProps {
   rows: CartRowModel[];
   totals: CartTotals;
+  itemCount: number;
   /** The deadline the selected lines are racing, if there is one. */
   promise: DeliveryPromise | null;
   isPending: boolean;
@@ -132,6 +134,7 @@ interface CartLinesProps {
 function CartLines({
   rows,
   totals,
+  itemCount,
   promise,
   isPending,
   isError,
@@ -184,7 +187,7 @@ function CartLines({
             ))}
           </ul>
 
-          <CartListActions onClear={onClear} />
+          <CartListActions onClear={onClear} itemCount={itemCount} />
         </div>
 
         <aside className="xl:sticky xl:top-24">
