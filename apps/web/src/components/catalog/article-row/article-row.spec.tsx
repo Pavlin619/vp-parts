@@ -7,6 +7,7 @@ import type {
   WarehouseId,
 } from '@vp-parts-shop/shared'
 import { MAX_CART_LINES, useCart } from '@/hooks/use-cart'
+import { useCartDrawer } from '@/hooks/use-cart-drawer'
 import { ArticleRow } from './article-row'
 
 function article(
@@ -269,6 +270,20 @@ describe('ArticleRow — availability states', () => {
 describe('ArticleRow — interactions', () => {
   beforeEach(() => {
     useCart.setState({ lines: [] })
+    useCartDrawer.setState({ isOpen: false })
+  })
+
+  // Confirms the add where the visitor is standing, without costing them the
+  // list they are working through.
+  it('opens the cart drawer on add', async () => {
+    const user = userEvent.setup()
+    render(<ArticleRow article={article()} availability={detail()} />)
+
+    await user.click(
+      screen.getByRole('button', { name: /Добави Маслен филтър в кошницата/ }),
+    )
+
+    expect(useCartDrawer.getState().isOpen).toBe(true)
   })
 
   it('adds the article and its selected quantity to the cart', async () => {

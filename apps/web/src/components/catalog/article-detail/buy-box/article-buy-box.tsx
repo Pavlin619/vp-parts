@@ -2,6 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { articleIdentityKey } from "@vp-parts-shop/shared";
+import { useAddToCart } from "@/hooks/use-add-to-cart";
+import { useCanAddLine, type CartLineArticle } from "@/hooks/use-cart";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { UNAVAILABLE_DETAIL } from "@/lib/inventory/merge-availability";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
@@ -10,19 +12,15 @@ import { ArticleBuyBoxSkeleton } from "./article-buy-box-skeleton";
 
 interface ArticleBuyBoxProps {
   /**
-   * Identifies the part — drives the live availability read and cart. The brand
-   * travels with the number because a number alone names as many parts as there
-   * are suppliers filing it.
+   * The part, as the cart stores it. The brand travels with the number because
+   * a number alone names as many parts as there are suppliers filing it, and
+   * the rest is what a cart line renders from — the cart is built here, from
+   * the page's own catalog read, so it never has to fetch the part again.
    */
-  brandId: string;
-  articleNumber: string;
+  article: CartLineArticle;
   /** Server-driven vehicle fit, passed from the cached catalog chrome. */
   fitsVehicle: boolean | null;
-  /** Part name for the by-warehouse dialog subtitle. */
-  articleName?: string;
   vehicleName?: string;
-  /** Wired to the cart store in US4. Optional until then. */
-  onAddToCart?: (quantity: number) => void;
 }
 
 /**
@@ -35,13 +33,14 @@ interface ArticleBuyBoxProps {
  * chrome, so it is not refetched here.
  */
 export function ArticleBuyBox({
-  brandId,
-  articleNumber,
+  article,
   fitsVehicle,
-  articleName,
   vehicleName,
-  onAddToCart,
 }: ArticleBuyBoxProps) {
+  const { brandId, articleNumber } = article;
+  const addToCart = useAddToCart();
+  const canAddToCart = useCanAddLine(article);
+
   const { data, isPending, isError, refetch } = useQuery(
     availabilityQueryOptions([{ brandId, articleNumber }]),
   );
@@ -74,8 +73,9 @@ export function ArticleBuyBox({
       fitsVehicle={fitsVehicle}
       vehicleName={vehicleName}
       articleNumber={articleNumber}
-      articleName={articleName}
-      onAddToCart={onAddToCart}
+      articleName={article.description}
+      canAddToCart={canAddToCart}
+      onAddToCart={(quantity) => addToCart(article, quantity)}
       onRefresh={() => refetch()}
     />
   );

@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useCart, type CartLineArticle } from '@/hooks/use-cart'
+import { useCartDrawer } from '@/hooks/use-cart-drawer'
 import { CartLink } from './cart-link'
 
 function article(overrides: Partial<CartLineArticle> = {}): CartLineArticle {
@@ -17,12 +19,35 @@ function article(overrides: Partial<CartLineArticle> = {}): CartLineArticle {
 describe('CartLink', () => {
   beforeEach(() => {
     useCart.setState({ lines: [] })
+    useCartDrawer.setState({ isOpen: false })
   })
 
   it('leads to the cart', () => {
     render(<CartLink />)
 
     expect(screen.getByRole('link')).toHaveAttribute('href', '/cart')
+  })
+
+  // A glance at the cart should not cost the visitor their place in a list.
+  it('opens the drawer instead of navigating on a plain click', async () => {
+    const user = userEvent.setup()
+    render(<CartLink />)
+
+    await user.click(screen.getByRole('link'))
+
+    expect(useCartDrawer.getState().isOpen).toBe(true)
+  })
+
+  // Opening the cart page in a new tab is the one thing the drawer cannot do.
+  it('leaves a modified click to the browser', async () => {
+    const user = userEvent.setup()
+    render(<CartLink />)
+
+    await user.keyboard('{Meta>}')
+    await user.click(screen.getByRole('link'))
+    await user.keyboard('{/Meta}')
+
+    expect(useCartDrawer.getState().isOpen).toBe(false)
   })
 
   it('shows no badge on an empty cart', () => {

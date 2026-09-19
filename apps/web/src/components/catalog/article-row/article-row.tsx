@@ -7,8 +7,9 @@ import type {
   TechnicalSpecDto,
   WarehouseAvailabilityDto,
 } from "@vp-parts-shop/shared";
+import { useAddToCart } from "@/hooks/use-add-to-cart";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
-import { useCanAddLine, useCart } from "@/hooks/use-cart";
+import { useCanAddLine } from "@/hooks/use-cart";
 import { articleDetailHref } from "@/lib/catalog/links/article-href";
 import type { RowAvailability } from "@/lib/inventory/merge-availability";
 import { cn } from "@/lib/utils";
@@ -57,8 +58,8 @@ const NO_WAREHOUSES: WarehouseAvailabilityDto[] = [];
  * inventory read; the expander's sections are the only other reads, and each
  * waits until a visitor opens it.
  *
- * The buy action writes straight to the cart store rather than reporting up to
- * the list: what "add to cart" means is the same on every list surface, and a
+ * The buy action writes straight to the cart rather than reporting up to the
+ * list: what "add to cart" means is the same on every list surface, and a
  * handler threaded through each one is a way for them to disagree.
  *
  * Deliberately shows no vehicle-fit verdict even though `ArticleSummaryDto`
@@ -73,7 +74,7 @@ export function ArticleRow({
   categoryNodeId,
 }: ArticleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const addLine = useCart((state) => state.addLine);
+  const addToCart = useAddToCart();
   const canAddToCart = useCanAddLine(article);
 
   const quantity = useBuyBoxQuantity(
@@ -149,7 +150,7 @@ export function ArticleRow({
               articleName={description}
               canAddToCart={canAddToCart}
               onAddToCart={(selected) =>
-                addLine(
+                addToCart(
                   {
                     brandId,
                     articleNumber,

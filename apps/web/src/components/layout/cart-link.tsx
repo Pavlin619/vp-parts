@@ -1,15 +1,38 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 import { formatCount } from "@vp-parts-shop/shared";
 import { useCartItemCount } from "@/hooks/use-cart";
+import { useCartDrawer } from "@/hooks/use-cart-drawer";
 
 /** Beyond this the badge would outgrow the icon; the cart page has the real figure. */
 const BADGE_LIMIT = 99;
 
 /**
+ * Whether the browser should be left to follow the link itself. A modified or
+ * middle click means "open the cart page over there", which is the one thing a
+ * drawer cannot do.
+ */
+function isPlainClick(event: MouseEvent<HTMLAnchorElement>) {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
+/**
  * The header's way into the cart, with the number of pieces in it.
+ *
+ * A plain click opens the cart drawer rather than navigating: the visitor is
+ * usually mid-list, and a glance at the cart should not cost them their place.
+ * It stays a real link to `/cart` so the page is still reachable by keyboard
+ * modifiers, a middle click and a crawler — the drawer only intercepts the
+ * click it can answer better.
  *
  * The count comes from the hydration-guarded read, so it is 0 in the server HTML
  * and in the first client render whatever the stored cart holds — anything else
@@ -17,10 +40,19 @@ const BADGE_LIMIT = 99;
  */
 export function CartLink() {
   const itemCount = useCartItemCount();
+  const openCartDrawer = useCartDrawer((state) => state.openCartDrawer);
 
   return (
     <Link
       href="/cart"
+      onClick={(event) => {
+        if (!isPlainClick(event)) {
+          return;
+        }
+
+        event.preventDefault();
+        openCartDrawer();
+      }}
       className="relative rounded-lg p-2 transition-colors hover:bg-bg-sunken"
       aria-label={
         itemCount > 0 ? `Кошница · ${itemCount} артикула` : "Кошница"

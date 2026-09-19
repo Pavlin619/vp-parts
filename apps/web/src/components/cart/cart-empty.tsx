@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-/** The cart with nothing in it — and the one way out of that. */
-export function CartEmpty() {
+/**
+ * The cart with nothing in it — and the one way out of that. Rendered as a card
+ * on the cart page and, with the frame dropped, inside the cart drawer.
+ */
+export function CartEmpty({ className }: { className?: string }) {
   return (
-    <div className="rounded-[12px] border border-line bg-bg-card px-6 py-[72px] text-center">
+    <div
+      className={cn(
+        "rounded-[12px] border border-line bg-bg-card px-6 py-[72px] text-center",
+        className,
+      )}
+    >
       <span
         className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-bg-sunken text-ink-3"
         aria-hidden="true"
