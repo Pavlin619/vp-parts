@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { CartDrawer } from "@/components/cart";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -40,7 +41,14 @@ export default function RootLayout({
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+
+          {/* Mounted once at the root rather than per route group: the
+              marketing and shop layouts each have their own header with a
+              cart icon, and both need the same drawer to open from it. */}
+          <CartDrawer />
+        </Providers>
       </body>
     </html>
   );

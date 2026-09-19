@@ -8,6 +8,8 @@ import {
   type WarehouseAvailabilityDto,
   type WarehouseId,
 } from '@vp-parts-shop/shared'
+import { MAX_CART_LINES, useCart, type CartLineArticle } from '@/hooks/use-cart'
+import { useCartDrawer } from '@/hooks/use-cart-drawer'
 import { ArticleBuyBox } from './article-buy-box'
 
 // The wrapper fetches availability through this factory; the content component
@@ -30,6 +32,15 @@ jest.mock('@/lib/api/catalog', () => ({
 
 const WIX = '268'
 
+const OIL_FILTER: CartLineArticle = {
+  brandId: WIX,
+  articleNumber: 'WL6340',
+  brandName: 'WIX',
+  brandLogoUrl: null,
+  description: 'Маслен филтър',
+  thumbnailUrl: 'https://cdn.example/wl6340.jpg',
+}
+
 function warehouse(
   warehouseId: WarehouseId,
   quantity: number,
@@ -51,14 +62,26 @@ function renderBuyBox() {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <ArticleBuyBox brandId={WIX} articleNumber="WL6340" fitsVehicle={null} />
+      <ArticleBuyBox article={OIL_FILTER} fitsVehicle={null} />
     </QueryClientProvider>,
   )
 }
 
+const inStock = {
+  [articleIdentityKey(WIX, 'WL6340')]: {
+    available: true,
+    bestPriceExVat: 7017,
+    bestPriceIncVat: 8420,
+    availabilityByWarehouse: [warehouse('CENTRAL', 4)],
+    computedAt: '2026-07-05T09:00:00.000Z',
+  },
+} satisfies ArticlesAvailabilityDto
+
 describe('ArticleBuyBox — live availability', () => {
   beforeEach(() => {
     availabilityMock.mockReset()
+    useCart.setState({ lines: [] })
+    useCartDrawer.setState({ isOpen: false })
   })
 
   it('shows the skeleton while the availability read is in flight', () => {
@@ -97,5 +120,71 @@ describe('ArticleBuyBox — live availability', () => {
     await user.click(screen.getByRole('button', { name: 'Опитай отново' }))
     // Retry re-runs the read (initial call + the retry).
     expect(availabilityMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('ArticleBuyBox — adding to the cart', () => {
+  beforeEach(() => {
+    availabilityMock.mockReset()
+    availabilityMock.mockResolvedValue(inStock)
+    useCart.setState({ lines: [] })
+    useCartDrawer.setState({ isOpen: false })
+  })
+
+  // The cart line renders from what it stores, so the page's own catalog read
+  // has to travel into it rather than the cart fetching the part again.
+  it('stores the catalog metadata alongside the identity', async () => {
+    const user = userEvent.setup()
+    renderBuyBox()
+
+    await user.click(
+      await screen.findByRole('button', { name: /Добави в кошницата/ }),
+    )
+
+    expect(useCart.getState().lines).toEqual([
+      { ...OIL_FILTER, quantity: 1, isSelected: true },
+    ])
+  })
+
+  it('adds the selected quantity', async () => {
+    const user = userEvent.setup()
+    renderBuyBox()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Увеличи количеството' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: /Добави в кошницата/ }),
+    )
+
+    expect(useCart.getState().lines[0]?.quantity).toBe(2)
+  })
+
+  it('opens the cart drawer', async () => {
+    const user = userEvent.setup()
+    renderBuyBox()
+
+    await user.click(
+      await screen.findByRole('button', { name: /Добави в кошницата/ }),
+    )
+
+    expect(useCartDrawer.getState().isOpen).toBe(true)
+  })
+
+  it('stops offering to add once the cart is full of other parts', async () => {
+    useCart.setState({
+      lines: Array.from({ length: MAX_CART_LINES }, (_, index) => ({
+        ...OIL_FILTER,
+        articleNumber: `OTHER-${index}`,
+        quantity: 1,
+        isSelected: true,
+      })),
+    })
+
+    renderBuyBox()
+
+    expect(
+      await screen.findByRole('button', { name: /Кошницата е пълна/ }),
+    ).toBeDisabled()
   })
 })

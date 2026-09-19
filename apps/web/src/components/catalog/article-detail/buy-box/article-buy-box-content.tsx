@@ -27,7 +27,8 @@ interface ArticleBuyBoxContentProps {
   computedAt?: string | null;
   /** Re-reads live availability when a cut-off passes / the tab refocuses stale. */
   onRefresh?: () => void;
-  /** Wired to the cart store in US4. Optional until then. */
+  /** False once the cart is full of other parts — see `MAX_CART_LINES`. */
+  canAddToCart?: boolean;
   onAddToCart?: (quantity: number) => void;
 }
 
@@ -52,6 +53,7 @@ export function ArticleBuyBoxContent({
   availabilityByWarehouse = [],
   computedAt,
   onRefresh = NO_OP,
+  canAddToCart = true,
   onAddToCart,
 }: ArticleBuyBoxContentProps) {
   const { selectedQuantity, maxQuantity, changeQuantity } =
@@ -130,7 +132,12 @@ export function ArticleBuyBoxContent({
             type="button"
             size="lg"
             onClick={() => onAddToCart?.(selectedQuantity)}
-            aria-label="Добави в кошницата"
+            disabled={!canAddToCart}
+            aria-label={
+              canAddToCart
+                ? "Добави в кошницата"
+                : "Кошницата е пълна — премахнете артикул, за да добавите този"
+            }
             className="h-12 w-full gap-2 rounded-md text-sm font-semibold hover:bg-accent-hover"
           >
             <ShoppingCart className="h-4 w-4" aria-hidden="true" />

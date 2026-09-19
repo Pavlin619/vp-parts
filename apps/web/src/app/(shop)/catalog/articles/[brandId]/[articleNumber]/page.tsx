@@ -95,12 +95,7 @@ export default async function ArticleDetailPage({
             stops deciding where the section below starts. Confined to one row it
             set that row's height, opening a gap under the shorter gallery. */}
         <aside className="h-fit lg:sticky lg:top-[calc(var(--header-height)+1rem)] lg:row-span-2">
-          <ArticleBuyBox
-            brandId={brandId}
-            articleNumber={articleNumber}
-            fitsVehicle={article.fitsVehicle}
-            articleName={article.description}
-          />
+          <ArticleBuyBox article={article} fitsVehicle={article.fitsVehicle} />
         </aside>
 
         {/* Stops at the buy box rather than running the page's full width.
