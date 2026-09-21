@@ -8,6 +8,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prebuild": "prisma generate",
     "build": "nest build",
     "predev": "prisma generate",
