@@ -10,6 +10,7 @@ import * as Joi from 'joi';
 import { AuthModule } from './auth';
 import { ClientIpOptions, CommonModule, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
+import { CartModule } from './cart';
 import { CatalogModule } from './catalog';
 import { InventoryModule } from './inventory';
 import { SearchModule } from './search';
@@ -155,6 +156,7 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
     AuthModule,
     CommonModule,
     PrismaModule,
+    CartModule,
     CatalogModule,
     InventoryModule,
     SearchModule,

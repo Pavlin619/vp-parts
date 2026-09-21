@@ -34,6 +34,7 @@ function renderBuy(
   overrides: {
     quantity?: BuyBoxQuantity
     onAddToCart?: (quantity: number) => void
+    isAddingToCart?: boolean
   } = {},
 ) {
   return render(
@@ -43,6 +44,7 @@ function renderBuy(
       articleNumber="WL6340"
       articleName="Маслен филтър"
       onAddToCart={overrides.onAddToCart}
+      isAddingToCart={overrides.isAddingToCart}
     />,
   )
 }
@@ -111,6 +113,15 @@ describe('ArticleRowBuy — resolved', () => {
     expect(
       screen.getByRole('button', { name: 'Увеличи количеството за WL6340' }),
     ).toBeDisabled()
+  })
+
+  it('disables the button and swaps its icon for a spinner while adding', () => {
+    renderBuy(detail(), { isAddingToCart: true })
+
+    const button = screen.getByRole('button', {
+      name: 'Добавяне на Маслен филтър в кошницата…',
+    })
+    expect(button).toBeDisabled()
   })
 
   it('shows the price but no buy actions when the article is unavailable', () => {

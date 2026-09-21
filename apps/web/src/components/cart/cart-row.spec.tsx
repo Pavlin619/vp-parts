@@ -19,6 +19,7 @@ function line(overrides: Partial<CartLine> = {}): CartLine {
     thumbnailUrl: null,
     quantity: 2,
     isSelected: true,
+    addedAtPriceIncVat: null,
     ...overrides,
   }
 }
@@ -64,6 +65,7 @@ function row(overrides: Partial<CartRowModel> = {}): CartRowModel {
     issue: null,
     availableQuantity: 4,
     maxQuantity: 4,
+    priceChange: null,
     ...overrides,
   }
 }
@@ -251,5 +253,33 @@ describe('CartRow', () => {
     expect(container.querySelector('article > div')).toHaveClass(
       '@cart-wide:[&_[data-cell-label]]:sr-only',
     )
+  })
+})
+
+// The price shown is always today's. The note exists so a customer who
+// remembers a different number is not left wondering what happened.
+describe('CartRow — a price that moved since the part went in', () => {
+  it('says how much dearer it got', () => {
+    renderRow(row({ priceChange: 500 }))
+
+    expect(screen.getByText(/по-скъпо от добавянето/)).toBeInTheDocument()
+  })
+
+  it('says how much cheaper it got', () => {
+    renderRow(row({ priceChange: -500 }))
+
+    expect(screen.getByText(/по-евтино от добавянето/)).toBeInTheDocument()
+  })
+
+  it('still shows the live price beside the note', () => {
+    renderRow(row({ priceChange: 500, unitPriceIncVat: 1200 }))
+
+    expect(screen.getAllByText('12,00 €').length).toBeGreaterThan(0)
+  })
+
+  it('says nothing when the price has not moved', () => {
+    renderRow(row({ priceChange: null }))
+
+    expect(screen.queryByText(/от добавянето/)).not.toBeInTheDocument()
   })
 })

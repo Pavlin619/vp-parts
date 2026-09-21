@@ -140,6 +140,13 @@ describe('ArticleBuyBoxContent — available', () => {
     expect(onAddToCart).toHaveBeenCalledWith(2)
   })
 
+  it('disables the button and swaps its icon for a spinner while adding', () => {
+    render(<ArticleBuyBoxContent {...baseProps} isAddingToCart />)
+
+    const button = screen.getByRole('button', { name: 'Добавяне в кошницата…' })
+    expect(button).toBeDisabled()
+  })
+
   it('shows a fit panel when the part fits the selected vehicle', () => {
     render(
       <ArticleBuyBoxContent

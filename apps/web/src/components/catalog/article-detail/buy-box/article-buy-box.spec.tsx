@@ -12,6 +12,10 @@ import { MAX_CART_LINES, useCart, type CartLineArticle } from '@/hooks/use-cart'
 import { useCartDrawer } from '@/hooks/use-cart-drawer'
 import { ArticleBuyBox } from './article-buy-box'
 
+// The cart writes through to the server; these cases are about what the component
+// puts into the cart, not about the request that follows.
+jest.mock('@/lib/api/cart')
+
 // The wrapper fetches availability through this factory; the content component
 // is tested separately (article-buy-box-content.spec) with resolved props.
 const availabilityMock = jest.fn()
@@ -142,7 +146,9 @@ describe('ArticleBuyBox — adding to the cart', () => {
     )
 
     expect(useCart.getState().lines).toEqual([
-      { ...OIL_FILTER, quantity: 1, isSelected: true },
+      // The live price is kept as the line's reference point, so the cart can
+      // say it has moved since. It is never rendered as the price.
+      { ...OIL_FILTER, quantity: 1, isSelected: true, addedAtPriceIncVat: 8420 },
     ])
   })
 
@@ -178,6 +184,7 @@ describe('ArticleBuyBox — adding to the cart', () => {
         articleNumber: `OTHER-${index}`,
         quantity: 1,
         isSelected: true,
+        addedAtPriceIncVat: null,
       })),
     })
 

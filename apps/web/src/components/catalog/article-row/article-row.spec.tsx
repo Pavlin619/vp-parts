@@ -10,6 +10,10 @@ import { MAX_CART_LINES, useCart } from '@/hooks/use-cart'
 import { useCartDrawer } from '@/hooks/use-cart-drawer'
 import { ArticleRow } from './article-row'
 
+// The cart writes through to the server; these cases are about what the component
+// puts into the cart, not about the request that follows.
+jest.mock('@/lib/api/cart')
+
 function article(
   overrides: Partial<ArticleSummaryDto> = {},
 ): ArticleSummaryDto {
@@ -307,6 +311,9 @@ describe('ArticleRow — interactions', () => {
         thumbnailUrl: null,
         quantity: 2,
         isSelected: true,
+        // The price on screen when they clicked, kept so the cart can say it
+        // has moved since. Never rendered as the price.
+        addedAtPriceIncVat: 1500,
       },
     ])
   })
@@ -360,6 +367,7 @@ describe('ArticleRow — interactions', () => {
           thumbnailUrl: null,
           quantity: 1,
           isSelected: true,
+          addedAtPriceIncVat: null,
         })),
       })
     }

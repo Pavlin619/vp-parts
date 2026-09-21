@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
-import { CartDrawer } from "@/components/cart";
+import { CartDrawer, CartSync } from "@/components/cart";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -48,6 +48,10 @@ export default function RootLayout({
               marketing and shop layouts each have their own header with a
               cart icon, and both need the same drawer to open from it. */}
           <CartDrawer />
+
+          {/* The cart lives on the server; this reconciles the copy the
+              browser paints from. Renders nothing. */}
+          <CartSync />
         </Providers>
       </body>
     </html>

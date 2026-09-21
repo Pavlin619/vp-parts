@@ -25,6 +25,10 @@ export enum AppErrorCode {
   ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
   ORDER_CANNOT_BE_CANCELLED = 'ORDER_CANNOT_BE_CANCELLED',
   CART_ITEM_NOT_FOUND = 'CART_ITEM_NOT_FOUND',
+  /** The cart already holds as many distinct lines as it may. */
+  CART_FULL = 'CART_FULL',
+  /** The cart moved between the price the customer confirmed and the order. */
+  CART_STALE = 'CART_STALE',
   QUANTITY_EXCEEDS_STOCK = 'QUANTITY_EXCEEDS_STOCK',
   EMAIL_ALREADY_EXISTS = 'EMAIL_ALREADY_EXISTS',
   MECHANIC_APPLICATION_ALREADY_EXISTS = 'MECHANIC_APPLICATION_ALREADY_EXISTS',

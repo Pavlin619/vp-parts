@@ -8,3 +8,13 @@ export const FORWARDED_FOR_HEADER = 'x-forwarded-for';
  * trust domains.
  */
 export const WEB_ORIGIN_TOKEN_HEADER = 'x-web-origin-token';
+
+/**
+ * Names the cart a guest owns. Sent on every cart request and returned on the
+ * one that mints it.
+ *
+ * A header rather than a cookie: the shop and the API are on different sites,
+ * so a `SameSite=Lax` cookie would never be sent and `SameSite=None` is on
+ * borrowed time. The token names one cart and grants nothing else.
+ */
+export const CART_TOKEN_HEADER = 'x-cart-token';

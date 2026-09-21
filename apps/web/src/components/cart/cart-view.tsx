@@ -28,6 +28,7 @@ import { CartEmpty } from "./cart-empty";
 import { CartListActions } from "./cart-list-actions";
 import { CartRow } from "./cart-row";
 import { CartSummary } from "./cart-summary";
+import { CartWriteErrorBanner } from "./cart-write-error";
 import { CheckoutSteps } from "./checkout-steps";
 
 /**
@@ -79,6 +80,8 @@ export function CartView() {
     <>
       <CartHeading itemCount={itemCount} />
       <CheckoutSteps current={1} />
+
+      <CartWriteErrorBanner />
 
       {isFull && <CartFullNotice />}
 

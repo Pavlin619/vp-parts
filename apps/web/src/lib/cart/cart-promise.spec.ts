@@ -43,6 +43,7 @@ function line(quantity = 1): CartLine {
     thumbnailUrl: null,
     quantity,
     isSelected: true,
+    addedAtPriceIncVat: null,
   };
 }
 
@@ -55,7 +56,8 @@ function row(overrides: Partial<CartRowModel> = {}): CartRowModel {
     lineTotalExVat: 1000,
     lineTotalIncVat: 1200,
     issue: null,
-    availableQuantity: 5,
+    priceChange: null,
+  availableQuantity: 5,
     maxQuantity: 5,
     ...overrides,
   };

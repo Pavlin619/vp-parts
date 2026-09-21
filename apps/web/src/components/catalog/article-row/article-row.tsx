@@ -74,7 +74,7 @@ export function ArticleRow({
   categoryNodeId,
 }: ArticleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const addToCart = useAddToCart();
+  const { addToCart, isAddingToCart } = useAddToCart();
   const canAddToCart = useCanAddLine(article);
 
   const quantity = useBuyBoxQuantity(
@@ -149,6 +149,7 @@ export function ArticleRow({
               articleNumber={articleNumber}
               articleName={description}
               canAddToCart={canAddToCart}
+              isAddingToCart={isAddingToCart}
               onAddToCart={(selected) =>
                 addToCart(
                   {
@@ -160,6 +161,7 @@ export function ArticleRow({
                     thumbnailUrl: article.thumbnailUrl,
                   },
                   selected,
+                  availability?.bestPriceIncVat ?? null,
                 )
               }
             />
