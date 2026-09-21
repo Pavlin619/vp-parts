@@ -1,11 +1,13 @@
 "use client";
 
-import { Minus, Plus, ShoppingCart } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { formatPrice, type WarehouseAvailabilityDto } from "@vp-parts-shop/shared";
+import { AddToCartIcon } from "@/components/cart";
 import { Button } from "@/components/ui/button";
 import { useBuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { useLiveDeliveryClock } from "@/hooks/use-live-delivery-clock";
 import { useFitVehicleName } from "@/hooks/use-fit-vehicle-name";
+import { addToCartAriaLabel } from "@/lib/cart/add-to-cart-label";
 import { VehicleFitBadge } from "@/components/catalog/vehicle-fit-badge";
 import { ArticleAvailability } from "./availability/article-availability";
 import { DeliveryEstimate } from "./delivery/delivery-estimate";
@@ -29,6 +31,8 @@ interface ArticleBuyBoxContentProps {
   onRefresh?: () => void;
   /** False once the cart is full of other parts — see `MAX_CART_LINES`. */
   canAddToCart?: boolean;
+  /** Whether this box's own add is still writing through to the server. */
+  isAddingToCart?: boolean;
   onAddToCart?: (quantity: number) => void;
 }
 
@@ -54,6 +58,7 @@ export function ArticleBuyBoxContent({
   computedAt,
   onRefresh = NO_OP,
   canAddToCart = true,
+  isAddingToCart = false,
   onAddToCart,
 }: ArticleBuyBoxContentProps) {
   const { selectedQuantity, maxQuantity, changeQuantity } =
@@ -132,15 +137,17 @@ export function ArticleBuyBoxContent({
             type="button"
             size="lg"
             onClick={() => onAddToCart?.(selectedQuantity)}
-            disabled={!canAddToCart}
-            aria-label={
-              canAddToCart
-                ? "Добави в кошницата"
-                : "Кошницата е пълна — премахнете артикул, за да добавите този"
-            }
+            disabled={!canAddToCart || isAddingToCart}
+            aria-label={addToCartAriaLabel({
+              isAdding: isAddingToCart,
+              canAdd: canAddToCart,
+              addingLabel: "Добавяне в кошницата…",
+              readyLabel: "Добави в кошницата",
+              fullLabel: "Кошницата е пълна — премахнете артикул, за да добавите този",
+            })}
             className="h-12 w-full gap-2 rounded-md text-sm font-semibold hover:bg-accent-hover"
           >
-            <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+            <AddToCartIcon isAdding={isAddingToCart} className="h-4 w-4" />
             В кошница
             {displayPrice != null && (
               <span className="tabular-nums">· {formatPrice(displayPrice)}</span>

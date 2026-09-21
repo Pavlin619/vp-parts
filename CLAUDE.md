@@ -45,7 +45,7 @@ docker compose down    # Stop
 
 This is a TypeScript monorepo (Turborepo + npm workspaces) for an automotive parts e-commerce shop. Read `docs/ARCHITECTURE.md` for diagrams, rationale, and implementation detail — it is the authoritative design document.
 
-The rest of `docs/` carries the detail deliberately kept out of this file: `TECDOC.md` (what the TecDoc endpoint actually does, measured, and the features built on it), `CROSS-REFERENCES.md` (which parts replace a part), `PRICING-AND-DELIVERY.md` and `DELIVERY-LOGIC.md`.
+The rest of `docs/` carries the detail deliberately kept out of this file: `TECDOC.md` (what the TecDoc endpoint actually does, measured, and the features built on it), `CROSS-REFERENCES.md` (which parts replace a part), `PRICING-AND-DELIVERY.md`, `DELIVERY-LOGIC.md` and `CART.md` (how a cart is owned, merged, expired and turned into an order).
 
 ### Workspaces
 | Path | Package | Purpose |

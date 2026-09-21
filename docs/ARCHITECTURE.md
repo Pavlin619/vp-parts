@@ -148,7 +148,9 @@ Schema: public  (Spring Boot owns — Liquibase manages migrations)
 Schema: shop  (NestJS owns — Prisma manages migrations)
   orders / order_items  — NestJS writes, backoffice reads for reporting
   customers             — NestJS writes, backoffice reads for CRM
-  cart                  — NestJS only
+  cart / cart_items     — NestJS only. Guest carts (token) and customer carts
+                          live in the same table; a cart is never deleted once
+                          ordered from. See docs/CART.md.
 
 Cross-schema permissions (enforced by Postgres users):
   shop_app user    → SELECT (column-scoped) on public.autoparts      (own stock — no cost/internal columns)
@@ -337,8 +339,12 @@ The browse cache is a performance optimisation only, never used for financial de
 
 ## Order Flow
 
+The cart itself is server-side from the first add (`docs/CART.md`), so every
+step below reads it from `shop.cart` by id — the browser never submits the
+lines or the prices it is to be charged.
+
 ```
-Customer confirms cart
+Customer confirms cart (read server-side by id; cart.version pinned)
         │
         ▼
 Pre-checkout: fresh non-cached direct DB read for the whole cart
@@ -351,7 +357,11 @@ Pre-checkout: fresh non-cached direct DB read for the whole cart
 Payment processed (Stripe / myPOS)
         │
         ▼
-NestJS writes shop.orders (status: PROCESSING)
+NestJS writes shop.orders (status: PROCESSING) in one transaction with:
+  - the selected cart lines copied into order_items at the confirmed price
+  - cart.status → ORDERED, cart.orderId set (UNIQUE: one order per cart, which
+    is what makes a retried payment webhook idempotent)
+  - any unselected lines moved to a fresh ACTIVE cart
 Returns to customer: "Your order is being processed"
         │
         ├──► Publish OrderPlaced → SQS shop-events

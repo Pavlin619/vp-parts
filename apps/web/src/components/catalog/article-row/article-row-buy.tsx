@@ -1,11 +1,12 @@
 "use client";
 
-import { ShoppingCart } from "lucide-react";
 import { formatPrice } from "@vp-parts-shop/shared";
+import { AddToCartIcon } from "@/components/cart";
 import { QuantityStepper } from "@/components/common/quantity-stepper";
 import { Button } from "@/components/ui/button";
 import type { BuyBoxQuantity } from "@/hooks/use-buy-box-quantity";
 import { usePricesIncludeVat } from "@/hooks/use-price-display";
+import { addToCartAriaLabel } from "@/lib/cart/add-to-cart-label";
 import type { RowAvailability } from "@/lib/inventory/merge-availability";
 
 /**
@@ -35,6 +36,8 @@ interface ArticleRowBuyProps {
   articleName: string;
   /** False once the cart is full of other parts — see `MAX_CART_LINES`. */
   canAddToCart?: boolean;
+  /** Whether this row's own add is still writing through to the server. */
+  isAddingToCart?: boolean;
   onAddToCart?: (quantity: number) => void;
 }
 
@@ -49,6 +52,7 @@ export function ArticleRowBuy({
   articleNumber,
   articleName,
   canAddToCart = true,
+  isAddingToCart = false,
   onAddToCart,
 }: ArticleRowBuyProps) {
   const includesVat = usePricesIncludeVat();
@@ -92,15 +96,17 @@ export function ArticleRowBuy({
           <Button
             type="button"
             onClick={() => onAddToCart?.(quantity.selectedQuantity)}
-            disabled={!canAddToCart}
-            aria-label={
-              canAddToCart
-                ? `Добави ${articleName} в кошницата`
-                : `Кошницата е пълна — премахнете артикул, за да добавите ${articleName}`
-            }
+            disabled={!canAddToCart || isAddingToCart}
+            aria-label={addToCartAriaLabel({
+              isAdding: isAddingToCart,
+              canAdd: canAddToCart,
+              addingLabel: `Добавяне на ${articleName} в кошницата…`,
+              readyLabel: `Добави ${articleName} в кошницата`,
+              fullLabel: `Кошницата е пълна — премахнете артикул, за да добавите ${articleName}`,
+            })}
             className="h-8 gap-1.5 rounded-md bg-accent px-3 text-white hover:bg-accent-hover"
           >
-            <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+            <AddToCartIcon isAdding={isAddingToCart} className="h-4 w-4" />
           </Button>
         </div>
       )}

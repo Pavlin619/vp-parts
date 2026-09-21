@@ -823,132 +823,118 @@ directly, with no internal REST hop.
 
 ## Cart Module
 
-> **Anonymous cart note**: Anonymous visitors manage their cart entirely client-side (browser localStorage via Zustand). These API endpoints are only called for **logged-in users**. When an anonymous visitor logs in, the frontend reads the local cart and calls `POST /cart/items` for each item to merge it into the server-side account cart, then clears local storage. All cart endpoints therefore remain `(Protected)`.
+> **Every cart route is `(Public)` and owner-scoped.** A guest has a cart too, so
+> these are not gated on an account — but every one of them resolves an owner
+> from the request itself and can reach no other cart. The owner is the Clerk
+> identity when a valid `Authorization: Bearer` is present, and the cart token
+> otherwise.
+>
+> **Cart token.** A guest cart is named by an opaque 43-character token
+> (`^[A-Za-z0-9_-]{43}$`, 32 random bytes base64url). The client sends it as
+> `x-cart-token` on every cart request. The server mints one on the **first
+> write** and returns it in the `x-cart-token` **response header** of exactly
+> that one response — the API must list the header in CORS `exposedHeaders` or
+> the browser cannot read it. A malformed token is ignored, not looked up.
+>
+> **Responses carry intent only.** No prices, no stock, no totals: the client
+> prices a cart through `GET /catalog/articles-availability`, and the totals are
+> derived there. The one stored figure, `addedAtPriceIncVat`, is the price when
+> the line was added and exists to be compared, never displayed as the price.
+>
+> Every mutating route returns the **whole** cart, so a write needs no follow-up
+> read. `version` rises on every mutation; checkout pins it.
+>
+> See `docs/CART.md` for the model behind all of this.
 
-### Get Active Cart
+### The cart shape
 
-**`GET /cart`** (Protected)
-
-Returns the customer's active cart with current prices refreshed.
-
-Response `200`:
-```json
+```jsonc
 {
-  "id": "cart-uuid",
-  "items": [
+  "id": "0f6f...",          // "" when the visitor has no cart
+  "version": 7,             // rises on every mutation
+  "lines": [
     {
+      "brandId": "268",     // TecDoc dataSupplierId — half of the identity
       "articleNumber": "WL6340",
       "brandName": "WIX",
-      "description": "Oil Filter",
-      "thumbnailUrl": "https://cdn.example.com/img/WL6340.jpg",
+      "brandLogoUrl": null,
+      "description": "Маслен филтър",
+      "thumbnailUrl": null,
       "quantity": 2,
-      "unitPriceExVat": 1250,
-      "unitPriceIncVat": 1500,
-      "lineTotalIncVat": 3000,
-      "available": true
+      "isSelected": true,
+      "addedAtPriceIncVat": 1900,   // cents; null if added without a live price
+      "addedAt": "2026-09-19T19:59:45.386Z"
     }
-  ],
-  "subtotalExVat": 2500,
-  "vatAmount": 500,
-  "totalIncVat": 3000,
-  "itemCount": 2
-}
-```
-
----
-
-### Add Item to Cart
-
-**`POST /cart/items`** (Protected)
-
-Request body:
-```json
-{ "articleNumber": "WL6340", "quantity": 2 }
-```
-
-Response `200`: updated cart (same shape as `GET /cart`)
-
-Errors: `404 ARTICLE_NOT_FOUND`, `422 ARTICLE_UNAVAILABLE`
-
----
-
-### Update Cart Item Quantity
-
-**`PATCH /cart/items/:articleNumber`** (Protected)
-
-Request body: `{ "quantity": 3 }`
-
-Response `200`: updated cart
-
-Errors: `404 CART_ITEM_NOT_FOUND`, `422 QUANTITY_EXCEEDS_STOCK`
-
----
-
-### Remove Cart Item
-
-**`DELETE /cart/items/:articleNumber`** (Protected)
-
-Response `200`: updated cart
-
----
-
-### Validate Cart (Pre-Checkout)
-
-**`POST /cart/validate`** (Protected)
-
-Performs a live availability check on every item in the cart. Returns which items (if any) are no longer available or have changed price.
-
-Response `200`:
-```json
-{
-  "valid": true,
-  "changedItems": [],
-  "unavailableItems": []
-}
-```
-
-Response `200` (with issues):
-```json
-{
-  "valid": false,
-  "changedItems": [
-    {
-      "articleNumber": "WL6340",
-      "oldPriceIncVat": 1500,
-      "newPriceIncVat": 1650,
-      "difference": 150
-    }
-  ],
-  "unavailableItems": [
-    { "articleNumber": "OC123", "description": "Oil Filter MANN" }
   ]
 }
 ```
 
----
+A line is identified by `(brandId, articleNumber)` everywhere — path, body and
+unique constraint. An article number alone names as many parts as there are
+suppliers filing it.
 
-### Save Cart (Mechanic only)
+### Get Cart — `GET /cart` (Public)
 
-**`POST /cart/save`** (Protected, `MECHANIC` role)
+`Cache-Control: no-store`. **Never creates a cart**: a visitor with no token, or
+one whose cart has expired, gets `{ "id": "", "version": 0, "lines": [] }` and
+no row is written.
 
-Request body: `{ "name": "Job — Lada Niva, July service" }`
+### Add Line — `POST /cart/items` (Public)
 
-Response `201`: `{ "savedCartId": "uuid", "name": "Job — ..." }`
+Body: the line's identity, `quantity` (1–99), the catalogue snapshot
+(`brandName`, `brandLogoUrl`, `description`, `thumbnailUrl`) and
+`addedAtPriceIncVat` (integer cents or `null`).
 
----
+Mints the cart if there is none, and returns the token in `x-cart-token`.
+Adding a part already in the cart raises that line and re-selects it.
 
-### List Saved Carts (Mechanic only)
+`409 CART_FULL` when the cart already holds `MAX_CART_LINES` (50) *other*
+parts — the limit is the availability batch the whole cart is priced by, so line
+51 would cost every other line its price. Raising an existing line is always
+allowed.
 
-**`GET /cart/saved`** (Protected, `MECHANIC` role)
+### Update Line — `PATCH /cart/items/:brandId/:articleNumber` (Public)
 
-Response `200`:
-```json
-[
-  { "id": "uuid", "name": "Job — Lada Niva, July service", "itemCount": 4, "updatedAt": "..." }
-]
+Body: `quantity` and/or `isSelected`. A body that sets neither changes nothing
+and is refused rather than bumping the version.
+
+`404 CART_ITEM_NOT_FOUND` when the cart no longer holds that line — the client
+answers by re-reading the cart.
+
+### Remove Line — `DELETE /cart/items/:brandId/:articleNumber` (Public)
+
+Idempotent: removing what is already gone succeeds.
+
+### Set Selection — `POST /cart/selection` (Public)
+
+Body: `{ "isSelected": boolean }`. Selects or deselects every line at once.
+
+### Clear Cart — `DELETE /cart` (Public)
+
+Empties the cart. The cart row itself survives.
+
+### Adopt Cart — `POST /cart/adopt` (Public, requires a Clerk identity)
+
+Called once, at sign-in, with both the `Authorization` header and the guest
+`x-cart-token`. Merges the guest cart into the account cart in one transaction —
+union, quantities summed, guest cart retired as `MERGED`.
+
+```jsonc
+{
+  "cart": { /* the cart shape above */ },
+  "droppedLines": [ { "brandId": "77", "articleNumber": "OC90" } ]
+}
 ```
 
----
+`droppedLines` are the lines the union had no room for (see `MAX_CART_LINES`),
+reported so the customer can be told rather than left to notice.
+
+`401` when Clerk authenticated someone we hold no `Customer` row for.
+
+### Saved carts (mechanic feature — not yet built)
+
+`POST /cart/save` and `GET /cart/saved` are deferred. The schema carries no
+`name` column yet; add one with the feature.
 
 ## Checkout & Orders Module
 

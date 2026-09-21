@@ -5,7 +5,9 @@ import {
   articleIdentityKey,
   type ArticleIdentityDto,
   type ArticlesAvailabilityDto,
+  type CartDto,
 } from '@vp-parts-shop/shared'
+import * as cartApi from '@/lib/api/cart'
 import { MAX_CART_LINES, useCart, type CartLineArticle } from '@/hooks/use-cart'
 import { CartView } from './cart-view'
 
@@ -26,6 +28,25 @@ jest.mock('@/lib/api/catalog', () => ({
     queryFn: () => getAvailability(articles) as Promise<ArticlesAvailabilityDto>,
   }),
 }))
+
+// The cart writes through to the server; these cases are about what the page
+// shows for a cart already in the mirror, not about that request. Each write
+// is echoed straight back so it always lands, keeping the write-failure
+// banner (see cart-write-error.spec.tsx) out of these cases.
+jest.mock('@/lib/api/cart')
+
+const cart = jest.mocked(cartApi)
+
+function echoedCart(): CartDto {
+  return {
+    id: 'cart-1',
+    version: 1,
+    lines: useCart.getState().lines.map((entry) => ({
+      ...entry,
+      addedAt: '2026-09-01T10:00:00.000Z',
+    })),
+  }
+}
 
 function article(overrides: Partial<CartLineArticle> = {}): CartLineArticle {
   return {
@@ -65,9 +86,15 @@ function renderView() {
 
 describe('CartView', () => {
   beforeEach(() => {
-    useCart.setState({ lines: [] })
+    useCart.setState({ lines: [], lastWriteError: null })
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
+
+    cart.addCartLine.mockImplementation(() => Promise.resolve(echoedCart()))
+    cart.updateCartLine.mockImplementation(() => Promise.resolve(echoedCart()))
+    cart.removeCartLine.mockImplementation(() => Promise.resolve(echoedCart()))
+    cart.setCartSelection.mockImplementation(() => Promise.resolve(echoedCart()))
+    cart.clearCart.mockImplementation(() => Promise.resolve(echoedCart()))
   })
 
   it('offers a way back to the catalogue when the cart is empty', async () => {
@@ -247,6 +274,7 @@ describe('CartView', () => {
         ...article({ articleNumber: `A${index}` }),
         quantity: 1,
         isSelected: true,
+        addedAtPriceIncVat: null,
       })),
     })
 

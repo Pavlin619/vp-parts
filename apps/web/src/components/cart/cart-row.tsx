@@ -115,6 +115,7 @@ export function CartRow({
             title="Ед. цена"
             price={unitPriceIncVat}
             isPending={availability === undefined}
+            priceChange={row.priceChange}
           />
 
           <LinePrice
@@ -171,11 +172,14 @@ function LinePrice({
   price,
   isPending,
   emphasis,
+  priceChange,
 }: {
   title: string;
   price: number | null;
   isPending: boolean;
   emphasis?: boolean;
+  /** How far this price has moved since the part went in; null if it has not. */
+  priceChange?: number | null;
 }) {
   return (
     <RowCell title={title} className="@cart-wide:text-right">
@@ -186,17 +190,44 @@ function LinePrice({
           aria-hidden="true"
         />
       ) : (
-        <p
-          className={cn(
-            "whitespace-nowrap font-display tabular-nums",
-            emphasis
-              ? "text-[17px] font-semibold text-ink"
-              : "text-sm font-medium text-ink-2",
-          )}
-        >
-          {price != null ? formatPrice(price) : "—"}
-        </p>
+        <>
+          <p
+            className={cn(
+              "whitespace-nowrap font-display tabular-nums",
+              emphasis
+                ? "text-[17px] font-semibold text-ink"
+                : "text-sm font-medium text-ink-2",
+            )}
+          >
+            {price != null ? formatPrice(price) : "—"}
+          </p>
+
+          {priceChange != null && <PriceChangeNote change={priceChange} />}
+        </>
       )}
     </RowCell>
+  );
+}
+
+/**
+ * That the price has moved since the part went into the cart.
+ *
+ * Said quietly and beside the live figure, never instead of it: the price on
+ * screen is always the one we are selling at today, and the note exists so a
+ * customer who remembers a different number is not left wondering.
+ */
+function PriceChangeNote({ change }: { change: number }) {
+  const hasRisen = change > 0;
+
+  return (
+    <p
+      className={cn(
+        "mt-0.5 whitespace-nowrap text-[11.5px] font-medium tabular-nums",
+        hasRisen ? "text-warn" : "text-ok",
+      )}
+    >
+      {hasRisen ? "↑" : "↓"} {formatPrice(Math.abs(change))}{" "}
+      {hasRisen ? "по-скъпо" : "по-евтино"} от добавянето
+    </p>
   );
 }

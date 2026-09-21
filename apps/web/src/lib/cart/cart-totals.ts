@@ -28,6 +28,12 @@ export interface CartRowModel {
   availableQuantity: number | null;
   /** Highest quantity the row's stepper offers. */
   maxQuantity: number;
+  /**
+   * How far the unit price has moved, in cents, since the part went into the
+   * cart — positive for a rise. Null when nothing has changed, or when either
+   * end of the comparison is missing.
+   */
+  priceChange: number | null;
 }
 
 export interface CartTotals {
@@ -87,6 +93,26 @@ function lineIssueOf(
 }
 
 /**
+ * How far the price has moved since the line was added.
+ *
+ * Null rather than zero for "it has not moved", so a row asks one question —
+ * is there something to say? — instead of comparing to zero itself. A line
+ * added while the price read was failing has nothing to compare against.
+ */
+function priceChangeOf(
+  addedAtPriceIncVat: number | null,
+  unitPriceIncVat: number | null,
+): number | null {
+  if (addedAtPriceIncVat === null || unitPriceIncVat === null) {
+    return null;
+  }
+
+  const change = unitPriceIncVat - addedAtPriceIncVat;
+
+  return change === 0 ? null : change;
+}
+
+/**
  * Joins the stored lines to a batch availability read, in the cart's own order.
  *
  * A line the read had no row for degrades to the neutral unavailable state
@@ -117,6 +143,10 @@ export function buildCartRows(
       lineTotalExVat: isPriced ? unitPriceExVat * line.quantity : null,
       lineTotalIncVat: isPriced ? unitPriceIncVat * line.quantity : null,
       issue: lineIssueOf(availableQuantity, line.quantity),
+      priceChange: priceChangeOf(
+        line.addedAtPriceIncVat,
+        isPriced ? unitPriceIncVat : null,
+      ),
       availableQuantity,
       maxQuantity:
         availableQuantity === null

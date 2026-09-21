@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { extractBearerToken } from './bearer-token';
 
 @Injectable()
 export class InternalGuard implements CanActivate {
@@ -18,17 +19,12 @@ export class InternalGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    const token = this.extractToken(request);
+    const token = extractBearerToken(request);
 
     if (token !== this.internalApiToken) {
       throw new UnauthorizedException();
     }
 
     return true;
-  }
-
-  private extractToken(request: Request): string | undefined {
-    const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
   }
 }

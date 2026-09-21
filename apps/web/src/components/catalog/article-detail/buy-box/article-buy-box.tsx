@@ -38,7 +38,7 @@ export function ArticleBuyBox({
   vehicleName,
 }: ArticleBuyBoxProps) {
   const { brandId, articleNumber } = article;
-  const addToCart = useAddToCart();
+  const { addToCart, isAddingToCart } = useAddToCart();
   const canAddToCart = useCanAddLine(article);
 
   const { data, isPending, isError, refetch } = useQuery(
@@ -75,7 +75,10 @@ export function ArticleBuyBox({
       articleNumber={articleNumber}
       articleName={article.description}
       canAddToCart={canAddToCart}
-      onAddToCart={(quantity) => addToCart(article, quantity)}
+      isAddingToCart={isAddingToCart}
+      onAddToCart={(quantity) =>
+        addToCart(article, quantity, detail.bestPriceIncVat)
+      }
       onRefresh={() => refetch()}
     />
   );

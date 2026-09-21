@@ -18,11 +18,16 @@ export class ApiError extends Error {
 interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   token?: string;
   body?: unknown;
+  /**
+   * Handed the response headers before the body is read, for the few reads
+   * whose answer is partly in a header — the cart token a first add mints.
+   */
+  onHeaders?: (headers: Headers) => void;
 }
 
 export async function apiFetch<T>(
   path: string,
-  { token, body, ...init }: ApiFetchOptions = {},
+  { token, body, onHeaders, ...init }: ApiFetchOptions = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
 
@@ -39,6 +44,8 @@ export async function apiFetch<T>(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  onHeaders?.(response.headers);
 
   if (!response.ok) {
     const errorPayload: ApiErrorResponse = await response

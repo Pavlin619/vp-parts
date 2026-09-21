@@ -1,7 +1,8 @@
-import type {
-  ArticlesAvailabilityDto,
-  WarehouseAvailabilityDto,
-  WarehouseId,
+import {
+  MAX_CART_LINE_QUANTITY,
+  type ArticlesAvailabilityDto,
+  type WarehouseAvailabilityDto,
+  type WarehouseId,
 } from "@vp-parts-shop/shared";
 
 /**
@@ -40,8 +41,11 @@ export function isStockCapped(quantity: number): boolean {
   return quantity > STOCK_DISPLAY_LIMIT;
 }
 
-/** Absolute ceiling for any quantity stepper, regardless of stock. */
-export const MAX_QUANTITY = 99;
+/**
+ * Absolute ceiling for any quantity stepper, regardless of stock. Owned by the
+ * shared contract because the server clamps a cart line to the same number.
+ */
+export const MAX_QUANTITY = MAX_CART_LINE_QUANTITY;
 
 export function formatStockQuantity(quantity: number): string {
   return isStockCapped(quantity) ? `${STOCK_DISPLAY_LIMIT}+` : String(quantity);

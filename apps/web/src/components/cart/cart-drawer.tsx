@@ -14,6 +14,7 @@ import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { buildCartRows, cartTotals } from "@/lib/cart/cart-totals";
 import { CartEmpty } from "./cart-empty";
 import { CartDrawerRow } from "./cart-drawer-row";
+import { CartWriteErrorBanner } from "./cart-write-error";
 
 /**
  * The cart as a panel over the page — opened from the header and by every
@@ -108,6 +109,8 @@ function CartDrawerContent({ onClose }: { onClose: () => void }) {
       </header>
 
       <div className="flex-1 overflow-y-auto px-5">
+        <CartWriteErrorBanner />
+
         {lines.length === 0 ? (
           <CartEmpty className="border-0 bg-transparent px-2 py-16" />
         ) : (

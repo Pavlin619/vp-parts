@@ -87,6 +87,11 @@ jobs:
       - name: Unit tests
         run: npm run test --workspace=apps/api
 
+      # Must run before the stock fixtures below: `migrate deploy` refuses a
+      # non-empty schema that has no migration history (P3005).
+      - name: Apply Prisma migrations
+        run: npm run prisma:migrate:deploy --workspace=apps/api
+
       # The live availability read hits the backoffice-owned public.autoparts /
       # public.supplier_stock tables. They are not in this repo's Prisma schema
       # (the backoffice owns them via Liquibase), so create the test fixture

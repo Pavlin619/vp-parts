@@ -187,29 +187,37 @@
 
 ## Phase 6: User Story 4 — Cart Management (Priority: P1)
 
-**Goal**: A logged-in customer accumulates parts, edits quantities, removes items, sees live totals, and gets pre-checkout availability validation before proceeding. Mechanics can save named carts.
+**Goal**: Any visitor accumulates parts, edits quantities, removes items and sees live totals, on a cart that survives a browser restart and follows a customer between devices. Pre-checkout availability validation belongs to US5, where the money is.
 
-**Independent Test**: Add multiple parts, adjust quantities, remove one, verify totals recalculate — without proceeding to checkout.
+**Independent Test**: Add multiple parts, adjust quantities, remove one, verify totals recalculate; reload the browser and find the cart intact.
+
+> **Superseded design.** The original plan here was a browser-local cart for guests, a server cart only once signed in, and a merge the frontend performed by replaying `POST /cart/items` per item. That is now one server cart for everyone from the first add, named by a cart token, with the merge done server-side in one transaction. `spec.md` FR-015/FR-018/FR-019, `data-model.md` and `contracts/api-endpoints.md` were rewritten to match; the model and its reasoning are in `docs/CART.md`.
 
 ### Tests for User Story 4
 
-- [ ] T070 [P] [US4] Write unit tests for CartService (add item, update quantity, remove item, get active cart with refreshed prices, merge anonymous cart on login, pre-checkout validate, save named cart for MECHANIC, reopen saved cart with price refresh) in `apps/api/src/cart/cart.service.spec.ts`
-- [ ] T071 [US4] Write integration tests for CartController (GET /cart, POST /cart/items, PATCH /cart/items/:articleNumber, DELETE /cart/items/:articleNumber, POST /cart/validate, POST /cart/save, GET /cart/saved) in `apps/api/test/cart.e2e-spec.ts`
+- [X] T070 [P] [US4] Write unit tests for CartService (add/raise/clamp, brand-scoped identity, line limit, selection, clear, version bump, TTL refresh, adopt in all its shapes, expiry sweep) in `apps/api/src/cart/cart.service.spec.ts`, and for the pure merge in `apps/api/src/cart/cart-merge.spec.ts`
+- [X] T071 [US4] Write e2e tests for CartController (GET /cart, POST /cart/items, PATCH + DELETE /cart/items/:brandId/:articleNumber, POST /cart/selection, DELETE /cart, POST /cart/adopt; token minting, token scoping, the 51st line, malformed tokens) in `apps/api/test/cart.e2e-spec.ts`
+- [X] T071b [US4] Write unit tests for the optional-auth path through `JwtGuard` in `apps/api/src/auth/jwt.guard.spec.ts`
 
 ### Implementation for User Story 4
 
-- [ ] T072 [US4] Implement CartRepository (active cart CRUD, saved cart create/list, cartItem upsert with (cartId, articleNumber) unique constraint) in `apps/api/src/cart/cart.repository.ts`
-- [ ] T073 [US4] Implement CartService (add/update/remove items, merge anonymous cart items, refresh prices via InventoryService on GET, pre-checkout validate, mechanic named cart save/reopen with price refresh) in `apps/api/src/cart/cart.service.ts`
-- [ ] T074 [US4] Implement CartController (all 7 cart endpoints; POST /cart/save and GET /cart/saved require MECHANIC role) in `apps/api/src/cart/cart.controller.ts`
-- [ ] T075 [US4] Create CartModule and barrel in `apps/api/src/cart/index.ts`
-- [ ] T076 [US4] Implement cart API functions (getCart, addItem, updateItem, removeItem, validateCart, saveCart, listSavedCarts) in `apps/web/src/lib/api/cart.ts`
-- [ ] T077 [US4] Implement Zustand anonymous cart store (localStorage persistence, merge-on-login action that calls POST /cart/items for each local item then clears local store) in `apps/web/src/hooks/use-cart.ts`
-- [ ] T078 [P] [US4] Create CartItem component (thumbnail, article number, brand, quantity stepper, unit price with VAT label, line total via formatPrice) in `apps/web/src/components/cart/cart-item.tsx`
-- [ ] T079 [P] [US4] Create CartSummary component (subtotal ex-VAT, VAT amount, grand total inc-VAT, all via formatPrice) in `apps/web/src/components/cart/cart-summary.tsx`
-- [ ] T080 [US4] Create CartDrawer component (sidebar overlay; server cart via TanStack Query; empty-cart state with browse CTA) in `apps/web/src/components/cart/cart-drawer.tsx`
-- [ ] T081 [US4] Implement full cart page (Client Component; validate-before-checkout gate showing unavailable items; mechanic "Save Cart" button) in `apps/web/src/app/(shop)/cart/page.tsx`
+- [X] T072 [US4] Rewrite `Cart`/`CartItem` in `apps/api/prisma/schema.prisma` (guest token, status, version, expiry, `(cartId, brandId, articleNumber)` unique, the reference price) plus the hand-written partial unique index for one active cart per customer; add `Order.cartId` and `OrderItem.brandId`
+- [X] T073 [US4] Rewrite the cart contract in `packages/shared` — `dto/cart.dto.ts` (intent only, no prices, no totals), `schemas/cart.schema.ts`, `MAX_CART_LINES`/`MAX_CART_LINE_QUANTITY`, `CART_TOKEN_HEADER`, `AppErrorCode.CART_FULL`/`CART_STALE`
+- [X] T074 [US4] Implement CartRepository (owner lookups, line upsert on the whole identity, every mutation bumping version and expiry in one transaction, merge, expiry sweep) in `apps/api/src/cart/cart.repository.ts`
+- [X] T075 [US4] Implement CartService and the pure `mergeCartLines`, plus `CustomersService.findByClerkId` in `apps/api/src/customers/` for owner resolution
+- [X] T076 [US4] Implement CartController and the `@CartRequesterOf()` decorator; extend `JwtGuard` so a `@Public()` route still learns who is asking; expose `x-cart-token` in CORS
+- [X] T077 [US4] Implement cart API functions and the token store in `apps/web/src/lib/api/cart/`; add an `onHeaders` hook to `apiFetch`
+- [X] T078 [US4] Rewrite the cart store in `apps/web/src/hooks/use-cart.ts` as an optimistic mirror that writes through, with a serialised write queue and a debounced quantity write; add `useCartSync` and mount `CartSync` at the root
+- [X] T079 [US4] Carry the live price into the cart at both add-to-cart call sites and surface `priceChange` on the cart row
+- [X] T080 [US4] Write `docs/CART.md` and bring `ARCHITECTURE.md`, `spec.md`, `data-model.md` and `contracts/api-endpoints.md` in line
+- [X] T081 [US4] Cart page and drawer (built earlier under the local-cart design; unchanged by this work beyond the price-change note) in `apps/web/src/app/(shop)/cart/page.tsx` and `apps/web/src/components/cart/`
 
-**Checkpoint**: Cart management fully functional. Server cart persists across devices; anonymous cart merges on login; pre-checkout validation flags unavailable items correctly.
+### Deferred out of US4
+
+- [ ] T081a [US4] Mechanic named carts (`POST /cart/save`, `GET /cart/saved`). Needs a `name` column and the MECHANIC role guard; moved to US9 where the rest of the B2B surface lives.
+- [ ] T081b [US4] Call `POST /cart/adopt` on sign-in and surface `droppedLines`. Blocked on Clerk in `apps/web`; the endpoint and its tests are done.
+
+**Checkpoint**: Cart management functional for guests end-to-end. The cart persists server-side, survives a restart, is scoped to its owner, and refuses the line that would cost every other line its price. The account half lights up with Clerk.
 
 ---
 
@@ -232,7 +240,8 @@
 
 - [ ] T089 [US5] Implement Order aggregate with state machine and invariant enforcement in `apps/api/src/orders/order.aggregate.ts`
 - [ ] T090 [US5] Implement OrdersRepository (atomic create order + items + initial OrderStatusHistory entry; query history; update status) in `apps/api/src/orders/orders.repository.ts`
-- [ ] T091 [US5] Implement CheckoutService (live confirm via InventoryService — no Redis cache; detect price changes; halt on out-of-stock; compute totals via PriceCalculator; create Order atomically) in `apps/api/src/orders/checkout.service.ts`
+- [ ] T091 [US5] Implement CheckoutService (live confirm via InventoryService — no Redis cache; detect price changes; halt on out-of-stock; compute totals via PriceCalculator; create Order atomically) in `apps/api/src/orders/checkout.service.ts`. **Reads the cart server-side by id** — the client submits neither lines nor prices — and returns the `cartVersion` it priced.
+- [ ] T091b [US5] Implement the cart → order transition, in the same transaction as the order: refuse a `cartVersion` that has moved (`CART_STALE`); copy **only the selected lines** into `OrderItem` with `brandId` *and* `articleNumber`; set `cart.status = ORDERED` and `cart.orderId` (UNIQUE — this is the idempotency key a retried payment webhook is checked against); move any unselected lines to a fresh ACTIVE cart. The cart row is never deleted. Rules and reasoning in `docs/CART.md` → "What happens when the customer buys".
 - [ ] T092 [US5] Implement SqsPublisher (publish OrderPlaced event to fulfillment SQS queue) in `apps/api/src/events/sqs.publisher.ts`
 - [ ] T093 [US5] Implement OrdersService (list orders, get order detail, request cancellation) in `apps/api/src/orders/orders.service.ts`
 - [ ] T094 [US5] Implement OrdersController (POST /orders/checkout/confirm, POST /orders, GET /orders, GET /orders/:id, POST /orders/:id/cancel, GET /orders/:id/status SSE via @Sse()) in `apps/api/src/orders/orders.controller.ts`

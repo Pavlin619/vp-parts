@@ -23,6 +23,12 @@ enum MechanicApprovalStatus {
   REJECTED
 }
 
+enum CartStatus {
+  ACTIVE
+  MERGED
+  ORDERED
+}
+
 enum OrderStatus {
   PROCESSING
   ITEMS_PREPARED
@@ -99,57 +105,101 @@ model Address {
   @@index([customerId])
 }
 
+/// A cart belongs to a guest (`token`) or to a customer (`customerId`), never
+/// both. It is never deleted once it has been ordered from: an ordered cart is
+/// the record of what was bought, and `orderId` is what makes a retried payment
+/// webhook idempotent.
 model Cart {
-  id         String   @id @default(uuid())
-  customerId String
-  name       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String     @id @default(uuid())
+  /// Guest owner. Cleared once a customer claims the cart.
+  token        String?    @unique
+  customerId   String?
+  status       CartStatus @default(ACTIVE)
+  /// Raised by every mutation. Checkout pins the version it priced, so an order
+  /// can refuse a cart that moved between the quote and the commitment.
+  version      Int        @default(0)
+  /// Where this cart's lines went when it was merged into another.
+  mergedIntoId String?
+  orderId      String?    @unique
+  /// Guest carts are swept after this; a customer's cart does not expire.
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  customer Customer   @relation(fields: [customerId], references: [id])
-  items    CartItem[]
+  customer        Customer?  @relation(fields: [customerId], references: [id])
+  items           CartItem[]
+  /// The cart this one's lines were merged into. Self-relation, so a merge
+  /// target that never existed is refused by the database, not discovered later.
+  mergedInto      Cart?      @relation("CartMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom      Cart[]     @relation("CartMerge")
+  /// This cart's own record of the order it produced — the idempotency check
+  /// a retried checkout call reads. `Restrict`, not the default `SetNull`: an
+  /// order is never deleted, so this FK exists to refuse a bad delete loudly,
+  /// not to survive one by quietly forgetting which order this cart produced.
+  order           Order?     @relation("CartOrderRecord", fields: [orderId], references: [id], onDelete: Restrict)
+  recordedByOrder Order?     @relation("OrderCartRecord")
 
-  @@index([customerId])
+  @@index([status, customerId, expiresAt])
 }
 
+/// Intent, not valuation. The catalog fields are a snapshot of what the
+/// customer saw; price and stock are read live on every cart surface. The one
+/// stored figure, `addedAtPriceIncVat`, exists to be compared against the live
+/// price and is never shown as the price.
 model CartItem {
-  id                String @id @default(uuid())
-  cartId            String
-  articleNumber     String
-  brandName         String
-  description       String
-  quantity          Int
-  unitPriceCaptured Int
+  id                 String   @id @default(uuid())
+  cartId             String
+  /// TecDoc `dataSupplierId`. An article number alone does not identify a part.
+  brandId            String
+  articleNumber      String
+  brandName          String
+  brandLogoUrl       String?
+  description        String
+  thumbnailUrl       String?
+  quantity           Int
+  isSelected         Boolean  @default(true)
+  addedAtPriceIncVat Int?
+  addedAt            DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   cart Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
 
-  @@unique([cartId, articleNumber])
-  @@index([cartId])
+  @@unique([cartId, brandId, articleNumber])
 }
 
 model Order {
-  id               String         @id @default(uuid())
-  orderReference   String         @unique
-  customerId       String
-  deliverySnapshot Json
-  status           OrderStatus    @default(PROCESSING)
-  shippingMethod   ShippingMethod
-  shippingCost     Int
-  subtotal         Int
-  vatAmount        Int
-  total            Int
-  paymentMethod    PaymentMethod
+  id                String         @id @default(uuid())
+  orderReference    String         @unique
+  customerId        String
+  /// The cart this order was placed from. Unique, so the database itself
+  /// refuses a second order for one cart — that is the idempotency key a
+  /// retried payment webhook is checked against.
+  cartId            String?        @unique
+  deliverySnapshot  Json
+  status            OrderStatus    @default(PROCESSING)
+  shippingMethod    ShippingMethod
+  shippingCost      Int
+  subtotal          Int
+  vatAmount         Int
+  total             Int
+  paymentMethod     PaymentMethod
   paymentReference  String?
-  courierName      String?
+  courierName       String?
   trackingReference String?
-  vehicleTag       String?
-  jobReference     String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  vehicleTag        String?
+  jobReference      String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
-  customer      Customer             @relation(fields: [customerId], references: [id])
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
+  customer       Customer             @relation(fields: [customerId], references: [id])
+  items          OrderItem[]
+  statusHistory  OrderStatusHistory[]
+  /// `Restrict`, not the default `SetNull`: the guest-cart sweep already
+  /// excludes ordered carts by `status` and `orderId`, but if that invariant
+  /// were ever broken, this FK must block the delete, not silently orphan the
+  /// order's idempotency key.
+  cart           Cart?                @relation("OrderCartRecord", fields: [cartId], references: [id], onDelete: Restrict)
+  recordedByCart Cart?                @relation("CartOrderRecord")
 
   @@index([customerId])
   @@index([status])
@@ -159,6 +209,8 @@ model Order {
 model OrderItem {
   id            String @id @default(uuid())
   orderId       String
+  /// TecDoc `dataSupplierId` — the other half of the article's identity.
+  brandId       String
   articleNumber String
   brandName     String
   description   String

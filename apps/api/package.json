@@ -8,6 +8,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prebuild": "prisma generate",
     "build": "nest build",
     "predev": "prisma generate",
@@ -23,7 +24,9 @@
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^5.0.1",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.19.3",
     "@vp-parts-shop/shared": "*",

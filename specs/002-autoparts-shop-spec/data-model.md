@@ -106,41 +106,62 @@ A delivery address saved by a customer. Snapshot is taken into `Order.deliverySn
 
 ### Cart
 
-A collection of items for a customer. Active cart: `name IS NULL`. Named saved cart (mechanic feature): `name IS NOT NULL`. Each customer has at most one active cart at a time.
+A collection of items belonging to a guest (`token`) or a customer
+(`customerId`) — never both. Everyone gets one from their first add; it is
+minted on a write, never on a read. See `docs/CART.md`.
 
 | Field | Type | Constraints | Notes |
 |---|---|---|---|
 | `id` | UUID | PK | |
-| `customerId` | UUID | FK → Customer | |
-| `name` | String | NULL | NULL = active cart; non-null = saved mechanic cart |
+| `token` | String | UNIQUE, NULL | Guest owner. Cleared once a customer claims the cart |
+| `customerId` | UUID | FK → Customer, NULL | |
+| `status` | Enum | NOT NULL, default ACTIVE | `ACTIVE` \| `MERGED` \| `ORDERED` |
+| `version` | Int | NOT NULL, default 0 | Raised by every mutation; checkout pins it |
+| `mergedIntoId` | UUID | NULL | Where this cart's lines went |
+| `orderId` | UUID | UNIQUE, NULL | The order placed from this cart |
+| `expiresAt` | Timestamp | NOT NULL | Pushed 30 days out on every touch |
 | `createdAt` | Timestamp | NOT NULL | |
 | `updatedAt` | Timestamp | NOT NULL | |
 
-**Indexes**: `customerId`
+**Indexes**: `(customerId, status)`, `expiresAt`, unique on `token`, unique on `orderId`
 
-**Business rule**: When a mechanic activates a saved cart, any existing active cart items are merged (quantity summed for duplicates).
+**Partial unique index**: `(customerId) WHERE status = 'ACTIVE' AND customerId IS NOT NULL` — a customer has at most one cart they are filling, while keeping every cart they have merged away or ordered from. Prisma cannot express a `WHERE` on an index, so it is written out by hand in the migration.
+
+**Business rules**:
+- A cart is **never deleted once ordered from**: it is the record of what was bought, and `orderId` being unique is what makes a retried payment webhook idempotent.
+- Guest carts (`customerId IS NULL`) are swept once `expiresAt` passes. Customer carts do not expire.
+- Merging sets the source cart to `MERGED` and releases its token.
 
 ---
 
 ### CartItem
 
-One article in a cart with its captured price at time of addition.
+One article in a cart. Intent and a catalogue snapshot — no price that is ever displayed.
 
 | Field | Type | Constraints | Notes |
 |---|---|---|---|
 | `id` | UUID | PK | |
 | `cartId` | UUID | FK → Cart, CASCADE DELETE | |
-| `articleNumber` | String | NOT NULL | Normalised TecDoc article number |
+| `brandId` | String | NOT NULL | TecDoc `dataSupplierId` — half of the identity |
+| `articleNumber` | String | NOT NULL | The other half |
 | `brandName` | String | NOT NULL | Brand at time of addition |
+| `brandLogoUrl` | String | NULL | |
 | `description` | String | NOT NULL | Short description for display |
-| `quantity` | Int | NOT NULL, > 0 | |
-| `unitPriceCaptured` | Int | NOT NULL | Price at time of add in EUR cents — display only; pre-checkout re-validates live price |
+| `thumbnailUrl` | String | NULL | |
+| `quantity` | Int | NOT NULL, 1–99 | |
+| `isSelected` | Bool | NOT NULL, default true | Whether this line is to be ordered |
+| `addedAtPriceIncVat` | Int | NULL | Inc-VAT cents when the line was added |
+| `addedAt` | Timestamp | NOT NULL | |
+| `updatedAt` | Timestamp | NOT NULL | |
 
-**Unique constraint**: `(cartId, articleNumber)` — only one line per article per cart
+**Unique constraint**: `(cartId, brandId, articleNumber)` — one line per *part*, not per number. Two data suppliers file the same number for different parts, so keying on the number alone merges one company's part into the other's line.
 
 **Indexes**: `cartId`
 
-**Business rule**: `unitPriceCaptured` is for display only. The pre-checkout confirmation always fetches a fresh price from the backoffice. If price has changed, the customer is shown the difference.
+**Business rules**:
+- A cart holds at most 50 distinct lines (`MAX_CART_LINES`), because the whole cart is priced by one availability batch and that endpoint refuses more. Raising an existing line is always allowed.
+- `addedAtPriceIncVat` is **never rendered as the price**. It exists so the cart can say the price has moved since the part went in; the price shown is always the live one.
+- Nothing else about money or stock is stored. The pre-checkout confirmation reads both live and fails closed.
 
 ---
 

@@ -34,6 +34,7 @@ function line(overrides: Partial<CartLine> = {}): CartLine {
     thumbnailUrl: null,
     quantity: 1,
     isSelected: true,
+    addedAtPriceIncVat: null,
     ...overrides,
   }
 }
@@ -295,5 +296,53 @@ describe('cartTotals', () => {
       hasUnpricedLines: false,
       hasBlockedLines: false,
     })
+  })
+})
+
+// The line records the price the shopper was looking at when they added it,
+// so the cart can point out that it has moved. The price shown is always live.
+describe('priceChange', () => {
+  /** The live read, quoting `incVat` for this exact line. */
+  const priced = (item: CartLine, incVat: number) =>
+    availabilityOf([
+      [item, detail({ bestPriceIncVat: incVat, bestPriceExVat: incVat - 750 })],
+    ])
+
+  it('reports a rise since the part went in', () => {
+    const item = line({ addedAtPriceIncVat: 4000 })
+
+    const [row] = buildCartRows([item], priced(item, 4500))
+
+    expect(row.priceChange).toBe(500)
+  })
+
+  it('reports a drop as a negative change', () => {
+    const item = line({ addedAtPriceIncVat: 5000 })
+
+    const [row] = buildCartRows([item], priced(item, 4500))
+
+    expect(row.priceChange).toBe(-500)
+  })
+
+  it('says nothing when the price has not moved', () => {
+    const item = line({ addedAtPriceIncVat: 4500 })
+
+    const [row] = buildCartRows([item], priced(item, 4500))
+
+    expect(row.priceChange).toBeNull()
+  })
+
+  it('says nothing for a line added without a price to compare against', () => {
+    const item = line({ addedAtPriceIncVat: null })
+
+    const [row] = buildCartRows([item], priced(item, 4500))
+
+    expect(row.priceChange).toBeNull()
+  })
+
+  it('says nothing while the live price is still unknown', () => {
+    const [row] = buildCartRows([line({ addedAtPriceIncVat: 4500 })], undefined)
+
+    expect(row.priceChange).toBeNull()
   })
 })
