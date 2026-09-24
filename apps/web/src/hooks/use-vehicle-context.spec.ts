@@ -1,5 +1,4 @@
-import { renderHook } from '@testing-library/react'
-import { useVehicleContext, useHydration, type SelectedVehicle } from './use-vehicle-context'
+import { useVehicleContext, type SelectedVehicle } from './use-vehicle-context'
 
 const mockVehicle: SelectedVehicle = {
   vehicleId: 'v-001',
@@ -101,12 +100,5 @@ describe('useVehicleContext', () => {
   it('accepts yearTo as null', () => {
     useVehicleContext.getState().setVehicle({ ...mockVehicle, yearTo: null })
     expect(useVehicleContext.getState().selectedVehicle?.yearTo).toBeNull()
-  })
-})
-
-describe('useHydration', () => {
-  it('returns true after the component has mounted (effects have fired)', () => {
-    const { result } = renderHook(() => useHydration())
-    expect(result.current).toBe(true)
   })
 })

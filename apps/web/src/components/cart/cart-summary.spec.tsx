@@ -17,7 +17,7 @@ function totals(overrides: Partial<CartTotals> = {}): CartTotals {
 
 describe('CartSummary', () => {
   it('breaks the total into net, VAT and gross', () => {
-    render(<CartSummary totals={totals()} isPending={false} promise={null} />)
+    render(<CartSummary totals={totals()} isPending={false} hasPrices promise={null} />)
 
     expect(screen.getByText('70,00 €')).toBeInTheDocument()
     expect(screen.getByText('14,00 €')).toBeInTheDocument()
@@ -30,6 +30,7 @@ describe('CartSummary', () => {
       <CartSummary
         totals={totals({ hasUnpricedLines: true })}
         isPending={false}
+        hasPrices
         promise={null}
       />,
     )
@@ -41,7 +42,12 @@ describe('CartSummary', () => {
 
   it('holds the warning back while the prices are still being read', () => {
     render(
-      <CartSummary totals={totals({ hasUnpricedLines: true })} isPending promise={null} />,
+      <CartSummary
+        totals={totals({ hasUnpricedLines: true })}
+        isPending
+        hasPrices={false}
+        promise={null}
+      />,
     )
 
     expect(screen.queryByText(/без актуална цена/)).not.toBeInTheDocument()
@@ -56,6 +62,7 @@ describe('CartSummary', () => {
       <CartSummary
         totals={totals({ hasBlockedLines: true })}
         isPending={false}
+        hasPrices
         promise={null}
       />,
     )
@@ -66,16 +73,55 @@ describe('CartSummary', () => {
   })
 
   it('holds the blocked warning back while the read is in flight', () => {
-    render(<CartSummary totals={totals({ hasBlockedLines: true })} isPending promise={null} />)
+    render(
+      <CartSummary
+        totals={totals({ hasBlockedLines: true })}
+        isPending
+        hasPrices={false}
+        promise={null}
+      />,
+    )
 
     expect(
       screen.queryByText(/недостатъчна наличност/),
     ).not.toBeInTheDocument()
   })
 
-  // Delivery and payment are step two and do not exist yet.
-  it('leaves the next step unreachable', () => {
-    render(<CartSummary totals={totals()} isPending={false} promise={null} />)
+  it('leads on to delivery and payment', () => {
+    render(<CartSummary totals={totals()} isPending={false} hasPrices promise={null} />)
+
+    expect(
+      screen.getByRole('link', { name: /Към доставка и плащане/ }),
+    ).toHaveAttribute('href', '/checkout')
+  })
+
+  it('keeps the next step unreachable while the prices are being read', () => {
+    render(<CartSummary totals={totals()} isPending hasPrices={false} promise={null} />)
+
+    expect(
+      screen.getByRole('button', { name: /Към доставка и плащане/ }),
+    ).toBeDisabled()
+  })
+
+  it('keeps the next step unreachable when the prices could not be read', () => {
+    render(
+      <CartSummary totals={totals()} isPending={false} hasPrices={false} promise={null} />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: /Към доставка и плащане/ }),
+    ).toBeDisabled()
+  })
+
+  it('keeps the next step unreachable with nothing selected', () => {
+    render(
+      <CartSummary
+        totals={totals({ itemCount: 0 })}
+        isPending={false}
+        hasPrices
+        promise={null}
+      />,
+    )
 
     expect(
       screen.getByRole('button', { name: /Към доставка и плащане/ }),
@@ -87,6 +133,7 @@ describe('CartSummary', () => {
       <CartSummary
         totals={totals({ hasBlockedLines: true })}
         isPending={false}
+        hasPrices
         promise={null}
       />,
     )
@@ -111,7 +158,7 @@ describe('CartSummary', () => {
     }
 
     render(
-      <CartSummary totals={totals()} isPending={false} promise={promise} />,
+      <CartSummary totals={totals()} isPending={false} hasPrices promise={promise} />,
     )
 
     const panel = screen.getByTestId('delivery-cutoff-promise')
@@ -123,7 +170,7 @@ describe('CartSummary', () => {
   })
 
   it('shows no deadline when the basket has none to promise', () => {
-    render(<CartSummary totals={totals()} isPending={false} promise={null} />)
+    render(<CartSummary totals={totals()} isPending={false} hasPrices promise={null} />)
 
     expect(
       screen.queryByTestId('delivery-cutoff-promise'),

@@ -25,9 +25,12 @@ jest.mock('@/lib/api/catalog', () => ({
 
 jest.mock('@/hooks/use-vehicle-context', () => ({
   useVehicleContext: jest.fn(),
-  // The persisted scope is read during render, so the component holds it back
-  // until hydration; these tests want the post-hydration behaviour.
-  useHydration: () => true,
+}))
+
+// The persisted scope is read during render, so the component holds it back
+// until hydration; these tests want the post-hydration behaviour.
+jest.mock('@/hooks/use-is-hydrated', () => ({
+  useIsHydrated: () => true,
 }))
 
 import { useVehicleContext } from '@/hooks/use-vehicle-context'

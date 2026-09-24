@@ -11,8 +11,11 @@ interface VehicleContextState {
 }
 
 jest.mock('../../hooks/use-vehicle-context', () => ({
-  useHydration: jest.fn(),
   useVehicleContext: jest.fn(),
+}))
+
+jest.mock('../../hooks/use-is-hydrated', () => ({
+  useIsHydrated: jest.fn(),
 }))
 
 jest.mock('../catalog/vehicle-selector', () => ({
@@ -32,9 +35,10 @@ jest.mock('./recent-vehicles-list', () => ({
   RecentVehiclesList: () => null,
 }))
 
-import { useHydration, useVehicleContext } from '../../hooks/use-vehicle-context'
+import { useVehicleContext } from '../../hooks/use-vehicle-context'
+import { useIsHydrated } from '../../hooks/use-is-hydrated'
 
-const mockedUseHydration = jest.mocked(useHydration)
+const mockedUseIsHydrated = jest.mocked(useIsHydrated)
 const mockedUseVehicleContext = jest.mocked(useVehicleContext)
 
 const VEHICLE: SelectedVehicle = {
@@ -55,7 +59,7 @@ function renderCard(
   selectedVehicle: SelectedVehicle | null,
   { isHydrated = true }: { isHydrated?: boolean } = {},
 ) {
-  mockedUseHydration.mockReturnValue(isHydrated)
+  mockedUseIsHydrated.mockReturnValue(isHydrated)
   mockedUseVehicleContext.mockImplementation((selector: (s: VehicleContextState) => unknown) =>
     selector({
       selectedVehicle,

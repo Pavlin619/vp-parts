@@ -20,7 +20,7 @@ import {
   setCartSelection,
   updateCartLine,
 } from "@/lib/api/cart";
-import { useHydration } from "./use-vehicle-context";
+import { useIsHydrated } from "./use-is-hydrated";
 
 export { MAX_CART_LINES };
 
@@ -480,10 +480,10 @@ const NO_LINES: CartLine[] = [];
  * component subscribing to the store directly would render stored lines on its
  * first client pass against server HTML that could only ever be empty. Every
  * cart surface reads through here, and one that distinguishes "empty cart" from
- * "not read yet" pairs this with `useHydration()`.
+ * "not read yet" asks `useCartStatus()`.
  */
 export function useCartLines(): CartLine[] {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const lines = useCart((state) => state.lines);
 
   return isHydrated ? lines : NO_LINES;
@@ -504,7 +504,7 @@ export function useCartItemCount(): number {
  * a button that arrives disabled and then enables is a hydration mismatch.
  */
 export function useCanAddLine(article: ArticleIdentityDto): boolean {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const hasRoom = useCart((state) => hasRoomFor(state.lines, article));
 
   return !isHydrated || hasRoom;

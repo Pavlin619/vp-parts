@@ -2,11 +2,8 @@
 
 import { X, Car } from "lucide-react";
 import { VehicleMakeBadge } from "@/components/catalog/vehicle-make-badge";
-import {
-  useVehicleContext,
-  useHydration,
-  type SelectedVehicle,
-} from "@/hooks/use-vehicle-context";
+import { useVehicleContext, type SelectedVehicle } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import {
   formatEngineCodes,
   formatPower,
@@ -32,7 +29,7 @@ function vehicleSummaryOf(vehicle: SelectedVehicle): string {
 }
 
 export function VehiclePill({ onOpenSelector }: VehiclePillProps) {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const selectedVehicle = useVehicleContext((state) => state.selectedVehicle);
   const clearVehicle = useVehicleContext((state) => state.clearVehicle);
 

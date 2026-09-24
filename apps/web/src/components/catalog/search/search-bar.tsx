@@ -12,7 +12,7 @@ import {
 import { autocompleteQueryOptions } from "@/lib/api/catalog";
 import { buildSearchUrl, newSearch } from "@/lib/catalog/url/search-url";
 import { suggestionHref } from "@/lib/catalog/links/suggestion-href";
-import { useHydration } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import {
   looksLikeDescription,
   looksLikePartNumber,
@@ -381,7 +381,7 @@ function suggestionKey(suggestion: AutocompleteItemDto): string {
  * defaults, which is exactly what the server rendered.
  */
 function usePersistedSearchMode(): { scope: SearchScope; isExact: boolean } {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const storedScope = useSearchModeStore((state) => state.scope);
   const storedExact = useSearchModeStore((state) => state.isExact);
   const initial = useSearchModeStore.getInitialState();

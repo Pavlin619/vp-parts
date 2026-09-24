@@ -11,13 +11,17 @@ interface VehicleContextState {
 }
 
 jest.mock('../../hooks/use-vehicle-context', () => ({
-  useHydration: jest.fn(),
   useVehicleContext: jest.fn(),
 }))
 
-import { useHydration, useVehicleContext } from '../../hooks/use-vehicle-context'
+jest.mock('../../hooks/use-is-hydrated', () => ({
+  useIsHydrated: jest.fn(),
+}))
 
-const mockedUseHydration = jest.mocked(useHydration)
+import { useVehicleContext } from '../../hooks/use-vehicle-context'
+import { useIsHydrated } from '../../hooks/use-is-hydrated'
+
+const mockedUseIsHydrated = jest.mocked(useIsHydrated)
 const mockedUseVehicleContext = jest.mocked(useVehicleContext)
 
 const baseVehicle: SelectedVehicle = {
@@ -45,7 +49,7 @@ function mockState(selectedVehicle: SelectedVehicle | null) {
 
 describe('VehiclePill — unhydrated', () => {
   it('renders a loading skeleton before hydration', () => {
-    mockedUseHydration.mockReturnValue(false)
+    mockedUseIsHydrated.mockReturnValue(false)
     mockState(null)
     const { container } = render(<VehiclePill onOpenSelector={jest.fn()} />)
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
@@ -55,7 +59,7 @@ describe('VehiclePill — unhydrated', () => {
 
 describe('VehiclePill — no vehicle selected', () => {
   beforeEach(() => {
-    mockedUseHydration.mockReturnValue(true)
+    mockedUseIsHydrated.mockReturnValue(true)
     mockState(null)
   })
 
@@ -76,7 +80,7 @@ describe('VehiclePill — vehicle selected', () => {
   let clearVehicle: jest.Mock
 
   beforeEach(() => {
-    mockedUseHydration.mockReturnValue(true)
+    mockedUseIsHydrated.mockReturnValue(true)
     clearVehicle = mockState(baseVehicle)
   })
 
