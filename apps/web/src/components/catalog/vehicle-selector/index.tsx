@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useHydration } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { VehicleSelectorContent } from "./content";
 
 interface VehicleSelectorProps {
@@ -21,7 +21,7 @@ interface VehicleSelectorProps {
  * caller (`/vehicles`) opens the selector on first render.
  */
 export function VehicleSelector({ isOpen, onClose, onConfirm }: VehicleSelectorProps) {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
 
   // VehicleSelectorContent unmounts when isOpen is false, so its useState lazy
   // initializers re-run on each open — no effects or refs needed.

@@ -28,8 +28,11 @@ jest.mock('@/components/catalog/vehicle-selector', () => ({
     ) : null,
 }))
 
+jest.mock('@/hooks/use-is-hydrated', () => ({
+  useIsHydrated: () => true,
+}))
+
 jest.mock('@/hooks/use-vehicle-context', () => ({
-  useHydration: () => true,
   useVehicleContext: { getState: () => ({ selectedVehicle: storedVehicle }) },
 }))
 

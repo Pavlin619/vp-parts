@@ -222,7 +222,7 @@ src/
 - For mutations: use `useMutation` with `onSuccess: () => queryClient.invalidateQueries(...)` — avoid manually patching the cache unless optimistic updates are required.
 
 ### Zustand v5 with Next.js (SSR)
-- **Hydration guard:** Zustand `persist` reads from `localStorage`, which only exists on the client. Any component that branches on persisted state must guard with `useHydration()` (exported from `hooks/use-vehicle-context.ts`). While `isHydrated` is `false`, render a neutral skeleton — this keeps the server HTML and the initial client render identical, preventing React hydration mismatches.
+- **Hydration guard:** Zustand `persist` reads from `localStorage`, which only exists on the client. Any component that branches on persisted state must guard with `useIsHydrated()` (`hooks/use-is-hydrated.ts`), or read through a store hook that already does (e.g. `useCartLines()`, `useCartStatus()`). While `isHydrated` is `false`, render a neutral skeleton — this keeps the server HTML and the initial client render identical, preventing React hydration mismatches.
 - **Always subscribe with selectors:** `useStore(state => state.field)`, never `useStore()`. The whole-store subscription re-renders the component on any state change, even unrelated slices.
 - One Zustand store per independent concern. Do not combine unrelated state into one store.
 

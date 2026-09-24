@@ -1,6 +1,5 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -49,16 +48,3 @@ export const useVehicleContext = create<VehicleContextState>()(
   ),
 );
 
-const returnTrue = () => true;
-const returnFalse = () => false;
-const noopSubscribe = () => () => {};
-
-/**
- * Returns `true` only on the client (after hydration), `false` on the server.
- * Use this to guard components that branch on Zustand persisted state, so the
- * server HTML and the initial client render stay identical and React does not
- * report a hydration mismatch. Render a neutral skeleton when this is `false`.
- */
-export function useHydration(): boolean {
-  return useSyncExternalStore(noopSubscribe, returnTrue, returnFalse);
-}

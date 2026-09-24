@@ -1,7 +1,8 @@
 "use client";
 
 import { formatEngineCodes } from "@/lib/catalog/display/vehicle-specs";
-import { useHydration, useVehicleContext } from "./use-vehicle-context";
+import { useVehicleContext } from "./use-vehicle-context";
+import { useIsHydrated } from "./use-is-hydrated";
 
 /**
  * Resolves the vehicle name to show alongside the fit verdict. An explicit
@@ -11,7 +12,7 @@ import { useHydration, useVehicleContext } from "./use-vehicle-context";
  * avoid a server/client mismatch.
  */
 export function useFitVehicleName(vehicleName?: string): string | undefined {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const selectedVehicle = useVehicleContext((state) => state.selectedVehicle);
 
   if (vehicleName) {

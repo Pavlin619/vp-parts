@@ -13,10 +13,13 @@ jest.mock('@/hooks/use-vehicle-context', () => {
     selector({ selectedVehicle: storedVehicle, clearVehicle: clearVehicleMock })
 
   return {
-    useHydration: () => isStoreHydrated,
     useVehicleContext: store,
   }
 })
+
+jest.mock('@/hooks/use-is-hydrated', () => ({
+  useIsHydrated: () => isStoreHydrated,
+}))
 
 jest.mock('@/components/catalog/vehicle-selector', () => ({
   VehicleSelector: ({ isOpen }: { isOpen: boolean }) =>

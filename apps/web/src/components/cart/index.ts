@@ -1,4 +1,5 @@
 export { AddToCartIcon } from "./add-to-cart-icon";
+export { CartAvailabilityError } from "./cart-availability-error";
 export { CartDrawer } from "./cart-drawer";
 export { CartDrawerRow } from "./cart-drawer-row";
 export { CartEmpty } from "./cart-empty";

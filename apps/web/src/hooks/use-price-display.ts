@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { useHydration } from "./use-vehicle-context";
+import { useIsHydrated } from "./use-is-hydrated";
 
 interface PriceDisplayState {
   /**
@@ -22,7 +22,7 @@ interface PriceDisplayState {
  * Persisted because it is a property of who the visitor is rather than of the
  * page they are on, and re-picking it on each search would make the preference
  * useless to the people who need it. Anything branching on it must render
- * behind `useHydration()`, or the server HTML (always the default) and the
+ * behind `useIsHydrated()`, or the server HTML (always the default) and the
  * first client render disagree.
  */
 export const usePriceDisplay = create<PriceDisplayState>()(
@@ -46,7 +46,7 @@ export const usePriceDisplay = create<PriceDisplayState>()(
  * subscribing to the store, so no surface can forget the guard.
  */
 export function usePricesIncludeVat(): boolean {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const includesVat = usePriceDisplay((state) => state.includesVat);
 
   return isHydrated ? includesVat : true;

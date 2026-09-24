@@ -1,10 +1,11 @@
 "use client";
 
 import { Info } from "lucide-react";
-import { useVehicleContext, useHydration } from "@/hooks/use-vehicle-context";
+import { useVehicleContext } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 
 export function RecentVehiclesList() {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const recentVehicles = useVehicleContext((state) => state.recentVehicles);
   const setVehicle = useVehicleContext((state) => state.setVehicle);
 

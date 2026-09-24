@@ -9,11 +9,8 @@ import { formatCount } from "@vp-parts-shop/shared";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
 import { VehicleMakeBadge } from "@/components/catalog/vehicle-make-badge";
 import { useSeriesPhoto } from "@/hooks/use-series-photo";
-import {
-  useHydration,
-  useVehicleContext,
-  type SelectedVehicle,
-} from "@/hooks/use-vehicle-context";
+import { useVehicleContext, type SelectedVehicle } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import {
   SERIES_PHOTO_HEIGHT,
   SERIES_PHOTO_WIDTH,
@@ -53,7 +50,7 @@ interface SearchVehicleFilterProps {
  */
 export function SearchVehicleFilter({ state, total }: SearchVehicleFilterProps) {
   const router = useRouter();
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const savedVehicle = useVehicleContext((store) => store.selectedVehicle);
   const [isSelectorOpen, setSelectorOpen] = useState(false);
 

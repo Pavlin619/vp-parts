@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
-import { useHydration, useVehicleContext } from "@/hooks/use-vehicle-context";
+import { useVehicleContext } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { VehicleFinderManual } from "./vehicle-finder-manual";
 import { RecentVehiclesList } from "./recent-vehicles-list";
 
@@ -14,7 +15,7 @@ const CALL_TO_ACTION =
 
 export function VehicleFinderCard() {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const selectedVehicle = useVehicleContext((state) => state.selectedVehicle);
   // The vehicle lives in `localStorage`, so the server cannot know there is one.
   // Rendering as though there is none keeps the first client paint identical to

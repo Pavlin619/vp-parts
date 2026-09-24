@@ -2,10 +2,9 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * The three steps of placing an order, shared by every page along the way. Only
- * the cart exists so far; the rest are listed because a customer deciding
- * whether to go on wants to know how much is left, not because they are
- * reachable from here.
+ * The three steps of placing an order, shared by every page along the way. The
+ * steps ahead are listed because a customer deciding whether to go on wants to
+ * know how much is left, not because they are reachable from here.
  */
 const CHECKOUT_STEPS = [
   { number: 1, label: "Кошница" },

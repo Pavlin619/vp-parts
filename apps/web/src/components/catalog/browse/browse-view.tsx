@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
-import { useHydration, useVehicleContext } from "@/hooks/use-vehicle-context";
+import { useVehicleContext } from "@/hooks/use-vehicle-context";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { categoryScopeOf } from "@/lib/catalog/categories/category-scope";
 import { BrowseCategories } from "./categories";
 import { VehiclePrompt } from "./vehicle-prompt";
@@ -25,7 +26,7 @@ interface BrowseViewProps {
  * cannot read.
  */
 export function BrowseView({ scopedCategoryId }: BrowseViewProps) {
-  const isHydrated = useHydration();
+  const isHydrated = useIsHydrated();
   const vehicle = useVehicleContext((state) => state.selectedVehicle);
   const clearVehicle = useVehicleContext((state) => state.clearVehicle);
 

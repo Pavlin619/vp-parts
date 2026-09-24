@@ -1,10 +1,7 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Info } from "lucide-react";
 import type { ArticleIdentityDto } from "@vp-parts-shop/shared";
-import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
-import { useCutoffRefresh } from "@/hooks/use-cutoff-refresh";
 import {
   MAX_CART_LINES,
   useCart,
@@ -12,17 +9,16 @@ import {
   useCartLines,
   useIsCartFull,
 } from "@/hooks/use-cart";
-import { useHydration } from "@/hooks/use-vehicle-context";
-import { availabilityQueryOptions } from "@/lib/api/catalog";
+import { useCartAvailability } from "@/hooks/use-cart-availability";
+import { useCartStatus } from "@/hooks/use-cart-status";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import {
-  buildCartRows,
   cartTotals,
   type CartRowModel,
   type CartTotals,
 } from "@/lib/cart/cart-totals";
-import { collectCutoffAts } from "@/lib/delivery/availability";
 import type { DeliveryPromise } from "@/lib/delivery/promise";
+import { CartAvailabilityError } from "./cart-availability-error";
 import { CartListHeader } from "./cart-list-header";
 import { CartEmpty } from "./cart-empty";
 import { CartListActions } from "./cart-list-actions";
@@ -41,7 +37,7 @@ import { CheckoutSteps } from "./checkout-steps";
  * cached alongside the line is the one thing this page must not show.
  */
 export function CartView() {
-  const isHydrated = useHydration();
+  const status = useCartStatus();
   const lines = useCartLines();
   const itemCount = useCartItemCount();
   const isFull = useIsCartFull();
@@ -53,28 +49,13 @@ export function CartView() {
   const removeLine = useCart((state) => state.removeLine);
   const clear = useCart((state) => state.clear);
 
-  // The query key carries every article in the cart, so dropping a line asks a
-  // different question and would otherwise blank the prices of the lines that
-  // stayed. Held here rather than on the shared factory: the buy box keys on one
-  // article, where serving the previous key's answer means quoting the part the
-  // visitor just navigated away from.
-  const { data, isError, refetch } = useQuery({
-    ...availabilityQueryOptions(lines),
-    enabled: lines.length > 0,
-    placeholderData: keepPreviousData,
-  });
+  const { rows, isPending, isError, hasPrices, refetch } = useCartAvailability(lines);
 
-  // A cart is the page left open longest, and the one where a delivery promise
-  // has to still be true when the customer acts on it.
-  useCutoffRefresh(collectCutoffAts(data), refetch);
-
-  const rows = buildCartRows(lines, data ?? (isError ? null : undefined));
   // The summary answers "what am I about to order", so it counts only the
   // selected lines; the heading counts what the cart holds.
   const selectedRows = rows.filter((row) => row.line.isSelected);
   const totals = cartTotals(selectedRows);
   const promise = resolveOrderPromise(selectedRows);
-  const isPending = lines.length > 0 && data === undefined && !isError;
 
   return (
     <>
@@ -85,11 +66,11 @@ export function CartView() {
 
       {isFull && <CartFullNotice />}
 
-      {!isHydrated && <CartSkeleton />}
+      {status === "loading" && <CartSkeleton />}
 
-      {isHydrated && lines.length === 0 && <CartEmpty />}
+      {status === "empty" && <CartEmpty />}
 
-      {isHydrated && lines.length > 0 && (
+      {status === "ready" && (
         <CartLines
           rows={rows}
           totals={totals}
@@ -97,8 +78,8 @@ export function CartView() {
           promise={promise}
           isPending={isPending}
           isError={isError}
-          hasPrices={data !== undefined}
-          onRetry={() => refetch()}
+          hasPrices={hasPrices}
+          onRetry={refetch}
           onQuantityChange={setQuantity}
           onToggleSelected={toggleLineSelected}
           onToggleAll={setAllLinesSelected}
@@ -154,14 +135,10 @@ function CartLines({
   return (
     <>
       {isError && (
-        <AvailabilityLoadError
+        <CartAvailabilityError
+          hasPrices={hasPrices}
+          unloadedTitle="В момента не можем да заредим цените и наличностите на кошницата."
           onRetry={onRetry}
-          title={
-            hasPrices
-              ? "Показаните цени и наличности може да не са актуални."
-              : "В момента не можем да заредим цените и наличностите на кошницата."
-          }
-          className="mb-6 rounded-[12px] border border-line bg-bg-card py-6"
         />
       )}
 
@@ -194,7 +171,12 @@ function CartLines({
         </div>
 
         <aside className="xl:sticky xl:top-24">
-          <CartSummary totals={totals} isPending={isPending} promise={promise} />
+          <CartSummary
+            totals={totals}
+            isPending={isPending}
+            hasPrices={hasPrices}
+            promise={promise}
+          />
         </aside>
       </div>
     </>
@@ -230,8 +212,8 @@ function CartFullNotice() {
 }
 
 /**
- * Stands in until the persisted cart has been read. The lines only exist in the
- * browser, so the server can render neither them nor the empty state — and
+ * Stands in until we know what the cart holds. The server cannot see the
+ * mirror, so it can render neither the lines nor the empty state — and
  * flashing "your cart is empty" at someone whose cart is full is worse than a
  * moment of grey.
  */

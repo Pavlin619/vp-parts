@@ -76,6 +76,13 @@ describe("resolveOrderPromise", () => {
     });
   });
 
+  it("quotes the courier date once delivery is by courier", () => {
+    const promise = resolveOrderPromise([row()], "courier");
+
+    expect(promise?.fulfilledAt).toBe("2026-07-03T06:00:00.000Z");
+    expect(promise?.isPickup).toBe(false);
+  });
+
   it("binds the basket to the earliest cut-off and the slowest line", () => {
     const promise = resolveOrderPromise([
       row({
