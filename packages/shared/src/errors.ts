@@ -27,6 +27,8 @@ export enum AppErrorCode {
   CART_ITEM_NOT_FOUND = 'CART_ITEM_NOT_FOUND',
   /** The cart already holds as many distinct lines as it may. */
   CART_FULL = 'CART_FULL',
+  /** The cart has no selected lines to weigh, price or order. */
+  CART_EMPTY = 'CART_EMPTY',
   /** The cart moved between the price the customer confirmed and the order. */
   CART_STALE = 'CART_STALE',
   QUANTITY_EXCEEDS_STOCK = 'QUANTITY_EXCEEDS_STOCK',
@@ -38,6 +40,16 @@ export enum AppErrorCode {
   /** Catalogue data (TecDoc) could not be read. Retryable. */
   CATALOG_UNAVAILABLE = 'CATALOG_UNAVAILABLE',
   PAYMENT_FAILED = 'PAYMENT_FAILED',
+  /** The office code names no office the carrier currently lists. */
+  DELIVERY_OFFICE_NOT_FOUND = 'DELIVERY_OFFICE_NOT_FOUND',
+  /** The carrier lists the office but refuses to deliver there. The customer can pick another. */
+  DELIVERY_OFFICE_REFUSED = 'DELIVERY_OFFICE_REFUSED',
+  /** The parcel does not fit, or cannot be shown to fit, a parcel locker. */
+  DELIVERY_LOCKER_INELIGIBLE = 'DELIVERY_LOCKER_INELIGIBLE',
+  /** A selected part has no known weight, so the courier cannot be asked for a price. */
+  DELIVERY_PARCEL_UNMEASURED = 'DELIVERY_PARCEL_UNMEASURED',
+  /** The courier's API could not be reached or failed. Retryable. */
+  DELIVERY_UNAVAILABLE = 'DELIVERY_UNAVAILABLE',
 }
 
 export interface ApiErrorResponse {

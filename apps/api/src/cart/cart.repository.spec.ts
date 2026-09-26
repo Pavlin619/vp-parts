@@ -18,6 +18,17 @@ const LINE = {
   description: 'Спирачен диск',
   thumbnailUrl: null,
   addedAtPriceIncVat: 4500,
+  shippingProfile: {
+    weightGrams: 2000,
+    packageCm: { length: 30, width: 20, height: 10 },
+  },
+};
+
+const SHIPPING_COLUMNS = {
+  weightGrams: 2000,
+  packageLengthCm: 30,
+  packageWidthCm: 20,
+  packageHeightCm: 10,
 };
 
 const MERGED_LINE = {
@@ -157,13 +168,27 @@ describe('CartRepository', () => {
     );
   });
 
-  it('raises an existing line rather than replacing it', async () => {
+  it('raises an existing line and refreshes only its shipping profile', async () => {
     await repository.addLine('cart-1', LINE);
 
     const { update } = itemUpsert.mock.calls[0][0] as {
       update: Record<string, unknown>;
     };
-    expect(update).toEqual({ quantity: { increment: 2 }, isSelected: true });
+    expect(update).toEqual({
+      quantity: { increment: 2 },
+      isSelected: true,
+      ...SHIPPING_COLUMNS,
+    });
+  });
+
+  it('stores the shipping profile as columns on a new line', async () => {
+    await repository.addLine('cart-1', LINE);
+
+    const { create } = itemUpsert.mock.calls[0][0] as {
+      create: Record<string, unknown>;
+    };
+    expect(create).toMatchObject(SHIPPING_COLUMNS);
+    expect(create).not.toHaveProperty('shippingProfile');
   });
 
   // The increment on the upsert above has no ceiling of its own; this clamp,
@@ -261,6 +286,16 @@ describe('CartRepository', () => {
           }),
         }),
       );
+    });
+
+    it('writes each merged line with its shipping profile as columns', async () => {
+      await repository.mergeInto('target', 3, 'source', [MERGED_LINE]);
+
+      const { data } = itemCreateMany.mock.calls[0][0] as {
+        data: Record<string, unknown>[];
+      };
+      expect(data[0]).toMatchObject(SHIPPING_COLUMNS);
+      expect(data[0]).not.toHaveProperty('shippingProfile');
     });
 
     it('commits the target cart only if it is still at the version the merge was computed against', async () => {

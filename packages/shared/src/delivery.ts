@@ -55,3 +55,33 @@ const BANDS_FASTEST_FIRST: readonly DeliveryBand[] = [
 export function deliveryBandRank(band: DeliveryBand): number {
   return BANDS_FASTEST_FIRST.indexOf(band);
 }
+
+/**
+ * The single warehouse a line of `quantity` pieces ships from: walking the
+ * fastest-first rows and accumulating stock, the line's promise is the slowest
+ * warehouse it has to reach. Falls back to the slowest stocked warehouse when
+ * the total is short, so a surface can still show the part's best-case date.
+ *
+ * Shared because the API dates a parcel by the same choice the web shows per line.
+ */
+export function selectWarehouseForQuantity<T extends WarehouseAvailabilityDto>(
+  availabilityByWarehouse: T[],
+  quantity: number,
+): T | null {
+  const stocked = availabilityByWarehouse.filter(
+    (warehouse) => warehouse.quantity > 0,
+  );
+  if (stocked.length === 0) {
+    return null;
+  }
+
+  let cumulative = 0;
+  for (const warehouse of stocked) {
+    cumulative += warehouse.quantity;
+    if (cumulative >= quantity) {
+      return warehouse;
+    }
+  }
+
+  return stocked[stocked.length - 1];
+}

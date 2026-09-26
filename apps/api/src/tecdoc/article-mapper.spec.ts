@@ -14,7 +14,11 @@ describe('mapArticleSummary', () => {
       genericArticles: [{ genericArticleDescription: 'Oil Filter' }],
       images: [{ imageURL800: 'https://img/oc115.jpg' }],
       articleCriteria: [
-        { criteriaDescription: 'Height', formattedValue: '89 mm' },
+        {
+          criteriaDescription: 'Height',
+          rawValue: '89 mm',
+          formattedValue: '89 mm',
+        },
       ],
       oemNumbers: [
         {
@@ -53,12 +57,21 @@ describe('mapArticleSummary', () => {
         { genericArticleDescription: 'уплътнение, маслен филтър' },
       ],
       articleCriteria: [
-        { criteriaDescription: 'височина [mm]', formattedValue: '123' },
+        {
+          criteriaDescription: 'височина [mm]',
+          rawValue: '123',
+          formattedValue: '123',
+        },
         {
           criteriaDescription: 'изпълнение на филтъра',
+          rawValue: 'навиващ филтър',
           formattedValue: 'навиващ филтър',
         },
-        { criteriaDescription: 'Тегло [kg]', formattedValue: '0,3' },
+        {
+          criteriaDescription: 'Тегло [kg]',
+          rawValue: '0,3',
+          formattedValue: '0,3',
+        },
       ],
     };
 
@@ -157,11 +170,24 @@ describe('mapArticleSummary', () => {
       dataSupplierId: 72,
       mfrName: 'MANN-FILTER',
       articleCriteria: [
-        { criteriaDescription: 'Height', formattedValue: '89 mm' },
-        { criteriaDescription: 'Height', formattedValue: '89 mm' },
-        { criteriaDescription: 'Note', formattedValue: 'with ABS' },
+        {
+          criteriaDescription: 'Height',
+          rawValue: '89 mm',
+          formattedValue: '89 mm',
+        },
+        {
+          criteriaDescription: 'Height',
+          rawValue: '89 mm',
+          formattedValue: '89 mm',
+        },
         {
           criteriaDescription: 'Note',
+          rawValue: 'with ABS',
+          formattedValue: 'with ABS',
+        },
+        {
+          criteriaDescription: 'Note',
+          rawValue: 'right-hand drive only',
           formattedValue: 'right-hand drive only',
         },
       ],

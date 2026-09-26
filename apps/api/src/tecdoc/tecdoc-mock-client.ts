@@ -1678,6 +1678,7 @@ export class TecDocMockClient {
       detail: { ...detail, categoryPaths: this.categoryPathsOf(detail) },
       genericArticleIds:
         productTypeId === undefined ? [] : [Number(productTypeId)],
+      shippingProfile: { weightGrams: null, packageCm: null },
     });
   }
 

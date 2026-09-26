@@ -41,6 +41,7 @@ export interface EmptyAnswerTtl<T> {
 @Injectable()
 export class RedisCache {
   private readonly logger = new Logger(RedisCache.name);
+  private readonly loadsInFlight = new Map<string, Promise<unknown>>();
 
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
@@ -50,15 +51,17 @@ export class RedisCache {
     loader: () => Promise<T>,
     emptyAnswer?: EmptyAnswerTtl<T>,
   ): Promise<T> {
-    const cached = await this.read<T>(key);
-    if (cached !== undefined) {
-      return cached;
-    }
+    return this.singleFlight(key, async () => {
+      const cached = await this.read<T>(key);
+      if (cached !== undefined) {
+        return cached;
+      }
 
-    const value = await loader();
-    await this.write(key, value, this.ttlFor(value, ttl, emptyAnswer));
+      const value = await loader();
+      await this.write(key, value, this.ttlFor(value, ttl, emptyAnswer));
 
-    return value;
+      return value;
+    });
   }
 
   async cachedArray<T>(
@@ -67,16 +70,18 @@ export class RedisCache {
     missTtl: number,
     loader: () => Promise<T[]>,
   ): Promise<T[]> {
-    const cached = await this.read<T[]>(key);
-    if (cached !== undefined) {
-      return cached;
-    }
+    return this.singleFlight(key, async () => {
+      const cached = await this.read<T[]>(key);
+      if (cached !== undefined) {
+        return cached;
+      }
 
-    const value = await loader();
-    const ttl = value.length > 0 ? hitTtl : missTtl;
-    await this.write(key, value, ttl);
+      const value = await loader();
+      const ttl = value.length > 0 ? hitTtl : missTtl;
+      await this.write(key, value, ttl);
 
-    return value;
+      return value;
+    });
   }
 
   /**
@@ -195,6 +200,20 @@ export class RedisCache {
     }
 
     return emptyAnswer.isEmpty(value) ? emptyAnswer.missTtl : hitTtl;
+  }
+
+  /** Shares a miss within this process only; each API instance still loads once of its own. */
+  private singleFlight<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const inFlight = this.loadsInFlight.get(key) as Promise<T> | undefined;
+
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const pending = work().finally(() => this.loadsInFlight.delete(key));
+    this.loadsInFlight.set(key, pending);
+
+    return pending;
   }
 
   private async read<T>(key: string): Promise<T | undefined> {

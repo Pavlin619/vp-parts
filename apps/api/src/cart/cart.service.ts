@@ -5,14 +5,21 @@ import {
   ArticleIdentityDto,
   CartAdoptResponseDto,
   CartDto,
-  CartLineDto,
   EMPTY_CART,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
+import { ArticleReadCache } from '../catalog';
 import { CustomersService } from '../customers';
+import type { ShippingProfile } from '../tecdoc';
 import { CartRequester } from './cart-requester';
 import { mergeCartLines } from './cart-merge';
-import { toCartDto } from './cart.mapper';
+import {
+  CartShippingLine,
+  StoredCartLine,
+  toCartDto,
+  toSelectedShippingLines,
+  toStoredCartLines,
+} from './cart.mapper';
 import {
   CartFullException,
   CartItemNotFoundException,
@@ -39,6 +46,15 @@ export interface CartMutationResult {
   mintedToken: string | null;
 }
 
+/** A line as a client asks for it; the shipping profile is never taken from the client. */
+export type NewCartLine = Omit<CartLineInput, 'shippingProfile'>;
+
+/** The cart and what its selected lines weigh. */
+export interface CartShipping {
+  cart: CartDto;
+  lines: CartShippingLine[];
+}
+
 /** Who a cart belongs to, once the request has been resolved against the database. */
 type CartOwner =
   | { kind: 'customer'; customerId: string }
@@ -51,6 +67,7 @@ export class CartService {
   constructor(
     private readonly carts: CartRepository,
     private readonly customers: CustomersService,
+    private readonly articles: ArticleReadCache,
   ) {}
 
   /**
@@ -64,16 +81,28 @@ export class CartService {
     return cart ? toCartDto(cart) : EMPTY_CART;
   }
 
+  async getShippingLines(requester: CartRequester): Promise<CartShipping> {
+    const cart = await this.findCart(await this.resolveOwner(requester));
+
+    return cart
+      ? { cart: toCartDto(cart), lines: toSelectedShippingLines(cart) }
+      : { cart: EMPTY_CART, lines: [] };
+  }
+
   /**
    * The capacity limit is enforced by {@link CartRepository.addLine} itself,
    * inside the same transaction as the insert — a check made here first,
    * against a cart already read, would leave two concurrent adds of two
    * different new parts free to both pass it before either commits.
+   *
+   * The catalogue is read before any cart is minted, so a part it does not know,
+   * or an outage, leaves nothing behind.
    */
   async addLine(
     requester: CartRequester,
-    line: CartLineInput,
+    line: NewCartLine,
   ): Promise<CartMutationResult> {
+    const shippingProfile = await this.shippingProfileOf(line);
     const owner = await this.resolveOwner(requester);
     const existing = await this.findCart(owner);
 
@@ -83,7 +112,9 @@ export class CartService {
 
     try {
       return {
-        cart: toCartDto(await this.carts.addLine(cart.id, line)),
+        cart: toCartDto(
+          await this.carts.addLine(cart.id, { ...line, shippingProfile }),
+        ),
         mintedToken,
       };
     } catch (error) {
@@ -206,8 +237,8 @@ export class CartService {
     guestCart: CartRecord,
   ): Promise<CartAdoptResponseDto> {
     const { lines, dropped } = mergeCartLines(
-      toCartDto(accountCart).lines,
-      toCartDto(guestCart).lines,
+      toStoredCartLines(accountCart),
+      toStoredCartLines(guestCart),
     );
 
     try {
@@ -226,6 +257,15 @@ export class CartService {
 
       throw error;
     }
+  }
+
+  private async shippingProfileOf({
+    brandId,
+    articleNumber,
+  }: ArticleIdentityDto): Promise<ShippingProfile> {
+    const article = await this.articles.read(Number(brandId), articleNumber);
+
+    return article.shippingProfile;
   }
 
   /**
@@ -301,7 +341,7 @@ function isEmptyPatch(patch: CartLinePatch): boolean {
   return patch.quantity === undefined && patch.isSelected === undefined;
 }
 
-function toMergedLine(line: CartLineDto): MergedCartLine {
+function toMergedLine(line: StoredCartLine): MergedCartLine {
   return {
     brandId: line.brandId,
     articleNumber: line.articleNumber,
@@ -311,6 +351,7 @@ function toMergedLine(line: CartLineDto): MergedCartLine {
     description: line.description,
     thumbnailUrl: line.thumbnailUrl,
     addedAtPriceIncVat: line.addedAtPriceIncVat,
+    shippingProfile: line.shippingProfile,
     isSelected: line.isSelected,
     addedAt: new Date(line.addedAt),
   };

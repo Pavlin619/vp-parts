@@ -6,6 +6,8 @@ import {
 } from '@vp-parts-shop/shared';
 import { Cart, CartItem, CartStatus, Prisma } from '../generated/prisma';
 import { PrismaService } from '../prisma';
+import type { ShippingProfile } from '../tecdoc';
+import { toShippingColumns } from './cart-shipping';
 
 export type CartRecord = Cart & { items: CartItem[] };
 
@@ -17,6 +19,7 @@ export interface CartLineInput extends ArticleIdentityDto {
   description: string;
   thumbnailUrl: string | null;
   addedAtPriceIncVat: number | null;
+  shippingProfile: ShippingProfile;
 }
 
 export interface CartLinePatch {
@@ -108,7 +111,8 @@ export class CartRepository {
   /**
    * Adds a line, or raises an existing one by `quantity`. The reference price
    * and the added-at stamp belong to the first add: a line the customer keeps
-   * topping up is still a part they first wanted at yesterday's price.
+   * topping up is still a part they first wanted at yesterday's price. The
+   * shipping profile is catalogue data, so the latest read replaces it.
    *
    * The cart row is locked before the line count is read: two concurrent adds
    * of two *different* new articles would otherwise both read the same
@@ -117,8 +121,10 @@ export class CartRepository {
    * add to wait and then see the first one's line.
    */
   async addLine(cartId: string, line: CartLineInput): Promise<CartRecord> {
-    const { brandId, articleNumber, quantity, ...catalog } = line;
+    const { brandId, articleNumber, quantity, shippingProfile, ...catalog } =
+      line;
     const identity = { cartId, brandId, articleNumber };
+    const shippingColumns = toShippingColumns(shippingProfile);
 
     return this.mutate(cartId, async (tx) => {
       await this.lockCart(tx, cartId);
@@ -132,12 +138,14 @@ export class CartRepository {
           articleNumber,
           quantity,
           ...catalog,
+          ...shippingColumns,
         },
         // Re-selected on the way in: adding a part is a statement that it is
         // wanted, whatever the line was set to before.
         update: {
           quantity: { increment: quantity },
           isSelected: true,
+          ...shippingColumns,
         },
       });
 
@@ -240,7 +248,11 @@ export class CartRepository {
     return this.prisma.$transaction(async (tx) => {
       await tx.cartItem.deleteMany({ where: { cartId: targetCartId } });
       await tx.cartItem.createMany({
-        data: lines.map((line) => ({ cartId: targetCartId, ...line })),
+        data: lines.map(({ shippingProfile, ...line }) => ({
+          cartId: targetCartId,
+          ...line,
+          ...toShippingColumns(shippingProfile),
+        })),
       });
 
       await tx.cart.update({

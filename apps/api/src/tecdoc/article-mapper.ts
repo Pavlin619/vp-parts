@@ -5,6 +5,7 @@ import {
   TechnicalSpecDto,
 } from '@vp-parts-shop/shared';
 import { catalogLabelOf } from './catalog-label';
+import type { ShippingProfile } from './shipping-profile';
 
 /**
  * The subset of a TecDoc `getArticles` article record the catalog surfaces
@@ -73,6 +74,7 @@ export interface TecDocArticleRecord {
   articleCriteria?: Array<{
     criteriaId?: number;
     criteriaDescription: string;
+    rawValue: string;
     formattedValue: string;
     criteriaUnitDescription?: string;
     criteriaType?: string;
@@ -147,6 +149,7 @@ export function mapArticleCandidate(
 export interface ArticleDetailRead {
   detail: ArticleCatalogDetailDto;
   genericArticleIds: number[];
+  shippingProfile: ShippingProfile;
 }
 
 /**

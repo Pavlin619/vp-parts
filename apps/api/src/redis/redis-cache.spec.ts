@@ -60,6 +60,49 @@ describe('RedisCache', () => {
       expect(redis.set).not.toHaveBeenCalled();
     });
 
+    it('shares one load between concurrent misses on the same key', async () => {
+      redis.get.mockResolvedValue(null);
+      let resolve!: (value: { id: string }) => void;
+      const loader = jest.fn(
+        () => new Promise<{ id: string }>((settle) => (resolve = settle)),
+      );
+
+      const first = cache.cached('k', 60, loader);
+      const second = cache.cached('k', 60, loader);
+      await new Promise((done) => setImmediate(done));
+      resolve({ id: '3' });
+
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        { id: '3' },
+        { id: '3' },
+      ]);
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(redis.set).toHaveBeenCalledTimes(1);
+    });
+
+    it('loads separately for different keys', async () => {
+      redis.get.mockResolvedValue(null);
+      const loader = jest.fn().mockResolvedValue({ id: '4' });
+
+      await Promise.all([
+        cache.cached('a', 60, loader),
+        cache.cached('b', 60, loader),
+      ]);
+
+      expect(loader).toHaveBeenCalledTimes(2);
+    });
+
+    it('lets the next read retry after a shared load failed', async () => {
+      redis.get.mockResolvedValue(null);
+      const loader = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('down'))
+        .mockResolvedValueOnce({ id: '5' });
+
+      await expect(cache.cached('k', 60, loader)).rejects.toThrow('down');
+      await expect(cache.cached('k', 60, loader)).resolves.toEqual({ id: '5' });
+    });
+
     it('returns the loaded value when Redis cannot read or write', async () => {
       redis.get.mockRejectedValueOnce(new Error('Redis unavailable'));
       redis.set.mockRejectedValueOnce(new Error('Redis unavailable'));
@@ -71,6 +114,18 @@ describe('RedisCache', () => {
   });
 
   describe('cachedArray', () => {
+    it('shares one load between concurrent misses on the same key', async () => {
+      redis.get.mockResolvedValue(null);
+      const loader = jest.fn().mockResolvedValue([1]);
+
+      await Promise.all([
+        cache.cachedArray('k', 3600, 60, loader),
+        cache.cachedArray('k', 3600, 60, loader),
+      ]);
+
+      expect(loader).toHaveBeenCalledTimes(1);
+    });
+
     it('uses the hit TTL when the loaded array is non-empty', async () => {
       redis.get.mockResolvedValueOnce(null);
       const loader = jest.fn().mockResolvedValue([1, 2]);

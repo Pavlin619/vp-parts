@@ -1,5 +1,6 @@
 import {
   MAX_CART_LINE_QUANTITY,
+  selectWarehouseForQuantity,
   type ArticlesAvailabilityDto,
   type WarehouseAvailabilityDto,
   type WarehouseId,
@@ -24,10 +25,14 @@ export interface WarehouseRow extends WarehouseAvailabilityDto {
 
 /**
  * Re-exported so this module stays the one place the frontend reads warehouse
- * logic from. The band rule itself lives in the shared contract because the API
- * orders parts by the same band the dot colour comes from.
+ * logic from. Both rules live in the shared contract because the API applies
+ * them too: it orders parts by the band, and dates a parcel by the warehouse.
  */
-export { deliveryBand, type DeliveryBand } from "@vp-parts-shop/shared";
+export {
+  deliveryBand,
+  selectWarehouseForQuantity,
+  type DeliveryBand,
+} from "@vp-parts-shop/shared";
 
 /**
  * Deepest stock we name exactly. Anything above reads "9+": how many hundreds
@@ -93,35 +98,6 @@ export function stockCeiling(
   const { totalQuantity } = summariseWarehouses(availabilityByWarehouse);
 
   return totalQuantity > 0 ? Math.min(totalQuantity, MAX_QUANTITY) : MAX_QUANTITY;
-}
-
-/**
- * Picks the single warehouse that fulfils the requested quantity. Walking the
- * fastest-first rows and accumulating stock means the promise for the whole line
- * is the slowest band we have to reach — so a customer asking for more than the
- * central warehouse holds sees the slower (but truthful) date.
- *
- * Falls back to the slowest warehouse when total stock is insufficient, so the
- * UI always shows the best-case date for the part rather than nothing.
- */
-export function selectWarehouseForQuantity<T extends WarehouseAvailabilityDto>(
-  availabilityByWarehouse: T[],
-  quantity: number,
-): T | null {
-  const stocked = availabilityByWarehouse.filter((warehouse) => warehouse.quantity > 0);
-  if (stocked.length === 0) {
-    return null;
-  }
-
-  let cumulative = 0;
-  for (const warehouse of stocked) {
-    cumulative += warehouse.quantity;
-    if (cumulative >= quantity) {
-      return warehouse;
-    }
-  }
-
-  return stocked[stocked.length - 1];
 }
 
 /** What a line's live inventory means for the quantity actually being ordered. */

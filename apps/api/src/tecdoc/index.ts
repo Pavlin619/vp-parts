@@ -16,6 +16,8 @@ export type {
   ArticleDetailRead,
   TecDocArticleRecord,
 } from './article-mapper';
+export { shippingProfileOf } from './shipping-profile';
+export type { PackageSizeCm, ShippingProfile } from './shipping-profile';
 export { mapCrossReferenceCandidate } from './cross-reference-mapper';
 export type {
   CrossReferenceCandidate,

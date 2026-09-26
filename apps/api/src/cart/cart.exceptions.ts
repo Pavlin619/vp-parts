@@ -19,6 +19,19 @@ export class CartFullException extends HttpException {
   }
 }
 
+/** Thrown when an action needs selected cart lines and the cart has none. */
+export class CartEmptyException extends HttpException {
+  constructor() {
+    super(
+      {
+        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+        errorCode: AppErrorCode.CART_EMPTY,
+      },
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
 /**
  * Thrown when a line is patched that the cart no longer holds — usually a tab
  * acting on a cart another tab has already changed. The client answers by
