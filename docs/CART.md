@@ -22,6 +22,27 @@ There is exactly one stored number that looks like money —
 dearer than when you added it" beside the live figure. See
 `priceChangeOf` in `apps/web/src/lib/cart/cart-totals.ts`.
 
+### The one catalogue fact a line keeps: what the part weighs
+
+`CartItem` also stores TecDoc's weight and packed size (`weightGrams`,
+`packageLengthCm`/`WidthCm`/`HeightCm`), so checkout can weigh the cart into a
+parcel from the cart read alone, with no TecDoc call per line. This is not
+valuation: it changes only with a TecDoc data release, not with stock or price.
+
+- **The API reads it, never the client.** `CartService.addLine` takes it from
+  `ArticleReadCache` (usually cached by the page the part was added from); the
+  request body cannot supply it, because it decides a delivery price.
+- **So an add reads the catalogue, and can fail on it.** A part TecDoc does not
+  know is refused `404 ARTICLE_NOT_FOUND`, and an outage `503
+  CATALOG_UNAVAILABLE`, both before any cart is minted. Nothing can be sold
+  while TecDoc is down, so an add failing with it is accepted.
+- **Null means TecDoc files no value**, never "not read yet". A box is used only
+  when all three sides are present.
+- Re-adding a part refreshes it; a merge carries it with the line.
+- It never reaches the wire: `CartLineDto` is unchanged. Delivery reads it
+  through `CartService.getShippingLines`. See
+  [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md).
+
 ## Ownership
 
 A cart belongs to a guest (`Cart.token`) or to a customer (`Cart.customerId`),

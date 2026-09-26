@@ -12,6 +12,7 @@ import { ClientIpOptions, CommonModule, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
 import { CartModule } from './cart';
 import { CatalogModule } from './catalog';
+import { DeliveryModule } from './delivery';
 import { InventoryModule } from './inventory';
 import { SearchModule } from './search';
 import { AppController } from './app.controller';
@@ -69,8 +70,28 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
         MYPOS_API_KEY: Joi.string().required(),
         MYPOS_WALLET_NUMBER: Joi.string().required(),
 
+        // Econt and parcel sizing: see DeliveryModule + docs/DELIVERY-PROVIDERS.md.
+        ECONT_BASE_URL: Joi.string().uri().required(),
+        ECONT_OFFICES_BASE_URL: Joi.string()
+          .uri()
+          .default('https://ee.econt.com/services'),
         ECONT_USERNAME: Joi.string().required(),
         ECONT_PASSWORD: Joi.string().required(),
+        ECONT_TIMEOUT_MS: Joi.number().integer().positive().default(10000),
+        ECONT_SENDER_OFFICE_CODE: Joi.string().required(),
+        ECONT_SENDER_PAYMENT_METHOD: Joi.string()
+          .valid('cash', 'credit')
+          .default('cash'),
+        ECONT_LOCKER_MAX_CM: Joi.string()
+          .pattern(/^\d+(\.\d+)?,\d+(\.\d+)?,\d+(\.\d+)?$/)
+          .default('61,44,37'),
+        // Econt refuses cargo, anything over 50 kg, at an Econtomat.
+        ECONT_LOCKER_MAX_WEIGHT_GRAMS: Joi.number()
+          .integer()
+          .positive()
+          .max(50000)
+          .default(20000),
+        ECONT_LOCKER_FILL_FACTOR: Joi.number().greater(0).max(1).default(0.8),
 
         SPEEDY_USERNAME: Joi.string().required(),
         SPEEDY_PASSWORD: Joi.string().required(),
@@ -158,6 +179,7 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
     PrismaModule,
     CartModule,
     CatalogModule,
+    DeliveryModule,
     InventoryModule,
     SearchModule,
   ],

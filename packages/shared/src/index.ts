@@ -23,5 +23,6 @@ export * from './dto/search/search.dto';
 export * from './dto/inventory.dto';
 export * from './dto/cart.dto';
 export * from './dto/checkout.dto';
+export * from './dto/delivery.dto';
 export * from './dto/orders.dto';
 export * from './dto/customers.dto';

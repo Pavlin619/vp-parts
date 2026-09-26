@@ -54,6 +54,8 @@ jobs:
       MYPOS_WALLET_NUMBER: stub
       ECONT_USERNAME: stub
       ECONT_PASSWORD: stub
+      ECONT_BASE_URL: https://stub.econt.invalid
+      ECONT_SENDER_OFFICE_CODE: '1127'
       SPEEDY_USERNAME: stub
       SPEEDY_PASSWORD: stub
       # TECDOC_API_KEY and TECDOC_BASE_URL are never called at runtime in tests;

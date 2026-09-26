@@ -9,6 +9,7 @@ import {
   mapArticleImages,
   mapArticleSummary,
   mapOemNumbers,
+  shippingProfileOf,
 } from '../../tecdoc';
 import {
   ArticleLookupResponse,
@@ -71,6 +72,7 @@ export class ArticlesTecDoc {
         categoryPaths: assemblyGroupPathsOf(data.assemblyGroupFacets?.counts),
       },
       genericArticleIds: genericArticleIdsOf(article),
+      shippingProfile: shippingProfileOf(article),
     };
   }
 }

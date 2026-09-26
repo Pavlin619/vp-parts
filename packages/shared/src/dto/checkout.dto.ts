@@ -50,12 +50,6 @@ export interface CodConfirmResponseDto {
   orderReference: string;
 }
 
-export interface ShippingRateResponseDto {
-  method: ShippingMethod;
-  costIncVat: number;
-  estimatedDeliveryDays: number;
-}
-
 export interface CheckoutConfigDto {
   codMaxOrderTotal: number;
   vatRate: number;

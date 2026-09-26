@@ -96,6 +96,28 @@ describe('ArticlesTecDoc', () => {
       expect(genericArticleIds).toEqual([82, 91]);
     });
 
+    it('carries the shipping profile read from the criteria', async () => {
+      call.mockResolvedValueOnce({
+        articles: [
+          {
+            ...record('A1'),
+            articleCriteria: [
+              {
+                criteriaId: 3852,
+                criteriaDescription: 'нетно тегло [g]',
+                rawValue: '47',
+                formattedValue: '47',
+              },
+            ],
+          },
+        ],
+      });
+
+      const { shippingProfile } = await tecdoc.getArticleDetails(BOSCH, 'A1');
+
+      expect(shippingProfile).toEqual({ weightGrams: 47, packageCm: null });
+    });
+
     // The bug this exists to prevent: an article number is unique only within a
     // data supplier, so a lookup without one resolves to whichever supplier
     // TecDoc sorted first and shows another company's part.

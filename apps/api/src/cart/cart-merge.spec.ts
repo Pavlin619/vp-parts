@@ -98,6 +98,23 @@ describe('mergeCartLines', () => {
     expect(lines[0].addedAt).toBe('2026-08-01T00:00:00.000Z');
   });
 
+  it('carries what a stored line holds beyond the wire fields', () => {
+    const shippingProfile = { weightGrams: 2000, packageCm: null };
+
+    const { lines } = mergeCartLines(
+      [{ ...line({ quantity: 2 }), shippingProfile }],
+      [
+        { ...line({ quantity: 3 }), shippingProfile },
+        { ...line({ articleNumber: 'OC90' }), shippingProfile },
+      ],
+    );
+
+    expect(lines.map((merged) => merged.shippingProfile)).toEqual([
+      shippingProfile,
+      shippingProfile,
+    ]);
+  });
+
   it('takes the incoming lines oldest-first when it cannot take them all', () => {
     const existing = Array.from({ length: MAX_CART_LINES - 1 }, (_, index) =>
       line({ articleNumber: `EXISTING-${index}` }),

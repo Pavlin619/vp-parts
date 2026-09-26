@@ -7,6 +7,7 @@ import {
   MAX_CART_LINES,
 } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
+import { ArticleNotFoundException, ArticlesTecDoc } from '../src/catalog';
 import { PrismaService } from '../src/prisma';
 
 const LINE = {
@@ -20,13 +21,31 @@ const LINE = {
   addedAtPriceIncVat: 4500,
 };
 
+const UNKNOWN_ARTICLE = 'NOT-IN-TECDOC';
+
+const articles = {
+  getArticleDetails: (_brandId: number, articleNumber: string) =>
+    articleNumber === UNKNOWN_ARTICLE
+      ? Promise.reject(new ArticleNotFoundException())
+      : Promise.resolve({
+          detail: {},
+          genericArticleIds: [],
+          shippingProfile: {
+            weightGrams: 2000,
+            packageCm: { length: 30, width: 20, height: 7.5 },
+          },
+        }),
+};
+
 describe('Cart (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   const mintedTokens: string[] = [];
 
   beforeAll(async () => {
-    app = await createTestApp();
+    app = await createTestApp((builder) => {
+      builder.overrideProvider(ArticlesTecDoc).useValue(articles);
+    });
     prisma = app.get(PrismaService);
   });
 
@@ -94,6 +113,37 @@ describe('Cart (e2e)', () => {
       expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
       expect((response.body as CartDto).lines).toHaveLength(1);
       expect((response.body as CartDto).version).toBe(1);
+    });
+
+    it('stores what the catalogue says the part weighs', async () => {
+      const token = await openCart();
+
+      const item = await prisma.cartItem.findFirstOrThrow({
+        where: { cart: { token } },
+      });
+
+      expect(item).toMatchObject({
+        weightGrams: 2000,
+        packageLengthCm: 30,
+        packageWidthCm: 20,
+        packageHeightCm: 7.5,
+      });
+    });
+
+    it('refuses a part the catalogue does not know, and mints no cart', async () => {
+      const before = await prisma.cart.count();
+
+      const response = await request(app.getHttpServer())
+        .post('/cart/items')
+        .send({ ...LINE, articleNumber: UNKNOWN_ARTICLE })
+        .expect(404);
+
+      expect(response.body).toEqual({
+        statusCode: 404,
+        errorCode: AppErrorCode.ARTICLE_NOT_FOUND,
+      });
+      expect(response.headers[CART_TOKEN_HEADER]).toBeUndefined();
+      expect(await prisma.cart.count()).toBe(before);
     });
 
     it('never prices the cart it returns', async () => {

@@ -6,8 +6,8 @@ import {
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
 
-export interface CartMergeResult {
-  lines: CartLineDto[];
+export interface CartMergeResult<Line extends CartLineDto> {
+  lines: Line[];
   /** Incoming lines there was no room for — reported, never dropped silently. */
   dropped: ArticleIdentityDto[];
 }
@@ -32,10 +32,10 @@ const lineKey = (line: ArticleIdentityDto) =>
  * is the batch the whole cart is priced by. The overflow is returned rather
  * than discarded, so the customer can be told which parts did not make it.
  */
-export function mergeCartLines(
-  existing: CartLineDto[],
-  incoming: CartLineDto[],
-): CartMergeResult {
+export function mergeCartLines<Line extends CartLineDto>(
+  existing: Line[],
+  incoming: Line[],
+): CartMergeResult<Line> {
   const lines = [...existing];
   const indexByKey = new Map(
     lines.map((line, index) => [lineKey(line), index]),
@@ -67,13 +67,16 @@ export function mergeCartLines(
 }
 
 /** Oldest first, so the parts the customer has wanted longest survive a full cart. */
-function oldestFirst(lines: CartLineDto[]): CartLineDto[] {
+function oldestFirst<Line extends CartLineDto>(lines: Line[]): Line[] {
   return [...lines].sort((left, right) =>
     left.addedAt.localeCompare(right.addedAt),
   );
 }
 
-function raiseBy(existing: CartLineDto, incoming: CartLineDto): CartLineDto {
+function raiseBy<Line extends CartLineDto>(
+  existing: Line,
+  incoming: Line,
+): Line {
   const older =
     existing.addedAt.localeCompare(incoming.addedAt) <= 0 ? existing : incoming;
 

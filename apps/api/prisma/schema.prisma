@@ -159,6 +159,12 @@ model CartItem {
   quantity           Int
   isSelected         Boolean  @default(true)
   addedAtPriceIncVat Int?
+  /// TecDoc's weight and packed size, read when the line was added so checkout
+  /// can weigh the cart without calling TecDoc. Null where TecDoc files none.
+  weightGrams        Int?
+  packageLengthCm    Float?
+  packageWidthCm     Float?
+  packageHeightCm    Float?
   addedAt            DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
