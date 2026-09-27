@@ -1,6 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
 import {
-  CART_TOKEN_HEADER,
   EMPTY_CART,
   type AddCartLineInput,
   type ArticleIdentityDto,
@@ -8,8 +7,8 @@ import {
   type CartDto,
   type UpdateCartLineInput,
 } from "@vp-parts-shop/shared";
-import { apiFetch } from "../index";
-import { readCartToken, writeCartToken } from "./cart-token";
+import { cartFetch } from "./cart-fetch";
+import { readCartToken } from "./cart-token";
 
 export { clearCartToken, readCartToken } from "./cart-token";
 
@@ -64,35 +63,6 @@ export function clearCart(): Promise<CartDto> {
  */
 export function adoptCart(): Promise<CartAdoptResponseDto> {
   return cartFetch("/cart/adopt", { method: "POST" });
-}
-
-interface CartFetchOptions {
-  method?: string;
-  body?: unknown;
-}
-
-/**
- * Every cart call carries the device's token and watches the response for a
- * new one. The server mints a cart on the first write, and the token it hands
- * back in that one response is the only chance to learn which cart is ours.
- */
-async function cartFetch<T>(
-  path: string,
-  { method = "GET", body }: CartFetchOptions = {},
-): Promise<T> {
-  const token = readCartToken();
-
-  return apiFetch<T>(path, {
-    method,
-    body,
-    headers: token ? { [CART_TOKEN_HEADER]: token } : undefined,
-    onHeaders: (headers) => {
-      const minted = headers.get(CART_TOKEN_HEADER);
-      if (minted) {
-        writeCartToken(minted);
-      }
-    },
-  });
 }
 
 function linePath({ brandId, articleNumber }: ArticleIdentityDto): string {

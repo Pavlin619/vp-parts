@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { CartAvailabilityError, CartEmpty, CheckoutSteps } from "@/components/cart";
@@ -8,14 +7,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { useCartLines } from "@/hooks/use-cart";
 import { useCartAvailability } from "@/hooks/use-cart-availability";
 import { useCartStatus } from "@/hooks/use-cart-status";
+import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-delivery";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
-import {
-  DEFAULT_DELIVERY_METHOD,
-  type DeliveryMethod,
-} from "@/lib/checkout/delivery-methods";
-import { DeliveryMethodPanel } from "./delivery-method-panel";
-import { OrderItemsPanel } from "./order-items-panel";
+import { DeliveryMethodPanel } from "./delivery";
+import { OrderItemsPanel } from "./order-items";
 
 /**
  * Checkout's second step: how the selected cart lines reach the customer.
@@ -25,9 +21,8 @@ import { OrderItemsPanel } from "./order-items-panel";
 export function CheckoutView() {
   const status = useCartStatus();
   const lines = useCartLines();
-  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>(
-    DEFAULT_DELIVERY_METHOD,
-  );
+  const deliveryMethod = useDeliveryMethod();
+  const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
 
   const availability = useCartAvailability(lines);
 

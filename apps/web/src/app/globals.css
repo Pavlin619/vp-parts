@@ -131,6 +131,9 @@
   --info: #1F4FBF;
   --info-soft: #DDE6FA;
 
+  /* Carrier brand colours, for their office pins */
+  --carrier-econt: #234182;
+
   /* Delivery speed bands — a green→blue→yellow→orange heat scale that ties the
      availability dot to how fast the part ships. `-fg` is the readable text
      tone; `-soft` is the halo behind the buy-box dot. */

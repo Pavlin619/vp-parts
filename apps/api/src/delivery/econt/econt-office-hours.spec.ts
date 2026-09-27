@@ -25,4 +25,10 @@ describe('officeHoursOf', () => {
     expect(officeHoursOf(null, at('2026-09-24T15:00:00Z'))).toBeNull();
     expect(officeHoursOf(at('2026-09-24T06:00:00Z'), null)).toBeNull();
   });
+
+  it('has no hours when the office opens and closes at the same instant', () => {
+    const midnight = at('2026-09-26T21:00:00Z');
+
+    expect(officeHoursOf(midnight, midnight)).toBeNull();
+  });
 });

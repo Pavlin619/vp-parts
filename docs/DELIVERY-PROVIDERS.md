@@ -22,6 +22,62 @@ weight, `/parcel` answers `weightGrams: null` and names the parts in
 `unmeasuredArticles`, and `/quote` answers `422 DELIVERY_PARCEL_UNMEASURED` (see
 [below](#a-part-with-no-weight-is-not-guessed)).
 
+## The office picker in the web checkout
+
+`apps/web/src/components/checkout/delivery/offices/office-picker.tsx` mounts under
+"Доставка с куриер до офис". It reads `/delivery/offices` and `/delivery/parcel`, and
+does not quote yet.
+
+- **The list is the control; the map is a second view of it.** Search matches every
+  word against city, name, address and post code, so `софия люлин` finds a district.
+  The list shows the first 50 matches. The map works for neither keyboard nor screen
+  reader, so nothing can be chosen only there.
+- **Choosing takes two steps.** Clicking a row or a pin opens that office in place of
+  the list — name, address with a Google Maps link, working hours and "Вземи от този
+  офис" — and turns its pin brand orange. Only that button picks the office; "Назад" or
+  any change to the search returns to the list, scrolled where it was. A pin and its row
+  carry the same icon — a parcel for an office, a locker grid for an Econtomat — in the
+  carrier's colour (`--carrier-econt`, Econt's own `#234182`), which the clusters share,
+  and hovering either one highlights the other. Coming back to change a chosen office
+  starts the list in that office's city.
+- **Search suggests cities and offices.** Picking a city filters the list to it, and
+  picking an office opens it. The only other filter is kind (office or locker). An
+  office shows its working hours, not whether it is open right now.
+- **A locker is choosable only once `/parcel` says the parcel fits.** While the parcel
+  is being weighed, or when that fails, lockers are listed disabled with the reason and
+  kept off the map. Staffed offices take any parcel. A parcel with no weight shows the
+  "priced by phone" notice.
+- **The choice stays in the browser** (`use-checkout-delivery`, `localStorage`): the
+  method and `{ carrier, officeCode }`, nothing that names the customer. The API first
+  hears of it with the order, which must check it again. A remembered office the carrier
+  no longer lists, or a locker the parcel no longer fits, is ignored on arrival.
+
+### Map tiles
+
+MapLibre GL with [OpenFreeMap](https://openfreemap.org)'s `positron` style: free,
+commercial use allowed, no key, no view limit. Its terms ask only for the OpenStreetMap
+attribution, which MapLibre shows. It is one volunteer's service with no SLA, which
+is acceptable because the list works without the map. A style that fails to load
+replaces the map with a pointer to the list.
+
+- **The fallback is one env value.** `NEXT_PUBLIC_MAP_STYLE_URL` overrides the style.
+  To leave OpenFreeMap, serve a Protomaps PMTiles extract of Bulgaria from S3 or R2 and
+  point this at its style. Cluster counts are drawn in `Noto Sans Bold`, so a new style
+  must serve that font or `LABEL_FONT` in `office-map.tsx` changes with it.
+- **Not OSM's own tiles:** their policy lets them withdraw a commercial site without
+  notice. MapTiler's and Stadia's free tiers are non-commercial, and Google needs a
+  billing account.
+- `maplibre-gl` publishes only an ESM entry. The component imports it lazily, so it
+  stays out of the checkout bundle, and its spec mocks it as a virtual module.
+- **Its worker is served from `public/vendor/maplibre/`.** MapLibre looks for the
+  worker beside its own module, which a Turbopack chunk is not. A `new URL(…,
+  import.meta.url)` reference emits the worker file but not the
+  `maplibre-gl-shared.mjs` it imports. So `scripts/copy-map-worker.mjs` copies both on
+  `predev` and `prebuild`, and the map calls `setWorkerUrl`.
+- **MapLibre's stylesheet makes its container `position: relative`**, so the container
+  is sized with a height, never stretched with `absolute inset-0`, which collapses it
+  to 0 px.
+
 ## Adding a carrier
 
 Every route goes through the `DeliveryCarrier` port (`delivery-carrier.ts`), and
@@ -78,6 +134,10 @@ per carrier.
   lockers read 00:00–23:59. `halfDay` is taken to be Saturday: offices read 09:00–15:00
   there, lockers the full day. **[VERIFY]** Confirm with Econt; nothing in the spec
   names the day, and Sunday has no field at all.
+- **A closed day is an empty window, never `null`.** Econt sends `From` equal to `To`
+  (both 00:00) rather than leaving the fields out; production had no `null` hours on any
+  of its 633 offices on 2026-09-27. We read an empty window as closed. The one office
+  then was Еконт Точка София Дружба - Книжна борса (10016), closed on Saturday.
 
 ### `calculate` is the quote
 

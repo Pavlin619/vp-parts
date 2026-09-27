@@ -3,6 +3,12 @@ import userEvent from '@testing-library/user-event'
 import type { DeliveryPromise } from '@/lib/delivery/promise'
 import { DeliveryMethodPanel } from './delivery-method-panel'
 
+jest.mock('./offices', () => ({
+  OfficePicker: ({ carrier }: { carrier: string }) => (
+    <div data-testid="office-picker" data-carrier={carrier} />
+  ),
+}))
+
 describe('DeliveryMethodPanel', () => {
   afterEach(() => {
     jest.useRealTimers()
@@ -28,6 +34,18 @@ describe('DeliveryMethodPanel', () => {
     ).not.toBeChecked()
   })
 
+  it('keeps its label id unique when rendered twice', () => {
+    render(
+      <>
+        <DeliveryMethodPanel method="courier-address" onMethodChange={jest.fn()} promise={null} />
+        <DeliveryMethodPanel method="courier-address" onMethodChange={jest.fn()} promise={null} />
+      </>,
+    )
+
+    const [first, second] = screen.getAllByRole('radiogroup', { name: 'Метод на доставка' })
+    expect(first.getAttribute('aria-labelledby')).not.toBe(second.getAttribute('aria-labelledby'))
+  })
+
   it('reports the method the customer picks', async () => {
     const user = userEvent.setup()
     const onMethodChange = jest.fn()
@@ -44,8 +62,7 @@ describe('DeliveryMethodPanel', () => {
     expect(onMethodChange).toHaveBeenCalledWith('courier-office')
   })
 
-  // The carrier's own address or office picker mounts here later.
-  it('keeps a slot for the provider under the selected method', () => {
+  it("mounts the carrier's office picker under delivery to an office", () => {
     render(
       <DeliveryMethodPanel
         method="courier-office"
@@ -54,10 +71,24 @@ describe('DeliveryMethodPanel', () => {
       />,
     )
 
+    expect(screen.getByTestId('office-picker')).toHaveAttribute('data-carrier', 'ECONT')
+  })
+
+  // The address form lands with address delivery.
+  it('keeps a slot for the address form under delivery to an address', () => {
+    render(
+      <DeliveryMethodPanel
+        method="courier-address"
+        onMethodChange={jest.fn()}
+        promise={null}
+      />,
+    )
+
     expect(screen.getByTestId('delivery-provider-slot')).toHaveAttribute(
       'data-method',
-      'courier-office',
+      'courier-address',
     )
+    expect(screen.queryByTestId('office-picker')).not.toBeInTheDocument()
   })
 
   it('prompts to order before the courier deadline', () => {
