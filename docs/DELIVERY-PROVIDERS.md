@@ -38,8 +38,20 @@ does not quote yet.
   any change to the search returns to the list, scrolled where it was. A pin and its row
   carry the same icon — a parcel for an office, a locker grid for an Econtomat — in the
   carrier's colour (`--carrier-econt`, Econt's own `#234182`), which the clusters share,
-  and hovering either one highlights the other. Coming back to change a chosen office
-  starts the list in that office's city.
+  and hovering either one highlights the other.
+- **The list can be sorted by closeness to a point, which never hides an office.** Each
+  row then shows its straight-line distance, and the map frames the point with the eight
+  offices nearest it instead of the whole country. The point is one of two things:
+  - **The office already chosen,** when the customer comes back to change it.
+  - **The device's position, after "Близо до мен".** The browser is asked only on that
+    click, because a prompt that no click led to is blocked quietly. The position stays
+    in the browser and is not stored. "Близо до мен" drops a searched city, since it asks
+    about every city. A refused or failed lookup says so and leaves the list as it was.
+
+  A chip names the point and removes it. The list stays sorted while the customer
+  searches, but the map frames the searched place, not the point, so a customer in
+  Sofia who searches for Plovdiv is not zoomed out to the country. A city is a filter,
+  not a point, so a village near a town still finds that town's offices.
 - **Search suggests cities and offices.** Picking a city filters the list to it, and
   picking an office opens it. The only other filter is kind (office or locker). An
   office shows its working hours, not whether it is open right now.

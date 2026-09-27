@@ -2,20 +2,30 @@
 
 import { useMemo, useState } from "react";
 import type { DeliveryOfficeDto, ShippingMethod } from "@vp-parts-shop/shared";
+import { useDeviceLocation } from "@/hooks/use-device-location";
 import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { officeAvailability, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
-import { EMPTY_OFFICE_SEARCH, filterOffices, suggestOffices } from "@/lib/checkout/delivery/office-search";
+import {
+  sortOfficesByDistance,
+  type ReferencePoint,
+} from "@/lib/checkout/delivery/office-distance";
+import {
+  EMPTY_OFFICE_SEARCH,
+  filterOffices,
+  suggestOffices,
+  type OfficeSearch as OfficeSearchState,
+} from "@/lib/checkout/delivery/office-search";
 import { cn } from "@/lib/utils";
 import { OfficeDetail } from "./detail";
 import { OfficeList } from "./list";
 import { OfficeMap } from "./map";
-import { OfficeFilters, OfficeSearch } from "./search";
+import { DeviceLocationNotice, NearMeButton, OfficeFilters, OfficeSearch } from "./search";
 
 interface OfficeBrowserProps {
   offices: DeliveryOfficeDto[];
   parcelCheck: ParcelCheck;
   carrier: ShippingMethod;
-  /** The office already chosen, whose city the list starts in when the customer comes back to change it. */
+  /** The office already chosen, which the list starts nearest to when the customer comes back to change it. */
   chosenCode: string | null;
   onChoose: (officeCode: string) => void;
   /** Present while an office is already chosen, to keep it. */
@@ -31,25 +41,52 @@ export function OfficeBrowser({
   onChoose,
   onCancel,
 }: OfficeBrowserProps) {
-  const [search, setSearch] = useState(() => initialSearch(offices, chosenCode));
+  const [search, setSearch] = useState(EMPTY_OFFICE_SEARCH);
+  const [referencePoint, setReferencePoint] = useState(() =>
+    chosenOfficePoint(offices, chosenCode),
+  );
   const [openCode, setOpenCode] = useState<string | null>(null);
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [isMapOpenOnMobile, setIsMapOpenOnMobile] = useState(false);
+  const deviceLocation = useDeviceLocation();
 
-  const matchingOffices = useMemo(() => filterOffices(offices, search), [offices, search]);
+  const sortedOffices = useMemo(
+    () => (referencePoint ? sortOfficesByDistance(offices, referencePoint) : offices),
+    [offices, referencePoint],
+  );
+  const matchingOffices = useMemo(
+    () => filterOffices(sortedOffices, search),
+    [sortedOffices, search],
+  );
   const selectableOffices = useMemo(
     () => matchingOffices.filter((office) => officeAvailability(office, parcelCheck).isSelectable),
     [matchingOffices, parcelCheck],
   );
-  const suggestions = useMemo(() => suggestOffices(offices, search.query), [offices, search.query]);
+  const suggestions = useMemo(
+    () => suggestOffices(sortedOffices, search.query),
+    [sortedOffices, search.query],
+  );
   const openOffice = offices.find(({ code }) => code === openCode);
   const carrierName = CARRIER_NAMES[carrier];
+  const mapReferencePoint = isSearchingPlace(search) ? null : referencePoint;
 
   // A new search is a new look at the list, so it closes the open office.
-  const changeSearch = (nextSearch: typeof search) => {
+  const changeSearch = (nextSearch: OfficeSearchState) => {
     setSearch(nextSearch);
     setOpenCode(null);
   };
+
+  const changeReferencePoint = (nextPoint: ReferencePoint | null) => {
+    setReferencePoint(nextPoint);
+    setOpenCode(null);
+  };
+
+  // "Near me" asks about every city, so it drops the place searched for but keeps the kind.
+  const sortNearDevice = () =>
+    deviceLocation.locate((point) => {
+      setSearch((current) => ({ ...EMPTY_OFFICE_SEARCH, type: current.type }));
+      changeReferencePoint({ ...point, kind: "device", label: "вас" });
+    });
 
   const jumpToOffice = (office: DeliveryOfficeDto) => {
     setSearch({ ...EMPTY_OFFICE_SEARCH, city: office.city });
@@ -68,15 +105,30 @@ export function OfficeBrowser({
         )}
       </p>
 
-      <OfficeSearch
-        query={search.query}
-        onQueryChange={(query) => changeSearch({ ...search, query })}
-        suggestions={suggestions}
-        onPickCity={(city) => changeSearch({ ...search, query: "", city })}
-        onPickOffice={jumpToOffice}
-      />
+      <div className="flex gap-2">
+        <div className="min-w-0 flex-1">
+          <OfficeSearch
+            query={search.query}
+            onQueryChange={(query) => changeSearch({ ...search, query })}
+            suggestions={suggestions}
+            onPickCity={(city) => changeSearch({ ...search, query: "", city })}
+            onPickOffice={jumpToOffice}
+          />
+        </div>
+        <NearMeButton
+          isLocating={deviceLocation.status === "locating"}
+          onClick={sortNearDevice}
+        />
+      </div>
 
-      <OfficeFilters search={search} onSearchChange={changeSearch} />
+      <DeviceLocationNotice status={deviceLocation.status} />
+
+      <OfficeFilters
+        search={search}
+        onSearchChange={changeSearch}
+        referencePoint={referencePoint}
+        onClearReferencePoint={() => changeReferencePoint(null)}
+      />
 
       <button
         type="button"
@@ -106,6 +158,7 @@ export function OfficeBrowser({
               offices={matchingOffices}
               parcelCheck={parcelCheck}
               hoveredCode={hoveredCode}
+              referencePoint={referencePoint}
               onOpen={setOpenCode}
               onHover={setHoveredCode}
             />
@@ -116,9 +169,10 @@ export function OfficeBrowser({
           <OfficeMap
             offices={selectableOffices}
             carrier={carrier}
-            framingKey={JSON.stringify(search)}
+            framingKey={JSON.stringify({ search, mapReferencePoint })}
             selectedCode={openCode}
             hoveredCode={hoveredCode}
+            referencePoint={mapReferencePoint}
             onSelect={setOpenCode}
             onHover={setHoveredCode}
           />
@@ -132,11 +186,24 @@ export function OfficeBrowser({
   );
 }
 
-/** Coming back to change the office starts among the offices of its city. */
-function initialSearch(offices: DeliveryOfficeDto[], chosenCode: string | null) {
+/** Coming back to change the office starts nearest to it, with every office still in reach. */
+function chosenOfficePoint(
+  offices: DeliveryOfficeDto[],
+  chosenCode: string | null,
+): ReferencePoint | null {
   const chosen = offices.find(({ code }) => code === chosenCode);
+  if (!chosen) {
+    return null;
+  }
 
-  return chosen ? { ...EMPTY_OFFICE_SEARCH, city: chosen.city } : EMPTY_OFFICE_SEARCH;
+  const { latitude, longitude, name } = chosen;
+
+  return { latitude, longitude, kind: "chosen-office", label: name };
+}
+
+/** A searched place frames the map on itself; framing around the point would pull it out to the country. */
+function isSearchingPlace({ query, city }: OfficeSearchState): boolean {
+  return city !== null || query.trim() !== "";
 }
 
 function ResultsHead({ count, onCancel }: { count: number; onCancel?: () => void }) {

@@ -14,6 +14,7 @@ interface FakeMap {
   options: Record<string, unknown>
   handlers: Map<string, Handler>
   source: { setData: jest.Mock; getClusterExpansionZoom: jest.Mock }
+  locationSource: { setData: jest.Mock }
   fitBounds: jest.Mock
   easeTo: jest.Mock
   setFilter: jest.Mock
@@ -43,6 +44,7 @@ jest.mock('maplibre-gl', () => ({
       setData: jest.fn(),
       getClusterExpansionZoom: jest.fn().mockResolvedValue(11),
     }
+    locationSource = { setData: jest.fn() }
     fitBounds = jest.fn()
     easeTo = jest.fn()
     setFilter = jest.fn()
@@ -73,8 +75,8 @@ jest.mock('maplibre-gl', () => ({
     hasImage() {
       return false
     }
-    getSource() {
-      return this.source
+    getSource(id: string) {
+      return id === 'offices' ? this.source : this.locationSource
     }
     getCanvas() {
       return { style: {} }
@@ -114,6 +116,7 @@ function mapProps(overrides: Partial<OfficeMapProps> = {}): OfficeMapProps {
     framingKey: 'all',
     selectedCode: null,
     hoveredCode: null,
+    referencePoint: null,
     onSelect: jest.fn(),
     onHover: jest.fn(),
     ...overrides,
@@ -227,6 +230,84 @@ describe('OfficeMap', () => {
     expect(map.fitBounds).toHaveBeenCalledTimes(1)
     expect(map.easeTo).toHaveBeenLastCalledWith(
       expect.objectContaining({ center: [27.9, 43.2] }),
+    )
+  })
+
+  it('frames the point the list is sorted by, with the offices nearest it', async () => {
+    render(
+      <OfficeMap
+        {...mapProps({
+          referencePoint: { latitude: 42.0, longitude: 23.0, kind: 'device', label: 'вас' },
+        })}
+      />,
+    )
+
+    const map = await loadedMap()
+
+    await waitFor(() =>
+      expect(map.fitBounds).toHaveBeenCalledWith(
+        [
+          [23.0, 42.0],
+          [27.9, 43.2],
+        ],
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('reframes when the point the list is sorted by changes', async () => {
+    const { rerender } = render(<OfficeMap {...mapProps()} />)
+    const map = await loadedMap()
+    await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(1))
+
+    rerender(
+      <OfficeMap
+        {...mapProps({
+          referencePoint: { latitude: 42.0, longitude: 23.0, kind: 'device', label: 'вас' },
+          framingKey: 'near-me',
+        })}
+      />,
+    )
+
+    await waitFor(() => expect(map.fitBounds).toHaveBeenCalledTimes(2))
+  })
+
+  it('marks where the customer is', async () => {
+    render(
+      <OfficeMap
+        {...mapProps({
+          referencePoint: { latitude: 42.0, longitude: 23.0, kind: 'device', label: 'вас' },
+        })}
+      />,
+    )
+
+    const map = await loadedMap()
+
+    await waitFor(() =>
+      expect(map.locationSource.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [expect.objectContaining({ geometry: { type: 'Point', coordinates: [23.0, 42.0] } })],
+      }),
+    )
+  })
+
+  // The chosen office already has its pin; it is not where the customer is.
+  it('marks no location when sorting by the chosen office', async () => {
+    render(
+      <OfficeMap
+        {...mapProps({
+          referencePoint: { latitude: 42.1, longitude: 23.3, kind: 'chosen-office', label: 'Офис' },
+        })}
+      />,
+    )
+
+    const map = await loadedMap()
+
+    await waitFor(() =>
+      expect(map.locationSource.setData).toHaveBeenLastCalledWith({
+        type: 'FeatureCollection',
+        features: [],
+      }),
     )
   })
 

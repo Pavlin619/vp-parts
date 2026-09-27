@@ -31,6 +31,7 @@ function renderItem(overrides: Partial<OfficeListItemProps> = {}) {
     office: office(),
     availability: { isSelectable: true },
     isHovered: false,
+    distanceMeters: null,
     onOpen: jest.fn(),
     onHover: jest.fn(),
     ...overrides,
@@ -90,5 +91,17 @@ describe('OfficeListItem', () => {
 
     expect(officeButton()).toBeDisabled()
     expect(screen.getByText(copy)).toBeInTheDocument()
+  })
+
+  it('says how far the office is', () => {
+    renderItem({ distanceMeters: 1_234 })
+
+    expect(officeButton()).toHaveTextContent('1,2 км')
+  })
+
+  it('says no distance without a point to measure from', () => {
+    renderItem()
+
+    expect(officeButton()).not.toHaveTextContent(/км|\bм\b/)
   })
 })

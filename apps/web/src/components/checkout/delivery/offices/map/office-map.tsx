@@ -10,7 +10,12 @@ import type {
   MapLayerMouseEvent,
 } from "maplibre-gl";
 import { DeliveryOfficeType, ShippingMethod, type DeliveryOfficeDto } from "@vp-parts-shop/shared";
-import { officeBounds, toOfficeFeatures } from "@/lib/checkout/delivery/office-map-features";
+import type { ReferencePoint } from "@/lib/checkout/delivery/office-distance";
+import {
+  framingBounds,
+  toLocationFeatures,
+  toOfficeFeatures,
+} from "@/lib/checkout/delivery/office-map-features";
 import {
   carrierColorToken,
   loadSvgImage,
@@ -35,6 +40,7 @@ const BULGARIA_BOUNDS: [[number, number], [number, number]] = [
 ];
 
 const SOURCE_ID = "offices";
+const LOCATION_SOURCE_ID = "customer-location";
 const CLUSTER_LAYER = "office-clusters";
 const POINT_LAYER = "office-points";
 const HOVERED_LAYER = "office-hovered";
@@ -55,6 +61,8 @@ interface OfficeMapProps {
   framingKey: string;
   selectedCode: string | null;
   hoveredCode: string | null;
+  /** Frames the map around it; marked on the map only when it is the customer's device. */
+  referencePoint: ReferencePoint | null;
   onSelect: (officeCode: string) => void;
   onHover: (officeCode: string | null) => void;
 }
@@ -70,6 +78,7 @@ export function OfficeMap({
   framingKey,
   selectedCode,
   hoveredCode,
+  referencePoint,
   onSelect,
   onHover,
 }: OfficeMapProps) {
@@ -78,6 +87,7 @@ export function OfficeMap({
   const officesRef = useRef(offices);
   const carrierRef = useRef(carrier);
   const selectedCodeRef = useRef(selectedCode);
+  const referencePointRef = useRef(referencePoint);
   const framedKeyRef = useRef<string | null>(null);
   const onSelectRef = useRef(onSelect);
   const onHoverRef = useRef(onHover);
@@ -87,6 +97,7 @@ export function OfficeMap({
     officesRef.current = offices;
     carrierRef.current = carrier;
     selectedCodeRef.current = selectedCode;
+    referencePointRef.current = referencePoint;
     onSelectRef.current = onSelect;
     onHoverRef.current = onHover;
   });
@@ -138,7 +149,10 @@ export function OfficeMap({
 
       if (framedKeyRef.current !== framingKey) {
         framedKeyRef.current = framingKey;
-        frameOffices(map, offices, selectedCodeRef.current);
+        frameOffices(map, offices, {
+          selectedCode: selectedCodeRef.current,
+          referencePoint: referencePointRef.current,
+        });
       }
     }, REDRAW_DELAY_MS);
 
@@ -153,6 +167,16 @@ export function OfficeMap({
 
     map.setFilter(HOVERED_LAYER, codeFilter(hoveredCode));
   }, [status, hoveredCode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (status !== "ready" || !map) {
+      return;
+    }
+
+    const deviceLocation = referencePoint?.kind === "device" ? referencePoint : null;
+    map.getSource<GeoJSONSource>(LOCATION_SOURCE_ID)?.setData(toLocationFeatures(deviceLocation));
+  }, [status, referencePoint]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -192,8 +216,17 @@ export function OfficeMap({
   );
 }
 
-/** Keeps the office the customer has open in view; otherwise shows every office. */
-function frameOffices(map: MapLibreMap, offices: DeliveryOfficeDto[], selectedCode: string | null) {
+interface FramingFocus {
+  selectedCode: string | null;
+  referencePoint: ReferencePoint | null;
+}
+
+/** Keeps the office the customer has open in view; otherwise the offices around the point, or all. */
+function frameOffices(
+  map: MapLibreMap,
+  offices: DeliveryOfficeDto[],
+  { selectedCode, referencePoint }: FramingFocus,
+) {
   const selected = offices.find(({ code }) => code === selectedCode);
   if (selected) {
     map.easeTo({
@@ -203,7 +236,7 @@ function frameOffices(map: MapLibreMap, offices: DeliveryOfficeDto[], selectedCo
     return;
   }
 
-  const bounds = officeBounds(offices);
+  const bounds = framingBounds(offices, referencePoint);
   if (bounds) {
     map.fitBounds(bounds, { padding: 40, maxZoom: SELECTED_OFFICE_ZOOM });
   }
@@ -364,6 +397,19 @@ function addOfficeLayers(map: MapLibreMap, colors: ColorTokens) {
     paint: { "text-color": colors.card },
   });
 
+  map.addSource(LOCATION_SOURCE_ID, { type: "geojson", data: toLocationFeatures(null) });
+  map.addLayer({
+    id: LOCATION_SOURCE_ID,
+    type: "circle",
+    source: LOCATION_SOURCE_ID,
+    paint: {
+      "circle-color": colors.location,
+      "circle-radius": 7,
+      "circle-stroke-width": 3,
+      "circle-stroke-color": colors.card,
+    },
+  });
+
   map.addLayer({
     id: HOVERED_LAYER,
     type: "circle",
@@ -410,6 +456,7 @@ function readColorTokens(mapCarrier: ShippingMethod) {
   return {
     ink: token("--ink"),
     card: token("--bg-alt"),
+    location: token("--info"),
     carrier: (carrier: ShippingMethod) => token(carrierColorToken(carrier)),
     carrierFill: token(carrierColorToken(mapCarrier)),
   };

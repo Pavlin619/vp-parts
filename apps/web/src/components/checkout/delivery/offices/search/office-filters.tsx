@@ -1,6 +1,7 @@
-import { X } from "lucide-react";
+import { LocateFixed, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { DeliveryOfficeType } from "@vp-parts-shop/shared";
+import type { ReferencePoint } from "@/lib/checkout/delivery/office-distance";
 import type { OfficeSearch, OfficeTypeFilter } from "@/lib/checkout/delivery/office-search";
 import { cn } from "@/lib/utils";
 
@@ -13,13 +14,32 @@ const TYPE_FILTERS: { value: OfficeTypeFilter; label: string }[] = [
 interface OfficeFiltersProps {
   search: OfficeSearch;
   onSearchChange: (search: OfficeSearch) => void;
+  referencePoint: ReferencePoint | null;
+  onClearReferencePoint: () => void;
 }
 
-export function OfficeFilters({ search, onSearchChange }: OfficeFiltersProps) {
+export function OfficeFilters({
+  search,
+  onSearchChange,
+  referencePoint,
+  onClearReferencePoint,
+}: OfficeFiltersProps) {
   const update = (change: Partial<OfficeSearch>) => onSearchChange({ ...search, ...change });
 
   return (
     <div className="flex flex-wrap gap-1.5">
+      {referencePoint && (
+        <FilterChip
+          isOn
+          onClick={onClearReferencePoint}
+          ariaLabel={`Спри подреждането по близост до ${referencePoint.label}`}
+        >
+          <LocateFixed className="h-3 w-3" aria-hidden="true" />
+          Близо до {referencePoint.label}
+          <X className="h-3 w-3" aria-hidden="true" />
+        </FilterChip>
+      )}
+
       {search.city && (
         <FilterChip
           isOn

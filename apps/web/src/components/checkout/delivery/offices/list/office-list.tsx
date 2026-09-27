@@ -1,5 +1,6 @@
 import type { DeliveryOfficeDto } from "@vp-parts-shop/shared";
 import { officeAvailability, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
+import { distanceInMeters, type GeoPoint } from "@/lib/checkout/delivery/office-distance";
 import { OfficeListItem } from "./office-list-item";
 
 const MAX_LISTED_OFFICES = 50;
@@ -8,6 +9,8 @@ interface OfficeListProps {
   offices: DeliveryOfficeDto[];
   parcelCheck: ParcelCheck;
   hoveredCode: string | null;
+  /** What each office's distance is measured from; null shows none. */
+  referencePoint: GeoPoint | null;
   onOpen: (officeCode: string) => void;
   onHover: (officeCode: string | null) => void;
 }
@@ -16,6 +19,7 @@ export function OfficeList({
   offices,
   parcelCheck,
   hoveredCode,
+  referencePoint,
   onOpen,
   onHover,
 }: OfficeListProps) {
@@ -36,6 +40,7 @@ export function OfficeList({
               office={office}
               availability={officeAvailability(office, parcelCheck)}
               isHovered={office.code === hoveredCode}
+              distanceMeters={referencePoint && distanceInMeters(referencePoint, office)}
               onOpen={onOpen}
               onHover={onHover}
             />
