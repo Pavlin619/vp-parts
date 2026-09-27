@@ -7,6 +7,7 @@ import {
   type ArticlesAvailabilityDto,
 } from '@vp-parts-shop/shared'
 import { useCart, type CartLine } from '@/hooks/use-cart'
+import { useCheckoutDelivery } from '@/hooks/use-checkout-delivery'
 import { CheckoutView } from './checkout-view'
 
 const getAvailability = jest.fn()
@@ -28,6 +29,10 @@ jest.mock('@/lib/api/catalog', () => ({
 }))
 
 jest.mock('@/lib/api/cart')
+
+jest.mock('./delivery/offices', () => ({
+  OfficePicker: () => <div data-testid="office-picker" />,
+}))
 
 function line(overrides: Partial<CartLine> = {}): CartLine {
   return {
@@ -74,6 +79,7 @@ function renderView() {
 describe('CheckoutView', () => {
   beforeEach(() => {
     useCart.setState({ lines: [], lastWriteError: null })
+    useCheckoutDelivery.setState({ method: 'courier-address', office: null })
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
   })
@@ -142,6 +148,27 @@ describe('CheckoutView', () => {
 
     expect(office).toBeChecked()
     expect(address).not.toBeChecked()
+    expect(screen.getByTestId('office-picker')).toBeInTheDocument()
+  })
+
+  // A reload, or a return visit, finds the customer's choice where they left it.
+  it('remembers the chosen delivery method', async () => {
+    const user = userEvent.setup()
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+    await user.click(await screen.findByRole('radio', { name: /до офис/ }))
+
+    expect(useCheckoutDelivery.getState().method).toBe('courier-office')
+  })
+
+  it('opens on the method chosen before', async () => {
+    useCart.setState({ lines: [line()] })
+    useCheckoutDelivery.setState({ method: 'courier-office' })
+
+    renderView()
+
+    expect(await screen.findByRole('radio', { name: /до офис/ })).toBeChecked()
   })
 
   it('sends the customer back to the cart when a line can no longer be ordered', async () => {
