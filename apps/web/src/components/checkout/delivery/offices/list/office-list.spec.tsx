@@ -38,6 +38,7 @@ function renderList(overrides: Partial<OfficeListProps> = {}) {
     parcelCheck: { state: 'checking' },
     hoveredCode: null,
     referencePoint: null,
+    servedPlace: null,
     onOpen: jest.fn(),
     onHover: jest.fn(),
     ...overrides,
@@ -95,6 +96,13 @@ describe('OfficeList', () => {
     renderList({ offices: [] })
 
     expect(screen.getByText('Няма офиси, които отговарят на търсенето.')).toBeInTheDocument()
+  })
+
+  it("marks the office serving the chosen village, and only that one", () => {
+    renderList({ servedPlace: { officeCode: '1', name: 'Ясен' } })
+
+    expect(officeButtons()[1]).toHaveTextContent('Обслужва Ясен')
+    expect(officeButtons()[0]).not.toHaveTextContent('Обслужва')
   })
 
   it('says how far each office is from the point the list is sorted by', () => {

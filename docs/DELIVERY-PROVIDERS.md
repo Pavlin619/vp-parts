@@ -26,8 +26,25 @@ weight, `/parcel` answers `weightGrams: null` and names the parts in
 ## The office picker in the web checkout
 
 `apps/web/src/components/checkout/delivery/offices/office-picker.tsx` mounts under
-"Доставка с куриер до офис". It reads `/delivery/offices` and `/delivery/parcel`, and
-does not quote yet.
+"Доставка с куриер до офис". It reads `/delivery/offices`, `/delivery/places` and
+`/delivery/parcel`, and does not quote yet.
+
+- **A place comes first, then its offices.** A region dropdown and a settlement search
+  sit above the office search. The settlement search covers the whole country, or one
+  region once one is chosen. It matches a name or the start of a post code, and shows
+  region and post code so that two places with one name can be told apart. Picking a
+  place fills in its region.
+  - **A region filled in from a place goes with the place.** Only a region the customer
+    picked survives clearing the place; otherwise the next search would stay in a
+    region they never chose. Choosing a region the place is not in drops the place.
+  - **A place lists its own offices, a village's serving office, and every office
+    within 15 km,** nearest first. A village's nearest office is usually in the next
+    town. Places carry no coordinates, so a place stands at the middle of its offices,
+    or at its serving office, which is then marked "Обслужва …".
+  - **With nothing chosen, the list asks for a place.** Typing in the office search
+    still searches every office, and the map shows all of them.
+  - **A place the search cannot find** gets a pointer to the nearest town or to "Близо
+    до мен", since Econt lists only about a fifth of Bulgaria's villages (see below).
 
 - **The list is the control; the map is a second view of it.** Search matches every
   word against city, name, address and post code, so `софия люлин` finds a district.
@@ -40,22 +57,24 @@ does not quote yet.
   carry the same icon — a parcel for an office, a locker grid for an Econtomat — in the
   carrier's colour (`--carrier-econt`, Econt's own `#234182`), which the clusters share,
   and hovering either one highlights the other.
-- **The list can be sorted by closeness to a point, which never hides an office.** Each
-  row then shows its straight-line distance, and the map frames the point with the eight
-  offices nearest it instead of the whole country. The point is one of two things:
-  - **The office already chosen,** when the customer comes back to change it.
+- **The list is sorted by closeness to a point.** Each row shows its straight-line
+  distance, and the map frames the point with the eight offices nearest it. The point
+  is one of three things:
+  - **The chosen place.**
+  - **The office already chosen,** when the customer comes back to change it. The
+    browser starts in that office's place, even when the office is a locker the parcel
+    no longer fits.
   - **The device's position, after "Близо до мен".** The browser is asked only on that
     click, because a prompt that no click led to is blocked quietly. The position stays
-    in the browser and is not stored. "Близо до мен" drops a searched city, since it asks
-    about every city. A refused or failed lookup says so and leaves the list as it was.
+    in the browser and is not stored. It fills in the nearest office's place. A refused
+    or failed lookup says so and changes nothing.
 
-  A chip names the point and removes it. The list stays sorted while the customer
-  searches, but the map frames the searched place, not the point, so a customer in
-  Sofia who searches for Plovdiv is not zoomed out to the country. A city is a filter,
-  not a point, so a village near a town still finds that town's offices.
-- **Search suggests cities and offices.** Picking a city filters the list to it, and
-  picking an office opens it. The only other filter is kind (office or locker). An
-  office shows its working hours, not whether it is open right now.
+  A chip names an office or device point and removes it, which sorts by the place
+  again. While the customer types in the office search, the map frames what the search
+  finds, not the point.
+- **The office search suggests offices anywhere.** Picking one opens it, in its place.
+  The only other filter is kind (office or locker). An office shows its working hours,
+  not whether it is open right now.
 - **A locker is choosable only once `/parcel` says the parcel fits.** While the parcel
   is being weighed, or when that fails, lockers are listed disabled with the reason and
   kept off the map. Staffed offices take any parcel. A parcel with no weight shows the
@@ -175,6 +194,9 @@ picks the nearest town.
 - **A place without `regionName` is left out.** The 53 there are holiday areas and
   localities inside a city (`Бяла нива (вилна зона) Сoфия`) and one `Мобилен РЦ`, none
   of them a settlement.
+- **Two regions are renamed.** Econt files the capital's region as `София` and the one
+  around it as `София Област`; the API answers `София-град` and `Софийска област`, the
+  names customers know, so the web shows `region` as it comes.
 - **What that leaves,** on 2026-09-27: 485 places, 190 with an office of their own and
   295 served from one nearby. Dropped: 461 whose serving office is not listed, 94 that
   name none, and 53 with no region. The list is ~68 KB uncompressed.

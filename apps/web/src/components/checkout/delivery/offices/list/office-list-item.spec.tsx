@@ -33,6 +33,7 @@ function renderItem(overrides: Partial<OfficeListItemProps> = {}) {
     availability: { isSelectable: true },
     isHovered: false,
     distanceMeters: null,
+    servedPlaceName: null,
     onOpen: jest.fn(),
     onHover: jest.fn(),
     ...overrides,
@@ -98,6 +99,12 @@ describe('OfficeListItem', () => {
     renderItem({ distanceMeters: 1_234 })
 
     expect(officeButton()).toHaveTextContent('1,2 км')
+  })
+
+  it('names the village the office serves', () => {
+    renderItem({ servedPlaceName: 'Ясен' })
+
+    expect(officeButton()).toHaveTextContent('Обслужва Ясен')
   })
 
   it('says no distance without a point to measure from', () => {

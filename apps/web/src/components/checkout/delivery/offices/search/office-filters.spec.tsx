@@ -41,14 +41,6 @@ describe('OfficeFilters', () => {
     expect(onSearchChange).toHaveBeenCalledWith({ ...current, type: DeliveryOfficeType.OFFICE })
   })
 
-  it('shows a chosen city and lets the customer drop it', async () => {
-    const user = userEvent.setup()
-    const { onSearchChange, current } = renderFilters({ city: 'Пловдив' })
-
-    await user.click(screen.getByRole('button', { name: 'Премахни града Пловдив' }))
-
-    expect(onSearchChange).toHaveBeenCalledWith({ ...current, city: null })
-  })
 
   it('has no city chip without a city', () => {
     renderFilters()
@@ -67,6 +59,13 @@ describe('OfficeFilters', () => {
     await user.click(screen.getByRole('button', { name: 'Спри подреждането по близост до вас' }))
 
     expect(onClearReferencePoint).toHaveBeenCalled()
+  })
+
+  // The place fields already say which place the list is sorted around.
+  it('shows no closeness chip for the chosen place', () => {
+    renderFilters({}, { latitude: 43.41, longitude: 24.61, kind: 'place', label: 'Плевен' })
+
+    expect(screen.queryByText(/Близо до/)).not.toBeInTheDocument()
   })
 
   it('shows no closeness chip while the list is not sorted by it', () => {

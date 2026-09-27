@@ -28,7 +28,7 @@ export function OfficeFilters({
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {referencePoint && (
+      {referencePoint && referencePoint.kind !== "place" && (
         <FilterChip
           isOn
           onClick={onClearReferencePoint}
@@ -36,17 +36,6 @@ export function OfficeFilters({
         >
           <LocateFixed className="h-3 w-3" aria-hidden="true" />
           Близо до {referencePoint.label}
-          <X className="h-3 w-3" aria-hidden="true" />
-        </FilterChip>
-      )}
-
-      {search.city && (
-        <FilterChip
-          isOn
-          onClick={() => update({ city: null })}
-          ariaLabel={`Премахни града ${search.city}`}
-        >
-          {search.city}
           <X className="h-3 w-3" aria-hidden="true" />
         </FilterChip>
       )}

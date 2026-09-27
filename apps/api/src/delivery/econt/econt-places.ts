@@ -17,6 +17,12 @@ const PLACES_MEMORY_TTL_MS = 60 * 60 * 1000;
 /** The serving type naming the office Econt delivers a place's parcels to. */
 const TO_OFFICE_COURIER = 'to_office_courier';
 
+/** Econt calls the capital's region "София" and the one around it "София Област". */
+const REGION_NAMES: Record<string, string> = {
+  София: 'София-град',
+  'София Област': 'Софийска област',
+};
+
 /** A place as Econt lists it, before it is matched against the offices we list. */
 interface EcontPlace {
   id: string;
@@ -146,7 +152,7 @@ function toPlaceDto(
     carrier: ShippingMethod.ECONT,
     id,
     name,
-    region,
+    region: REGION_NAMES[region] ?? region,
     postCode,
     servingOfficeCode,
   };

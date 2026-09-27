@@ -7,7 +7,7 @@ export interface GeoPoint {
 
 /** The point the office list is sorted and measured from, and what the customer is told it is. */
 export interface ReferencePoint extends GeoPoint {
-  kind: "chosen-office" | "device";
+  kind: "place" | "chosen-office" | "device";
   /** Completes "Близо до …". */
   label: string;
 }

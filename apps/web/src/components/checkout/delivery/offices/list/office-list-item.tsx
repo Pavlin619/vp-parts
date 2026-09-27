@@ -14,6 +14,8 @@ interface OfficeListItemProps {
   isHovered: boolean;
   /** Null while the list is not sorted by closeness. */
   distanceMeters: number | null;
+  /** The chosen village this office collects parcels for, when it has none of its own. */
+  servedPlaceName: string | null;
   onOpen: (officeCode: string) => void;
   onHover: (officeCode: string | null) => void;
 }
@@ -24,6 +26,7 @@ export function OfficeListItem({
   availability,
   isHovered,
   distanceMeters,
+  servedPlaceName,
   onOpen,
   onHover,
 }: OfficeListItemProps) {
@@ -49,6 +52,9 @@ export function OfficeListItem({
           {office.type === DeliveryOfficeType.LOCKER && <LockerTag />}
         </span>
         <span className="text-[12px] text-ink-3">{office.address}</span>
+        {servedPlaceName && (
+          <span className="text-[11px] font-medium text-ok">Обслужва {servedPlaceName}</span>
+        )}
         {!availability.isSelectable && (
           <span className="text-[11px] text-warn">
             {OFFICE_BLOCK_REASON_COPY[availability.reason]}
