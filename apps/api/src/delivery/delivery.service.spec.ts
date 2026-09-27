@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import {
   ArticleInventoryDetailDto,
   DeliveryOfficeDto,
+  DeliveryPlaceDto,
   DeliveryOfficeType,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
@@ -56,6 +57,7 @@ function office(
     carrier,
     code: type === DeliveryOfficeType.LOCKER ? '9010' : '9035',
     name: 'Варна',
+    placeId: '9000',
     city: 'Варна',
     postCode: '9000',
     address: 'Варна',
@@ -64,6 +66,17 @@ function office(
     type,
     weekdayHours: null,
     saturdayHours: null,
+  };
+}
+
+function place(carrier: ShippingMethod): DeliveryPlaceDto {
+  return {
+    carrier,
+    id: '27183',
+    name: 'Ясен',
+    region: 'Плевен',
+    postCode: '5850',
+    servingOfficeCode: '5817',
   };
 }
 
@@ -94,6 +107,7 @@ interface FakeCarrier {
   carrier: ShippingMethod;
   lockerLimits: LockerLimits | null;
   listOffices: jest.Mock;
+  listPlaces: jest.Mock;
   findOffice: jest.Mock;
   quote: jest.Mock;
 }
@@ -108,6 +122,7 @@ function fakeCarrier(
     listOffices: jest
       .fn()
       .mockResolvedValue([office(DeliveryOfficeType.OFFICE, carrier)]),
+    listPlaces: jest.fn().mockResolvedValue([place(carrier)]),
     findOffice: jest
       .fn()
       .mockResolvedValue(office(DeliveryOfficeType.OFFICE, carrier)),
@@ -171,6 +186,15 @@ describe('DeliveryService', () => {
 
     it('fails loudly for a carrier no adapter is registered for', () => {
       expect(() => service.listOffices('DHL' as ShippingMethod)).toThrow('DHL');
+    });
+  });
+
+  describe('listPlaces', () => {
+    it('lists the places of the carrier asked for', async () => {
+      const places = await service.listPlaces(ShippingMethod.SPEEDY);
+
+      expect(places).toEqual([place(ShippingMethod.SPEEDY)]);
+      expect(econt.listPlaces).not.toHaveBeenCalled();
     });
   });
 

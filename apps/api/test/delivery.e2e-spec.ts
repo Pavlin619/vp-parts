@@ -26,7 +26,7 @@ function econtOffice(code: string, isAPS: boolean) {
     isMPS: false,
     isDrive: false,
     address: {
-      city: { name: 'Варна', postCode: '9000' },
+      city: { id: 9000, name: 'Варна', postCode: '9000' },
       fullAddress: 'Варна бул. Сливница 1',
       location: { latitude: 43.2, longitude: 27.9 },
     },
@@ -37,11 +37,34 @@ function econtOffice(code: string, isAPS: boolean) {
   };
 }
 
+function econtCity(id: number, name: string, toOfficeCode: string) {
+  return {
+    id,
+    name,
+    regionName: 'Варна',
+    postCode: String(id),
+    servingOffices: [
+      { officeCode: toOfficeCode, servingType: 'to_office_courier' },
+    ],
+  };
+}
+
+const NOMENCLATURES: Record<string, object> = {
+  'Nomenclatures/NomenclaturesService.getOffices': {
+    offices: [econtOffice('9035', false), econtOffice('9010', true)],
+  },
+  'Nomenclatures/NomenclaturesService.getCities': {
+    cities: [
+      econtCity(9000, 'Варна', '9035'),
+      econtCity(9154, 'Константиново', '9035'),
+      econtCity(9155, 'Мобилно', '90450'),
+    ],
+  },
+};
+
 const econt = {
-  readNomenclature: jest.fn(() =>
-    Promise.resolve({
-      offices: [econtOffice('9035', false), econtOffice('9010', true)],
-    }),
+  readNomenclature: jest.fn((service: string) =>
+    Promise.resolve(NOMENCLATURES[service]),
   ),
   call: jest.fn(() =>
     Promise.resolve({
@@ -175,6 +198,7 @@ describe('Delivery (e2e)', () => {
       expect(response.body).toHaveLength(2);
       expect(response.body[1]).toMatchObject({
         code: '9010',
+        placeId: '9000',
         type: DeliveryOfficeType.LOCKER,
         weekdayHours: { opensAt: '09:00', closesAt: '18:00' },
       });
@@ -184,6 +208,33 @@ describe('Delivery (e2e)', () => {
     it('refuses a carrier it does not deliver with yet', async () => {
       await request(app.getHttpServer())
         .get('/delivery/offices')
+        .query({ carrier: ShippingMethod.SPEEDY })
+        .expect(400);
+    });
+  });
+
+  describe('GET /delivery/places', () => {
+    it('lists the places an Econt parcel can be collected for', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/delivery/places')
+        .query({ carrier: ShippingMethod.ECONT })
+        .expect(200);
+
+      expect(response.body).toEqual([
+        expect.objectContaining({ id: '9000', servingOfficeCode: null }),
+        expect.objectContaining({
+          id: '9154',
+          name: 'Константиново',
+          region: 'Варна',
+          servingOfficeCode: '9035',
+        }),
+      ]);
+      expect(response.headers['cache-control']).toBe('public, max-age=3600');
+    });
+
+    it('refuses a carrier it does not deliver with yet', async () => {
+      await request(app.getHttpServer())
+        .get('/delivery/places')
         .query({ carrier: ShippingMethod.SPEEDY })
         .expect(400);
     });

@@ -23,6 +23,7 @@ function office(overrides: Partial<DeliveryOfficeDto>): DeliveryOfficeDto {
     carrier: ShippingMethod.ECONT,
     code: '1000',
     name: 'Офис',
+    placeId: '41',
     city: 'София',
     postCode: null,
     address: 'ул. Първа 1',

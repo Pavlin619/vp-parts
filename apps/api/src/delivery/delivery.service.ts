@@ -3,6 +3,7 @@ import {
   CartDto,
   DeliveryOfficeDto,
   DeliveryOfficeType,
+  DeliveryPlaceDto,
   DeliveryQuoteDto,
   DeliveryQuoteRequestDto,
   ParcelEstimateDto,
@@ -61,6 +62,10 @@ export class DeliveryService {
 
   listOffices(carrier: ShippingMethod): Promise<DeliveryOfficeDto[]> {
     return this.carrierFor(carrier).listOffices();
+  }
+
+  listPlaces(carrier: ShippingMethod): Promise<DeliveryPlaceDto[]> {
+    return this.carrierFor(carrier).listPlaces();
   }
 
   async estimateParcel(

@@ -9,6 +9,7 @@ fees, label creation and Speedy are not built yet.
 | Route | Answers | Cache |
 |---|---|---|
 | `GET /delivery/offices?carrier=ECONT` | Every Econt office and Econtomat, carrier-neutral (`DeliveryOfficeDto`) | Redis 24 h, in-process 1 h, `public, max-age=3600` |
+| `GET /delivery/places?carrier=ECONT` | The settlements a customer can collect a parcel for, each naming its serving office when it has none of its own (`DeliveryPlaceDto`) | Econt's list in Redis 24 h; matched to the offices in-process, 1 h; `public, max-age=3600` |
 | `GET /delivery/parcel?carrier=ECONT` | What the requester's **selected** cart lines weigh as one parcel, and whether that carrier's locker takes it | `no-store` |
 | `POST /delivery/quote` `{ carrier, officeCode }` | Econt's price for that parcel to that office, the expected date, and the cart version priced | Redis 5 min by carrier, office, weight, box and send date; 20 requests/min per client |
 
@@ -150,6 +151,35 @@ per carrier.
   (both 00:00) rather than leaving the fields out; production had no `null` hours on any
   of its 633 offices on 2026-09-27. We read an empty window as closed. The one office
   then was Еконт Точка София Дружба - Книжна борса (10016), closed on Saturday.
+
+### Places come from `getCities`, matched to the office list
+
+`getCities` is a nomenclature too, read from production without credentials. On
+2026-09-27 it returned 1,093 Bulgarian places, far fewer than Bulgaria's ~5,250
+settlements. **[VERIFY]** Ask Econt why: Бов, Долно Камарци, Нови Хан, Черни Осъм and
+even the town Бяла Черква are missing. Until then, a customer whose village is absent
+picks the nearest town.
+
+- **A place links to its offices by id.** Each office carries its place in
+  `address.city.id`, sent to the web as `placeId`. Match by id, never by name: 1,093
+  places share 1,053 names, and two places called Искър are both in Плевен.
+- **A village's own office is named in `servingOffices`,** under `servingType:
+  "to_office_courier"`. Ясен (Плевен) names Плевен Метро (5817). Of the places we keep
+  that have no office of their own, every one names exactly one listed office, and
+  none of those is a locker.
+- **Most serving offices cannot be collected from.** Econt names mobile stations (the
+  `route` half of an MPS code such as `27018@2660`) and 92 codes `getOffices` does not
+  list at all, such as 70088 for Иваново (Русе). So the serving office is looked up in
+  our own office list, and a place with no office of its own and no listed serving
+  office is left out.
+- **A place without `regionName` is left out.** The 53 there are holiday areas and
+  localities inside a city (`Бяла нива (вилна зона) Сoфия`) and one `Мобилен РЦ`, none
+  of them a settlement.
+- **What that leaves,** on 2026-09-27: 485 places, 190 with an office of their own and
+  295 served from one nearby. Dropped: 461 whose serving office is not listed, 94 that
+  name none, and 53 with no region. The list is ~68 KB uncompressed.
+- **Places carry no coordinates** (`location` is always `null`). The web positions a
+  place from its offices, or from its serving office.
 
 ### `calculate` is the quote
 

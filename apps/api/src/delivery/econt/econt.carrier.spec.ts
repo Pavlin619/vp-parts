@@ -3,6 +3,7 @@ import { DeliveryOfficeType, ShippingMethod } from '@vp-parts-shop/shared';
 import type { Parcel } from '../parcel/parcel-estimate';
 import { EcontCarrier } from './econt.carrier';
 import type { EcontOffices } from './econt-offices';
+import type { EcontPlaces } from './econt-places';
 import type { EcontQuotes } from './econt-quotes';
 
 const CONFIG: Record<string, string> = {
@@ -22,6 +23,8 @@ describe('EcontCarrier', () => {
     list: jest.fn().mockResolvedValue([office]),
     find: jest.fn().mockResolvedValue(office),
   };
+  const place = { id: '27183', servingOfficeCode: '5817' };
+  const places = { list: jest.fn().mockResolvedValue([place]) };
   const quotes = {
     quote: jest
       .fn()
@@ -29,6 +32,7 @@ describe('EcontCarrier', () => {
   };
   const carrier = new EcontCarrier(
     offices as unknown as EcontOffices,
+    places as unknown as EcontPlaces,
     quotes as unknown as EcontQuotes,
     { get: (key: string) => CONFIG[key] } as unknown as ConfigService,
   );
@@ -49,6 +53,10 @@ describe('EcontCarrier', () => {
     await expect(carrier.listOffices()).resolves.toEqual([office]);
     await expect(carrier.findOffice('9035')).resolves.toBe(office);
     expect(offices.find).toHaveBeenCalledWith('9035');
+  });
+
+  it('lists places from the Econt place list', async () => {
+    await expect(carrier.listPlaces()).resolves.toEqual([place]);
   });
 
   it('prices a parcel with an Econt quote', async () => {
