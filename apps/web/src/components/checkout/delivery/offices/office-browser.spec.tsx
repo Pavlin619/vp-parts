@@ -6,19 +6,33 @@ import {
   type DeliveryOfficeDto,
 } from '@vp-parts-shop/shared'
 import type { ParcelCheck } from '@/lib/checkout/delivery/office-availability'
+import type { ReferencePoint } from '@/lib/checkout/delivery/office-distance'
 import { OfficeBrowser } from './office-browser'
 
 interface MapMockProps {
   offices: DeliveryOfficeDto[]
   selectedCode: string | null
   hoveredCode: string | null
+  referencePoint: ReferencePoint | null
   onSelect: (code: string) => void
   onHover: (code: string | null) => void
 }
 
 jest.mock('./map', () => ({
-  OfficeMap: ({ offices, selectedCode, hoveredCode, onSelect, onHover }: MapMockProps) => (
-    <div data-testid="office-map" data-selected={selectedCode ?? ''} data-hovered={hoveredCode ?? ''}>
+  OfficeMap: ({
+    offices,
+    selectedCode,
+    hoveredCode,
+    referencePoint,
+    onSelect,
+    onHover,
+  }: MapMockProps) => (
+    <div
+      data-testid="office-map"
+      data-selected={selectedCode ?? ''}
+      data-hovered={hoveredCode ?? ''}
+      data-reference={referencePoint?.kind ?? ''}
+    >
       {offices.map((office) => (
         <button
           key={office.code}
@@ -51,8 +65,21 @@ function office(overrides: Partial<DeliveryOfficeDto>): DeliveryOfficeDto {
 }
 
 const MLADOST = office({ code: '1', name: 'София Младост', address: 'София бул. Малинов 51' })
-const PLOVDIV = office({ code: '2', name: 'Пловдив Център', city: 'Пловдив', address: 'Пловдив ул. Вазов 12' })
-const LOCKER = office({ code: '3', name: 'Еконтомат Люлин', type: DeliveryOfficeType.LOCKER })
+const PLOVDIV = office({
+  code: '2',
+  name: 'Пловдив Център',
+  city: 'Пловдив',
+  address: 'Пловдив ул. Вазов 12',
+  latitude: 42.14,
+  longitude: 24.75,
+})
+const LOCKER = office({
+  code: '3',
+  name: 'Еконтомат Люлин',
+  type: DeliveryOfficeType.LOCKER,
+  latitude: 42.71,
+  longitude: 23.26,
+})
 const OFFICES = [MLADOST, PLOVDIV, LOCKER]
 
 const FITS_LOCKER: ParcelCheck = {
@@ -78,6 +105,24 @@ const list = () => within(screen.getByRole('list', { name: 'Офиси' }))
 const map = () => screen.getByTestId('office-map')
 const searchBox = () => screen.getByRole('searchbox', { name: 'Търсене на офис' })
 const openOffice = () => screen.getByRole('heading', { level: 3 })
+const listedNames = () =>
+  list()
+    .getAllByRole('button')
+    .map((button) => button.querySelector('span > span')?.textContent)
+
+const getCurrentPosition = jest.fn()
+
+function locateDeviceAt(latitude: number, longitude: number) {
+  getCurrentPosition.mockImplementation((succeed) => succeed({ coords: { latitude, longitude } }))
+}
+
+beforeEach(() => {
+  getCurrentPosition.mockReset()
+  Object.defineProperty(navigator, 'geolocation', {
+    value: { getCurrentPosition },
+    configurable: true,
+  })
+})
 
 describe('OfficeBrowser', () => {
   it('counts the offices and shows each in the list and on the map', () => {
@@ -175,11 +220,82 @@ describe('OfficeBrowser', () => {
     expect(onChoose).toHaveBeenCalledWith('2')
   })
 
-  it("starts among the offices of the already chosen office's city", () => {
+  it('lists the offices in the order the carrier gives them until asked to sort', () => {
+    renderBrowser()
+
+    expect(listedNames().slice(0, 2)).toEqual(['София Младост', 'Пловдив Център'])
+    expect(map()).toHaveAttribute('data-reference', '')
+  })
+
+  it('starts with every office, nearest to the already chosen one first', () => {
     renderBrowser({ chosenCode: '2' })
 
-    expect(screen.getByText('Пловдив', { selector: 'b' })).toBeInTheDocument()
-    expect(list().getAllByRole('button')).toHaveLength(1)
+    expect(listedNames()[0]).toBe('Пловдив Център')
+    expect(list().getAllByRole('button')).toHaveLength(3)
+    expect(screen.getByText('Близо до Пловдив Център')).toBeInTheDocument()
+    expect(map()).toHaveAttribute('data-reference', 'chosen-office')
+  })
+
+  it('sorts by closeness to the customer once located, and says how far each office is', async () => {
+    const user = userEvent.setup()
+    locateDeviceAt(42.15, 24.74)
+    renderBrowser()
+
+    await user.click(screen.getByRole('button', { name: 'Близо до мен' }))
+
+    expect(listedNames()[0]).toBe('Пловдив Център')
+    expect(list().getByRole('button', { name: /Пловдив Център/ })).toHaveTextContent('1,4 км')
+    expect(screen.getByText('Близо до вас')).toBeInTheDocument()
+    expect(map()).toHaveAttribute('data-reference', 'device')
+  })
+
+  it('looks near the customer in every city, dropping a city picked before', async () => {
+    const user = userEvent.setup()
+    locateDeviceAt(42.15, 24.74)
+    renderBrowser()
+    await user.type(searchBox(), 'плов')
+    await user.click(screen.getByRole('button', { name: 'Пловдив' }))
+
+    await user.click(screen.getByRole('button', { name: 'Близо до мен' }))
+
+    expect(screen.queryByText('Пловдив', { selector: 'b' })).not.toBeInTheDocument()
+    expect(list().getAllByRole('button')).toHaveLength(3)
+  })
+
+  it("goes back to the carrier's order when the customer drops the sorting", async () => {
+    const user = userEvent.setup()
+    renderBrowser({ chosenCode: '2' })
+
+    await user.click(
+      screen.getByRole('button', { name: 'Спри подреждането по близост до Пловдив Център' }),
+    )
+
+    expect(listedNames()[0]).toBe('София Младост')
+    expect(map()).toHaveAttribute('data-reference', '')
+  })
+
+  // A searched place frames the map on itself; the customer's point would pull it out to the country.
+  it('frames the map around the point only while no place is searched', async () => {
+    const user = userEvent.setup()
+    locateDeviceAt(42.69, 23.32)
+    renderBrowser()
+    await user.click(screen.getByRole('button', { name: 'Близо до мен' }))
+
+    await user.type(searchBox(), 'пловдив')
+
+    expect(map()).toHaveAttribute('data-reference', '')
+    expect(screen.getByText('Близо до вас')).toBeInTheDocument()
+  })
+
+  it('says why the customer could not be located and keeps the list as it was', async () => {
+    const user = userEvent.setup()
+    getCurrentPosition.mockImplementation((_, fail) => fail({ code: 1, PERMISSION_DENIED: 1 }))
+    renderBrowser()
+
+    await user.click(screen.getByRole('button', { name: 'Близо до мен' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Нямаме достъп до местоположението ви.')
+    expect(listedNames()[0]).toBe('София Младост')
   })
 
   it('offers to cancel only when an office is already chosen', async () => {

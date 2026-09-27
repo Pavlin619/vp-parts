@@ -3,6 +3,7 @@ import {
   OFFICE_BLOCK_REASON_COPY,
   type OfficeAvailability,
 } from "@/lib/checkout/delivery/office-availability";
+import { formatDistance } from "@/lib/checkout/delivery/office-distance";
 import { cn } from "@/lib/utils";
 import { LockerTag } from "../locker-tag";
 import { OfficePinIcon } from "../office-pin-icon";
@@ -11,6 +12,8 @@ interface OfficeListItemProps {
   office: DeliveryOfficeDto;
   availability: OfficeAvailability;
   isHovered: boolean;
+  /** Null while the list is not sorted by closeness. */
+  distanceMeters: number | null;
   onOpen: (officeCode: string) => void;
   onHover: (officeCode: string | null) => void;
 }
@@ -20,6 +23,7 @@ export function OfficeListItem({
   office,
   availability,
   isHovered,
+  distanceMeters,
   onOpen,
   onHover,
 }: OfficeListItemProps) {
@@ -32,7 +36,7 @@ export function OfficeListItem({
       onMouseEnter={() => onHover(office.code)}
       onMouseLeave={() => onHover(null)}
       className={cn(
-        "grid w-full grid-cols-[32px_minmax(0,1fr)] items-start gap-3 rounded-lg border border-line bg-bg-card px-3 py-2.5 text-left transition-colors",
+        "grid w-full grid-cols-[32px_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border border-line bg-bg-card px-3 py-2.5 text-left transition-colors",
         "focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60",
         isHovered && "border-ink-3",
       )}
@@ -51,6 +55,12 @@ export function OfficeListItem({
           </span>
         )}
       </span>
+
+      {distanceMeters !== null && (
+        <span className="whitespace-nowrap pt-0.5 text-[11.5px] font-medium text-ink-3">
+          {formatDistance(distanceMeters)}
+        </span>
+      )}
     </button>
   );
 }
