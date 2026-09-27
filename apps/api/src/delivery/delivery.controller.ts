@@ -11,6 +11,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import type {
   DeliveryOfficeDto,
+  DeliveryPlaceDto,
   DeliveryQuoteDto,
   ParcelEstimateDto,
 } from '@vp-parts-shop/shared';
@@ -36,6 +37,14 @@ export class DeliveryController {
     @Query() { carrier }: DeliveryCarrierQueryDto,
   ): Promise<DeliveryOfficeDto[]> {
     return this.delivery.listOffices(carrier);
+  }
+
+  @Get('places')
+  @Header('Cache-Control', 'public, max-age=3600')
+  listPlaces(
+    @Query() { carrier }: DeliveryCarrierQueryDto,
+  ): Promise<DeliveryPlaceDto[]> {
+    return this.delivery.listPlaces(carrier);
   }
 
   @Get('parcel')

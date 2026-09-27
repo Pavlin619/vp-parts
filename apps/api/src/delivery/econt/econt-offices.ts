@@ -108,6 +108,7 @@ function toOfficeDto(office: EcontOfficeRecord): DeliveryOfficeDto {
     carrier: ShippingMethod.ECONT,
     code: office.code,
     name: office.name,
+    placeId: String(city.id),
     city: city.name,
     postCode: city.postCode,
     address: fullAddress.trim(),

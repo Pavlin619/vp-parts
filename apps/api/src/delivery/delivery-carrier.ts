@@ -1,4 +1,8 @@
-import type { DeliveryOfficeDto, ShippingMethod } from '@vp-parts-shop/shared';
+import type {
+  DeliveryOfficeDto,
+  DeliveryPlaceDto,
+  ShippingMethod,
+} from '@vp-parts-shop/shared';
 import type { LockerLimits } from './parcel/locker-fit';
 import type { Parcel } from './parcel/parcel-estimate';
 
@@ -16,6 +20,7 @@ export interface DeliveryCarrier {
   readonly lockerLimits: LockerLimits | null;
   listOffices(): Promise<DeliveryOfficeDto[]>;
   findOffice(code: string): Promise<DeliveryOfficeDto | undefined>;
+  listPlaces(): Promise<DeliveryPlaceDto[]>;
   /** `sendDate` is the shop-local day we hand the parcel over; null lets the carrier assume today. */
   quote(
     officeCode: string,

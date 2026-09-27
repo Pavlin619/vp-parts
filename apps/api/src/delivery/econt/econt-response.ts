@@ -8,7 +8,7 @@ export interface EcontOfficeRecord {
   /** Econt Drive takes at most 20 kg and 90×90×90 cm, which we cannot promise a parcel fits. */
   isDrive: boolean;
   address: {
-    city: { name: string; postCode: string | null };
+    city: { id: number; name: string; postCode: string | null };
     fullAddress: string;
     location: { latitude: number; longitude: number } | null;
   };
@@ -16,6 +16,15 @@ export interface EcontOfficeRecord {
   normalBusinessHoursTo: number | null;
   halfDayBusinessHoursFrom: number | null;
   halfDayBusinessHoursTo: number | null;
+}
+
+/** The fields of Econt's `City` we read. */
+export interface EcontCityRecord {
+  id: number;
+  name: string;
+  regionName: string | null;
+  postCode: string;
+  servingOffices: { officeCode: string; servingType: string }[] | null;
 }
 
 /**
@@ -64,6 +73,23 @@ export function isOfficeRecord(value: unknown): value is EcontOfficeRecord {
   );
 }
 
+export function hasCityList(value: unknown): value is { cities: unknown[] } {
+  return isFields(value) && Array.isArray(value.cities);
+}
+
+export function isCityRecord(value: unknown): value is EcontCityRecord {
+  return (
+    isFields(value) &&
+    typeof value.id === 'number' &&
+    typeof value.name === 'string' &&
+    (value.regionName === null || typeof value.regionName === 'string') &&
+    typeof value.postCode === 'string' &&
+    (value.servingOffices === null ||
+      (Array.isArray(value.servingOffices) &&
+        value.servingOffices.every(isServingOffice)))
+  );
+}
+
 export function isCalculatedLabel(
   value: unknown,
 ): value is EcontCalculatedLabel {
@@ -93,10 +119,19 @@ function isOfficeAddress(value: unknown): boolean {
   return (
     isFields(value) &&
     isFields(value.city) &&
+    typeof value.city.id === 'number' &&
     typeof value.city.name === 'string' &&
     (value.city.postCode === null || typeof value.city.postCode === 'string') &&
     typeof value.fullAddress === 'string' &&
     (value.location === null || isLocation(value.location))
+  );
+}
+
+function isServingOffice(value: unknown): boolean {
+  return (
+    isFields(value) &&
+    typeof value.officeCode === 'string' &&
+    typeof value.servingType === 'string'
   );
 }
 

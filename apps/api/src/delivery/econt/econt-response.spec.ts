@@ -1,7 +1,9 @@
 import {
+  EcontCityRecord,
   EcontError,
   EcontOfficeRecord,
   isCalculatedLabel,
+  isCityRecord,
   isOfficeRecord,
   refusesReceiver,
 } from './econt-response';
@@ -35,7 +37,7 @@ function office(): EcontOfficeRecord {
     isMPS: false,
     isDrive: false,
     address: {
-      city: { name: 'София', postCode: '1000' },
+      city: { id: 41, name: 'София', postCode: '1000' },
       fullAddress: 'София ул. Резбарска №11',
       location: { latitude: 42.7155, longitude: 23.3594 },
     },
@@ -67,6 +69,16 @@ describe('isOfficeRecord', () => {
     ['no address', { ...office(), address: undefined }],
     ['no city', { ...office(), address: { ...office().address, city: null } }],
     [
+      'a city without an id',
+      {
+        ...office(),
+        address: {
+          ...office().address,
+          city: { name: 'София', postCode: '1000' },
+        },
+      },
+    ],
+    [
       'a location without coordinates',
       { ...office(), address: { ...office().address, location: {} } },
     ],
@@ -75,6 +87,42 @@ describe('isOfficeRecord', () => {
     ['no drive-through flag', { ...office(), isDrive: undefined }],
   ])('refuses %s', (_case, record) => {
     expect(isOfficeRecord(record)).toBe(false);
+  });
+});
+
+function city(): EcontCityRecord {
+  return {
+    id: 27183,
+    name: 'Ясен',
+    regionName: 'Плевен',
+    postCode: '5850',
+    servingOffices: [{ officeCode: '5817', servingType: 'to_office_courier' }],
+  };
+}
+
+describe('isCityRecord', () => {
+  it('accepts a place carrying every field we read', () => {
+    expect(isCityRecord(city())).toBe(true);
+  });
+
+  it('accepts the fields Econt leaves null', () => {
+    expect(
+      isCityRecord({ ...city(), regionName: null, servingOffices: null }),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['not an object', null],
+    ['a text id', { ...city(), id: '27183' }],
+    ['no name', { ...city(), name: undefined }],
+    ['no post code', { ...city(), postCode: null }],
+    ['serving offices that are not a list', { ...city(), servingOffices: {} }],
+    [
+      'a serving office without a code',
+      { ...city(), servingOffices: [{ servingType: 'to_office_courier' }] },
+    ],
+  ])('refuses %s', (_case, record) => {
+    expect(isCityRecord(record)).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ import { DELIVERY_CARRIERS } from './delivery-carrier';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
 import { EcontOffices } from './econt/econt-offices';
+import { EcontPlaces } from './econt/econt-places';
 import { EcontQuotes } from './econt/econt-quotes';
 import { EcontCarrier } from './econt/econt.carrier';
 import { EcontTransport } from './econt/econt.transport';
@@ -18,6 +19,7 @@ import { EcontTransport } from './econt/econt.transport';
     DeliveryService,
     EcontTransport,
     EcontOffices,
+    EcontPlaces,
     EcontQuotes,
     EcontCarrier,
     {

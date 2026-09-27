@@ -11,6 +11,7 @@ const OFFICE: DeliveryOfficeDto = {
   carrier: ShippingMethod.ECONT,
   code: '1127',
   name: 'София Младост',
+  placeId: '41',
   city: 'София',
   postCode: null,
   address: 'София бул. Александър Малинов №51',

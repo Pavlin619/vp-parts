@@ -18,7 +18,7 @@ function office(overrides: Partial<EcontOfficeRecord> = {}): EcontOfficeRecord {
     isMPS: false,
     isDrive: false,
     address: {
-      city: { name: 'София', postCode: '1000' },
+      city: { id: 41, name: 'София', postCode: '1000' },
       fullAddress: ' София ул. Резбарска №11 ',
       location: { latitude: 42.7155, longitude: 23.3594 },
     },
@@ -54,6 +54,7 @@ describe('EcontOffices', () => {
         carrier: ShippingMethod.ECONT,
         code: '1127',
         name: 'София',
+        placeId: '41',
         city: 'София',
         postCode: '1000',
         address: 'София ул. Резбарска №11',
