@@ -1,14 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { DeliveryOfficeDto, ShippingMethod } from "@vp-parts-shop/shared";
+import type { DeliveryOfficeDto, DeliveryPlaceDto, ShippingMethod } from "@vp-parts-shop/shared";
 import { useDeviceLocation } from "@/hooks/use-device-location";
+import { usePlaceScope } from "@/hooks/use-place-scope";
+import { nearbyOffices, placeOfOffice } from "@/lib/checkout/delivery/delivery-places";
 import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { officeAvailability, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
-import {
-  sortOfficesByDistance,
-  type ReferencePoint,
-} from "@/lib/checkout/delivery/office-distance";
+import { sortOfficesByDistance } from "@/lib/checkout/delivery/office-distance";
 import {
   EMPTY_OFFICE_SEARCH,
   filterOffices,
@@ -17,79 +16,101 @@ import {
 } from "@/lib/checkout/delivery/office-search";
 import { cn } from "@/lib/utils";
 import { OfficeDetail } from "./detail";
-import { OfficeList } from "./list";
+import { OfficeList, PickPlacePrompt } from "./list";
 import { OfficeMap } from "./map";
+import { PlaceFields } from "./place";
 import { DeviceLocationNotice, NearMeButton, OfficeFilters, OfficeSearch } from "./search";
 
 interface OfficeBrowserProps {
   offices: DeliveryOfficeDto[];
+  places: DeliveryPlaceDto[];
   parcelCheck: ParcelCheck;
   carrier: ShippingMethod;
-  /** The office already chosen, which the list starts nearest to when the customer comes back to change it. */
+  /** The office already chosen, whose place the browser starts in when the customer comes back to change it. */
   chosenCode: string | null;
   onChoose: (officeCode: string) => void;
   /** Present while an office is already chosen, to keep it. */
   onCancel?: () => void;
 }
 
-/** The searchable office list beside a map; opening an office in either shows it in full. */
+/** Where the customer finds an office: a place first, then its offices in a list beside a map. */
 export function OfficeBrowser({
   offices,
+  places,
   parcelCheck,
   carrier,
   chosenCode,
   onChoose,
   onCancel,
 }: OfficeBrowserProps) {
+  const scope = usePlaceScope({ offices, places, chosenCode });
+  const { place, referencePoint } = scope;
   const [search, setSearch] = useState(EMPTY_OFFICE_SEARCH);
-  const [referencePoint, setReferencePoint] = useState(() =>
-    chosenOfficePoint(offices, chosenCode),
-  );
   const [openCode, setOpenCode] = useState<string | null>(null);
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [isMapOpenOnMobile, setIsMapOpenOnMobile] = useState(false);
   const deviceLocation = useDeviceLocation();
 
-  const sortedOffices = useMemo(
-    () => (referencePoint ? sortOfficesByDistance(offices, referencePoint) : offices),
-    [offices, referencePoint],
+  const scopedOffices = useMemo(
+    () =>
+      place || referencePoint
+        ? nearbyOffices(offices, { place, reference: referencePoint })
+        : offices,
+    [offices, place, referencePoint],
   );
   const matchingOffices = useMemo(
-    () => filterOffices(sortedOffices, search),
-    [sortedOffices, search],
+    () => filterOffices(scopedOffices, search),
+    [scopedOffices, search],
   );
   const selectableOffices = useMemo(
     () => matchingOffices.filter((office) => officeAvailability(office, parcelCheck).isSelectable),
     [matchingOffices, parcelCheck],
   );
   const suggestions = useMemo(
-    () => suggestOffices(sortedOffices, search.query),
-    [sortedOffices, search.query],
+    () =>
+      suggestOffices(
+        referencePoint ? sortOfficesByDistance(offices, referencePoint) : offices,
+        search.query,
+      ),
+    [offices, referencePoint, search.query],
   );
+
   const openOffice = offices.find(({ code }) => code === openCode);
   const carrierName = CARRIER_NAMES[carrier];
-  const mapReferencePoint = isSearchingPlace(search) ? null : referencePoint;
+  const isSearching = search.query.trim() !== "";
+  const isAwaitingPlace = !place && !referencePoint && !isSearching;
+  const mapReferencePoint = isSearching ? null : referencePoint;
+  const servedPlace = place?.servingOfficeCode
+    ? { officeCode: place.servingOfficeCode, name: place.name }
+    : null;
 
-  // A new search is a new look at the list, so it closes the open office.
-  const changeSearch = (nextSearch: OfficeSearchState) => {
-    setSearch(nextSearch);
-    setOpenCode(null);
-  };
+  // Any new look at the list closes the open office.
+  const closingOffice =
+    <Args extends unknown[]>(change: (...args: Args) => void) =>
+    (...args: Args) => {
+      change(...args);
+      setOpenCode(null);
+    };
 
-  const changeReferencePoint = (nextPoint: ReferencePoint | null) => {
-    setReferencePoint(nextPoint);
-    setOpenCode(null);
-  };
+  const changeSearch = closingOffice((nextSearch: OfficeSearchState) => setSearch(nextSearch));
+  const changeRegion = closingOffice(scope.chooseRegion);
+  const dropReferencePoint = closingOffice(scope.dropReferencePoint);
 
-  // "Near me" asks about every city, so it drops the place searched for but keeps the kind.
+  const changePlace = closingOffice((nextPlace: DeliveryPlaceDto | null) => {
+    scope.choosePlace(nextPlace);
+    setSearch((current) => ({ ...current, query: "" }));
+  });
+
   const sortNearDevice = () =>
-    deviceLocation.locate((point) => {
-      setSearch((current) => ({ ...EMPTY_OFFICE_SEARCH, type: current.type }));
-      changeReferencePoint({ ...point, kind: "device", label: "вас" });
-    });
+    deviceLocation.locate(
+      closingOffice((point) => {
+        scope.sortNear(point);
+        setSearch((current) => ({ ...EMPTY_OFFICE_SEARCH, type: current.type }));
+      }),
+    );
 
   const jumpToOffice = (office: DeliveryOfficeDto) => {
-    setSearch({ ...EMPTY_OFFICE_SEARCH, city: office.city });
+    changePlace(placeOfOffice(places, office));
     setOpenCode(office.code);
   };
 
@@ -97,13 +118,21 @@ export function OfficeBrowser({
     <div className="flex flex-col gap-2.5">
       <p className="text-[13px] text-ink-3">
         Офиси на <b className="font-semibold text-ink">{carrierName}</b>
-        {search.city && (
+        {place && (
           <>
             {" "}
-            в <b className="font-semibold text-ink">{search.city}</b>
+            в <b className="font-semibold text-ink">{place.name}</b>
           </>
         )}
       </p>
+
+      <PlaceFields
+        places={places}
+        region={scope.region}
+        place={place}
+        onRegionChange={changeRegion}
+        onPlaceChange={changePlace}
+      />
 
       <div className="flex gap-2">
         <div className="min-w-0 flex-1">
@@ -111,7 +140,6 @@ export function OfficeBrowser({
             query={search.query}
             onQueryChange={(query) => changeSearch({ ...search, query })}
             suggestions={suggestions}
-            onPickCity={(city) => changeSearch({ ...search, query: "", city })}
             onPickOffice={jumpToOffice}
           />
         </div>
@@ -127,7 +155,7 @@ export function OfficeBrowser({
         search={search}
         onSearchChange={changeSearch}
         referencePoint={referencePoint}
-        onClearReferencePoint={() => changeReferencePoint(null)}
+        onClearReferencePoint={dropReferencePoint}
       />
 
       <button
@@ -152,16 +180,24 @@ export function OfficeBrowser({
 
         {/* Hidden, not unmounted, so Back returns to the list where it was scrolled. */}
         <div hidden={Boolean(openOffice)} className="flex min-h-0 flex-col">
-          <ResultsHead count={matchingOffices.length} onCancel={onCancel} />
+          <ResultsHead
+            count={isAwaitingPlace ? null : matchingOffices.length}
+            onCancel={onCancel}
+          />
           <div className="max-h-[380px] overflow-y-auto pr-0.5 md:max-h-none md:flex-1">
-            <OfficeList
-              offices={matchingOffices}
-              parcelCheck={parcelCheck}
-              hoveredCode={hoveredCode}
-              referencePoint={referencePoint}
-              onOpen={setOpenCode}
-              onHover={setHoveredCode}
-            />
+            {isAwaitingPlace ? (
+              <PickPlacePrompt />
+            ) : (
+              <OfficeList
+                offices={matchingOffices}
+                parcelCheck={parcelCheck}
+                hoveredCode={hoveredCode}
+                referencePoint={referencePoint}
+                servedPlace={servedPlace}
+                onOpen={setOpenCode}
+                onHover={setHoveredCode}
+              />
+            )}
           </div>
         </div>
 
@@ -169,7 +205,7 @@ export function OfficeBrowser({
           <OfficeMap
             offices={selectableOffices}
             carrier={carrier}
-            framingKey={JSON.stringify({ search, mapReferencePoint })}
+            framingKey={JSON.stringify({ search, placeId: place?.id, mapReferencePoint })}
             selectedCode={openCode}
             hoveredCode={hoveredCode}
             referencePoint={mapReferencePoint}
@@ -186,31 +222,16 @@ export function OfficeBrowser({
   );
 }
 
-/** Coming back to change the office starts nearest to it, with every office still in reach. */
-function chosenOfficePoint(
-  offices: DeliveryOfficeDto[],
-  chosenCode: string | null,
-): ReferencePoint | null {
-  const chosen = offices.find(({ code }) => code === chosenCode);
-  if (!chosen) {
-    return null;
-  }
-
-  const { latitude, longitude, name } = chosen;
-
-  return { latitude, longitude, kind: "chosen-office", label: name };
-}
-
-/** A searched place frames the map on itself; framing around the point would pull it out to the country. */
-function isSearchingPlace({ query, city }: OfficeSearchState): boolean {
-  return city !== null || query.trim() !== "";
-}
-
-function ResultsHead({ count, onCancel }: { count: number; onCancel?: () => void }) {
+/** Counts nothing while the list waits for a place. */
+function ResultsHead({ count, onCancel }: { count: number | null; onCancel?: () => void }) {
   return (
-    <div className="flex items-center justify-between px-0.5 pb-2 text-[11.5px] text-ink-4">
+    <div className="flex min-h-[26px] items-center justify-between px-0.5 pb-2 text-[11.5px] text-ink-4">
       <span>
-        {count} {count === 1 ? "резултат" : "резултата"}
+        {count !== null && (
+          <>
+            {count} {count === 1 ? "резултат" : "резултата"}
+          </>
+        )}
       </span>
       {onCancel && (
         <button

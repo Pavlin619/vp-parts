@@ -82,39 +82,22 @@ describe('filterOffices', () => {
       filterOffices(OFFICES, search({ query: 'софия', type: DeliveryOfficeType.OFFICE })),
     ).toEqual([MLADOST])
   })
-
-  it('narrows to one city', () => {
-    expect(filterOffices(OFFICES, search({ city: 'Пловдив' }))).toEqual([PLOVDIV])
-  })
 })
 
 describe('suggestOffices', () => {
   it('suggests nothing for an empty query', () => {
-    expect(suggestOffices(OFFICES, ' ')).toEqual({ cities: [], offices: [] })
-  })
-
-  it('suggests each matching city once, cities that start with the query first', () => {
-    const offices = [
-      office({ code: '20', city: 'Горна Оряховица' }),
-      office({ code: '21', city: 'Оряхово' }),
-      office({ code: '22', city: 'Оряхово' }),
-    ]
-
-    expect(suggestOffices(offices, 'оря').cities).toEqual(['Оряхово', 'Горна Оряховица'])
+    expect(suggestOffices(OFFICES, ' ')).toEqual([])
   })
 
   it('suggests offices matching every word of the query', () => {
-    expect(suggestOffices(OFFICES, 'софия люлин').offices).toEqual([LOCKER])
+    expect(suggestOffices(OFFICES, 'софия люлин')).toEqual([LOCKER])
   })
 
-  it('suggests at most four of each', () => {
+  it('suggests at most four', () => {
     const offices = Array.from({ length: 6 }, (_, index) =>
-      office({ code: String(index), city: `Град ${index}`, name: `Офис ${index}` }),
+      office({ code: String(index), name: `Офис ${index}` }),
     )
 
-    const suggestions = suggestOffices(offices, 'град')
-
-    expect(suggestions.cities).toHaveLength(4)
-    expect(suggestions.offices).toHaveLength(4)
+    expect(suggestOffices(offices, 'офис')).toHaveLength(4)
   })
 })

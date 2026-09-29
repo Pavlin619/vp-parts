@@ -5,12 +5,19 @@ import { OfficeListItem } from "./office-list-item";
 
 const MAX_LISTED_OFFICES = 50;
 
+interface ServedPlace {
+  officeCode: string;
+  name: string;
+}
+
 interface OfficeListProps {
   offices: DeliveryOfficeDto[];
   parcelCheck: ParcelCheck;
   hoveredCode: string | null;
   /** What each office's distance is measured from; null shows none. */
   referencePoint: GeoPoint | null;
+  /** A chosen village with no office of its own, and the office that serves it. */
+  servedPlace: ServedPlace | null;
   onOpen: (officeCode: string) => void;
   onHover: (officeCode: string | null) => void;
 }
@@ -20,6 +27,7 @@ export function OfficeList({
   parcelCheck,
   hoveredCode,
   referencePoint,
+  servedPlace,
   onOpen,
   onHover,
 }: OfficeListProps) {
@@ -41,6 +49,9 @@ export function OfficeList({
               availability={officeAvailability(office, parcelCheck)}
               isHovered={office.code === hoveredCode}
               distanceMeters={referencePoint && distanceInMeters(referencePoint, office)}
+              servedPlaceName={
+                office.code === servedPlace?.officeCode ? servedPlace.name : null
+              }
               onOpen={onOpen}
               onHover={onHover}
             />

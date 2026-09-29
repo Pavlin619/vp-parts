@@ -1,18 +1,26 @@
 import { queryOptions } from "@tanstack/react-query";
 import type {
   DeliveryOfficeDto,
+  DeliveryPlaceDto,
   ParcelEstimateDto,
   ShippingMethod,
 } from "@vp-parts-shop/shared";
 import { apiFetch } from "./index";
 import { cartFetch } from "./cart/cart-fetch";
 
-const OFFICES_STALE_TIME_MS = 60 * 60 * 1000;
+/** The hour the API lets offices and places be cached. */
+const CARRIER_LIST_STALE_TIME_MS = 60 * 60 * 1000;
 
 export function getDeliveryOffices(
   carrier: ShippingMethod,
 ): Promise<DeliveryOfficeDto[]> {
   return apiFetch<DeliveryOfficeDto[]>(`/delivery/offices?${carrierParam(carrier)}`);
+}
+
+export function getDeliveryPlaces(
+  carrier: ShippingMethod,
+): Promise<DeliveryPlaceDto[]> {
+  return apiFetch<DeliveryPlaceDto[]>(`/delivery/places?${carrierParam(carrier)}`);
 }
 
 /** What the requester's selected cart lines weigh as one parcel for this carrier. */
@@ -26,8 +34,15 @@ export const deliveryOfficesQueryOptions = (carrier: ShippingMethod) =>
   queryOptions({
     queryKey: ["delivery", "offices", carrier] as const,
     queryFn: () => getDeliveryOffices(carrier),
-    staleTime: OFFICES_STALE_TIME_MS,
+    staleTime: CARRIER_LIST_STALE_TIME_MS,
     select: sortOfficesByPlace,
+  });
+
+export const deliveryPlacesQueryOptions = (carrier: ShippingMethod) =>
+  queryOptions({
+    queryKey: ["delivery", "places", carrier] as const,
+    queryFn: () => getDeliveryPlaces(carrier),
+    staleTime: CARRIER_LIST_STALE_TIME_MS,
   });
 
 /**

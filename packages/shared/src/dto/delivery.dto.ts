@@ -38,6 +38,7 @@ export interface DeliveryPlaceDto {
   /** The carrier's own id; two places can share a name, even within one region. */
   id: string;
   name: string;
+  /** Named as customers know it ("София-град"), not as the carrier files it. */
   region: string;
   postCode: string;
   /** Where a place with no office of its own collects its parcels; null when it has one. */

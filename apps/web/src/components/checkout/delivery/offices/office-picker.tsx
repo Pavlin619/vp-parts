@@ -2,11 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { DeliveryOfficeDto, ShippingMethod } from "@vp-parts-shop/shared";
+import type { DeliveryOfficeDto, DeliveryPlaceDto, ShippingMethod } from "@vp-parts-shop/shared";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { useCart } from "@/hooks/use-cart";
 import { useCheckoutDelivery, useSelectedOfficeCode } from "@/hooks/use-checkout-delivery";
-import { deliveryOfficesQueryOptions, parcelEstimateQueryOptions } from "@/lib/api/delivery";
+import {
+  deliveryOfficesQueryOptions,
+  deliveryPlacesQueryOptions,
+  parcelEstimateQueryOptions,
+} from "@/lib/api/delivery";
 import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { resolveSelectedOffice, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
 import { OfficeBrowser } from "./office-browser";
@@ -14,6 +18,7 @@ import { ParcelUnmeasuredNotice } from "./parcel-unmeasured-notice";
 import { SelectedOfficeCard } from "./selected-office-card";
 
 const NO_OFFICES: DeliveryOfficeDto[] = [];
+const NO_PLACES: DeliveryPlaceDto[] = [];
 
 interface OfficePickerProps {
   carrier: ShippingMethod;
@@ -22,28 +27,33 @@ interface OfficePickerProps {
 /** Where the customer chooses the carrier's office or locker to collect the parcel from. */
 export function OfficePicker({ carrier }: OfficePickerProps) {
   const officesQuery = useQuery(deliveryOfficesQueryOptions(carrier));
+  const placesQuery = useQuery(deliveryPlacesQueryOptions(carrier));
   const parcelCheck = useParcelCheck(carrier);
   const selectedCode = useSelectedOfficeCode(carrier);
   const selectOffice = useCheckoutDelivery((state) => state.selectOffice);
 
   const [isChanging, setIsChanging] = useState(false);
 
-  if (officesQuery.isPending) {
+  if (officesQuery.isPending || placesQuery.isPending) {
     return <OfficePickerSkeleton />;
   }
 
-  if (officesQuery.isError) {
+  if (officesQuery.isError || placesQuery.isError) {
     return (
       <AvailabilityLoadError
         title="В момента не можем да заредим офисите на куриера."
         message="Възникна временен проблем. Моля, опитайте отново."
-        onRetry={() => void officesQuery.refetch()}
+        onRetry={() => {
+          void officesQuery.refetch();
+          void placesQuery.refetch();
+        }}
         className="py-6"
       />
     );
   }
 
   const offices = officesQuery.data ?? NO_OFFICES;
+  const places = placesQuery.data ?? NO_PLACES;
   const selectedOffice = resolveSelectedOffice(offices, selectedCode, parcelCheck);
   const isUnmeasured = parcelCheck.state === "ready" && parcelCheck.parcel.weightGrams === null;
   const carrierName = CARRIER_NAMES[carrier];
@@ -66,9 +76,10 @@ export function OfficePicker({ carrier }: OfficePickerProps) {
       ) : (
         <OfficeBrowser
           offices={offices}
+          places={places}
           parcelCheck={parcelCheck}
           carrier={carrier}
-          chosenCode={selectedOffice?.code ?? null}
+          chosenCode={selectedCode}
           onChoose={handleChoose}
           onCancel={selectedOffice ? () => setIsChanging(false) : undefined}
         />

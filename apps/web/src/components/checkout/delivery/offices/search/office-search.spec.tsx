@@ -5,7 +5,6 @@ import {
   ShippingMethod,
   type DeliveryOfficeDto,
 } from '@vp-parts-shop/shared'
-import type { OfficeSuggestions } from '@/lib/checkout/delivery/office-search'
 import { OfficeSearch } from './office-search'
 
 const MLADOST: DeliveryOfficeDto = {
@@ -23,15 +22,14 @@ const MLADOST: DeliveryOfficeDto = {
   saturdayHours: null,
 }
 
-const SUGGESTIONS: OfficeSuggestions = { cities: ['София'], offices: [MLADOST] }
-const NO_SUGGESTIONS: OfficeSuggestions = { cities: [], offices: [] }
+const SUGGESTIONS = [MLADOST]
+const NO_SUGGESTIONS: DeliveryOfficeDto[] = []
 
 function renderSearch(overrides: Partial<Parameters<typeof OfficeSearch>[0]> = {}) {
   const props = {
     query: 'соф',
     onQueryChange: jest.fn(),
     suggestions: SUGGESTIONS,
-    onPickCity: jest.fn(),
     onPickOffice: jest.fn(),
     ...overrides,
   }
@@ -41,6 +39,7 @@ function renderSearch(overrides: Partial<Parameters<typeof OfficeSearch>[0]> = {
 }
 
 const searchBox = () => screen.getByRole('searchbox', { name: 'Търсене на офис' })
+const suggestionList = () => screen.queryByLabelText('Предложения')
 
 describe('OfficeSearch', () => {
   it('points the search box at the suggestions it opens', async () => {
@@ -66,33 +65,19 @@ describe('OfficeSearch', () => {
   it('keeps the suggestions closed until the customer is in the box', () => {
     renderSearch()
 
-    expect(screen.queryByText('Градове')).not.toBeInTheDocument()
+    expect(suggestionList()).not.toBeInTheDocument()
   })
 
-  it('offers matching cities and offices, grouped', async () => {
+  it('offers matching offices with their city', async () => {
     const user = userEvent.setup()
     renderSearch()
 
     await user.click(searchBox())
 
-    expect(screen.getByText('Градове')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'София' })).toBeInTheDocument()
-    expect(screen.getByText('Офиси')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /София Младост/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /София Младост/ })).toHaveTextContent('София')
   })
 
-  it('reports a picked city and closes the suggestions', async () => {
-    const user = userEvent.setup()
-    const { onPickCity } = renderSearch()
-
-    await user.click(searchBox())
-    await user.click(screen.getByRole('button', { name: 'София' }))
-
-    expect(onPickCity).toHaveBeenCalledWith('София')
-    expect(screen.queryByText('Градове')).not.toBeInTheDocument()
-  })
-
-  it('reports a picked office', async () => {
+  it('reports a picked office and closes the suggestions', async () => {
     const user = userEvent.setup()
     const { onPickOffice } = renderSearch()
 
@@ -100,6 +85,7 @@ describe('OfficeSearch', () => {
     await user.click(screen.getByRole('button', { name: /София Младост/ }))
 
     expect(onPickOffice).toHaveBeenCalledWith(MLADOST)
+    expect(suggestionList()).not.toBeInTheDocument()
   })
 
   // Safari never focuses a clicked button, so only a box that keeps focus survives the click.
@@ -108,7 +94,7 @@ describe('OfficeSearch', () => {
     renderSearch()
 
     await user.click(searchBox())
-    const isDefaultKept = fireEvent.mouseDown(screen.getByRole('button', { name: 'София' }))
+    const isDefaultKept = fireEvent.mouseDown(screen.getByRole('button', { name: /София Младост/ }))
 
     expect(isDefaultKept).toBe(false)
     expect(searchBox()).toHaveFocus()
@@ -121,7 +107,7 @@ describe('OfficeSearch', () => {
     await user.click(searchBox())
     await user.keyboard('{Escape}')
 
-    expect(screen.queryByText('Градове')).not.toBeInTheDocument()
+    expect(suggestionList()).not.toBeInTheDocument()
   })
 
   it('shows nothing when nothing matches', async () => {
@@ -130,6 +116,6 @@ describe('OfficeSearch', () => {
 
     await user.click(searchBox())
 
-    expect(screen.queryByLabelText('Предложения')).not.toBeInTheDocument()
+    expect(suggestionList()).not.toBeInTheDocument()
   })
 })

@@ -145,6 +145,20 @@ describe('EcontPlaces', () => {
     expect((await places.list()).map(({ id }) => id)).toEqual(['3']);
   });
 
+  it.each([
+    ['София', 'София-град'],
+    ['София Област', 'Софийска област'],
+    ['Плевен', 'Плевен'],
+  ])('names the region Econt calls %s as %s', async (econtRegion, region) => {
+    readNomenclature.mockResolvedValueOnce({
+      cities: [city({ regionName: econtRegion })],
+    });
+
+    expect((await places.list()).map((place) => place.region)).toEqual([
+      region,
+    ]);
+  });
+
   it('caches what Econt lists for a day, apart from the offices', async () => {
     readNomenclature.mockResolvedValueOnce({ cities: [city()] });
 

@@ -5,7 +5,9 @@ import {
 } from '@vp-parts-shop/shared'
 import {
   deliveryOfficesQueryOptions,
+  deliveryPlacesQueryOptions,
   getDeliveryOffices,
+  getDeliveryPlaces,
   getParcelEstimate,
   parcelEstimateQueryOptions,
 } from './delivery'
@@ -46,6 +48,23 @@ describe('getDeliveryOffices', () => {
     getDeliveryOffices(ShippingMethod.ECONT)
 
     expect(mockApiFetch).toHaveBeenCalledWith('/delivery/offices?carrier=ECONT')
+  })
+})
+
+describe('getDeliveryPlaces', () => {
+  it("reads the carrier's places from the public endpoint", () => {
+    getDeliveryPlaces(ShippingMethod.ECONT)
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/delivery/places?carrier=ECONT')
+  })
+})
+
+describe('deliveryPlacesQueryOptions', () => {
+  it('keys the list by carrier and keeps it for the hour the API caches it', () => {
+    const options = deliveryPlacesQueryOptions(ShippingMethod.ECONT)
+
+    expect(options.queryKey).toEqual(['delivery', 'places', ShippingMethod.ECONT])
+    expect(options.staleTime).toBe(60 * 60 * 1000)
   })
 })
 

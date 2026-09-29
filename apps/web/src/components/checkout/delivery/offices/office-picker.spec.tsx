@@ -5,6 +5,7 @@ import {
   DeliveryOfficeType,
   ShippingMethod,
   type DeliveryOfficeDto,
+  type DeliveryPlaceDto,
   type ParcelEstimateDto,
 } from '@vp-parts-shop/shared'
 import { useCart } from '@/hooks/use-cart'
@@ -12,12 +13,17 @@ import { useCheckoutDelivery } from '@/hooks/use-checkout-delivery'
 import { OfficePicker } from './office-picker'
 
 const getOffices = jest.fn<Promise<DeliveryOfficeDto[]>, [ShippingMethod]>()
+const getPlaces = jest.fn<Promise<DeliveryPlaceDto[]>, [ShippingMethod]>()
 const getParcel = jest.fn<Promise<ParcelEstimateDto>, [ShippingMethod, string, number]>()
 
 jest.mock('@/lib/api/delivery', () => ({
   deliveryOfficesQueryOptions: (carrier: ShippingMethod) => ({
     queryKey: ['delivery', 'offices', carrier],
     queryFn: () => getOffices(carrier),
+  }),
+  deliveryPlacesQueryOptions: (carrier: ShippingMethod) => ({
+    queryKey: ['delivery', 'places', carrier],
+    queryFn: () => getPlaces(carrier),
   }),
   parcelEstimateQueryOptions: (carrier: ShippingMethod, cartId: string, cartVersion: number) => ({
     queryKey: ['delivery', 'parcel', carrier, cartId, cartVersion],
@@ -50,8 +56,30 @@ function office(overrides: Partial<DeliveryOfficeDto>): DeliveryOfficeDto {
 }
 
 const MLADOST = office({ code: '1', name: 'София Младост', address: 'София бул. Малинов 51' })
-const PLOVDIV = office({ code: '2', name: 'Пловдив Център', city: 'Пловдив', address: 'Пловдив ул. Вазов 12' })
+const PLOVDIV = office({
+  code: '2',
+  name: 'Пловдив Център',
+  placeId: '4000',
+  city: 'Пловдив',
+  address: 'Пловдив ул. Вазов 12',
+  latitude: 42.14,
+  longitude: 24.75,
+})
 const LOCKER = office({ code: '3', name: 'Еконтомат Люлин', type: DeliveryOfficeType.LOCKER })
+
+function place(overrides: Partial<DeliveryPlaceDto>): DeliveryPlaceDto {
+  return {
+    carrier: ShippingMethod.ECONT,
+    id: '41',
+    name: 'София',
+    region: 'София',
+    postCode: '1000',
+    servingOfficeCode: null,
+    ...overrides,
+  }
+}
+
+const PLACES = [place({}), place({ id: '4000', name: 'Пловдив', region: 'Пловдив', postCode: '4000' })]
 
 const FITS_LOCKER: ParcelEstimateDto = {
   weightGrams: 1200,
@@ -69,6 +97,12 @@ function renderPicker() {
   )
 }
 
+const settlementBox = () => screen.findByRole('searchbox', { name: 'Населено място' })
+
+async function showOffices(user: ReturnType<typeof userEvent.setup>, query: string) {
+  await user.type(screen.getByRole('searchbox', { name: 'Търсене на офис' }), query)
+}
+
 const officeButton = (name: RegExp) =>
   within(screen.getByRole('list', { name: 'Офиси' })).getByRole('button', { name })
 
@@ -82,27 +116,32 @@ describe('OfficePicker', () => {
     useCheckoutDelivery.setState({ method: 'courier-office', office: null })
     useCart.setState({ cartId: 'cart-1', version: 4 })
     getOffices.mockReset().mockResolvedValue([MLADOST, PLOVDIV, LOCKER])
+    getPlaces.mockReset().mockResolvedValue(PLACES)
     getParcel.mockReset().mockResolvedValue(FITS_LOCKER)
   })
 
-  it("lists the carrier's offices once they load", async () => {
+  it("asks for a place once the carrier's offices and places load", async () => {
     renderPicker()
 
     expect(screen.getByTestId('office-picker-skeleton')).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: /София Младост/ })).toBeInTheDocument()
+    expect(await settlementBox()).toBeInTheDocument()
     expect(screen.getByText('Еконт', { selector: 'b' })).toBeInTheDocument()
     expect(getOffices).toHaveBeenCalledWith(ShippingMethod.ECONT)
+    expect(getPlaces).toHaveBeenCalledWith(ShippingMethod.ECONT)
   })
 
   it('weighs the parcel for the cart and version on screen', async () => {
     renderPicker()
 
-    await screen.findByRole('button', { name: /София Младост/ })
+    await settlementBox()
     expect(getParcel).toHaveBeenCalledWith(ShippingMethod.ECONT, 'cart-1', 4)
   })
 
-  it('offers a retry when the offices cannot be read', async () => {
-    getOffices.mockRejectedValueOnce(new Error('down'))
+  it.each([
+    ['offices', () => getOffices.mockRejectedValueOnce(new Error('down'))],
+    ['places', () => getPlaces.mockRejectedValueOnce(new Error('down'))],
+  ])('offers a retry when the %s cannot be read', async (_list, failOnce) => {
+    failOnce()
     const user = userEvent.setup()
     renderPicker()
 
@@ -111,14 +150,15 @@ describe('OfficePicker', () => {
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Опитай отново' }))
-    expect(await screen.findByRole('button', { name: /София Младост/ })).toBeInTheDocument()
+    expect(await settlementBox()).toBeInTheDocument()
   })
 
   // Opening an office only shows it in full; the button there is the choice.
   it('remembers the office confirmed in the list and shows it as chosen', async () => {
     const user = userEvent.setup()
     renderPicker()
-    await screen.findByRole('button', { name: /Пловдив Център/ })
+    await settlementBox()
+    await showOffices(user, 'пловдив')
 
     await user.click(officeButton(/Пловдив Център/))
     expect(useCheckoutDelivery.getState().office).toBeNull()
@@ -133,7 +173,7 @@ describe('OfficePicker', () => {
     expect(screen.getByText('Пловдив Център')).toBeInTheDocument()
   })
 
-  it("reopens the list in the chosen office's city to change it, and cancels back", async () => {
+  it("reopens the list in the chosen office's place to change it, and cancels back", async () => {
     useCheckoutDelivery.setState({ office: { carrier: ShippingMethod.ECONT, code: '1' } })
     const user = userEvent.setup()
     renderPicker()
@@ -165,12 +205,13 @@ describe('OfficePicker', () => {
     expect(screen.getByRole('button', { name: 'Промени' })).toBeInTheDocument()
   })
 
-  it('asks again when the remembered locker no longer takes the parcel', async () => {
+  it("asks again, in the locker's place, when the remembered locker no longer takes the parcel", async () => {
     useCheckoutDelivery.setState({ office: { carrier: ShippingMethod.ECONT, code: '3' } })
     getParcel.mockResolvedValue({ ...FITS_LOCKER, isLockerEligible: false })
     renderPicker()
 
-    expect(await screen.findByRole('button', { name: /Еконтомат Люлин/ })).toBeDisabled()
+    expect(await settlementBox()).toHaveValue('София')
+    expect(officeButton(/Еконтомат Люлин/)).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Промени' })).not.toBeInTheDocument()
   })
 
