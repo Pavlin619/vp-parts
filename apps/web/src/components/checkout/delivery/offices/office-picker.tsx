@@ -1,19 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { DeliveryOfficeDto, DeliveryPlaceDto, ShippingMethod } from "@vp-parts-shop/shared";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
-import { useCart } from "@/hooks/use-cart";
 import { useCheckoutDelivery, useSelectedOfficeCode } from "@/hooks/use-checkout-delivery";
+import { useParcelCheck } from "@/hooks/use-parcel-check";
 import { approximateLocationQueryOptions } from "@/lib/api/approximate-location";
 import {
   deliveryOfficesQueryOptions,
   deliveryPlacesQueryOptions,
-  parcelEstimateQueryOptions,
 } from "@/lib/api/delivery";
 import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
-import { resolveSelectedOffice, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
+import { resolveSelectedOffice } from "@/lib/checkout/delivery/office-availability";
 import { OfficeBrowser } from "./office-browser";
 import { ParcelUnmeasuredNotice } from "./parcel-unmeasured-notice";
 import { SelectedOfficeCard } from "./selected-office-card";
@@ -90,21 +89,6 @@ export function OfficePicker({ carrier }: OfficePickerProps) {
       )}
     </div>
   );
-}
-
-/** The parcel estimate for the cart version on screen, as the picker reads it. */
-function useParcelCheck(carrier: ShippingMethod): ParcelCheck {
-  const cartId = useCart((state) => state.cartId);
-  const cartVersion = useCart((state) => state.version);
-  const { data, isError } = useQuery(parcelEstimateQueryOptions(carrier, cartId, cartVersion));
-
-  return useMemo<ParcelCheck>(() => {
-    if (data) {
-      return { state: "ready", parcel: data };
-    }
-
-    return isError ? { state: "failed" } : { state: "checking" };
-  }, [data, isError]);
 }
 
 function OfficePickerSkeleton() {

@@ -8,13 +8,18 @@ import {
   deliveryPlacesQueryOptions,
   getDeliveryOffices,
   getDeliveryPlaces,
+  getDeliveryQuote,
   getParcelEstimate,
+  deliveryQuoteQueryOptions,
   parcelEstimateQueryOptions,
 } from './delivery'
-import { apiFetch } from './index'
+import { ApiError, apiFetch } from './index'
 import { cartFetch } from './cart/cart-fetch'
 
-jest.mock('./index')
+jest.mock('./index', () => ({
+  ...jest.requireActual('./index'),
+  apiFetch: jest.fn(),
+}))
 jest.mock('./cart/cart-fetch')
 
 const mockApiFetch = jest.mocked(apiFetch)
@@ -130,5 +135,47 @@ describe('parcelEstimateQueryOptions', () => {
     parcelEstimateQueryOptions(ShippingMethod.ECONT, 'cart-1', 7).queryFn?.({} as never)
 
     expect(mockCartFetch).toHaveBeenCalledWith('/delivery/parcel?carrier=ECONT')
+  })
+})
+
+describe('getDeliveryQuote', () => {
+  // The server prices the cart it owns; the client names only the office.
+  it('asks for the price of the cart this device owns to one office', () => {
+    getDeliveryQuote({ carrier: ShippingMethod.ECONT, officeCode: '1127' })
+
+    expect(mockCartFetch).toHaveBeenCalledWith('/delivery/quote', {
+      method: 'POST',
+      body: { carrier: ShippingMethod.ECONT, officeCode: '1127' },
+    })
+  })
+})
+
+describe('deliveryQuoteQueryOptions', () => {
+  const request = { carrier: ShippingMethod.ECONT, officeCode: '1127' }
+
+  it('keys the quote by carrier, office, cart and cart version', () => {
+    expect(deliveryQuoteQueryOptions(request, 'cart-1', 7).queryKey).toEqual([
+      'delivery',
+      'quote',
+      ShippingMethod.ECONT,
+      '1127',
+      'cart-1',
+      7,
+    ])
+  })
+
+  it('waits for the cart to exist', () => {
+    expect(deliveryQuoteQueryOptions(request, '', 0).enabled).toBe(false)
+    expect(deliveryQuoteQueryOptions(request, 'cart-1', 7).enabled).toBe(true)
+  })
+
+  // A refusal such as an office that cannot take the parcel is the same on a retry.
+  it('does not retry a refusal, but retries an outage twice', () => {
+    const { retry } = deliveryQuoteQueryOptions(request, 'cart-1', 7)
+    const retryIf = retry as (count: number, error: Error) => boolean
+
+    expect(retryIf(0, new ApiError(422, 'DELIVERY_OFFICE_REFUSED'))).toBe(false)
+    expect(retryIf(0, new ApiError(503, 'DELIVERY_UNAVAILABLE'))).toBe(true)
+    expect(retryIf(2, new ApiError(503, 'DELIVERY_UNAVAILABLE'))).toBe(false)
   })
 })

@@ -3,8 +3,10 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   articleIdentityKey,
+  ShippingMethod,
   type ArticleIdentityDto,
   type ArticlesAvailabilityDto,
+  type ParcelEstimateDto,
 } from '@vp-parts-shop/shared'
 import { useCart, type CartLine } from '@/hooks/use-cart'
 import { useCheckoutDelivery } from '@/hooks/use-checkout-delivery'
@@ -25,6 +27,25 @@ jest.mock('@/lib/api/catalog', () => ({
         .join(','),
     ],
     queryFn: () => getAvailability(articles) as Promise<ArticlesAvailabilityDto>,
+  }),
+}))
+
+const getParcel = jest.fn()
+const getQuote = jest.fn()
+
+jest.mock('@/lib/api/delivery', () => ({
+  parcelEstimateQueryOptions: (carrier: string, cartId: string, cartVersion: number) => ({
+    queryKey: ['delivery', 'parcel', carrier, cartId, cartVersion],
+    queryFn: () => getParcel() as Promise<ParcelEstimateDto>,
+    enabled: cartId !== '',
+  }),
+  deliveryQuoteQueryOptions: (
+    request: { carrier: string; officeCode: string },
+    cartId: string,
+    cartVersion: number,
+  ) => ({
+    queryKey: ['delivery', 'quote', request.carrier, request.officeCode, cartId, cartVersion],
+    queryFn: () => getQuote(request) as Promise<unknown>,
   }),
 }))
 
@@ -82,6 +103,15 @@ describe('CheckoutView', () => {
     useCheckoutDelivery.setState({ method: 'courier-address', office: null })
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
+    getParcel.mockReset().mockResolvedValue({
+      weightGrams: 2300,
+      unmeasuredArticles: [],
+      isLockerEligible: true,
+    })
+    getQuote.mockReset().mockResolvedValue({
+      priceIncVatCents: 714,
+      expectedDeliveryDate: '2026-09-30',
+    })
   })
 
   it('sends an empty cart back to the catalogue', async () => {
@@ -181,5 +211,26 @@ describe('CheckoutView', () => {
     expect(
       await screen.findByText(/не могат да бъдат поръчани/),
     ).toBeInTheDocument()
+  })
+
+  it('weighs the parcel and prices delivery to the remembered office in the summary', async () => {
+    const item = line()
+    useCart.setState({ lines: [item], cartId: 'cart-1', version: 2 })
+    useCheckoutDelivery.setState({
+      method: 'courier-office',
+      office: { carrier: ShippingMethod.ECONT, code: '1127' },
+    })
+    getAvailability.mockResolvedValue(availabilityFor(item))
+
+    renderView()
+
+    const summary = (await screen.findByText('Обобщение на поръчката')).closest('section')!
+    expect(await within(summary).findByText('2,3 кг')).toBeInTheDocument()
+    expect(await within(summary).findByText('7,14 €')).toBeInTheDocument()
+    expect(within(summary).getByText('19,14 €')).toBeInTheDocument()
+    expect(getQuote).toHaveBeenCalledWith({
+      carrier: ShippingMethod.ECONT,
+      officeCode: '1127',
+    })
   })
 })
