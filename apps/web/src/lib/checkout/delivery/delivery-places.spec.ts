@@ -6,6 +6,7 @@ import {
 } from '@vp-parts-shop/shared'
 import {
   nearbyOffices,
+  placeNearestTo,
   placeOfOffice,
   placePoint,
   regionsOf,
@@ -164,5 +165,22 @@ describe('nearbyOffices', () => {
       '5800',
       '5817',
     ])
+  })
+})
+
+describe('placeNearestTo', () => {
+  it("finds the nearest office's place and how far that office is", () => {
+    const nearest = placeNearestTo({ latitude: 43.401, longitude: 24.601 }, OFFICES, [PLEVEN, YASEN])
+
+    expect(nearest?.place).toBe(PLEVEN)
+    expect(nearest?.distanceMeters).toBeLessThan(200)
+  })
+
+  it('finds nothing when the nearest office stands in no listed place', () => {
+    expect(placeNearestTo({ latitude: 42.7, longitude: 23.32 }, OFFICES, [PLEVEN])).toBeNull()
+  })
+
+  it('finds nothing without offices', () => {
+    expect(placeNearestTo({ latitude: 42.7, longitude: 23.32 }, [], [PLEVEN])).toBeNull()
   })
 })

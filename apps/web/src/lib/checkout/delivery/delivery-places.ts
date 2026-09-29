@@ -74,6 +74,24 @@ export function placePoint(
   return serving ? { latitude: serving.latitude, longitude: serving.longitude } : null;
 }
 
+export interface NearestPlace {
+  place: DeliveryPlaceDto;
+  /** How far the nearest office is, which says how much to trust the place. */
+  distanceMeters: number;
+}
+
+/** The place of the office nearest the point. */
+export function placeNearestTo(
+  point: GeoPoint,
+  offices: DeliveryOfficeDto[],
+  places: DeliveryPlaceDto[],
+): NearestPlace | null {
+  const [nearest] = sortOfficesByDistance(offices, point);
+  const place = nearest ? placeOfOffice(places, nearest) : null;
+
+  return place && { place, distanceMeters: distanceInMeters(point, nearest) };
+}
+
 export function placeOfOffice(
   places: DeliveryPlaceDto[],
   office: DeliveryOfficeDto,

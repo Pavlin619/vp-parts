@@ -7,7 +7,7 @@ import { usePlaceScope } from "@/hooks/use-place-scope";
 import { nearbyOffices, placeOfOffice } from "@/lib/checkout/delivery/delivery-places";
 import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { officeAvailability, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
-import { sortOfficesByDistance } from "@/lib/checkout/delivery/office-distance";
+import { sortOfficesByDistance, type GeoPoint } from "@/lib/checkout/delivery/office-distance";
 import {
   EMPTY_OFFICE_SEARCH,
   filterOffices,
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { OfficeDetail } from "./detail";
 import { OfficeList, PickPlacePrompt } from "./list";
 import { OfficeMap } from "./map";
-import { PlaceFields } from "./place";
+import { ApproximatePlaceNote, PlaceFields } from "./place";
 import { DeviceLocationNotice, NearMeButton, OfficeFilters, OfficeSearch } from "./search";
 
 interface OfficeBrowserProps {
@@ -28,6 +28,8 @@ interface OfficeBrowserProps {
   carrier: ShippingMethod;
   /** The office already chosen, whose place the browser starts in when the customer comes back to change it. */
   chosenCode: string | null;
+  /** Where the request seems to come from, to start in when no office is chosen. */
+  approximateLocation: GeoPoint | null;
   onChoose: (officeCode: string) => void;
   /** Present while an office is already chosen, to keep it. */
   onCancel?: () => void;
@@ -40,10 +42,11 @@ export function OfficeBrowser({
   parcelCheck,
   carrier,
   chosenCode,
+  approximateLocation,
   onChoose,
   onCancel,
 }: OfficeBrowserProps) {
-  const scope = usePlaceScope({ offices, places, chosenCode });
+  const scope = usePlaceScope({ offices, places, chosenCode, approximateLocation });
   const { place, referencePoint } = scope;
   const [search, setSearch] = useState(EMPTY_OFFICE_SEARCH);
   const [openCode, setOpenCode] = useState<string | null>(null);
@@ -133,6 +136,8 @@ export function OfficeBrowser({
         onRegionChange={changeRegion}
         onPlaceChange={changePlace}
       />
+
+      {scope.isApproximate && place && <ApproximatePlaceNote placeName={place.name} />}
 
       <div className="flex gap-2">
         <div className="min-w-0 flex-1">
