@@ -322,6 +322,13 @@
 - [ ] T137 [P] [US7] Create AddressManager component (list saved addresses, add/edit/delete, set default, used at checkout address step) in `apps/web/src/components/account/address-manager.tsx`
 - [ ] T138 [US7] Implement account settings page (Client Component: profile details, AddressManager, links to order history and mechanic application section) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/account/page.tsx`
 
+### Deferred into US7 from the checkout office picker
+
+Both need a signed-in customer. The picker's starting order and why are in `docs/DELIVERY-PROVIDERS.md` → "The office picker in the web checkout".
+
+- [ ] T138a [US7] Remember the last chosen office on the account, so it follows a signed-in customer across devices: store `{ carrier, officeCode }` on the `Customer` (protected `GET`/`PUT /customers/me/delivery-office`, validated against the carrier's office list), read it in `use-checkout-delivery` before the browser-only copy, and write it on every choice. Guests keep the browser-only copy. A stored office the carrier no longer lists, or a locker the parcel does not fit, still opens the picker in its place. Blocked on Clerk in `apps/web`.
+- [ ] T138b [US7] Start the office picker at the customer's default saved address: geocode the address once, when it is saved, and store its latitude and longitude on `Address` (never at checkout). In `usePlaceScope`, rank it after the office chosen before and ahead of the location guessed from the IP: the place of the office nearest the address, sorted from the address itself, with the note naming the address instead of a guess. Pick the geocoder then; OSM's public Nominatim forbids this use. Blocked on T137 and Clerk.
+
 **Checkpoint**: Full registration and login flow functional. Saved address management works. Account area accessible.
 
 ---

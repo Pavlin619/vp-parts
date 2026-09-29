@@ -131,6 +131,7 @@ function renderBrowser(overrides: Partial<Parameters<typeof OfficeBrowser>[0]> =
     parcelCheck: FITS_LOCKER,
     carrier: ShippingMethod.ECONT,
     chosenCode: null,
+    approximateLocation: null,
     onChoose: jest.fn(),
     ...overrides,
   }
@@ -324,6 +325,36 @@ describe('OfficeBrowser', () => {
     await user.click(screen.getByRole('button', { name: 'Вземи от този офис' }))
 
     expect(onChoose).toHaveBeenCalledWith('2')
+  })
+
+  describe('with a location guessed from the request', () => {
+    const NEAR_PLOVDIV = { latitude: 42.15, longitude: 24.74 }
+    const note = () => screen.queryByText(/по приблизителното ви местоположение/)
+
+    it('starts in the guessed place and says it is a guess', () => {
+      renderBrowser({ approximateLocation: NEAR_PLOVDIV })
+
+      expect(settlementBox()).toHaveValue('Пловдив')
+      expect(listedNames()).toEqual(['Пловдив Център'])
+      expect(note()).toBeInTheDocument()
+    })
+
+    it('stops saying so once the customer picks a place', async () => {
+      const user = userEvent.setup()
+      renderBrowser({ approximateLocation: NEAR_PLOVDIV })
+
+      await user.click(screen.getByRole('button', { name: 'Изчисти населеното място' }))
+      await pickPlace(user, 'соф', /София/)
+
+      expect(note()).not.toBeInTheDocument()
+    })
+
+    it('gives way to the office already chosen', () => {
+      renderBrowser({ approximateLocation: NEAR_PLOVDIV, chosenCode: '1' })
+
+      expect(settlementBox()).toHaveValue('София')
+      expect(note()).not.toBeInTheDocument()
+    })
   })
 
   describe('coming back to change the chosen office', () => {

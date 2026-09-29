@@ -6,6 +6,7 @@ import type { DeliveryOfficeDto, DeliveryPlaceDto, ShippingMethod } from "@vp-pa
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { useCart } from "@/hooks/use-cart";
 import { useCheckoutDelivery, useSelectedOfficeCode } from "@/hooks/use-checkout-delivery";
+import { approximateLocationQueryOptions } from "@/lib/api/approximate-location";
 import {
   deliveryOfficesQueryOptions,
   deliveryPlacesQueryOptions,
@@ -28,13 +29,15 @@ interface OfficePickerProps {
 export function OfficePicker({ carrier }: OfficePickerProps) {
   const officesQuery = useQuery(deliveryOfficesQueryOptions(carrier));
   const placesQuery = useQuery(deliveryPlacesQueryOptions(carrier));
+  const locationQuery = useQuery(approximateLocationQueryOptions);
   const parcelCheck = useParcelCheck(carrier);
   const selectedCode = useSelectedOfficeCode(carrier);
   const selectOffice = useCheckoutDelivery((state) => state.selectOffice);
 
   const [isChanging, setIsChanging] = useState(false);
 
-  if (officesQuery.isPending || placesQuery.isPending) {
+  // The location never fails, and the browser takes it only when it mounts.
+  if (officesQuery.isPending || placesQuery.isPending || locationQuery.isPending) {
     return <OfficePickerSkeleton />;
   }
 
@@ -80,6 +83,7 @@ export function OfficePicker({ carrier }: OfficePickerProps) {
           parcelCheck={parcelCheck}
           carrier={carrier}
           chosenCode={selectedCode}
+          approximateLocation={locationQuery.data ?? null}
           onChoose={handleChoose}
           onCancel={selectedOffice ? () => setIsChanging(false) : undefined}
         />

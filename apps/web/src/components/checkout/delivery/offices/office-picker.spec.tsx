@@ -31,6 +31,15 @@ jest.mock('@/lib/api/delivery', () => ({
   }),
 }))
 
+const getApproximateLocation = jest.fn()
+
+jest.mock('@/lib/api/approximate-location', () => ({
+  approximateLocationQueryOptions: {
+    queryKey: ['geo', 'approximate-location'],
+    queryFn: () => getApproximateLocation(),
+  },
+}))
+
 jest.mock('@/lib/api/cart')
 
 jest.mock('./map', () => ({
@@ -117,6 +126,7 @@ describe('OfficePicker', () => {
     useCart.setState({ cartId: 'cart-1', version: 4 })
     getOffices.mockReset().mockResolvedValue([MLADOST, PLOVDIV, LOCKER])
     getPlaces.mockReset().mockResolvedValue(PLACES)
+    getApproximateLocation.mockReset().mockResolvedValue(null)
     getParcel.mockReset().mockResolvedValue(FITS_LOCKER)
   })
 
@@ -128,6 +138,13 @@ describe('OfficePicker', () => {
     expect(screen.getByText('Еконт', { selector: 'b' })).toBeInTheDocument()
     expect(getOffices).toHaveBeenCalledWith(ShippingMethod.ECONT)
     expect(getPlaces).toHaveBeenCalledWith(ShippingMethod.ECONT)
+  })
+
+  it('starts in the place the request seems to come from', async () => {
+    getApproximateLocation.mockResolvedValue({ latitude: 42.15, longitude: 24.74 })
+    renderPicker()
+
+    expect(await settlementBox()).toHaveValue('Пловдив')
   })
 
   it('weighs the parcel for the cart and version on screen', async () => {

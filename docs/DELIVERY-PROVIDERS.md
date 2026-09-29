@@ -41,6 +41,17 @@ weight, `/parcel` answers `weightGrams: null` and names the parts in
     within 15 km,** nearest first. A village's nearest office is usually in the next
     town. Places carry no coordinates, so a place stands at the middle of its offices,
     or at its serving office, which is then marked "Обслужва …".
+  - **The picker starts in a place when it can guess one.** In order: the office chosen
+    before (its place); then where the request seems to come from; then nothing. A
+    saved address will come between the two once accounts exist (T138b in `tasks.md`).
+  - **The guess comes from Vercel's geo headers,** read by the site's own
+    `GET /api/approximate-location`, since the API runs off Vercel and never sees them.
+    It answers only for Bulgaria, and only with a city: without one the database answers
+    the middle of the country. The picker takes the place of the nearest office, and
+    only if that office is within 25 km. A note says the place is a guess, and any
+    choice the customer makes ends it. Off Vercel, locally included, there is no guess.
+    **[VERIFY]** How often a Bulgarian mobile connection is placed in Sofia whatever the
+    customer's town; the note and a two-click correction are the answer until measured.
   - **With nothing chosen, the list asks for a place.** Typing in the office search
     still searches every office, and the map shows all of them.
   - **A place the search cannot find** gets a pointer to the nearest town or to "Близо

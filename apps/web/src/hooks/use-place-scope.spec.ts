@@ -51,15 +51,65 @@ const SOFIA = place({})
 const PLOVDIV = place({ id: '4000', name: 'Пловдив', region: 'Пловдив', postCode: '4000' })
 const PLACES = [SOFIA, PLOVDIV]
 
-function renderScope(chosenCode: string | null = null) {
-  return renderHook(() => usePlaceScope({ offices: OFFICES, places: PLACES, chosenCode }))
+function renderScope(
+  chosenCode: string | null = null,
+  approximateLocation: { latitude: number; longitude: number } | null = null,
+) {
+  return renderHook(() =>
+    usePlaceScope({ offices: OFFICES, places: PLACES, chosenCode, approximateLocation }),
+  )
 }
+
+const NEAR_PLOVDIV = { latitude: 42.15, longitude: 24.74 }
 
 describe('usePlaceScope', () => {
   it('starts with nothing chosen', () => {
     const { result } = renderScope()
 
-    expect(result.current).toMatchObject({ region: null, place: null, referencePoint: null })
+    expect(result.current).toMatchObject({
+      region: null,
+      place: null,
+      referencePoint: null,
+      isApproximate: false,
+    })
+  })
+
+  describe('with an approximate location', () => {
+    it('starts in the place of the nearest office, measured from the place, and says it is a guess', () => {
+      const { result } = renderScope(null, NEAR_PLOVDIV)
+
+      expect(result.current).toMatchObject({
+        region: 'Пловдив',
+        place: PLOVDIV,
+        referencePoint: { kind: 'place', label: 'Пловдив' },
+        isApproximate: true,
+      })
+    })
+
+    it('gives way to the office already chosen', () => {
+      const { result } = renderScope('1', NEAR_PLOVDIV)
+
+      expect(result.current).toMatchObject({ place: SOFIA, isApproximate: false })
+    })
+
+    // Too far from any office to say which town the customer is in.
+    it('starts with nothing when no office is within 25 km', () => {
+      const { result } = renderScope(null, { latitude: 41.6, longitude: 26.0 })
+
+      expect(result.current).toMatchObject({ place: null, isApproximate: false })
+    })
+
+    it.each([
+      ['a place', (scope: ReturnType<typeof usePlaceScope>) => scope.choosePlace(SOFIA)],
+      ['a region', (scope: ReturnType<typeof usePlaceScope>) => scope.chooseRegion('София')],
+      ['near me', (scope: ReturnType<typeof usePlaceScope>) => scope.sortNear(NEAR_PLOVDIV)],
+    ])('stops being a guess once the customer chooses %s', (_choice, choose) => {
+      const { result } = renderScope(null, NEAR_PLOVDIV)
+
+      act(() => choose(result.current))
+
+      expect(result.current.isApproximate).toBe(false)
+    })
   })
 
   it("starts in the chosen office's place, measured from the office", () => {
