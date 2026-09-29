@@ -61,3 +61,16 @@ export function shopDateKey(date: Date): string {
     day: "2-digit",
   }).format(date);
 }
+
+/**
+ * A shop-local `YYYY-MM-DD` date as a label. It has no instant, so it is read as
+ * UTC midnight and formatted in UTC, which no timezone can move to another day.
+ */
+export function formatShopDate(date: string): string {
+  return new Intl.DateTimeFormat("bg-BG", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "numeric",
+    month: "long",
+  }).format(new Date(`${date}T00:00:00Z`));
+}

@@ -27,7 +27,7 @@ weight, `/parcel` answers `weightGrams: null` and names the parts in
 
 `apps/web/src/components/checkout/delivery/offices/office-picker.tsx` mounts under
 "Доставка с куриер до офис". It reads `/delivery/offices`, `/delivery/places` and
-`/delivery/parcel`, and does not quote yet.
+`/delivery/parcel`. The quote is read beside it, for the order summary (below).
 
 - **A place comes first, then its offices.** A region dropdown and a settlement search
   sit above the office search. The settlement search covers the whole country, or one
@@ -94,6 +94,25 @@ weight, `/parcel` answers `weightGrams: null` and names the parts in
   method and `{ carrier, officeCode }`, nothing that names the customer. The API first
   hears of it with the order, which must check it again. A remembered office the carrier
   no longer lists, or a locker the parcel no longer fits, is ignored on arrival.
+
+### The order summary weighs and prices the parcel
+
+`useDeliverySummary` (`hooks/use-delivery-summary.ts`) feeds the summary's weight and
+delivery rows from the same `/parcel` read the picker uses (`useParcelCheck`) and from
+`/quote`, both keyed by cart and cart version.
+
+- **A quote is asked only for an office delivery with an office chosen and a parcel
+  whose weight is known.** An unweighed parcel is "По телефон" without a call, since the
+  API would answer `DELIVERY_PARCEL_UNMEASURED` anyway.
+- **A refused office asks for another.** `DELIVERY_OFFICE_REFUSED`,
+  `DELIVERY_LOCKER_INELIGIBLE` and `DELIVERY_OFFICE_NOT_FOUND` read "Изберете друг офис";
+  the picker meanwhile drops a locker the parcel no longer fits. Any other failure reads
+  "Не може да се изчисли". A refusal is never retried; an outage is, twice.
+- **The total adds the price only once it is quoted,** and says "Без цената на доставката"
+  until then. Net and VAT rows describe the goods alone: the quote is VAT-inclusive
+  (see the **[VERIFY]** above), so there is no delivery share to split out.
+- **Delivery to an address is not priced** until that form exists; its row reads "—".
+- **The date is the carrier's `expectedDeliveryDate`,** shown as "Очаквана доставка".
 
 ### Map tiles
 

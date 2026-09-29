@@ -8,10 +8,12 @@ import { useCartLines } from "@/hooks/use-cart";
 import { useCartAvailability } from "@/hooks/use-cart-availability";
 import { useCartStatus } from "@/hooks/use-cart-status";
 import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-delivery";
+import { useDeliverySummary } from "@/hooks/use-delivery-summary";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
 import { DeliveryMethodPanel } from "./delivery";
 import { OrderItemsPanel } from "./order-items";
+import { OrderSummaryPanel } from "./order-summary";
 
 /**
  * Checkout's second step: how the selected cart lines reach the customer.
@@ -25,6 +27,7 @@ export function CheckoutView() {
   const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
 
   const availability = useCartAvailability(lines);
+  const { parcelCheck, delivery } = useDeliverySummary();
 
   const rows = availability.rows.filter((row) => row.line.isSelected);
   const totals = cartTotals(rows);
@@ -65,8 +68,14 @@ export function CheckoutView() {
               />
             </div>
 
-            <aside className="xl:sticky xl:top-24">
+            <aside className="flex flex-col gap-3 xl:sticky xl:top-24">
               <OrderItemsPanel rows={rows} itemCount={totals.itemCount} />
+              <OrderSummaryPanel
+                totals={totals}
+                isPending={availability.isPending}
+                parcelCheck={parcelCheck}
+                delivery={delivery}
+              />
             </aside>
           </div>
         </>
