@@ -305,9 +305,34 @@ out of stock or short, the quote still carries a price but no date.
 **[VERIFY]** that a parcel ready on a day still reaches Econt that day. A Poland part
 ready late in the afternoon may only leave the next morning.
 
-## Parcel weight and size come from TecDoc, and mostly are not there
+## Parcel weight and size: supplier catalogue first, then TecDoc
 
-The backoffice stores no dimensions. TecDoc files them as article criteria, read on
+Two sources, read in this order when a part is added to the cart. Each half (weight,
+box) is taken from the first source that has it, and TecDoc is not called at all when
+the supplier catalogue already knows both.
+
+1. **`public.supplier_product_catalog`** (backoffice, read-only),
+   `SupplierCatalogRepository.findPackageProfile`. Packed kilograms and centimetres from
+   the InterCars file, looked up by `(tecdoc_number, tecdoc_supplier_id)`. The 6 M-row
+   table already has `idx_spc_tecdoc` on exactly that pair (backoffice migration 040),
+   so no index is needed. A part filed by several suppliers has several rows; the one
+   with the most measurements wins, so a weight and its box come from one record.
+   `NULL` means not measured, never zero. The shop role is granted only the seven columns
+   it reads (`infra/db/01-shop-provisioning.sql`, 3c).
+2. **TecDoc article criteria**, below.
+
+Measured on the InterCars file (2026-09-25): 2,066,290 of 7,043,670 rows have a weight and
+1,816,173 a full box. These are *packed* figures, closer to what Econt charges on than
+TecDoc's net weight. Example, KNECHT `OX 389/1D` (`tecdoc_supplier_id` 34): 0.068 kg,
+12 × 7.5 × 7.5 cm.
+
+**[VERIFY]** that `tecdoc_supplier_id` equals TecDoc's `dataSupplierId` for every brand
+and `tecdoc_number` is spelled as TecDoc spells it (exact match, spaces included); a
+mismatch misses silently and falls through to TecDoc.
+
+### TecDoc
+
+TecDoc files them as article criteria, read on
 the single-article call we already cache (`includeArticleCriteria`, so no new flag).
 
 **They are read once, when a part is added to the cart, and stored on the line**
@@ -369,27 +394,6 @@ does not list cannot be added to the cart at all (`404 ARTICLE_NOT_FOUND`). The 
 by phone. Staff measure the part in the warehouse, call with the price, and record
 the measurement so the part is known next time. Where that measurement is stored, and
 how an order is placed with an open delivery price, land with orders.
-
-### InterCars package data — the next source
-
-The InterCars ProductInformation file carries packed weight and box size per part.
-A local copy is in the `intercars` database, table `intercars_product_information`
-(measured 2026-09-25):
-
-| Column | Unit | Example (KNECHT `OX 389/1D`) |
-|---|---|---|
-| `PACKAGE_WEIGHT` | kg, decimal comma | `0,068` |
-| `PACKAGE_LENGTH` / `_WIDTH` / `_HEIGHT` | cm, decimal comma | `12,0` / `7,5` / `7,5` |
-| `TEC_DOC_PROD` | TecDoc `dataSupplierId` (BOSCH = 30) | `34` |
-| `TEC_DOC` | TecDoc article number | `OX 389/1D` |
-
-Of 7,043,670 rows, 2,066,290 have a weight and 1,816,173 a full box. These are
-*packed* figures, closer to what Econt charges on than TecDoc's net weight, so when
-added they should be read before TecDoc, at the same moment: when a part is added to
-the cart. **[VERIFY]** that `TEC_DOC_PROD` equals
-`dataSupplierId` for every brand, not just the samples checked; if it does not, the
-lookup misses silently. The backoffice already imports this file into
-`supplier_product_catalog` but drops the package columns.
 
 ## Locker eligibility (Econtomat)
 

@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { EMPTY_CART, MAX_CART_LINES } from '@vp-parts-shop/shared';
 import { ArticleNotFoundException, ArticleReadCache } from '../catalog';
+import { SupplierCatalogRepository } from '../inventory';
 import { CustomersService } from '../customers';
 import { CatalogUnavailableException } from '../tecdoc';
 import {
@@ -99,6 +100,7 @@ describe('CartService', () => {
   const deleteExpiredGuestCarts = jest.fn();
   const findByClerkId = jest.fn();
   const readArticle = jest.fn();
+  const findPackageProfile = jest.fn();
 
   const repository = {
     findActiveByToken,
@@ -117,10 +119,17 @@ describe('CartService', () => {
   } as unknown as CartRepository;
   const customers = { findByClerkId } as unknown as CustomersService;
   const articles = { read: readArticle } as unknown as ArticleReadCache;
+  const supplierCatalog = {
+    findPackageProfile,
+  } as unknown as SupplierCatalogRepository;
 
   beforeEach(async () => {
     jest.resetAllMocks();
     readArticle.mockResolvedValue({ shippingProfile: SHIPPING_PROFILE });
+    findPackageProfile.mockResolvedValue({
+      weightGrams: null,
+      packageCm: null,
+    });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -128,6 +137,7 @@ describe('CartService', () => {
         { provide: CartRepository, useValue: repository },
         { provide: CustomersService, useValue: customers },
         { provide: ArticleReadCache, useValue: articles },
+        { provide: SupplierCatalogRepository, useValue: supplierCatalog },
       ],
     }).compile();
 
@@ -257,6 +267,53 @@ describe('CartService', () => {
       expect(addLine).toHaveBeenCalledWith('cart-1', {
         ...lineInput(),
         shippingProfile: SHIPPING_PROFILE,
+      });
+    });
+
+    it('stores the supplier catalogue figures without reading TecDoc when they are complete', async () => {
+      const packed = {
+        weightGrams: 68,
+        packageCm: { length: 12, width: 7.5, height: 7.5 },
+      };
+      findActiveByToken.mockResolvedValue(cart());
+      addLine.mockResolvedValue(cart());
+      findPackageProfile.mockResolvedValue(packed);
+
+      await service.addLine({ clerkId: null, token: TOKEN }, lineInput());
+
+      expect(findPackageProfile).toHaveBeenCalledWith({
+        brandId: '30',
+        articleNumber: '0986479061',
+      });
+      expect(readArticle).not.toHaveBeenCalled();
+      expect(addLine).toHaveBeenCalledWith('cart-1', {
+        ...lineInput(),
+        shippingProfile: packed,
+      });
+    });
+
+    it('fills what the supplier catalogue lacks from TecDoc', async () => {
+      findActiveByToken.mockResolvedValue(cart());
+      addLine.mockResolvedValue(cart());
+      findPackageProfile.mockResolvedValue({
+        weightGrams: 68,
+        packageCm: null,
+      });
+      readArticle.mockResolvedValue({
+        shippingProfile: {
+          weightGrams: 50,
+          packageCm: SHIPPING_PROFILE.packageCm,
+        },
+      });
+
+      await service.addLine({ clerkId: null, token: TOKEN }, lineInput());
+
+      expect(addLine).toHaveBeenCalledWith('cart-1', {
+        ...lineInput(),
+        shippingProfile: {
+          weightGrams: 68,
+          packageCm: SHIPPING_PROFILE.packageCm,
+        },
       });
     });
 

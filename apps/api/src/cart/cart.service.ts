@@ -10,8 +10,10 @@ import {
 } from '@vp-parts-shop/shared';
 import { ArticleReadCache } from '../catalog';
 import { CustomersService } from '../customers';
+import { SupplierCatalogRepository } from '../inventory';
 import type { ShippingProfile } from '../tecdoc';
 import { CartRequester } from './cart-requester';
+import { isFullyMeasured, preferMeasured } from './cart-shipping';
 import { mergeCartLines } from './cart-merge';
 import {
   CartShippingLine,
@@ -68,6 +70,7 @@ export class CartService {
     private readonly carts: CartRepository,
     private readonly customers: CustomersService,
     private readonly articles: ArticleReadCache,
+    private readonly supplierCatalog: SupplierCatalogRepository,
   ) {}
 
   /**
@@ -259,13 +262,29 @@ export class CartService {
     }
   }
 
+  /**
+   * Suppliers' packed figures first, TecDoc for whatever they leave out. TecDoc
+   * is not read at all when the catalogue already knows the whole profile.
+   */
   private async shippingProfileOf({
     brandId,
     articleNumber,
   }: ArticleIdentityDto): Promise<ShippingProfile> {
-    const article = await this.articles.read(Number(brandId), articleNumber);
+    const fromCatalog = await this.supplierCatalog.findPackageProfile({
+      brandId,
+      articleNumber,
+    });
 
-    return article.shippingProfile;
+    if (isFullyMeasured(fromCatalog)) {
+      return fromCatalog;
+    }
+
+    const { shippingProfile } = await this.articles.read(
+      Number(brandId),
+      articleNumber,
+    );
+
+    return preferMeasured(fromCatalog, shippingProfile);
   }
 
   /**
