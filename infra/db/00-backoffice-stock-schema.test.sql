@@ -75,3 +75,20 @@ ALTER TABLE public.supplier_stock
 -- this is the index every availability read goes through.
 CREATE INDEX IF NOT EXISTS idx_supplier_stock_tecdoc
   ON public.supplier_stock (tecdoc_number, tecdoc_supplier_id);
+
+-- Supplier product master (package weight and box size for courier pricing).
+CREATE TABLE IF NOT EXISTS public.supplier_product_catalog (
+  id                  BIGSERIAL PRIMARY KEY,
+  supplier_source     VARCHAR(20) NOT NULL,
+  supplier_code       VARCHAR(255) NOT NULL,
+  tecdoc_number       VARCHAR(100),
+  tecdoc_supplier_id  VARCHAR(100),
+  package_weight_kg   NUMERIC(10, 3),
+  package_length_cm   NUMERIC(10, 3),
+  package_width_cm    NUMERIC(10, 3),
+  package_height_cm   NUMERIC(10, 3),
+  UNIQUE (supplier_source, supplier_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spc_tecdoc
+  ON public.supplier_product_catalog (tecdoc_number, tecdoc_supplier_id);

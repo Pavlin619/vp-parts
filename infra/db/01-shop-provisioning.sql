@@ -57,7 +57,8 @@ SELECT format('GRANT CONNECT ON DATABASE autoparts TO %I', :'shop_db_user')\gexe
 --    supplier offering the best buy price within the fastest delivery day.
 SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'shop_db_user')
 WHERE to_regclass('public.supplier_stock') IS NOT NULL
-   OR to_regclass('public.autoparts') IS NOT NULL\gexec
+   OR to_regclass('public.autoparts') IS NOT NULL
+   OR to_regclass('public.supplier_product_catalog') IS NOT NULL\gexec
 
 -- 3a. Supplier stock projection (fallback source). Column list matches the
 --     actual supplier_stock columns.
@@ -79,3 +80,14 @@ SELECT format(
   'updated_at) ON public.autoparts TO %I',
   :'shop_db_user')
 WHERE to_regclass('public.autoparts') IS NOT NULL\gexec
+
+-- 3c. Supplier product master, read only for the packed weight and box size a
+--     courier is priced on. Looked up by (tecdoc_number, tecdoc_supplier_id) on
+--     idx_spc_tecdoc. Deliberately EXCLUDES barcode, custom_code and the
+--     name/description text, which the shop has no use for here.
+SELECT format(
+  'GRANT SELECT (tecdoc_number, tecdoc_supplier_id, supplier_source, '
+  'package_weight_kg, package_length_cm, package_width_cm, package_height_cm) '
+  'ON public.supplier_product_catalog TO %I',
+  :'shop_db_user')
+WHERE to_regclass('public.supplier_product_catalog') IS NOT NULL\gexec

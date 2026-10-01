@@ -1,6 +1,7 @@
 export { InventoryModule } from './inventory.module';
 export { InventoryService } from './inventory.service';
 export { AutopartsRepository } from './autoparts.repository';
+export { SupplierCatalogRepository } from './supplier-catalog.repository';
 export { SupplierStockRepository } from './supplier-stock.repository';
 export { DeliverySpeedResolver } from './delivery-speed.resolver';
 export { InventoryUnavailableException } from './inventory-unavailable.exception';

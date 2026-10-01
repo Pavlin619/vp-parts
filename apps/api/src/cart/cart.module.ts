@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CatalogModule } from '../catalog';
 import { CustomersModule } from '../customers';
+import { InventoryModule } from '../inventory';
 import { PrismaModule } from '../prisma';
 import { CartController } from './cart.controller';
 import { CartRepository } from './cart.repository';
@@ -12,6 +13,7 @@ import { CartService } from './cart.service';
     PrismaModule,
     CustomersModule,
     CatalogModule,
+    InventoryModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [CartController],

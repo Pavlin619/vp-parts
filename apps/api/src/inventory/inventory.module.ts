@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AutopartsRepository } from './autoparts.repository';
+import { SupplierCatalogRepository } from './supplier-catalog.repository';
 import { SupplierStockRepository } from './supplier-stock.repository';
 import { DeliverySpeedResolver } from './delivery-speed.resolver';
 import { DeliveryScheduleService } from './delivery-schedule.service';
@@ -12,10 +13,11 @@ import { InventoryService } from './inventory.service';
   providers: [
     AutopartsRepository,
     SupplierStockRepository,
+    SupplierCatalogRepository,
     DeliverySpeedResolver,
     DeliveryScheduleService,
     InventoryService,
   ],
-  exports: [InventoryService],
+  exports: [InventoryService, SupplierCatalogRepository],
 })
 export class InventoryModule {}

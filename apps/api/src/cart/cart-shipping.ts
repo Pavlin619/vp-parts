@@ -40,3 +40,21 @@ export function fromShippingColumns(
       : null,
   };
 }
+
+export function isFullyMeasured({
+  weightGrams,
+  packageCm,
+}: ShippingProfile): boolean {
+  return weightGrams !== null && packageCm !== null;
+}
+
+/** Each half is taken from `preferred` when it has it, else from `fallback`. */
+export function preferMeasured(
+  preferred: ShippingProfile,
+  fallback: ShippingProfile,
+): ShippingProfile {
+  return {
+    weightGrams: preferred.weightGrams ?? fallback.weightGrams,
+    packageCm: preferred.packageCm ?? fallback.packageCm,
+  };
+}
