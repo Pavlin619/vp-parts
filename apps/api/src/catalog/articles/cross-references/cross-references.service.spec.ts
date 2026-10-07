@@ -640,4 +640,21 @@ describe('CrossReferencesService', () => {
       expect(brands.attachLogos).not.toHaveBeenCalled();
     });
   });
+
+  describe('getCandidates', () => {
+    it('answers with the parts citing this one, from the shared cache entry', async () => {
+      givenArticle('SRC');
+      tecdoc.getCrossReferenceCandidates.mockResolvedValueOnce([
+        candidate('A1'),
+        candidate('SRC', { brandId: String(BOSCH) }),
+      ]);
+
+      const candidates = await service.getCandidates(BOSCH, 'SRC');
+
+      expect(candidates.map((entry) => entry.articleNumber)).toEqual(['A1']);
+      expect(crossReferenceCacheKeys()).toEqual(['tecdoc:crossrefs:30:SRC']);
+      expect(rows.hydrate).not.toHaveBeenCalled();
+      expect(inventory.getAvailabilityForOrdering).not.toHaveBeenCalled();
+    });
+  });
 });

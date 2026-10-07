@@ -79,6 +79,11 @@ export interface TecDocArticleRecord {
     criteriaUnitDescription?: string;
     criteriaType?: string;
   }>;
+  /**
+   * Present with `includeArticleLogisticsCriteria`: the packed part, with the
+   * box in millimetres. See docs/TECDOC.md.
+   */
+  articleLogisticsCriteria?: Array<{ criteriaId?: number; rawValue: string }>;
   oemNumbers?: Array<{
     articleNumber: string;
     mfrName?: string;

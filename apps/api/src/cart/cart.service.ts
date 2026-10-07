@@ -8,12 +8,8 @@ import {
   EMPTY_CART,
   articleIdentityKey,
 } from '@vp-parts-shop/shared';
-import { ArticleReadCache } from '../catalog';
 import { CustomersService } from '../customers';
-import { SupplierCatalogRepository } from '../inventory';
-import type { ShippingProfile } from '../tecdoc';
 import { CartRequester } from './cart-requester';
-import { isFullyMeasured, preferMeasured } from './cart-shipping';
 import { mergeCartLines } from './cart-merge';
 import {
   CartShippingLine,
@@ -37,6 +33,7 @@ import {
   CartVersionConflictError,
   MergedCartLine,
 } from './cart.repository';
+import { ShippingProfileResolver } from './shipping-profile/shipping-profile.resolver';
 
 /**
  * What a mutation did. `mintedToken` is set only by the call that created a
@@ -69,8 +66,7 @@ export class CartService {
   constructor(
     private readonly carts: CartRepository,
     private readonly customers: CustomersService,
-    private readonly articles: ArticleReadCache,
-    private readonly supplierCatalog: SupplierCatalogRepository,
+    private readonly shippingProfiles: ShippingProfileResolver,
   ) {}
 
   /**
@@ -105,7 +101,7 @@ export class CartService {
     requester: CartRequester,
     line: NewCartLine,
   ): Promise<CartMutationResult> {
-    const shippingProfile = await this.shippingProfileOf(line);
+    const shippingProfile = await this.shippingProfiles.resolve(line);
     const owner = await this.resolveOwner(requester);
     const existing = await this.findCart(owner);
 
@@ -260,31 +256,6 @@ export class CartService {
 
       throw error;
     }
-  }
-
-  /**
-   * Suppliers' packed figures first, TecDoc for whatever they leave out. TecDoc
-   * is not read at all when the catalogue already knows the whole profile.
-   */
-  private async shippingProfileOf({
-    brandId,
-    articleNumber,
-  }: ArticleIdentityDto): Promise<ShippingProfile> {
-    const fromCatalog = await this.supplierCatalog.findPackageProfile({
-      brandId,
-      articleNumber,
-    });
-
-    if (isFullyMeasured(fromCatalog)) {
-      return fromCatalog;
-    }
-
-    const { shippingProfile } = await this.articles.read(
-      Number(brandId),
-      articleNumber,
-    );
-
-    return preferMeasured(fromCatalog, shippingProfile);
   }
 
   /**

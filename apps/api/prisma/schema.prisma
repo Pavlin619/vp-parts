@@ -147,26 +147,29 @@ model Cart {
 /// stored figure, `addedAtPriceIncVat`, exists to be compared against the live
 /// price and is never shown as the price.
 model CartItem {
-  id                 String   @id @default(uuid())
-  cartId             String
+  id                  String   @id @default(uuid())
+  cartId              String
   /// TecDoc `dataSupplierId`. An article number alone does not identify a part.
-  brandId            String
-  articleNumber      String
-  brandName          String
-  brandLogoUrl       String?
-  description        String
-  thumbnailUrl       String?
-  quantity           Int
-  isSelected         Boolean  @default(true)
-  addedAtPriceIncVat Int?
-  /// TecDoc's weight and packed size, read when the line was added so checkout
-  /// can weigh the cart without calling TecDoc. Null where TecDoc files none.
-  weightGrams        Int?
-  packageLengthCm    Float?
-  packageWidthCm     Float?
-  packageHeightCm    Float?
-  addedAt            DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  brandId             String
+  articleNumber       String
+  brandName           String
+  brandLogoUrl        String?
+  description         String
+  thumbnailUrl        String?
+  quantity            Int
+  isSelected          Boolean  @default(true)
+  addedAtPriceIncVat  Int?
+  /// The part's weight and packed size, resolved when the line was added so
+  /// checkout can weigh the cart without calling TecDoc. Null where no source knows.
+  weightGrams         Int?
+  packageLengthCm     Float?
+  packageWidthCm      Float?
+  packageHeightCm     Float?
+  /// True when any of the above was estimated from equivalent parts rather than
+  /// measured. An estimated line never goes to a locker.
+  isShippingEstimated Boolean  @default(false)
+  addedAt             DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   cart Cart @relation(fields: [cartId], references: [id], onDelete: Cascade)
 

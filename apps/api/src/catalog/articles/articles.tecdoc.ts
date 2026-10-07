@@ -49,6 +49,8 @@ export class ArticlesTecDoc {
       includeImages: true,
       includeArticleCriteria: true,
       includeOEMNumbers: true,
+      // The packed weight and box, for the cart's parcel; see docs/TECDOC.md.
+      includeArticleLogisticsCriteria: true,
       // The article's own place in the category tree, for the breadcrumb.
       // Scoped to one article, so it costs a facet over a single row: measured
       // at +986 bytes on a 9.5 KB response, with no second call. The tree has

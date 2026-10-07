@@ -374,7 +374,7 @@ availability read, which is what keeps a batch inside
 
 | Key | Holds | TTL |
 |---|---|---|
-| `tecdoc:crossrefs:{brandId}:{articleNumber}` | the step-2 candidate set | 24 h hit / 1 h empty |
+| `tecdoc:crossrefs:{brandId}:{articleNumber}` | the step-2 candidate set; also read by the cart | 24 h hit / 1 h empty |
 | `crossrefs:order:{brandId}:{articleNumber}:{sort}` | the step-3 ranked identities | 5 min |
 | `tecdoc:article-row:{brandId}:{articleNumber}` | one hydrated row | 24 h |
 
@@ -401,6 +401,16 @@ different lists is fetched once. This needed one new primitive on `RedisCache` â
 `cachedMany`, an `mget` followed by a pipelined write.
 
 ---
+
+## A second consumer: the cart's parcel weight
+
+`CrossReferencesService.getCandidates` hands the cached candidate set, unordered and
+unhydrated, to the cart's `ShippingProfileResolver`. When a part added to the cart has
+no weight of its own, it is weighed from the supplier-catalogue figures of the parts
+that replace it. It reads the same `tecdoc:crossrefs:*` entry the substitutes section
+warms, so it needs no key of its own, and the precision rules above are what keep a
+part that merely shares digits out of the estimate. The estimate's rules are in
+[DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md#a-part-with-no-weight-of-its-own-is-estimated-from-its-equivalents).
 
 ## Where it lives
 

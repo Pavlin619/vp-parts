@@ -6,13 +6,14 @@ const knownFilter: ParcelLine = {
   shippingProfile: {
     weightGrams: 47,
     packageCm: { length: 7.5, width: 7.5, height: 12 },
+    isEstimated: false,
   },
 };
 
 const unmeasuredDisc: ParcelLine = {
   article: { brandId: '30', articleNumber: '0 986 479 C84' },
   quantity: 2,
-  shippingProfile: { weightGrams: null, packageCm: null },
+  shippingProfile: { weightGrams: null, packageCm: null, isEstimated: false },
 };
 
 describe('estimateParcel', () => {
@@ -39,13 +40,24 @@ describe('estimateParcel', () => {
   it('weighs a part with a weight but no box, which an office takes', () => {
     const weighedButUnboxed: ParcelLine = {
       ...knownFilter,
-      shippingProfile: { weightGrams: 47, packageCm: null },
+      shippingProfile: { weightGrams: 47, packageCm: null, isEstimated: false },
     };
 
     expect(estimateParcel([weighedButUnboxed])).toEqual({
       isMeasured: true,
-      parcel: { weightGrams: 47, unitsCm: null },
+      parcel: { weightGrams: 47, unitsCm: null, hasEstimatedUnits: false },
     });
+  });
+
+  it('marks a parcel holding any estimated line', () => {
+    const estimatedFilter: ParcelLine = {
+      ...knownFilter,
+      shippingProfile: { ...knownFilter.shippingProfile, isEstimated: true },
+    };
+
+    const estimate = estimateParcel([knownFilter, estimatedFilter]);
+
+    expect(estimate.isMeasured && estimate.parcel.hasEstimatedUnits).toBe(true);
   });
 
   it('lists the box of every piece, one per unit of quantity', () => {
@@ -58,7 +70,7 @@ describe('estimateParcel', () => {
   it('knows no boxes when any line has no package size', () => {
     const weighedButUnboxed: ParcelLine = {
       ...knownFilter,
-      shippingProfile: { weightGrams: 47, packageCm: null },
+      shippingProfile: { weightGrams: 47, packageCm: null, isEstimated: false },
     };
     const estimate = estimateParcel([knownFilter, weighedButUnboxed]);
 
@@ -68,16 +80,23 @@ describe('estimateParcel', () => {
 
 describe('singleBoxOf', () => {
   const box = { length: 30, width: 20, height: 10 };
+  const MEASURED = { hasEstimatedUnits: false };
 
   it('gives the box of a parcel that is a single unit, where it is exact', () => {
-    expect(singleBoxOf({ weightGrams: 47, unitsCm: [box] })).toEqual(box);
+    expect(
+      singleBoxOf({ ...MEASURED, weightGrams: 47, unitsCm: [box] }),
+    ).toEqual(box);
   });
 
   it('gives no box for several units, whose packing is unknown', () => {
-    expect(singleBoxOf({ weightGrams: 94, unitsCm: [box, box] })).toBeNull();
+    expect(
+      singleBoxOf({ ...MEASURED, weightGrams: 94, unitsCm: [box, box] }),
+    ).toBeNull();
   });
 
   it('gives no box when the unit sizes are unknown', () => {
-    expect(singleBoxOf({ weightGrams: 47, unitsCm: null })).toBeNull();
+    expect(
+      singleBoxOf({ ...MEASURED, weightGrams: 47, unitsCm: null }),
+    ).toBeNull();
   });
 });

@@ -3,22 +3,21 @@ import {
   CartDto,
   CartLineDto,
 } from '@vp-parts-shop/shared';
-import type { ShippingProfile } from '../tecdoc';
-import { fromShippingColumns } from './cart-shipping';
+import { ResolvedShippingProfile, fromShippingColumns } from './cart-shipping';
 import { CartRecord } from './cart.repository';
 
 type CartItemRecord = CartRecord['items'][number];
 
 /** A line as the cart stores it: the wire fields plus what only the API reads. */
 export interface StoredCartLine extends CartLineDto {
-  shippingProfile: ShippingProfile;
+  shippingProfile: ResolvedShippingProfile;
 }
 
 /** What a selected line weighs, for the delivery module to build a parcel from. */
 export interface CartShippingLine {
   article: ArticleIdentityDto;
   quantity: number;
-  shippingProfile: ShippingProfile;
+  shippingProfile: ResolvedShippingProfile;
 }
 
 /**

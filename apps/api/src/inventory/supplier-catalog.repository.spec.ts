@@ -109,4 +109,53 @@ describe('SupplierCatalogRepository', () => {
       expect(profile).toEqual({ weightGrams: null, packageCm: null });
     });
   });
+
+  describe('findPackageProfiles', () => {
+    it('reads every identity in one query and converts each row', async () => {
+      queryRaw.mockResolvedValueOnce([
+        packageRow(),
+        packageRow({ package_weight_kg: '1.250', package_height_cm: null }),
+      ]);
+
+      const profiles = await repository.findPackageProfiles([
+        { brandId: KNECHT, articleNumber: 'OX 389/1D' },
+        { brandId: '30', articleNumber: '0986479061' },
+      ]);
+
+      expect(queryRaw).toHaveBeenCalledTimes(1);
+      expect(profiles).toEqual([
+        {
+          weightGrams: 68,
+          packageCm: { length: 12, width: 7.5, height: 7.5 },
+        },
+        { weightGrams: 1250, packageCm: null },
+      ]);
+    });
+
+    it('pairs each number with its own brand and keeps one row per identity', async () => {
+      queryRaw.mockResolvedValueOnce([]);
+
+      await repository.findPackageProfiles([
+        { brandId: KNECHT, articleNumber: 'OX 389/1D' },
+        { brandId: '30', articleNumber: '0986479061' },
+      ]);
+
+      const [sql] = queryRaw.mock.calls[0] as [
+        { text: string; values: unknown[] },
+      ];
+      expect(sql.text).toContain('unnest(');
+      expect(sql.text).toContain('DISTINCT ON');
+      expect(sql.text).toContain('c.tecdoc_number = wanted.article_number');
+      expect(sql.text).toContain('c.tecdoc_supplier_id = wanted.brand_id');
+      expect(sql.values).toEqual([
+        ['OX 389/1D', '0986479061'],
+        [KNECHT, '30'],
+      ]);
+    });
+
+    it('asks nothing for no identities', async () => {
+      await expect(repository.findPackageProfiles([])).resolves.toEqual([]);
+      expect(queryRaw).not.toHaveBeenCalled();
+    });
+  });
 });

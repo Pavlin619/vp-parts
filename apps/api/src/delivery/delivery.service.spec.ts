@@ -14,7 +14,7 @@ import {
 } from '../cart';
 import { AvailabilityByArticle, InventoryService } from '../inventory';
 import { RedisCache } from '../redis';
-import type { ShippingProfile } from '../tecdoc';
+import type { ResolvedShippingProfile } from '../cart';
 import { DELIVERY_CARRIERS } from './delivery-carrier';
 import {
   DeliveryLockerIneligibleException,
@@ -32,13 +32,19 @@ const ECONTOMAT: LockerLimits = {
 
 const REQUESTER = { clerkId: null, token: 'token' };
 
-const PROFILES: Record<string, ShippingProfile> = {
+const PROFILES: Record<string, ResolvedShippingProfile> = {
   FILTER: {
     weightGrams: 47,
     packageCm: { length: 7.5, width: 7.5, height: 12 },
+    isEstimated: false,
   },
-  PAD: { weightGrams: 2000, packageCm: null },
-  DISC: { weightGrams: null, packageCm: null },
+  ESTIMATED_FILTER: {
+    weightGrams: 47,
+    packageCm: { length: 7.5, width: 7.5, height: 12 },
+    isEstimated: true,
+  },
+  PAD: { weightGrams: 2000, packageCm: null, isEstimated: false },
+  DISC: { weightGrams: null, packageCm: null, isEstimated: false },
 };
 
 function line(articleNumber: string, quantity = 1): CartShippingLine {
@@ -235,6 +241,21 @@ describe('DeliveryService', () => {
       expect(parcel.isLockerEligible).toBe(true);
     });
 
+    it('keeps a parcel holding an estimated line out of the locker, however small', async () => {
+      shipping.lines = [line('FILTER'), line('ESTIMATED_FILTER')];
+
+      const parcel = await service.estimateParcel(
+        REQUESTER,
+        ShippingMethod.ECONT,
+      );
+
+      expect(parcel).toEqual({
+        weightGrams: 94,
+        unmeasuredArticles: [],
+        isLockerEligible: false,
+      });
+    });
+
     it('never offers a locker for a carrier without lockers', async () => {
       shipping.lines = [line('FILTER')];
 
@@ -419,6 +440,30 @@ describe('DeliveryService', () => {
         '2026-09-28',
       );
       expect(result.parcel.isLockerEligible).toBe(true);
+    });
+
+    it('refuses a locker for a parcel holding an estimated line', async () => {
+      econt.findOffice.mockResolvedValueOnce(office(DeliveryOfficeType.LOCKER));
+      shipping.lines = [line('ESTIMATED_FILTER')];
+
+      await expect(
+        service.quote(REQUESTER, {
+          carrier: ShippingMethod.ECONT,
+          officeCode: '9010',
+        }),
+      ).rejects.toBeInstanceOf(DeliveryLockerIneligibleException);
+      expect(econt.quote).not.toHaveBeenCalled();
+    });
+
+    it('prices an office for a parcel holding an estimated line', async () => {
+      shipping.lines = [line('ESTIMATED_FILTER')];
+
+      const result = await service.quote(REQUESTER, {
+        carrier: ShippingMethod.ECONT,
+        officeCode: '9035',
+      });
+
+      expect(result.parcel.weightGrams).toBe(47);
     });
   });
 });

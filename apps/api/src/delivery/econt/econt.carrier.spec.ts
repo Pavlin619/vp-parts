@@ -15,6 +15,7 @@ const CONFIG: Record<string, string> = {
 const PARCEL: Parcel = {
   weightGrams: 1000,
   unitsCm: null,
+  hasEstimatedUnits: false,
 };
 
 describe('EcontCarrier', () => {

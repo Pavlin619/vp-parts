@@ -68,6 +68,7 @@ describe('ArticlesTecDoc', () => {
         includeImages: true,
         includeArticleCriteria: true,
         includeOEMNumbers: true,
+        includeArticleLogisticsCriteria: true,
       });
       expect(params).not.toHaveProperty('includeAll');
     });

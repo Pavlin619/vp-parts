@@ -2,6 +2,7 @@ export { CartModule } from './cart.module';
 export { CartService } from './cart.service';
 export type { CartShipping } from './cart.service';
 export type { CartShippingLine } from './cart.mapper';
+export type { ResolvedShippingProfile } from './cart-shipping';
 export { CartRepository } from './cart.repository';
 export { CartEmptyException } from './cart.exceptions';
 export type { CartRecord, CartLineInput } from './cart.repository';

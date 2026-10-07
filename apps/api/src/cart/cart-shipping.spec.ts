@@ -46,6 +46,7 @@ describe('toShippingColumns', () => {
     const columns = toShippingColumns({
       weightGrams: 47,
       packageCm: { length: 12, width: 7.5, height: 7.5 },
+      isEstimated: false,
     });
 
     expect(columns).toEqual({
@@ -53,30 +54,46 @@ describe('toShippingColumns', () => {
       packageLengthCm: 12,
       packageWidthCm: 7.5,
       packageHeightCm: 7.5,
+      isShippingEstimated: false,
     });
   });
 
   it('stores null for whatever TecDoc does not file', () => {
-    const columns = toShippingColumns({ weightGrams: null, packageCm: null });
+    const columns = toShippingColumns({ ...NOTHING, isEstimated: false });
 
     expect(columns).toEqual({
       weightGrams: null,
       packageLengthCm: null,
       packageWidthCm: null,
       packageHeightCm: null,
+      isShippingEstimated: false,
     });
+  });
+
+  it('records that a profile was estimated', () => {
+    const columns = toShippingColumns({
+      weightGrams: 6690,
+      packageCm: null,
+      isEstimated: true,
+    });
+
+    expect(columns.isShippingEstimated).toBe(true);
   });
 });
 
 describe('fromShippingColumns', () => {
-  it('rebuilds the profile it was stored from', () => {
-    const profile = {
-      weightGrams: 2000,
-      packageCm: { length: 30, width: 20, height: 10 },
-    };
+  it.each([false, true])(
+    'rebuilds the profile it was stored from (estimated: %s)',
+    (isEstimated) => {
+      const profile = {
+        weightGrams: 2000,
+        packageCm: { length: 30, width: 20, height: 10 },
+        isEstimated,
+      };
 
-    expect(fromShippingColumns(toShippingColumns(profile))).toEqual(profile);
-  });
+      expect(fromShippingColumns(toShippingColumns(profile))).toEqual(profile);
+    },
+  );
 
   it('keeps a weight without a box', () => {
     const profile = fromShippingColumns({
@@ -84,9 +101,14 @@ describe('fromShippingColumns', () => {
       packageLengthCm: null,
       packageWidthCm: null,
       packageHeightCm: null,
+      isShippingEstimated: false,
     });
 
-    expect(profile).toEqual({ weightGrams: 2000, packageCm: null });
+    expect(profile).toEqual({
+      weightGrams: 2000,
+      packageCm: null,
+      isEstimated: false,
+    });
   });
 
   it('reads a box missing any side as no box at all', () => {
@@ -95,6 +117,7 @@ describe('fromShippingColumns', () => {
       packageLengthCm: 30,
       packageWidthCm: 20,
       packageHeightCm: null,
+      isShippingEstimated: false,
     });
 
     expect(profile.packageCm).toBeNull();

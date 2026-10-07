@@ -1,28 +1,36 @@
 import type { ShippingProfile } from '../tecdoc';
 
-/** How a {@link ShippingProfile} is stored on a `CartItem` row. */
+/** A line's profile, and whether any half of it was estimated rather than measured. */
+export interface ResolvedShippingProfile extends ShippingProfile {
+  isEstimated: boolean;
+}
+
+/** How a {@link ResolvedShippingProfile} is stored on a `CartItem` row. */
 export interface CartShippingColumns {
   weightGrams: number | null;
   packageLengthCm: number | null;
   packageWidthCm: number | null;
   packageHeightCm: number | null;
+  isShippingEstimated: boolean;
 }
 
 export function toShippingColumns({
   weightGrams,
   packageCm,
-}: ShippingProfile): CartShippingColumns {
+  isEstimated,
+}: ResolvedShippingProfile): CartShippingColumns {
   return {
     weightGrams,
     packageLengthCm: packageCm?.length ?? null,
     packageWidthCm: packageCm?.width ?? null,
     packageHeightCm: packageCm?.height ?? null,
+    isShippingEstimated: isEstimated,
   };
 }
 
 export function fromShippingColumns(
   columns: CartShippingColumns,
-): ShippingProfile {
+): ResolvedShippingProfile {
   const { packageLengthCm, packageWidthCm, packageHeightCm } = columns;
   const isBoxed =
     packageLengthCm !== null &&
@@ -38,6 +46,7 @@ export function fromShippingColumns(
           height: packageHeightCm,
         }
       : null,
+    isEstimated: columns.isShippingEstimated,
   };
 }
 

@@ -15,6 +15,15 @@ interface RawPackageRow {
 
 const UNKNOWN_PROFILE: ShippingProfile = { weightGrams: null, packageCm: null };
 
+/** The row carrying the most measurements first, so a weight and its box come from one record. */
+const BEST_MEASURED_FIRST = Prisma.sql`
+  (package_weight_kg IS NOT NULL) DESC,
+  (package_length_cm IS NOT NULL
+   AND package_width_cm IS NOT NULL
+   AND package_height_cm IS NOT NULL) DESC,
+  supplier_source
+`;
+
 /**
  * Read-only access to the backoffice-owned `public.supplier_product_catalog`,
  * for the packed weight and box size suppliers publish. The shop role has
@@ -27,10 +36,7 @@ const UNKNOWN_PROFILE: ShippingProfile = { weightGrams: null, packageCm: null };
 export class SupplierCatalogRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * One part can be filed by several suppliers; the row carrying the most
-   * measurements wins, so a weight and the box beside it come from one record.
-   */
+  /** One part can be filed by several suppliers; see {@link BEST_MEASURED_FIRST}. */
   async findPackageProfile({
     brandId,
     articleNumber,
@@ -40,15 +46,35 @@ export class SupplierCatalogRepository {
       FROM public.supplier_product_catalog
       WHERE tecdoc_number = ${articleNumber}
         AND tecdoc_supplier_id = ${brandId}
-      ORDER BY (package_weight_kg IS NOT NULL) DESC,
-               (package_length_cm IS NOT NULL
-                AND package_width_cm IS NOT NULL
-                AND package_height_cm IS NOT NULL) DESC,
-               supplier_source
+      ORDER BY ${BEST_MEASURED_FIRST}
       LIMIT 1
     `);
 
     return rows.length === 0 ? UNKNOWN_PROFILE : toShippingProfile(rows[0]);
+  }
+
+  /** {@link findPackageProfile} for many parts in one query. Parts the catalogue lacks are absent. */
+  async findPackageProfiles(
+    identities: ArticleIdentityDto[],
+  ): Promise<ShippingProfile[]> {
+    if (identities.length === 0) {
+      return [];
+    }
+
+    const articleNumbers = identities.map((identity) => identity.articleNumber);
+    const brandIds = identities.map((identity) => identity.brandId);
+    const rows = await this.prisma.$queryRaw<RawPackageRow[]>(Prisma.sql`
+      SELECT DISTINCT ON (wanted.article_number, wanted.brand_id)
+             package_weight_kg, package_length_cm, package_width_cm, package_height_cm
+      FROM unnest(${articleNumbers}::text[], ${brandIds}::text[])
+             AS wanted(article_number, brand_id)
+      JOIN public.supplier_product_catalog c
+        ON c.tecdoc_number = wanted.article_number
+       AND c.tecdoc_supplier_id = wanted.brand_id
+      ORDER BY wanted.article_number, wanted.brand_id, ${BEST_MEASURED_FIRST}
+    `);
+
+    return rows.map(toShippingProfile);
   }
 }
 

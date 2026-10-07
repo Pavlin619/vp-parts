@@ -21,6 +21,7 @@ const LINE = {
   shippingProfile: {
     weightGrams: 2000,
     packageCm: { length: 30, width: 20, height: 10 },
+    isEstimated: true,
   },
 };
 
@@ -29,6 +30,7 @@ const SHIPPING_COLUMNS = {
   packageLengthCm: 30,
   packageWidthCm: 20,
   packageHeightCm: 10,
+  isShippingEstimated: true,
 };
 
 const MERGED_LINE = {

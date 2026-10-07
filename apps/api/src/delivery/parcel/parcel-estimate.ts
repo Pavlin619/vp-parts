@@ -1,16 +1,19 @@
 import type { ArticleIdentityDto } from '@vp-parts-shop/shared';
-import type { PackageSizeCm, ShippingProfile } from '../../tecdoc';
+import type { ResolvedShippingProfile } from '../../cart';
+import type { PackageSizeCm } from '../../tecdoc';
 
 export interface ParcelLine {
   article: ArticleIdentityDto;
   quantity: number;
-  shippingProfile: ShippingProfile;
+  shippingProfile: ResolvedShippingProfile;
 }
 
 export interface Parcel {
   /** One entry per physical unit; null when any unit's box is unknown. */
   unitsCm: PackageSizeCm[] | null;
   weightGrams: number;
+  /** True when any line's weight or box was estimated rather than measured. */
+  hasEstimatedUnits: boolean;
 }
 
 /** A parcel is weighed only from the parts' own data; one unknown part leaves it unweighed. */
@@ -32,6 +35,7 @@ export function estimateParcel(lines: ParcelLine[]): ParcelEstimate {
     parcel: {
       weightGrams: totalWeightGrams(lines),
       unitsCm: unitSizes(lines),
+      hasEstimatedUnits: lines.some((line) => line.shippingProfile.isEstimated),
     },
   };
 }
