@@ -49,6 +49,6 @@ import {
     tecDocSourceProvider(LinkedVehiclesTecDoc),
     LinkedVehiclesService,
   ],
-  exports: [ArticleReadCache],
+  exports: [ArticleReadCache, CrossReferencesService],
 })
 export class CatalogModule {}

@@ -17,6 +17,7 @@ const CONFIG: Record<string, string> = {
 const PARCEL: Parcel = {
   weightGrams: 2300,
   unitsCm: null,
+  hasEstimatedUnits: false,
 };
 
 const SEND_DATE = '2026-09-28';

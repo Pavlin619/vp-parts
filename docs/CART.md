@@ -24,20 +24,26 @@ dearer than when you added it" beside the live figure. See
 
 ### The one catalogue fact a line keeps: what the part weighs
 
-`CartItem` also stores the part's weight and packed size (supplier catalogue first, TecDoc for what it lacks) (`weightGrams`,
-`packageLengthCm`/`WidthCm`/`HeightCm`), so checkout can weigh the cart into a
+`CartItem` also stores the part's weight and packed size (`weightGrams`,
+`packageLengthCm`/`WidthCm`/`HeightCm`) and whether they were estimated
+(`isShippingEstimated`), so checkout can weigh the cart into a
 parcel from the cart read alone, with no TecDoc call per line. This is not
 valuation: it changes only with a TecDoc data release, not with stock or price.
 
 - **The API reads it, never the client.** `CartService.addLine` takes it from
-  `SupplierCatalogRepository`, then `ArticleReadCache` (usually cached by the page the part was added from) for what the catalogue lacks; the
-  request body cannot supply it, because it decides a delivery price.
+  `ShippingProfileResolver`: the supplier catalogue, then `ArticleReadCache` (usually
+  cached by the page the part was added from), then the median of the part's
+  cross-references. The request body cannot supply it, because it decides a delivery
+  price. The chain is in [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md).
+- **`isShippingEstimated` is true when any half came from the cross-references.** An
+  estimate is close enough to price an office parcel on, but not to promise a locker
+  cell, so delivery keeps such a parcel out of lockers.
 - **So an add reads the catalogue, and can fail on it.** When the supplier catalogue
   lacks a weight or box, a part TecDoc does not
   know is refused `404 ARTICLE_NOT_FOUND`, and an outage `503
   CATALOG_UNAVAILABLE`, both before any cart is minted. Nothing can be sold
   while TecDoc is down, so an add failing with it is accepted.
-- **Null means neither source files a value**, never "not read yet". A box is used only
+- **Null means no source files a value**, never "not read yet". A box is used only
   when all three sides are present.
 - Re-adding a part refreshes it; a merge carries it with the line.
 - It never reaches the wire: `CartLineDto` is unchanged. Delivery reads it

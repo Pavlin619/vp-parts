@@ -122,8 +122,16 @@ export class CrossReferencesService {
     };
   }
 
+  /** The parts that replace this one, unordered and unhydrated, for the cart to weigh a part by. */
+  getCandidates(
+    brandId: number,
+    articleNumber: string,
+  ): Promise<CrossReferenceCandidate[]> {
+    return this.loadCrossReferences(brandId, articleNumber);
+  }
+
   /**
-   * The cached cross-reference set behind both surfaces. The shorter miss TTL
+   * The cached cross-reference set behind every reader of it. The shorter miss TTL
    * keeps a part that is briefly missing its equivalents from being remembered as
    * having none for a whole day.
    *

@@ -6,8 +6,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { Cart, CartItem, CartStatus, Prisma } from '../generated/prisma';
 import { PrismaService } from '../prisma';
-import type { ShippingProfile } from '../tecdoc';
-import { toShippingColumns } from './cart-shipping';
+import { ResolvedShippingProfile, toShippingColumns } from './cart-shipping';
 
 export type CartRecord = Cart & { items: CartItem[] };
 
@@ -19,7 +18,7 @@ export interface CartLineInput extends ArticleIdentityDto {
   description: string;
   thumbnailUrl: string | null;
   addedAtPriceIncVat: number | null;
-  shippingProfile: ShippingProfile;
+  shippingProfile: ResolvedShippingProfile;
 }
 
 export interface CartLinePatch {

@@ -1,7 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { EMPTY_CART, MAX_CART_LINES } from '@vp-parts-shop/shared';
-import { ArticleNotFoundException, ArticleReadCache } from '../catalog';
-import { SupplierCatalogRepository } from '../inventory';
+import { ArticleNotFoundException } from '../catalog';
 import { CustomersService } from '../customers';
 import { CatalogUnavailableException } from '../tecdoc';
 import {
@@ -13,6 +12,7 @@ import {
   MergedCartLine,
 } from './cart.repository';
 import { CartService, NewCartLine } from './cart.service';
+import { ShippingProfileResolver } from './shipping-profile/shipping-profile.resolver';
 import {
   CartFullException,
   CartItemNotFoundException,
@@ -24,6 +24,7 @@ const TOKEN = 'a'.repeat(43);
 const SHIPPING_PROFILE = {
   weightGrams: 2000,
   packageCm: { length: 30, width: 20, height: 10 },
+  isEstimated: false,
 };
 
 function item(overrides: Partial<CartRecord['items'][number]> = {}) {
@@ -43,6 +44,7 @@ function item(overrides: Partial<CartRecord['items'][number]> = {}) {
     packageLengthCm: 30,
     packageWidthCm: 20,
     packageHeightCm: 10,
+    isShippingEstimated: false,
     addedAt: new Date('2026-09-01T10:00:00.000Z'),
     updatedAt: new Date('2026-09-01T10:00:00.000Z'),
     ...overrides,
@@ -99,8 +101,7 @@ describe('CartService', () => {
   const mergeInto = jest.fn();
   const deleteExpiredGuestCarts = jest.fn();
   const findByClerkId = jest.fn();
-  const readArticle = jest.fn();
-  const findPackageProfile = jest.fn();
+  const resolveShippingProfile = jest.fn();
 
   const repository = {
     findActiveByToken,
@@ -118,26 +119,20 @@ describe('CartService', () => {
     deleteExpiredGuestCarts,
   } as unknown as CartRepository;
   const customers = { findByClerkId } as unknown as CustomersService;
-  const articles = { read: readArticle } as unknown as ArticleReadCache;
-  const supplierCatalog = {
-    findPackageProfile,
-  } as unknown as SupplierCatalogRepository;
+  const shippingProfiles = {
+    resolve: resolveShippingProfile,
+  } as unknown as ShippingProfileResolver;
 
   beforeEach(async () => {
     jest.resetAllMocks();
-    readArticle.mockResolvedValue({ shippingProfile: SHIPPING_PROFILE });
-    findPackageProfile.mockResolvedValue({
-      weightGrams: null,
-      packageCm: null,
-    });
+    resolveShippingProfile.mockResolvedValue(SHIPPING_PROFILE);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         CartService,
         { provide: CartRepository, useValue: repository },
         { provide: CustomersService, useValue: customers },
-        { provide: ArticleReadCache, useValue: articles },
-        { provide: SupplierCatalogRepository, useValue: supplierCatalog },
+        { provide: ShippingProfileResolver, useValue: shippingProfiles },
       ],
     }).compile();
 
@@ -257,68 +252,27 @@ describe('CartService', () => {
       expect(createForGuest).not.toHaveBeenCalled();
     });
 
-    it('stores the shipping profile the catalogue holds for the part', async () => {
-      findActiveByToken.mockResolvedValue(cart());
-      addLine.mockResolvedValue(cart());
-
-      await service.addLine({ clerkId: null, token: TOKEN }, lineInput());
-
-      expect(readArticle).toHaveBeenCalledWith(30, '0986479061');
-      expect(addLine).toHaveBeenCalledWith('cart-1', {
-        ...lineInput(),
-        shippingProfile: SHIPPING_PROFILE,
-      });
-    });
-
-    it('stores the supplier catalogue figures without reading TecDoc when they are complete', async () => {
-      const packed = {
-        weightGrams: 68,
-        packageCm: { length: 12, width: 7.5, height: 7.5 },
+    it('stores the shipping profile resolved for the part', async () => {
+      const estimated = {
+        weightGrams: 6690,
+        packageCm: null,
+        isEstimated: true,
       };
       findActiveByToken.mockResolvedValue(cart());
       addLine.mockResolvedValue(cart());
-      findPackageProfile.mockResolvedValue(packed);
+      resolveShippingProfile.mockResolvedValue(estimated);
 
       await service.addLine({ clerkId: null, token: TOKEN }, lineInput());
 
-      expect(findPackageProfile).toHaveBeenCalledWith({
-        brandId: '30',
-        articleNumber: '0986479061',
-      });
-      expect(readArticle).not.toHaveBeenCalled();
+      expect(resolveShippingProfile).toHaveBeenCalledWith(lineInput());
       expect(addLine).toHaveBeenCalledWith('cart-1', {
         ...lineInput(),
-        shippingProfile: packed,
-      });
-    });
-
-    it('fills what the supplier catalogue lacks from TecDoc', async () => {
-      findActiveByToken.mockResolvedValue(cart());
-      addLine.mockResolvedValue(cart());
-      findPackageProfile.mockResolvedValue({
-        weightGrams: 68,
-        packageCm: null,
-      });
-      readArticle.mockResolvedValue({
-        shippingProfile: {
-          weightGrams: 50,
-          packageCm: SHIPPING_PROFILE.packageCm,
-        },
-      });
-
-      await service.addLine({ clerkId: null, token: TOKEN }, lineInput());
-
-      expect(addLine).toHaveBeenCalledWith('cart-1', {
-        ...lineInput(),
-        shippingProfile: {
-          weightGrams: 68,
-          packageCm: SHIPPING_PROFILE.packageCm,
-        },
+        shippingProfile: estimated,
       });
     });
 
     it('refuses a part the catalogue does not hold, before minting a cart', async () => {
-      readArticle.mockRejectedValue(new ArticleNotFoundException());
+      resolveShippingProfile.mockRejectedValue(new ArticleNotFoundException());
 
       await expect(
         service.addLine({ clerkId: null, token: null }, lineInput()),
@@ -329,7 +283,9 @@ describe('CartService', () => {
 
     it('writes nothing while the catalogue is unreachable', async () => {
       findActiveByToken.mockResolvedValue(cart());
-      readArticle.mockRejectedValue(new CatalogUnavailableException());
+      resolveShippingProfile.mockRejectedValue(
+        new CatalogUnavailableException(),
+      );
 
       await expect(
         service.addLine({ clerkId: null, token: TOKEN }, lineInput()),
@@ -420,7 +376,11 @@ describe('CartService', () => {
         {
           article: { brandId: '30', articleNumber: 'P85020' },
           quantity: 1,
-          shippingProfile: { weightGrams: null, packageCm: null },
+          shippingProfile: {
+            weightGrams: null,
+            packageCm: null,
+            isEstimated: false,
+          },
         },
       ]);
     });

@@ -190,10 +190,15 @@ function toParcelEstimateDto(
   }
 
   const { parcel } = estimate;
+  // A locker cell refuses an oversize parcel at drop-off, so only measured figures may claim a fit.
+  const isLockerEligible =
+    lockerLimits !== null &&
+    !parcel.hasEstimatedUnits &&
+    fitsLocker(parcel, lockerLimits);
 
   return {
     weightGrams: parcel.weightGrams,
     unmeasuredArticles: [],
-    isLockerEligible: lockerLimits !== null && fitsLocker(parcel, lockerLimits),
+    isLockerEligible,
   };
 }

@@ -8,9 +8,9 @@ import {
 } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import type Redis from 'ioredis';
-import { ArticlesTecDoc } from '../src/catalog';
+import { ArticlesTecDoc, CrossReferencesTecDoc } from '../src/catalog';
 import { EcontTransport } from '../src/delivery/econt/econt.transport';
-import { InventoryService } from '../src/inventory';
+import { InventoryService, SupplierCatalogRepository } from '../src/inventory';
 import { PrismaService } from '../src/prisma';
 import { REDIS_CLIENT } from '../src/redis';
 import { CatalogUnavailableException } from '../src/tecdoc';
@@ -123,14 +123,38 @@ const PROFILES: Record<string, object> = {
   },
   PAD: { weightGrams: 2000, packageCm: null },
   DISC: { weightGrams: null, packageCm: null },
+  EQUIVALENT_DISC: { weightGrams: null, packageCm: null },
 };
+
+const BRAKE_DISC = 82;
 
 const readArticle = (_brandId: number, articleNumber: string) =>
   Promise.resolve({
     detail: {},
-    genericArticleIds: [],
+    genericArticleIds: articleNumber === 'EQUIVALENT_DISC' ? [BRAKE_DISC] : [],
     shippingProfile: PROFILES[articleNumber],
   });
+
+/** Three parts citing EQUIVALENT_DISC, which the supplier catalogue weighs. */
+const EQUIVALENT_NUMBERS = ['DF1', 'DF2', 'DF3'];
+
+const crossReferences = {
+  getCrossReferenceCandidates: jest.fn(() =>
+    Promise.resolve(
+      EQUIVALENT_NUMBERS.map((articleNumber) => ({
+        brandId: '101',
+        brandName: 'FERODO',
+        articleNumber,
+        description: 'Спирачен диск',
+        legacyArticleIds: [],
+        articleStatusId: 1,
+        citedNumbers: [{ brandId: '30', articleNumber: 'EQUIVALENT_DISC' }],
+      })),
+    ),
+  ),
+};
+
+const EQUIVALENT_BOX = { length: 30, width: 30, height: 6 };
 
 const articles = { getArticleDetails: jest.fn(readArticle) };
 
@@ -154,8 +178,23 @@ describe('Delivery (e2e)', () => {
       builder.overrideProvider(EcontTransport).useValue(econt);
       builder.overrideProvider(ArticlesTecDoc).useValue(articles);
       builder.overrideProvider(InventoryService).useValue(inventory);
+      builder.overrideProvider(CrossReferencesTecDoc).useValue(crossReferences);
     });
     prisma = app.get(PrismaService);
+    jest
+      .spyOn(app.get(SupplierCatalogRepository), 'findPackageProfiles')
+      .mockImplementation((identities) =>
+        Promise.resolve(
+          identities
+            .filter(({ articleNumber }) =>
+              EQUIVALENT_NUMBERS.includes(articleNumber),
+            )
+            .map((_, index) => ({
+              weightGrams: 6600 + index * 100,
+              packageCm: EQUIVALENT_BOX,
+            })),
+        ),
+      );
   });
 
   afterAll(async () => {
@@ -273,6 +312,31 @@ describe('Delivery (e2e)', () => {
       });
     });
 
+    it('estimates a part from its equivalents and keeps it out of a locker', async () => {
+      const token = await openCart('EQUIVALENT_DISC');
+
+      const stored = await prisma.cartItem.findFirstOrThrow({
+        where: { cart: { token }, articleNumber: 'EQUIVALENT_DISC' },
+      });
+      expect(stored).toMatchObject({
+        weightGrams: 6700,
+        packageLengthCm: 30,
+        isShippingEstimated: true,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/delivery/parcel')
+        .query({ carrier: ShippingMethod.ECONT })
+        .set(CART_TOKEN_HEADER, token)
+        .expect(200);
+
+      expect(response.body).toEqual({
+        weightGrams: 6700,
+        unmeasuredArticles: [],
+        isLockerEligible: false,
+      });
+    });
+
     it('weighs from the cart alone, without reading the catalogue', async () => {
       const token = await openCart('FILTER', 'PAD');
       await app.get<Redis>(REDIS_CLIENT).flushall();
@@ -359,6 +423,33 @@ describe('Delivery (e2e)', () => {
         .set(CART_TOKEN_HEADER, token)
         .send({ carrier: ShippingMethod.ECONT, officeCode: '9010' })
         .expect(200);
+    });
+
+    it('prices an office for a parcel weighed from equivalents', async () => {
+      const token = await openCart('EQUIVALENT_DISC');
+
+      const response = await request(app.getHttpServer())
+        .post('/delivery/quote')
+        .set(CART_TOKEN_HEADER, token)
+        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
+        .expect(200);
+
+      expect(response.body.parcel.weightGrams).toBe(6700);
+    });
+
+    it('refuses a locker for a parcel weighed from equivalents', async () => {
+      const token = await openCart('EQUIVALENT_DISC');
+
+      const response = await request(app.getHttpServer())
+        .post('/delivery/quote')
+        .set(CART_TOKEN_HEADER, token)
+        .send({ carrier: ShippingMethod.ECONT, officeCode: '9010' })
+        .expect(422);
+
+      expect(response.body).toEqual({
+        statusCode: 422,
+        errorCode: AppErrorCode.DELIVERY_LOCKER_INELIGIBLE,
+      });
     });
 
     it('refuses a parcel holding a part with no weight', async () => {

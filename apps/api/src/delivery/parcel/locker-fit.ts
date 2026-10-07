@@ -9,7 +9,11 @@ export interface LockerLimits {
   fillFactor: number;
 }
 
-export function fitsLocker(parcel: Parcel, limits: LockerLimits): boolean {
+/** Geometry and weight only; whether the figures were estimated is the caller's to decide. */
+export function fitsLocker(
+  parcel: Pick<Parcel, 'unitsCm' | 'weightGrams'>,
+  limits: LockerLimits,
+): boolean {
   const units = parcel.unitsCm;
 
   if (!units || units.length === 0) {

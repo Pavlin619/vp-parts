@@ -18,10 +18,10 @@ lines, weights or prices. Order creation must refuse a quote whose `cartVersion`
 not the cart's current version. That check lands with orders.
 
 Both `/parcel` and `/quote` answer `422 CART_EMPTY` when no cart line is selected, so
-an empty parcel is never weighed or priced. When a selected part has no known
-weight, `/parcel` answers `weightGrams: null` and names the parts in
+an empty parcel is never weighed or priced. When a selected part has no known or
+estimated weight, `/parcel` answers `weightGrams: null` and names the parts in
 `unmeasuredArticles`, and `/quote` answers `422 DELIVERY_PARCEL_UNMEASURED` (see
-[below](#a-part-with-no-weight-is-not-guessed)).
+[below](#a-part-with-no-weight-of-its-own-is-estimated-from-its-equivalents)).
 
 ## The office picker in the web checkout
 
@@ -305,11 +305,12 @@ out of stock or short, the quote still carries a price but no date.
 **[VERIFY]** that a parcel ready on a day still reaches Econt that day. A Poland part
 ready late in the afternoon may only leave the next morning.
 
-## Parcel weight and size: supplier catalogue first, then TecDoc
+## Parcel weight and size: supplier catalogue, TecDoc, then equivalents
 
-Two sources, read in this order when a part is added to the cart. Each half (weight,
-box) is taken from the first source that has it, and TecDoc is not called at all when
-the supplier catalogue already knows both.
+Three sources, read in this order when a part is added to the cart
+(`ShippingProfileResolver`). Each half (weight, box) is taken from the first source
+that has it. TecDoc is not called at all when the supplier catalogue already knows
+both, and equivalents are not asked for when the part's own data has a weight.
 
 1. **`public.supplier_product_catalog`** (backoffice, read-only),
    `SupplierCatalogRepository.findPackageProfile`. Packed kilograms and centimetres from
@@ -319,7 +320,9 @@ the supplier catalogue already knows both.
    with the most measurements wins, so a weight and its box come from one record.
    `NULL` means not measured, never zero. The shop role is granted only the seven columns
    it reads (`infra/db/01-shop-provisioning.sql`, 3c).
-2. **TecDoc article criteria**, below.
+2. **TecDoc logistics and article criteria**, below.
+3. **The parts that replace it**, when neither knows the weight; see
+   [below](#a-part-with-no-weight-of-its-own-is-estimated-from-its-equivalents).
 
 Measured on the InterCars file (2026-09-25): 2,066,290 of 7,043,670 rows have a weight and
 1,816,173 a full box. These are *packed* figures, closer to what Econt charges on than
@@ -332,8 +335,10 @@ mismatch misses silently and falls through to TecDoc.
 
 ### TecDoc
 
-TecDoc files them as article criteria, read on
-the single-article call we already cache (`includeArticleCriteria`, so no new flag).
+TecDoc files them in two places on the single-article call we already cache: the
+logistics table (`includeArticleLogisticsCriteria`), which describes the *packed* part,
+and the article criteria (`includeArticleCriteria`), which are mostly the *bare* part.
+Each half is taken from logistics first.
 
 **They are read once, when a part is added to the cart, and stored on the line**
 (`CartItem.weightGrams`, `packageLengthCm`/`WidthCm`/`HeightCm`; see
@@ -351,6 +356,8 @@ from search results, whose rows are cached under a different key than the detail
 | `2612` | нето тегло | kg |
 | `212` | Тегло | kg |
 | `1620` / `1621` / `1622` | package length / width / height | cm |
+| `3870` (logistics) | packed weight | g |
+| `4197` / `4198` / `4199` (logistics) | packed length / width / height | **mm** |
 
 We read `rawValue`, never `formattedValue`. The raw value is a bare number with a
 decimal comma or point (`'7,50'`, `'12,00'`, `'0,109'`, measured 2026-09-25), while the
@@ -382,29 +389,68 @@ So the rule is:
    line is never stored unweighed because of an outage. Staff would otherwise be sent
    to measure a part TecDoc describes. Weighing itself never calls TecDoc.
 
-### A part with no weight is not guessed
+### A part with no weight of its own is estimated from its equivalents
 
-There is no per-category or global default weight. A default was tried and dropped:
-two parts in one category differ too much in weight and size (a small and a large
-brake disc, a bumper with or without its grille), so a default misquotes in both
-directions and we cannot tell which way.
+When neither the catalogue nor TecDoc weighs a part, the parts that replace it are
+weighed instead: the cross-reference candidate set (the same cached
+`tecdoc:crossrefs:*` entry the substitutes tab reads; see
+[CROSS-REFERENCES.md](./CROSS-REFERENCES.md)), looked up in the supplier catalogue in
+one query (`findPackageProfiles`). `estimateFromEquivalents` takes **the median weight
+of every equivalent that has one**, even a single one, rounded up to a gram, and the
+median of each box side (sorted longest first) across equivalents with a full box.
+It does not know or care what the part is.
 
-Instead, a parcel holding any part with no weight is **unmeasured**. A part TecDoc
-does not list cannot be added to the cart at all (`404 ARTICLE_NOT_FOUND`). The checkout tells the customer that delivery will be priced
-by phone. Staff measure the part in the warehouse, call with the price, and record
-the measurement so the part is known next time. Where that measurement is stored, and
-how an order is placed with an open delivery price, land with orders.
+A line estimated this way is stored with `isShippingEstimated = true`, and never goes
+to a locker (below). An estimate is meant to land in the right Econt price step, not
+to be exact: a quote that is a step off costs the shop or the customer a couple of
+euros, which the business accepts.
+
+**Measured** on 2026-10-07 over 1,800 random in-stock parts (1,598 listed in TecDoc),
+plus a targeted sample of 420 brake discs, shock absorbers and wiper blades. Each
+part with its own catalogue weight was estimated from its equivalents alone and
+compared with that weight:
+
+| Rule | Parts estimated | Right Econt step | 2+ steps off | Unweighed parts it weighs |
+|---|---|---|---|---|
+| Median, ≥2 equivalents agreeing 75% on a step, disc-pair rule | 664 | 98.5% | 0% | 335 / 558 |
+| **Median of all weighed equivalents (shipped)** | **832** | **96.6%** | **0%** | **434 / 558** |
+| Median per piece, using TecDoc's `quantityPerPackage` | 832 | 95.9% | 0.1% | 434 / 558 |
+| Median, p75 when p75/p25 > 2 | 832 | 96.3% | 0% | 434 / 558 |
+
+- **Brake discs are not special.** Equivalents mix single discs and two-disc packs, but
+  singles are the majority, so the median lands on a single disc: 44 of 45 discs in
+  the right step, against 33 of 34 the dedicated pair rule estimated at all.
+- **A single equivalent is enough:** right step in 151 of 157 such parts.
+- **Most misses sit on a step boundary** (0.98 kg estimated at 1.00 kg). The real
+  ones are a cart line that is itself a pair estimated from singles (a 20.5 kg disc
+  pair at 10.5 kg). No rule over the equivalents can see that.
+- **`quantityPerPackage` is not usable for this.** It is filled on about 90% of
+  articles but is almost always `1`, and contradicts the weights where it is not:
+  12.3 kg disc pairs filed as 1, 6.2 kg single discs as 2, a spark plug "per 10"
+  weighing one plug. Normalising by it made every result worse (30 of 45 discs).
+
+**[VERIFY]** the weight steps (1 / 5 / 10 / 20 kg) used for scoring are the demo
+tariff's; check them against the contract tariff.
+
+**What is left unweighed.** A part with no weight of its own and no weighed
+equivalent (124 of 558 above) makes the parcel **unmeasured**, and the checkout tells
+the customer that delivery will be priced by phone. A per-category default is the
+last resort, after equivalents, in phase 2 of
+[PARCEL-ESTIMATION-PLAN.md](./PARCEL-ESTIMATION-PLAN.md). A part TecDoc does not list
+cannot be added to the cart at all (`404 ARTICLE_NOT_FOUND`).
 
 ## Locker eligibility (Econtomat)
 
-A parcel may go to a locker only if every line has a real package size, and the set
-fits the largest cell:
+A parcel may go to a locker only if every line has a real package size, no line was
+estimated from its equivalents, and the set fits the largest cell:
 - every unit fits by sides, longest to longest;
 - the summed volume is within cell volume × `ECONT_LOCKER_FILL_FACTOR`;
 - the weight is within `ECONT_LOCKER_MAX_WEIGHT_GRAMS`.
 
-One unmeasured line keeps the whole parcel out, so a courier never meets a box that
-does not fit. The quote refuses a locker for an ineligible parcel with `422
+One unmeasured or estimated line keeps the whole parcel out, so a courier never meets a
+box that does not fit. That rules out about 11% of parts, conservative by design.
+`fitsLocker` itself only checks geometry and weight; `DeliveryService` adds the
+estimation rule. The quote refuses a locker for an ineligible parcel with `422
 DELIVERY_LOCKER_INELIGIBLE`.
 
 **[VERIFY] The limits.** A search summary gives the largest cell as 61×44×37 cm with
