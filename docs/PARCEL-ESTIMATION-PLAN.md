@@ -1,6 +1,6 @@
 # Plan: every cart line gets a parcel weight (cross-references + product-type fallback)
 
-**Status: phase 1 implemented (2026-10-07); phase 2 not started.** Delete this file once both phases ship and their findings are folded into `DELIVERY-PROVIDERS.md`, `TECDOC.md`, `CROSS-REFERENCES.md` and `CART.md`.
+**Status: phase 1 implemented (2026-10-07); phase 2 planned (builder redesigned 2026-10-07), not started.** Delete this file once both phases ship and their findings are folded into `DELIVERY-PROVIDERS.md`, `TECDOC.md`, `CROSS-REFERENCES.md` and `CART.md`.
 
 ## Context
 
@@ -125,34 +125,85 @@ transaction.
 
 ### 2.2 Aggregation (pure): `cart/shipping-profile/product-type-profile.ts`
 `aggregateProductTypeProfile(samples)` takes `{ weightGrams, packageCm }[]` and returns a
-profile, or null when there are fewer than `MIN_SAMPLES` (5).
+profile, or null when no sample has a weight.
+- **No minimum sample size.** One weighed part of the same type is closer than the global
+  default, which is the deviation this table exists to avoid (a bumper must never fall back
+  to a filter's weight).
 - **Weight:** the median. For wide types (p75/p25 > 2, such as clutch kits, wheel-bearing kits
-  and discs) use p75 instead, so we overcharge slightly rather than undercharge.
-- **Box:** the median per sorted side when at least 3 samples have a full box; otherwise null.
+  and discs), use p75 instead, so we overcharge slightly rather than undercharge. A spread is
+  only meaningful with at least 4 samples; below that, use the median.
+- **Box:** the median per sorted side, over the samples that have a full box; null when none
+  does.
 
 ### 2.3 Builder: a manual script (user's choice)
-`apps/api/src/cli/build-product-type-parcel-profiles.ts`, a Nest standalone application
-context, run with a new `npm run parcel-profiles:build -- --sample 30000`. It reuses
-`TecDocTransport`, `articleLookupPayload` and the repositories.
-1. **Sample:** N random distinct **in-stock** identities that the catalogue measures
-   (`supplier_stock` + `autoparts`, with `availability > 0`). This comes from a read-only query
-   on a small builder repository. Check that the shop role's column grants cover it
-   (`infra/db/01-shop-provisioning.sql`).
-2. **Read each part's type** with one TecDoc lookup (`includeGenericArticles` only), at limited
-   concurrency with retries and backoff. Parts TecDoc doesn't find are skipped and counted.
-3. **Group and store:** group by `genericArticleId`, run `aggregateProductTypeProfile`, then
-   `replaceAll`.
-4. **Report:** types written, types skipped below `MIN_SAMPLES`, and the global p75 weight
-   (which feeds 2.4).
+`apps/api/src/cli/build-product-type-parcel-profiles.ts` is a Nest standalone application
+context, run with a new `npm run parcel-profiles:build`. It reuses `TecDocTransport`,
+`SupplierCatalogRepository.findPackageProfiles` and the repositories.
 
-Sampling from parts we stock avoids both biases the spike found in TecDoc's per-type
-listing: it is alphabetical by brand, and it mixes in truck parts (clutch kits came out at
-36 kg). Run it before launch, then on demand.
+It asks TecDoc which articles belong to each product type, restricted to **the brands we
+stock**, and weighs those articles from our own catalogue. TecDoc returns the type, and the
+catalogue returns the weight. It never walks our ~686k in-stock identities one by one, because
+no TecDoc call takes a list of article numbers.
+
+1. **Our brands (DB, no TecDoc):** the distinct numeric `tecdoc_supplier_id`s with stock
+   (`supplier_stock.availability > 0`, `autoparts.available_quantity > 0`). That is 896 brands
+   locally. For each brand, also count its weighed `supplier_product_catalog` rows; that
+   count ranks the brands in step 4. This goes through a small read-only builder repository.
+   Check that the shop role's column grants cover it (`infra/db/01-shop-provisioning.sql`).
+2. **Every product type our brands have (1 call):** `getArticles` with
+   `dataSupplierIds: <our brands>`, `perPage: 0` and `includeGenericArticleFacets`. This
+   returns 8,571 types with an article count each.
+3. **Small types, up to 1000 articles (8,064 types, 1 call each):** `genericArticleIds: [type]`,
+   `dataSupplierIds: <our brands>`, `perPage: 1000`, and no include flags, because only
+   `articleNumber` and `dataSupplierId` are needed. This reads the whole type.
+4. **Big types, over 1000 articles (~507 types, ~11 calls each):** reading page 1 alone does
+   not work (see *Why big types are sampled by brand* below).
+   1. One call with `perPage: 0` and `includeDataSupplierFacets` gives the type's article
+      count per brand.
+   2. From the brands that have this type, keep the **10 that our catalogue weighs most**
+      (the step 1 ranking).
+   3. Make one call per kept brand: `dataSupplierIds: [brand]`, `perPage: 100`.
+5. **Weigh:** pass each type's identities to `findPackageProfiles` (one DB query per type),
+   then run `aggregateProductTypeProfile`.
+6. **Store:** `replaceAll` once, after every type is done.
+7. **Report:**
+   - types written;
+   - calls made, retries and duration;
+   - the global p75 weight, which feeds 2.4;
+   - **every type left without a weight**, with its article count, sorted largest first.
+     This goes to a JSON file and to stdout, so a bulky type (bumpers, say) is easy to spot.
+
+**Pacing (no published limit to size it on):** TecAlliance publishes no rate limit for
+Pegasus 3.0. The responses carry no `X-RateLimit-*` or `Retry-After` header, and the XSD
+documents only the ~10,000-result paging limit. The limit is per contract, so:
+- **1 request per second, one at a time.** About 12,600 calls (1 + 8,064 + ~507 × 9) take
+  **about 3.5 hours**. Several hundred calls one at a time (5–15/s) on 2026-10-07 returned
+  only normal replies, so 1/s is well inside what is known to work.
+- **Retries:**
+  - On a `429`, a `5xx`, a timeout or a reply that is not valid JSON, retry with a doubling
+    wait, starting at 5 s and honouring `Retry-After` if it ever appears.
+  - **After 3 failures in a row, stop the run** rather than keep pushing.
+- **Resumable:** progress is saved per finished type to a checkpoint file, and `--resume`
+  skips those types, so a stopped run never repeats calls.
+- **Counted:** every call counts toward any monthly quota, and the report states the total.
+- **When to run it:** before launch, then on demand and off-hours, because once deployed the
+  shop's own traffic shares the same key.
+
+**Why big types are sampled by brand.** Measured on 2026-10-07:
+- **TecDoc returns a type's articles in blocks by brand, and only the first ~10,000 can be
+  reached** (`maxAllowedPage` is 10 at `perPage: 1000`).
+- **Page 1 of a big type is usually one or two brands, and luck decides whether our catalogue
+  weighs them.** First 1000 brake discs: 0 weighed. Pads, alternators and starters: also 0.
+- **Neither workaround fixes it.** Reading pages 5 and 10 left 17 of 120 large types still
+  with no weight. `sort: articleNumber` still returned a single brand.
+
+Asking for the brands our catalogue weighs most makes hits likely by construction, and taking
+10 of them keeps one brand's quirks (such as discs sold in pairs) out of the median.
 
 ### 2.4 Resolver step 4, and the global default
 - In `ShippingProfileResolver`, after step 3: if the weight is still null, look up
   `ProductTypeParcelProfile` by the article read's `genericArticleIds[0]`. If no row exists,
-  use the constant `UNKNOWN_PRODUCT_TYPE_PROFILE`: a weight from the builder's global p75 and
+  use the constant `UNKNOWN_PRODUCT_TYPE_PROFILE`: a weight from the builder's global p75, and
   no box. Its value is recorded in the docs.
 - Every TecDoc-listed line now gets a weight, and `isEstimated` is true for anything from
   step 3 or 4.
@@ -173,10 +224,18 @@ Nothing has been deployed, so remove it outright rather than keeping it as a fal
   local DB. Flush local carts instead of adding a shim.
 
 ### Phase 2 tests
-- `product-type-profile.spec.ts`: median, p75 for wide types, `MIN_SAMPLES`, box rules.
+- `product-type-profile.spec.ts`:
+  - one sample is enough; no weight gives null;
+  - p75 for wide types, and the median below 4 samples;
+  - box rules.
 - Resolver spec: the table hit, the table miss → global default, `isEstimated`.
 - Repository spec: `replaceAll` is transactional.
-- Builder spec: mocked transport and repositories, covering grouping, skips and the report.
+- Builder spec, with a mocked transport, repositories and clock:
+  - small types are read in one call, and big types by facet then by top-weighed brands;
+  - the 1 s pacing;
+  - retries with backoff, and the stop after 3 failures in a row;
+  - resume skips finished types;
+  - the report lists types without a weight, largest first.
 - Update the web specs listed above; `npm run test` must pass in `apps/web`.
 
 ---
@@ -186,7 +245,14 @@ Nothing has been deployed, so remove it outright rather than keeping it as a fal
   the spike measurements (the tables above), the locker rule, and the
   builder runbook. Keep **[VERIFY]** on the Econt steps.
 - `docs/TECDOC.md`: the `includeArticleLogisticsCriteria` finding (criteria ids, mm units,
-  about 8% coverage, mostly control arms).
+  about 8% coverage, mostly control arms). With phase 2:
+  - there is no published rate limit and no rate-limit header;
+  - `dataSupplierIds` takes our full 896-brand list and matches any of them;
+  - a type's listing comes back in blocks by brand, and `sort: articleNumber` does not
+    change that;
+  - product types are not leaf categories (9,218 types against 1,138 leaves; a leaf holds
+    several types, and a type can sit in several leaves);
+  - the assembly-group facet ignores a `genericArticleIds` filter.
 - `docs/CROSS-REFERENCES.md`: the cart as a second consumer of the candidate set.
 - `docs/CART.md`: `isShippingEstimated`.
 
@@ -196,6 +262,11 @@ Nothing has been deployed, so remove it outright rather than keeping it as a fal
   coverage of discs is already high.
 - **Lockers:** estimated lines never go to a locker (about 11% of parts), which is conservative
   by design.
+- **Types with no weighed article** get the global default. The builder report lists them.
+  Filling a bulky one by hand would need an override that `replaceAll` keeps; that's not
+  designed yet.
+- **TecDoc's request quota is unknown.** Ask TecAlliance for the rate limit and monthly quota
+  on our key, record them in `TECDOC.md`, and adjust the builder's pace.
 - **Parts TecDoc doesn't list** (23% of in-stock identities) still can't be added to the cart.
   That's a separate spike (e.g. AUTOPLUS brand id `3323`).
 
@@ -208,9 +279,12 @@ Nothing has been deployed, so remove it outright rather than keeping it as a fal
      `isShippingEstimated = true`;
    - `GET /delivery/parcel?carrier=ECONT` returns a weight with `isLockerEligible: false`;
    - `POST /delivery/quote` returns an Econt price.
-3. Phase 2: run `npm run parcel-profiles:build -- --sample 2000` against the local DB and check
-   the report and the table rows. Then add a part with no catalogue, TecDoc or cross-reference
-   weight (pick one from the spike's "left without a weight" list) and confirm it gets its
-   type's weight.
+3. Phase 2: run `npm run parcel-profiles:build` against the local DB (about 3.5 h; stop it
+   partway and check that `--resume` continues), then check the report and the table rows.
+   - Brake discs, pads, alternators and starters each get a weight.
+   - The types left without a weight are mostly long-tail tools and accessories. A random
+     150-type sample had 67 of them, and they are a small share of our brands' articles.
+   Then add a part with no catalogue, TecDoc or cross-reference weight (pick one from the
+   spike's "left without a weight" list) and confirm it gets its type's weight.
 4. Rerun `node scripts/parcel-estimate-coverage-probe.mjs --report <file>` to compare against
    the spike's numbers.

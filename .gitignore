@@ -43,3 +43,6 @@ Thumbs.db
 
 # Cursor
 .cursor
+
+# Parcel profile builder output
+apps/api/parcel-profiles-*

@@ -5,6 +5,7 @@
     "test",
     "dist",
     "scripts",
+    "src/cli",
     "prisma.config.ts",
     "**/*spec.ts"
   ]

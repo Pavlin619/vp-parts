@@ -176,6 +176,21 @@ model CartItem {
   @@unique([cartId, brandId, articleNumber])
 }
 
+/// What a TecDoc product type typically weighs and packs into: the last resort
+/// when no source knows a part's own weight. Rebuilt wholesale by
+/// `npm run parcel-profiles:build`, never edited by hand.
+model ProductTypeParcelProfile {
+  genericArticleId Int      @id
+  productTypeName  String
+  weightGrams      Int
+  packageLengthCm  Float?
+  packageWidthCm   Float?
+  packageHeightCm  Float?
+  /// How many weighed parts the figures were taken from.
+  sampleSize       Int
+  computedAt       DateTime
+}
+
 model Order {
   id                String         @id @default(uuid())
   orderReference    String         @unique
