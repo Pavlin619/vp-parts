@@ -4,7 +4,7 @@ import type { ParcelCheck } from './office-availability'
 import { formatWeight, resolveDeliverySummary, summaryTotal } from './delivery-summary'
 
 function parcel(overrides: Partial<ParcelEstimateDto> = {}): ParcelEstimateDto {
-  return { weightGrams: 2300, unmeasuredArticles: [], isLockerEligible: true, ...overrides }
+  return { weightGrams: 2300, isLockerEligible: true, ...overrides }
 }
 
 const READY: ParcelCheck = { state: 'ready', parcel: parcel() }
@@ -59,18 +59,6 @@ describe('resolveDeliverySummary', () => {
     ).toEqual({ kind: 'failed' })
   })
 
-  // A part with no weight is priced by phone; the quote is never asked.
-  it('is priced by phone when a selected part has no weight', () => {
-    expect(
-      resolveDeliverySummary({
-        method: 'courier-office',
-        officeCode: '1127',
-        parcelCheck: { state: 'ready', parcel: parcel({ weightGrams: null }) },
-        quote: null,
-      }),
-    ).toEqual({ kind: 'by-phone' })
-  })
-
   it('is pending while the quote is in flight', () => {
     expect(
       resolveDeliverySummary({
@@ -107,17 +95,6 @@ describe('resolveDeliverySummary', () => {
     },
   )
 
-  it('is priced by phone when the API says the parcel is unmeasured', () => {
-    expect(
-      resolveDeliverySummary({
-        method: 'courier-office',
-        officeCode: '1127',
-        parcelCheck: READY,
-        quote: quoteState({ error: new ApiError(422, 'DELIVERY_PARCEL_UNMEASURED') }),
-      }),
-    ).toEqual({ kind: 'by-phone' })
-  })
-
   it('fails on any other error', () => {
     expect(
       resolveDeliverySummary({
@@ -138,7 +115,7 @@ describe('summaryTotal', () => {
   })
 
   it('leaves the goods alone while delivery has no price', () => {
-    expect(summaryTotal(8400, { kind: 'by-phone' })).toBe(8400)
+    expect(summaryTotal(8400, { kind: 'failed' })).toBe(8400)
     expect(summaryTotal(8400, { kind: 'pending' })).toBe(8400)
   })
 })

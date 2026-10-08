@@ -21,15 +21,9 @@ import {
 import {
   DeliveryLockerIneligibleException,
   DeliveryOfficeNotFoundException,
-  DeliveryParcelUnmeasuredException,
 } from './delivery.exceptions';
 import { fitsLocker } from './parcel/locker-fit';
-import {
-  estimateParcel,
-  Parcel,
-  ParcelEstimate,
-  singleBoxOf,
-} from './parcel/parcel-estimate';
+import { estimateParcel, Parcel, singleBoxOf } from './parcel/parcel-estimate';
 import { parcelReadyDate } from './parcel/parcel-ready-date';
 
 /** Short because the expected delivery date moves at the courier's daily cut-off. */
@@ -44,7 +38,7 @@ interface Shipment {
 interface CartParcel {
   cart: CartDto;
   lines: CartShippingLine[];
-  estimate: ParcelEstimate;
+  estimate: Parcel;
 }
 
 @Injectable()
@@ -91,10 +85,6 @@ export class DeliveryService {
 
     const { cart, lines, estimate } = await this.parcelOf(requester);
 
-    if (!estimate.isMeasured) {
-      throw new DeliveryParcelUnmeasuredException();
-    }
-
     const parcelDto = toParcelEstimateDto(estimate, courier);
 
     if (
@@ -108,7 +98,7 @@ export class DeliveryService {
     const { priceIncVatCents, expectedDeliveryDate } = await this.cachedQuote(
       courier,
       officeCode,
-      { parcel: estimate.parcel, sendDate },
+      { parcel: estimate, sendDate },
     );
 
     return {
@@ -178,27 +168,14 @@ function quoteCacheKey(
 }
 
 function toParcelEstimateDto(
-  estimate: ParcelEstimate,
+  parcel: Parcel,
   { lockerLimits }: DeliveryCarrier,
 ): ParcelEstimateDto {
-  if (!estimate.isMeasured) {
-    return {
-      weightGrams: null,
-      unmeasuredArticles: estimate.unmeasuredArticles,
-      isLockerEligible: false,
-    };
-  }
-
-  const { parcel } = estimate;
   // A locker cell refuses an oversize parcel at drop-off, so only measured figures may claim a fit.
   const isLockerEligible =
     lockerLimits !== null &&
     !parcel.hasEstimatedUnits &&
     fitsLocker(parcel, lockerLimits);
 
-  return {
-    weightGrams: parcel.weightGrams,
-    unmeasuredArticles: [],
-    isLockerEligible,
-  };
+  return { weightGrams: parcel.weightGrams, isLockerEligible };
 }

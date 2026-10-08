@@ -19,7 +19,6 @@ import { DELIVERY_CARRIERS } from './delivery-carrier';
 import {
   DeliveryLockerIneligibleException,
   DeliveryOfficeNotFoundException,
-  DeliveryParcelUnmeasuredException,
 } from './delivery.exceptions';
 import { DeliveryService } from './delivery.service';
 import type { LockerLimits } from './parcel/locker-fit';
@@ -44,7 +43,6 @@ const PROFILES: Record<string, ResolvedShippingProfile> = {
     isEstimated: true,
   },
   PAD: { weightGrams: 2000, packageCm: null, isEstimated: false },
-  DISC: { weightGrams: null, packageCm: null, isEstimated: false },
 };
 
 function line(articleNumber: string, quantity = 1): CartShippingLine {
@@ -213,19 +211,6 @@ describe('DeliveryService', () => {
 
       expect(parcel).toEqual({
         weightGrams: 47 + 2000 * 2,
-        unmeasuredArticles: [],
-        isLockerEligible: false,
-      });
-    });
-
-    it('gives no weight for a cart holding a part with none, and names that part', async () => {
-      shipping.lines.push(line('DISC'));
-
-      expect(
-        await service.estimateParcel(REQUESTER, ShippingMethod.ECONT),
-      ).toEqual({
-        weightGrams: null,
-        unmeasuredArticles: [{ brandId: '30', articleNumber: 'DISC' }],
         isLockerEligible: false,
       });
     });
@@ -251,7 +236,6 @@ describe('DeliveryService', () => {
 
       expect(parcel).toEqual({
         weightGrams: 94,
-        unmeasuredArticles: [],
         isLockerEligible: false,
       });
     });
@@ -295,7 +279,6 @@ describe('DeliveryService', () => {
         expectedDeliveryDate: '2026-09-25',
         parcel: {
           weightGrams: 4047,
-          unmeasuredArticles: [],
           isLockerEligible: false,
         },
         cartVersion: 4,
@@ -387,18 +370,6 @@ describe('DeliveryService', () => {
           officeCode: '9035',
         }),
       ).rejects.toBeInstanceOf(CartEmptyException);
-      expect(econt.quote).not.toHaveBeenCalled();
-    });
-
-    it('refuses to price a parcel holding a part with no weight', async () => {
-      shipping.lines.push(line('DISC'));
-
-      await expect(
-        service.quote(REQUESTER, {
-          carrier: ShippingMethod.ECONT,
-          officeCode: '9035',
-        }),
-      ).rejects.toBeInstanceOf(DeliveryParcelUnmeasuredException);
       expect(econt.quote).not.toHaveBeenCalled();
     });
 

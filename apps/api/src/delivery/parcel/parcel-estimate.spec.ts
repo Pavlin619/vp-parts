@@ -10,31 +10,11 @@ const knownFilter: ParcelLine = {
   },
 };
 
-const unmeasuredDisc: ParcelLine = {
-  article: { brandId: '30', articleNumber: '0 986 479 C84' },
-  quantity: 2,
-  shippingProfile: { weightGrams: null, packageCm: null, isEstimated: false },
-};
-
 describe('estimateParcel', () => {
   it('weighs lines by their own data, times quantity', () => {
     const estimate = estimateParcel([{ ...knownFilter, quantity: 3 }]);
 
-    expect(estimate.isMeasured && estimate.parcel.weightGrams).toBe(47 * 3);
-  });
-
-  it('refuses to guess a weight, naming every part that has none', () => {
-    const otherUnmeasured: ParcelLine = {
-      ...unmeasuredDisc,
-      article: { brandId: '30', articleNumber: '0 986 479 C85' },
-    };
-
-    expect(
-      estimateParcel([knownFilter, unmeasuredDisc, otherUnmeasured]),
-    ).toEqual({
-      isMeasured: false,
-      unmeasuredArticles: [unmeasuredDisc.article, otherUnmeasured.article],
-    });
+    expect(estimate.weightGrams).toBe(47 * 3);
   });
 
   it('weighs a part with a weight but no box, which an office takes', () => {
@@ -44,8 +24,9 @@ describe('estimateParcel', () => {
     };
 
     expect(estimateParcel([weighedButUnboxed])).toEqual({
-      isMeasured: true,
-      parcel: { weightGrams: 47, unitsCm: null, hasEstimatedUnits: false },
+      weightGrams: 47,
+      unitsCm: null,
+      hasEstimatedUnits: false,
     });
   });
 
@@ -57,14 +38,14 @@ describe('estimateParcel', () => {
 
     const estimate = estimateParcel([knownFilter, estimatedFilter]);
 
-    expect(estimate.isMeasured && estimate.parcel.hasEstimatedUnits).toBe(true);
+    expect(estimate.hasEstimatedUnits).toBe(true);
   });
 
   it('lists the box of every piece, one per unit of quantity', () => {
     const box = knownFilter.shippingProfile.packageCm;
     const estimate = estimateParcel([{ ...knownFilter, quantity: 2 }]);
 
-    expect(estimate.isMeasured && estimate.parcel.unitsCm).toEqual([box, box]);
+    expect(estimate.unitsCm).toEqual([box, box]);
   });
 
   it('knows no boxes when any line has no package size', () => {
@@ -74,7 +55,7 @@ describe('estimateParcel', () => {
     };
     const estimate = estimateParcel([knownFilter, weighedButUnboxed]);
 
-    expect(estimate.isMeasured && estimate.parcel.unitsCm).toBeNull();
+    expect(estimate.unitsCm).toBeNull();
   });
 });
 

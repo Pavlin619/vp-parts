@@ -18,10 +18,9 @@ lines, weights or prices. Order creation must refuse a quote whose `cartVersion`
 not the cart's current version. That check lands with orders.
 
 Both `/parcel` and `/quote` answer `422 CART_EMPTY` when no cart line is selected, so
-an empty parcel is never weighed or priced. When a selected part has no known or
-estimated weight, `/parcel` answers `weightGrams: null` and names the parts in
-`unmeasuredArticles`, and `/quote` answers `422 DELIVERY_PARCEL_UNMEASURED` (see
-[below](#a-part-with-no-weight-of-its-own-is-estimated-from-its-equivalents)).
+an empty parcel is never weighed or priced. Every selected part has a weight (measured
+or estimated, see [below](#a-part-with-no-weight-of-its-own-is-estimated-from-its-equivalents)),
+so `/parcel` always answers a `weightGrams`.
 
 ## The office picker in the web checkout
 
@@ -102,8 +101,7 @@ delivery rows from the same `/parcel` read the picker uses (`useParcelCheck`) an
 `/quote`, both keyed by cart and cart version.
 
 - **A quote is asked only for an office delivery with an office chosen and a parcel
-  whose weight is known.** An unweighed parcel is "По телефон" without a call, since the
-  API would answer `DELIVERY_PARCEL_UNMEASURED` anyway.
+  is selected.** There is no unweighed parcel to hold the call back.
 - **A refused office asks for another.** `DELIVERY_OFFICE_REFUSED`,
   `DELIVERY_LOCKER_INELIGIBLE` and `DELIVERY_OFFICE_NOT_FOUND` read "Изберете друг офис";
   the picker meanwhile drops a locker the parcel no longer fits. Any other failure reads
@@ -305,9 +303,9 @@ out of stock or short, the quote still carries a price but no date.
 **[VERIFY]** that a parcel ready on a day still reaches Econt that day. A Poland part
 ready late in the afternoon may only leave the next morning.
 
-## Parcel weight and size: supplier catalogue, TecDoc, then equivalents
+## Parcel weight and size: supplier catalogue, TecDoc, equivalents, then product type
 
-Three sources, read in this order when a part is added to the cart
+Four sources, read in this order when a part is added to the cart
 (`ShippingProfileResolver`). Each half (weight, box) is taken from the first source
 that has it. TecDoc is not called at all when the supplier catalogue already knows
 both, and equivalents are not asked for when the part's own data has a weight.
@@ -432,12 +430,41 @@ compared with that weight:
 **[VERIFY]** the weight steps (1 / 5 / 10 / 20 kg) used for scoring are the demo
 tariff's; check them against the contract tariff.
 
-**What is left unweighed.** A part with no weight of its own and no weighed
-equivalent (124 of 558 above) makes the parcel **unmeasured**, and the checkout tells
-the customer that delivery will be priced by phone. A per-category default is the
-last resort, after equivalents, in phase 2 of
-[PARCEL-ESTIMATION-PLAN.md](./PARCEL-ESTIMATION-PLAN.md). A part TecDoc does not list
-cannot be added to the cart at all (`404 ARTICLE_NOT_FOUND`).
+### The last resort: what the part's product type weighs
+
+A part with no weight of its own and no weighed equivalent (124 of 558 above) gets the
+weight of its product type, from the shop-owned `ProductTypeParcelProfile` table, keyed
+by the article read's first `genericArticleIds` entry. A line weighed this way is
+`isShippingEstimated`, and never goes to a locker. A part whose type has no row, or that
+TecDoc gives no type, gets `UNKNOWN_PRODUCT_TYPE_PROFILE`: 960 g and no box, the p75 of
+every sample the builder read (2026-10-08 run). Only the missing weight is filled from
+the table; a box the part already has is kept. A part TecDoc does not list cannot be added
+to the cart at all (`404 ARTICLE_NOT_FOUND`).
+
+Measured over the spike's parts: product-type medians landed in the right Econt step
+for 87% (leave-one-out), and cover about 4.3% of parts, stock-weighted.
+
+**Aggregation** (`aggregateProductTypeProfile`): one weighed sample is enough, because a
+part of the same type is closer than any default. The weight is the median, or the p75
+for a wide type (p75/p25 > 2, from 4 samples up) so a quote errs high. The box is the
+median per sorted side.
+
+**The builder** (`npm run parcel-profiles:build` in `apps/api`) fills the table from
+TecDoc and our catalogue. It lists the product types of the brands we stock, reads each
+small type (up to 1000 articles) in one call, and for each big type reads the 10 brands
+our catalogue weighs most, then weighs the articles from `supplier_product_catalog`.
+`replaceAll` swaps the table in one transaction after the last type.
+- Pace is 1 request per second; the 2026-10-08 run made 13,422 calls in about 3.7 h with
+  no retries. It retries `429`, `5xx` and timeouts with doubling waits from 5 s, and stops
+  after 3 failures in a row.
+- `--resume` continues from the checkpoint file; `--fresh`, `--dry-run`, `--only`,
+  `--limit`, `--interval-ms`, `--checkpoint` and `--report` are in `run-arguments.ts`.
+- The report (`parcel-profiles-report.json`) lists every type left without a weight,
+  largest first. The 2026-10-08 run wrote 4,406 of 8,571 types; the unweighed 4,165 are
+  led by exhaust systems (68,822 articles), wheel hubs and windscreens. Filling a bulky
+  one by hand needs an override that `replaceAll` keeps, which is not designed yet.
+- Run it before launch and off-hours afterwards: the shop's own traffic shares the
+  TecDoc key. TecAlliance publishes no rate limit, so ask for the quota on our key.
 
 ## Locker eligibility (Econtomat)
 
@@ -447,7 +474,7 @@ estimated from its equivalents, and the set fits the largest cell:
 - the summed volume is within cell volume × `ECONT_LOCKER_FILL_FACTOR`;
 - the weight is within `ECONT_LOCKER_MAX_WEIGHT_GRAMS`.
 
-One unmeasured or estimated line keeps the whole parcel out, so a courier never meets a
+One estimated line keeps the whole parcel out, so a courier never meets a
 box that does not fit. That rules out about 11% of parts, conservative by design.
 `fitsLocker` itself only checks geometry and weight; `DeliveryService` adds the
 estimation rule. The quote refuses a locker for an ineligible parcel with `422

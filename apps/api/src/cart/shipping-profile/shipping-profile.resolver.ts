@@ -9,10 +9,21 @@ import {
   preferMeasured,
 } from '../cart-shipping';
 import { estimateFromEquivalents } from './equivalents-estimate';
+import { ProductTypeParcelProfileRepository } from './product-type-parcel-profile.repository';
+
+/**
+ * Quoted for a part whose product type has no weighed sample: the p75 weight
+ * over every sample the builder read (2026-10-08 run), and no box.
+ */
+export const UNKNOWN_PRODUCT_TYPE_PROFILE: ShippingProfile = {
+  weightGrams: 960,
+  packageCm: null,
+};
 
 /**
  * What a part weighs and packs into, from the most trusted source that knows:
- * the suppliers' catalogue, then TecDoc, then the parts that replace it. Each
+ * the suppliers' catalogue, then TecDoc, then the parts that replace it, then
+ * what its product type typically weighs. Each
  * later source fills only what the earlier ones left out. The chain is
  * described in docs/DELIVERY-PROVIDERS.md.
  */
@@ -22,6 +33,7 @@ export class ShippingProfileResolver {
     private readonly supplierCatalog: SupplierCatalogRepository,
     private readonly articles: ArticleReadCache,
     private readonly crossReferences: CrossReferencesService,
+    private readonly productTypeProfiles: ProductTypeParcelProfileRepository,
   ) {}
 
   async resolve({
@@ -38,7 +50,7 @@ export class ShippingProfileResolver {
     }
 
     const tecDocBrandId = Number(brandId);
-    const { shippingProfile } = await this.articles.read(
+    const { shippingProfile, genericArticleIds } = await this.articles.read(
       tecDocBrandId,
       articleNumber,
     );
@@ -53,9 +65,26 @@ export class ShippingProfileResolver {
       articleNumber,
     );
 
-    return estimate === null
-      ? asMeasured(known)
-      : { ...preferMeasured(known, estimate), isEstimated: true };
+    if (estimate !== null) {
+      return { ...preferMeasured(known, estimate), isEstimated: true };
+    }
+
+    const fallback = await this.fallbackForProductType(genericArticleIds[0]);
+
+    return { ...preferMeasured(known, fallback), isEstimated: true };
+  }
+
+  private async fallbackForProductType(
+    genericArticleId: number | undefined,
+  ): Promise<ShippingProfile> {
+    if (genericArticleId === undefined) {
+      return UNKNOWN_PRODUCT_TYPE_PROFILE;
+    }
+
+    const profile =
+      await this.productTypeProfiles.findByGenericArticleId(genericArticleId);
+
+    return profile ?? UNKNOWN_PRODUCT_TYPE_PROFILE;
   }
 
   private async estimateFromCrossReferences(

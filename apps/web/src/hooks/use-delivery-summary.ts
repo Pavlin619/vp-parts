@@ -20,7 +20,7 @@ interface DeliverySummaryState {
 /**
  * What the selected lines weigh and what delivering them to the chosen office
  * costs, both read from the API for the cart version on screen. The quote is
- * asked only once there is an office and a parcel with a known weight.
+ * asked only once there is an office and a weighed parcel.
  */
 export function useDeliverySummary(): DeliverySummaryState {
   const carrier = OFFICE_DELIVERY_CARRIER;
@@ -34,8 +34,7 @@ export function useDeliverySummary(): DeliverySummaryState {
   const isQuotable =
     method === "courier-office" &&
     officeCode !== null &&
-    parcelCheck.state === "ready" &&
-    parcelCheck.parcel.weightGrams !== null;
+    parcelCheck.state === "ready";
   const quoteQuery = useQuery({
     ...deliveryQuoteQueryOptions({ carrier, officeCode: officeCode ?? "" }, cartId, cartVersion),
     enabled: isQuotable && cartId !== "",

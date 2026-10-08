@@ -38,18 +38,6 @@ export class DeliveryLockerIneligibleException extends HttpException {
   }
 }
 
-export class DeliveryParcelUnmeasuredException extends HttpException {
-  constructor() {
-    super(
-      errorBody(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        AppErrorCode.DELIVERY_PARCEL_UNMEASURED,
-      ),
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-  }
-}
-
 /** The courier could not be reached or failed on its side. Retryable. */
 export class DeliveryUnavailableException extends HttpException {
   constructor() {

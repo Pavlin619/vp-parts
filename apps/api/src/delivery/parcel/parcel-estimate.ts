@@ -16,27 +16,11 @@ export interface Parcel {
   hasEstimatedUnits: boolean;
 }
 
-/** A parcel is weighed only from the parts' own data; one unknown part leaves it unweighed. */
-export type ParcelEstimate =
-  | { isMeasured: true; parcel: Parcel }
-  | { isMeasured: false; unmeasuredArticles: ArticleIdentityDto[] };
-
-export function estimateParcel(lines: ParcelLine[]): ParcelEstimate {
-  const unmeasuredArticles = lines
-    .filter((line) => line.shippingProfile.weightGrams === null)
-    .map((line) => line.article);
-
-  if (unmeasuredArticles.length > 0) {
-    return { isMeasured: false, unmeasuredArticles };
-  }
-
+export function estimateParcel(lines: ParcelLine[]): Parcel {
   return {
-    isMeasured: true,
-    parcel: {
-      weightGrams: totalWeightGrams(lines),
-      unitsCm: unitSizes(lines),
-      hasEstimatedUnits: lines.some((line) => line.shippingProfile.isEstimated),
-    },
+    weightGrams: totalWeightGrams(lines),
+    unitsCm: unitSizes(lines),
+    hasEstimatedUnits: lines.some((line) => line.shippingProfile.isEstimated),
   };
 }
 

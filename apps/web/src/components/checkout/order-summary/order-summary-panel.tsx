@@ -15,7 +15,6 @@ const NOT_CALCULATED = "—";
 const DELIVERY_COPY: Record<Exclude<DeliverySummary["kind"], "pending" | "quoted">, string> = {
   "not-quoted": NOT_CALCULATED,
   "awaiting-office": "Изберете офис",
-  "by-phone": "По телефон",
   "office-unusable": "Изберете друг офис",
   failed: "Не може да се изчисли",
 };
@@ -92,9 +91,7 @@ function weightText(parcelCheck: ParcelCheck): string | null {
     case "failed":
       return NOT_CALCULATED;
     case "ready":
-      return parcelCheck.parcel.weightGrams === null
-        ? "Неизвестно"
-        : formatWeight(parcelCheck.parcel.weightGrams);
+      return formatWeight(parcelCheck.parcel.weightGrams);
   }
 }
 

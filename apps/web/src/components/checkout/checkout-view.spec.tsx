@@ -105,7 +105,6 @@ describe('CheckoutView', () => {
     getAvailability.mockResolvedValue({})
     getParcel.mockReset().mockResolvedValue({
       weightGrams: 2300,
-      unmeasuredArticles: [],
       isLockerEligible: true,
     })
     getQuote.mockReset().mockResolvedValue({

@@ -121,7 +121,7 @@ const PLACES = [
 
 const FITS_LOCKER: ParcelCheck = {
   state: 'ready',
-  parcel: { weightGrams: 1200, unmeasuredArticles: [], isLockerEligible: true },
+  parcel: { weightGrams: 1200, isLockerEligible: true },
 }
 
 function renderBrowser(overrides: Partial<Parameters<typeof OfficeBrowser>[0]> = {}) {
@@ -455,7 +455,7 @@ describe('OfficeBrowser', () => {
     renderBrowser({
       parcelCheck: {
         state: 'ready',
-        parcel: { weightGrams: 90_000, unmeasuredArticles: [], isLockerEligible: false },
+        parcel: { weightGrams: 90_000, isLockerEligible: false },
       },
     })
     await pickPlace(user, 'соф', /София/)

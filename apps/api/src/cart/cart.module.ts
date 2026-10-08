@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma';
 import { CartController } from './cart.controller';
 import { CartRepository } from './cart.repository';
 import { CartService } from './cart.service';
+import { ProductTypeParcelProfileRepository } from './shipping-profile/product-type-parcel-profile.repository';
 import { ShippingProfileResolver } from './shipping-profile/shipping-profile.resolver';
 
 @Module({
@@ -18,7 +19,12 @@ import { ShippingProfileResolver } from './shipping-profile/shipping-profile.res
     ScheduleModule.forRoot(),
   ],
   controllers: [CartController],
-  providers: [CartRepository, CartService, ShippingProfileResolver],
+  providers: [
+    CartRepository,
+    CartService,
+    ShippingProfileResolver,
+    ProductTypeParcelProfileRepository,
+  ],
   exports: [CartService],
 })
 export class CartModule {}

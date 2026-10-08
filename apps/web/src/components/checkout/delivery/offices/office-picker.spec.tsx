@@ -92,7 +92,6 @@ const PLACES = [place({}), place({ id: '4000', name: 'Пловдив', region: '
 
 const FITS_LOCKER: ParcelEstimateDto = {
   weightGrams: 1200,
-  unmeasuredArticles: [],
   isLockerEligible: true,
 }
 
@@ -230,16 +229,5 @@ describe('OfficePicker', () => {
     expect(await settlementBox()).toHaveValue('София')
     expect(officeButton(/Еконтомат Люлин/)).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Промени' })).not.toBeInTheDocument()
-  })
-
-  it('warns that an unweighed parcel is priced by phone', async () => {
-    getParcel.mockResolvedValue({
-      weightGrams: null,
-      unmeasuredArticles: [{ brandId: '30', articleNumber: '0 986 424 797' }],
-      isLockerEligible: false,
-    })
-    renderPicker()
-
-    expect(await screen.findByRole('status')).toHaveTextContent(/по телефона|Ще ви се обадим/)
   })
 })

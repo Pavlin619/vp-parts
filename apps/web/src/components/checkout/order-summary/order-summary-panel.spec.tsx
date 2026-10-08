@@ -18,7 +18,7 @@ function totals(overrides: Partial<CartTotals> = {}): CartTotals {
 
 const WEIGHED: ParcelCheck = {
   state: 'ready',
-  parcel: { weightGrams: 2300, unmeasuredArticles: [], isLockerEligible: true },
+  parcel: { weightGrams: 2300, isLockerEligible: true },
 }
 
 function renderPanel(
@@ -78,24 +78,12 @@ describe('OrderSummaryPanel', () => {
 
       expect(screen.getByText('Общо тегло').nextSibling).toHaveTextContent('—')
     })
-
-    it('says so when a part has no known weight', () => {
-      renderPanel({
-        parcelCheck: {
-          state: 'ready',
-          parcel: { weightGrams: null, unmeasuredArticles: [], isLockerEligible: false },
-        },
-      })
-
-      expect(screen.getByText('Общо тегло').nextSibling).toHaveTextContent('Неизвестно')
-    })
   })
 
   describe('delivery', () => {
     it.each([
       [{ kind: 'not-quoted' }, '—'],
       [{ kind: 'awaiting-office' }, 'Изберете офис'],
-      [{ kind: 'by-phone' }, 'По телефон'],
       [{ kind: 'office-unusable' }, 'Изберете друг офис'],
       [{ kind: 'failed' }, 'Не може да се изчисли'],
     ] as const)('reads %j as "%s" and leaves the total to the goods', (delivery, text) => {
