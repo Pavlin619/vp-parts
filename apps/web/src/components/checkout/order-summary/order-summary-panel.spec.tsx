@@ -27,6 +27,7 @@ function renderPanel(
     isPending?: boolean
     parcelCheck?: ParcelCheck
     delivery?: DeliverySummary
+    isQuickOrder?: boolean
   } = {},
 ) {
   return render(
@@ -35,6 +36,7 @@ function renderPanel(
       isPending={props.isPending ?? false}
       parcelCheck={props.parcelCheck ?? WEIGHED}
       delivery={props.delivery ?? { kind: 'awaiting-office' }}
+      isQuickOrder={props.isQuickOrder ?? false}
     />,
   )
 }
@@ -58,6 +60,13 @@ describe('OrderSummaryPanel', () => {
     renderPanel()
 
     expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeDisabled()
+  })
+
+  it('asks to request the order when it is a quick order', () => {
+    renderPanel({ isQuickOrder: true })
+
+    expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Поръчай сега/ })).not.toBeInTheDocument()
   })
 
   describe('weight', () => {
