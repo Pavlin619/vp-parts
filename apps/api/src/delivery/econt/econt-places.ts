@@ -17,6 +17,8 @@ const PLACES_MEMORY_TTL_MS = 60 * 60 * 1000;
 /** The serving type naming the office Econt delivers a place's parcels to. */
 const TO_OFFICE_COURIER = 'to_office_courier';
 
+const TO_DOOR_PREFIX = 'to_door_';
+
 /** Econt calls the capital's region "София" and the one around it "София Област". */
 const REGION_NAMES: Record<string, string> = {
   София: 'София-град',
@@ -30,6 +32,7 @@ interface EcontPlace {
   region: string;
   postCode: string;
   deliveryOfficeCodes: string[];
+  isDoorServed: boolean;
 }
 
 /**
@@ -43,6 +46,9 @@ export class EcontPlaces {
   private readonly memo = new ExpiringMemo<DeliveryPlaceDto[]>(
     PLACES_MEMORY_TTL_MS,
   );
+  private readonly addressMemo = new ExpiringMemo<DeliveryPlaceDto[]>(
+    PLACES_MEMORY_TTL_MS,
+  );
 
   constructor(
     private readonly transport: EcontTransport,
@@ -53,12 +59,27 @@ export class EcontPlaces {
   list(): Promise<DeliveryPlaceDto[]> {
     return this.memo.get(async () => {
       const [places, offices] = await Promise.all([
-        this.cache.cached('econt:places:BGR', PLACES_TTL, () => this.load()),
+        this.listEcontPlaces(),
         this.offices.list(),
       ]);
 
       return collectablePlaces(places, offices);
     });
+  }
+
+  /** Every place a courier delivers to, whether or not it has an office to collect from. */
+  listForAddress(): Promise<DeliveryPlaceDto[]> {
+    return this.addressMemo.get(async () => {
+      const places = await this.listEcontPlaces();
+
+      return places
+        .filter(({ isDoorServed }) => isDoorServed)
+        .map((place) => toPlaceDto(place, null));
+    });
+  }
+
+  private listEcontPlaces(): Promise<EcontPlace[]> {
+    return this.cache.cached('econt:places:BGR', PLACES_TTL, () => this.load());
   }
 
   /** Throws rather than answer an empty list, so the cache keeps nothing and the next read retries. */
@@ -116,6 +137,9 @@ function toEcontPlace(city: EcontCityRecord): EcontPlace {
     deliveryOfficeCodes: (city.servingOffices ?? [])
       .filter(({ servingType }) => servingType === TO_OFFICE_COURIER)
       .map(({ officeCode }) => officeCode),
+    isDoorServed: (city.servingOffices ?? []).some(({ servingType }) =>
+      servingType.startsWith(TO_DOOR_PREFIX),
+    ),
   };
 }
 

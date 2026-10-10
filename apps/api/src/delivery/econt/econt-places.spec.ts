@@ -213,4 +213,85 @@ describe('EcontPlaces', () => {
     expect((await places.list()).map(({ name }) => name)).toEqual(['Ясен']);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('1'));
   });
+
+  describe('listForAddress', () => {
+    it('keeps a village couriers reach at the door, with no office to collect from', async () => {
+      readNomenclature.mockResolvedValueOnce({
+        cities: [
+          city({
+            servingOffices: [
+              { officeCode: '70088', servingType: 'to_door_courier' },
+            ],
+          }),
+        ],
+      });
+
+      expect(await places.listForAddress()).toEqual([
+        {
+          carrier: ShippingMethod.ECONT,
+          id: '27183',
+          name: 'Ясен',
+          region: 'Плевен',
+          postCode: '5850',
+          servingOfficeCode: null,
+        },
+      ]);
+    });
+
+    it('keeps a place only cargo reaches at the door', async () => {
+      readNomenclature.mockResolvedValueOnce({
+        cities: [
+          city({
+            servingOffices: [
+              { officeCode: '5817', servingType: 'to_door_cargo' },
+            ],
+          }),
+        ],
+      });
+
+      expect(await places.listForAddress()).toHaveLength(1);
+    });
+
+    it('drops a place served to an office only', async () => {
+      readNomenclature.mockResolvedValueOnce({ cities: [city()] });
+
+      expect(await places.listForAddress()).toEqual([]);
+    });
+
+    it('drops a place filed without a region', async () => {
+      readNomenclature.mockResolvedValueOnce({
+        cities: [
+          city({
+            regionName: null,
+            servingOffices: [
+              { officeCode: '5817', servingType: 'to_door_courier' },
+            ],
+          }),
+          city({
+            id: 2,
+            servingOffices: [
+              { officeCode: '5817', servingType: 'to_door_courier' },
+            ],
+          }),
+        ],
+      });
+
+      const listed = await places.listForAddress();
+
+      expect(listed.map(({ id }) => id)).toEqual(['2']);
+    });
+
+    it('shares the Econt place list with the office picker', async () => {
+      readNomenclature.mockResolvedValue({ cities: [city()] });
+
+      await places.list();
+      await places.listForAddress();
+
+      expect(cached).toHaveBeenCalledTimes(2);
+      expect(cached.mock.calls.map(([key]) => key)).toEqual([
+        'econt:places:BGR',
+        'econt:places:BGR',
+      ]);
+    });
+  });
 });

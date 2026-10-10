@@ -44,6 +44,10 @@ export enum AppErrorCode {
   DELIVERY_OFFICE_NOT_FOUND = 'DELIVERY_OFFICE_NOT_FOUND',
   /** The carrier lists the office but refuses to deliver there. The customer can pick another. */
   DELIVERY_OFFICE_REFUSED = 'DELIVERY_OFFICE_REFUSED',
+  /** The carrier refuses to deliver to this address. The customer can correct it. */
+  DELIVERY_ADDRESS_REFUSED = 'DELIVERY_ADDRESS_REFUSED',
+  /** The carrier does not deliver to the address's place. */
+  DELIVERY_ADDRESS_NOT_SERVED = 'DELIVERY_ADDRESS_NOT_SERVED',
   /** The parcel does not fit, or cannot be shown to fit, a parcel locker. */
   DELIVERY_LOCKER_INELIGIBLE = 'DELIVERY_LOCKER_INELIGIBLE',
   /** A selected part has no known weight, so the courier cannot be asked for a price. */

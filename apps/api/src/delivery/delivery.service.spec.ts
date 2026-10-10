@@ -2,8 +2,11 @@ import { Test } from '@nestjs/testing';
 import {
   ArticleInventoryDetailDto,
   DeliveryOfficeDto,
+  DeliveryDestinationDto,
+  DeliveryDestinationType,
   DeliveryPlaceDto,
   DeliveryOfficeType,
+  DeliveryAddressValidationStatus,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
 import {
@@ -17,6 +20,7 @@ import { RedisCache } from '../redis';
 import type { ResolvedShippingProfile } from '../cart';
 import { DELIVERY_CARRIERS } from './delivery-carrier';
 import {
+  DeliveryAddressNotServedException,
   DeliveryLockerIneligibleException,
   DeliveryOfficeNotFoundException,
 } from './delivery.exceptions';
@@ -28,6 +32,17 @@ const ECONTOMAT: LockerLimits = {
   maxWeightGrams: 20_000,
   fillFactor: 0.8,
 };
+
+function officeTo(officeCode: string): DeliveryDestinationDto {
+  return { type: DeliveryDestinationType.OFFICE, officeCode };
+}
+
+function addressTo(placeId: string): DeliveryDestinationDto {
+  return {
+    type: DeliveryDestinationType.ADDRESS,
+    address: { placeId, street: 'бул. Витоша', streetNumber: '10' },
+  };
+}
 
 const REQUESTER = { clerkId: null, token: 'token' };
 
@@ -112,6 +127,10 @@ interface FakeCarrier {
   lockerLimits: LockerLimits | null;
   listOffices: jest.Mock;
   listPlaces: jest.Mock;
+  listAddressPlaces: jest.Mock;
+  findStreets: jest.Mock;
+  findQuarters: jest.Mock;
+  validateAddress: jest.Mock;
   findOffice: jest.Mock;
   quote: jest.Mock;
 }
@@ -127,6 +146,17 @@ function fakeCarrier(
       .fn()
       .mockResolvedValue([office(DeliveryOfficeType.OFFICE, carrier)]),
     listPlaces: jest.fn().mockResolvedValue([place(carrier)]),
+    listAddressPlaces: jest.fn().mockResolvedValue([place(carrier)]),
+    findStreets: jest
+      .fn()
+      .mockResolvedValue([{ id: '1', name: 'бул. Витоша' }]),
+    findQuarters: jest
+      .fn()
+      .mockResolvedValue([{ id: '2', name: 'кв. Слатина' }]),
+    validateAddress: jest.fn().mockResolvedValue({
+      status: DeliveryAddressValidationStatus.VALID,
+      suggested: null,
+    }),
     findOffice: jest
       .fn()
       .mockResolvedValue(office(DeliveryOfficeType.OFFICE, carrier)),
@@ -202,6 +232,35 @@ describe('DeliveryService', () => {
     });
   });
 
+  describe('address helpers', () => {
+    it('lists the places a carrier delivers to', async () => {
+      expect(await service.listAddressPlaces(ShippingMethod.SPEEDY)).toEqual([
+        place(ShippingMethod.SPEEDY),
+      ]);
+      expect(econt.listAddressPlaces).not.toHaveBeenCalled();
+    });
+
+    it('suggests streets and quarters from the carrier asked for', async () => {
+      await service.findStreets(ShippingMethod.ECONT, '41', 'вит');
+      await service.findQuarters(ShippingMethod.ECONT, '41', 'сла');
+
+      expect(econt.findStreets).toHaveBeenCalledWith('41', 'вит');
+      expect(econt.findQuarters).toHaveBeenCalledWith('41', 'сла');
+    });
+
+    it('validates an address with the carrier asked for', async () => {
+      const address = {
+        placeId: '41',
+        street: 'бул. Витоша',
+        streetNumber: '1',
+      };
+
+      await service.validateAddress(ShippingMethod.ECONT, address);
+
+      expect(econt.validateAddress).toHaveBeenCalledWith(address);
+    });
+  });
+
   describe('estimateParcel', () => {
     it('weighs the selected lines by the profile the cart stored for each', async () => {
       const parcel = await service.estimateParcel(
@@ -264,17 +323,17 @@ describe('DeliveryService', () => {
     it('prices the cart to the office and pins the cart version', async () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
       expect(econt.quote).toHaveBeenCalledWith(
-        '9035',
+        officeTo('9035'),
         expect.objectContaining({ weightGrams: 4047 }),
         '2026-09-29',
       );
       expect(result).toEqual({
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
         priceIncVatCents: 1061,
         expectedDeliveryDate: '2026-09-25',
         parcel: {
@@ -288,7 +347,7 @@ describe('DeliveryService', () => {
     it('hands the courier the parcel on the day its slowest line is at the shop', async () => {
       await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
       expect(getAvailability).toHaveBeenCalledWith([
@@ -303,14 +362,18 @@ describe('DeliveryService', () => {
 
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
-      expect(econt.quote).toHaveBeenCalledWith('9035', expect.anything(), null);
+      expect(econt.quote).toHaveBeenCalledWith(
+        officeTo('9035'),
+        expect.anything(),
+        null,
+      );
       expect(result.priceIncVatCents).toBe(1061);
       expect(result.expectedDeliveryDate).toBeNull();
       expect(cached).toHaveBeenCalledWith(
-        'delivery:quote:ECONT:9035:4047:nobox:undated',
+        'delivery:quote:ECONT:office:9035:4047:nobox:undated',
         300,
         expect.any(Function),
       );
@@ -319,12 +382,12 @@ describe('DeliveryService', () => {
     it('finds the office and prices the parcel with the carrier asked for', async () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.SPEEDY,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
       expect(speedy.findOffice).toHaveBeenCalledWith('9035');
       expect(speedy.quote).toHaveBeenCalledWith(
-        '9035',
+        officeTo('9035'),
         expect.anything(),
         '2026-09-29',
       );
@@ -336,11 +399,11 @@ describe('DeliveryService', () => {
     it('caches a quote for five minutes by carrier, office and parcel', async () => {
       await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
       expect(cached).toHaveBeenCalledWith(
-        'delivery:quote:ECONT:9035:4047:nobox:2026-09-29',
+        'delivery:quote:ECONT:office:9035:4047:nobox:2026-09-29',
         300,
         expect.any(Function),
       );
@@ -351,11 +414,11 @@ describe('DeliveryService', () => {
 
       await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
       expect(cached).toHaveBeenCalledWith(
-        'delivery:quote:ECONT:9035:47:7.5x7.5x12:2026-09-28',
+        'delivery:quote:ECONT:office:9035:47:7.5x7.5x12:2026-09-28',
         300,
         expect.any(Function),
       );
@@ -367,7 +430,7 @@ describe('DeliveryService', () => {
       await expect(
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
-          officeCode: '9035',
+          destination: officeTo('9035'),
         }),
       ).rejects.toBeInstanceOf(CartEmptyException);
       expect(econt.quote).not.toHaveBeenCalled();
@@ -379,7 +442,7 @@ describe('DeliveryService', () => {
       await expect(
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
-          officeCode: '0000',
+          destination: officeTo('0000'),
         }),
       ).rejects.toBeInstanceOf(DeliveryOfficeNotFoundException);
       expect(econt.quote).not.toHaveBeenCalled();
@@ -391,7 +454,7 @@ describe('DeliveryService', () => {
       await expect(
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
-          officeCode: '9010',
+          destination: officeTo('9010'),
         }),
       ).rejects.toBeInstanceOf(DeliveryLockerIneligibleException);
     });
@@ -402,11 +465,11 @@ describe('DeliveryService', () => {
 
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9010',
+        destination: officeTo('9010'),
       });
 
       expect(econt.quote).toHaveBeenCalledWith(
-        '9010',
+        officeTo('9010'),
         expect.anything(),
         '2026-09-28',
       );
@@ -420,7 +483,7 @@ describe('DeliveryService', () => {
       await expect(
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
-          officeCode: '9010',
+          destination: officeTo('9010'),
         }),
       ).rejects.toBeInstanceOf(DeliveryLockerIneligibleException);
       expect(econt.quote).not.toHaveBeenCalled();
@@ -431,10 +494,67 @@ describe('DeliveryService', () => {
 
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
       });
 
       expect(result.parcel.weightGrams).toBe(47);
+    });
+
+    describe('to an address', () => {
+      it('prices the cart to a place the carrier delivers to, echoing the address', async () => {
+        const destination = addressTo('27183');
+
+        const result = await service.quote(REQUESTER, {
+          carrier: ShippingMethod.ECONT,
+          destination,
+        });
+
+        expect(econt.quote).toHaveBeenCalledWith(
+          destination,
+          expect.objectContaining({ weightGrams: 4047 }),
+          '2026-09-29',
+        );
+        expect(econt.findOffice).not.toHaveBeenCalled();
+        expect(result).toMatchObject({
+          destination,
+          priceIncVatCents: 1061,
+          cartVersion: 4,
+        });
+      });
+
+      it('refuses a place the carrier does not deliver to, before asking it for a price', async () => {
+        await expect(
+          service.quote(REQUESTER, {
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo('999999'),
+          }),
+        ).rejects.toBeInstanceOf(DeliveryAddressNotServedException);
+        expect(econt.quote).not.toHaveBeenCalled();
+      });
+
+      it('caches the quote by place, so the street never splits it', async () => {
+        await service.quote(REQUESTER, {
+          carrier: ShippingMethod.ECONT,
+          destination: addressTo('27183'),
+        });
+
+        expect(cached).toHaveBeenCalledWith(
+          'delivery:quote:ECONT:place:27183:4047:nobox:2026-09-29',
+          300,
+          expect.any(Function),
+        );
+      });
+
+      it('refuses to price an empty cart', async () => {
+        shipping.lines = [];
+
+        await expect(
+          service.quote(REQUESTER, {
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo('27183'),
+          }),
+        ).rejects.toBeInstanceOf(CartEmptyException);
+      });
     });
   });
 });

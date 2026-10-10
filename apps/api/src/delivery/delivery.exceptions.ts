@@ -26,6 +26,30 @@ export class DeliveryOfficeRefusedException extends HttpException {
   }
 }
 
+export class DeliveryAddressRefusedException extends HttpException {
+  constructor() {
+    super(
+      errorBody(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        AppErrorCode.DELIVERY_ADDRESS_REFUSED,
+      ),
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
+export class DeliveryAddressNotServedException extends HttpException {
+  constructor() {
+    super(
+      errorBody(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        AppErrorCode.DELIVERY_ADDRESS_NOT_SERVED,
+      ),
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
 export class DeliveryLockerIneligibleException extends HttpException {
   constructor() {
     super(

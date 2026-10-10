@@ -27,6 +27,23 @@ export interface EcontCityRecord {
   servingOffices: { officeCode: string; servingType: string }[] | null;
 }
 
+/** The fields of Econt's `Street` and `Quarter` we read. */
+export interface EcontNamedRecord {
+  id: number;
+  name: string;
+}
+
+/** What `AddressService.validateAddress` answers, as far as we read it. */
+export interface EcontValidatedAddress {
+  validationStatus: string;
+  address: {
+    street: string | null;
+    num: string | null;
+    quarter: string | null;
+    other: string | null;
+  };
+}
+
 /**
  * What `LabelService.createLabel` answers in `calculate` mode, as far as we read it.
  * The `unknown` fields only feed a log line, so a quote does not fail on them.
@@ -90,6 +107,39 @@ export function isCityRecord(value: unknown): value is EcontCityRecord {
   );
 }
 
+export function hasStreetList(value: unknown): value is { streets: unknown[] } {
+  return isFields(value) && Array.isArray(value.streets);
+}
+
+export function hasQuarterList(
+  value: unknown,
+): value is { quarters: unknown[] } {
+  return isFields(value) && Array.isArray(value.quarters);
+}
+
+export function isNamedRecord(value: unknown): value is EcontNamedRecord {
+  return (
+    isFields(value) &&
+    typeof value.id === 'number' &&
+    typeof value.name === 'string' &&
+    value.name.trim() !== ''
+  );
+}
+
+export function isValidatedAddress(
+  value: unknown,
+): value is EcontValidatedAddress {
+  return (
+    isFields(value) &&
+    typeof value.validationStatus === 'string' &&
+    isFields(value.address) &&
+    isStringOrNull(value.address.street) &&
+    isStringOrNull(value.address.num) &&
+    isStringOrNull(value.address.quarter) &&
+    isStringOrNull(value.address.other)
+  );
+}
+
 export function isCalculatedLabel(
   value: unknown,
 ): value is EcontCalculatedLabel {
@@ -105,6 +155,16 @@ export function isCalculatedLabel(
     totalPrice >= 0 &&
     typeof currency === 'string' &&
     isNumberOrNull(expectedDeliveryDate)
+  );
+}
+
+const INVALID_ADDRESS_TYPE = 'ExInvalidAddress';
+
+/** Econt refuses an unknown street or quarter this way instead of answering `invalid`. */
+export function refusesAddress(error: EcontError): boolean {
+  return (
+    error.type === INVALID_ADDRESS_TYPE ||
+    (error.innerErrors ?? []).some(refusesAddress)
   );
 }
 
@@ -141,6 +201,10 @@ function isLocation(value: unknown): boolean {
     typeof value.latitude === 'number' &&
     typeof value.longitude === 'number'
   );
+}
+
+function isStringOrNull(value: unknown): boolean {
+  return value === null || typeof value === 'string';
 }
 
 function isNumberOrNull(value: unknown): boolean {

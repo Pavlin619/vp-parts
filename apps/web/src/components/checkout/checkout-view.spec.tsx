@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   articleIdentityKey,
+  DeliveryDestinationType,
   ShippingMethod,
   type ArticleIdentityDto,
   type ArticlesAvailabilityDto,
@@ -40,11 +41,11 @@ jest.mock('@/lib/api/delivery', () => ({
     enabled: cartId !== '',
   }),
   deliveryQuoteQueryOptions: (
-    request: { carrier: string; officeCode: string },
+    request: { carrier: string; destination: unknown },
     cartId: string,
     cartVersion: number,
   ) => ({
-    queryKey: ['delivery', 'quote', request.carrier, request.officeCode, cartId, cartVersion],
+    queryKey: ['delivery', 'quote', request.carrier, request.destination, cartId, cartVersion],
     queryFn: () => getQuote(request) as Promise<unknown>,
   }),
 }))
@@ -229,7 +230,7 @@ describe('CheckoutView', () => {
     expect(within(summary).getByText('19,14 €')).toBeInTheDocument()
     expect(getQuote).toHaveBeenCalledWith({
       carrier: ShippingMethod.ECONT,
-      officeCode: '1127',
+      destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
     })
   })
 })

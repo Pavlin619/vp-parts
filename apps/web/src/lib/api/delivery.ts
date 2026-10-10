@@ -84,7 +84,7 @@ export const deliveryQuoteQueryOptions = (
       "delivery",
       "quote",
       request.carrier,
-      request.officeCode,
+      request.destination,
       cartId,
       cartVersion,
     ] as const,

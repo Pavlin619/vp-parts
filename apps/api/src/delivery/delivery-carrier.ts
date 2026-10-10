@@ -1,6 +1,11 @@
 import type {
+  DeliveryAddressDto,
+  DeliveryAddressValidationDto,
+  DeliveryDestinationDto,
   DeliveryOfficeDto,
   DeliveryPlaceDto,
+  DeliveryQuarterDto,
+  DeliveryStreetDto,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
 import type { LockerLimits } from './parcel/locker-fit';
@@ -21,9 +26,16 @@ export interface DeliveryCarrier {
   listOffices(): Promise<DeliveryOfficeDto[]>;
   findOffice(code: string): Promise<DeliveryOfficeDto | undefined>;
   listPlaces(): Promise<DeliveryPlaceDto[]>;
+  /** The places a courier delivers to, which is not the places an office can be collected in. */
+  listAddressPlaces(): Promise<DeliveryPlaceDto[]>;
+  findStreets(placeId: string, query: string): Promise<DeliveryStreetDto[]>;
+  findQuarters(placeId: string, query: string): Promise<DeliveryQuarterDto[]>;
+  validateAddress(
+    address: DeliveryAddressDto,
+  ): Promise<DeliveryAddressValidationDto>;
   /** `sendDate` is the shop-local day we hand the parcel over; null lets the carrier assume today. */
   quote(
-    officeCode: string,
+    destination: DeliveryDestinationDto,
     parcel: Parcel,
     sendDate: string | null,
   ): Promise<CarrierQuote>;

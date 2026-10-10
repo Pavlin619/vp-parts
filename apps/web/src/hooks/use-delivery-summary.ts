@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DeliveryDestinationType } from "@vp-parts-shop/shared";
 import { useCart } from "@/hooks/use-cart";
 import { useParcelCheck } from "@/hooks/use-parcel-check";
 import { useDeliveryMethod, useSelectedOfficeCode } from "@/hooks/use-checkout-delivery";
@@ -36,7 +37,14 @@ export function useDeliverySummary(): DeliverySummaryState {
     officeCode !== null &&
     parcelCheck.state === "ready";
   const quoteQuery = useQuery({
-    ...deliveryQuoteQueryOptions({ carrier, officeCode: officeCode ?? "" }, cartId, cartVersion),
+    ...deliveryQuoteQueryOptions(
+      {
+        carrier,
+        destination: { type: DeliveryDestinationType.OFFICE, officeCode: officeCode ?? "" },
+      },
+      cartId,
+      cartVersion,
+    ),
     enabled: isQuotable && cartId !== "",
   });
 
