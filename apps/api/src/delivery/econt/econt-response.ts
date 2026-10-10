@@ -40,7 +40,6 @@ export interface EcontValidatedAddress {
     street: string | null;
     num: string | null;
     quarter: string | null;
-    other: string | null;
   };
 }
 
@@ -135,8 +134,7 @@ export function isValidatedAddress(
     isFields(value.address) &&
     isStringOrNull(value.address.street) &&
     isStringOrNull(value.address.num) &&
-    isStringOrNull(value.address.quarter) &&
-    isStringOrNull(value.address.other)
+    isStringOrNull(value.address.quarter)
   );
 }
 

@@ -55,10 +55,22 @@ export enum DeliveryDestinationType {
   ADDRESS = 'ADDRESS',
 }
 
+/** Longest text each part of an address may hold; every carrier's address is built from these. */
+export const DELIVERY_ADDRESS_LIMITS = {
+  street: 200,
+  streetNumber: 10,
+  quarter: 100,
+  block: 10,
+  entrance: 10,
+  floor: 10,
+  apartment: 10,
+  note: 100,
+} as const;
+
 /**
  * Where a parcel is delivered. Econt's rule: name a street and its number, or a
- * quarter and what stands in it ({@link isLocatableAddress}). Name, phone and
- * postcode belong to the order, not to the address a quote or a check is asked for.
+ * quarter and where in it ({@link isLocatableAddress}). Name, phone and postcode
+ * belong to the order, not to the address a quote or a check is asked for.
  */
 export interface DeliveryAddressDto {
   /** The {@link DeliveryPlaceDto.id} of the settlement; never its name. */
@@ -66,24 +78,29 @@ export interface DeliveryAddressDto {
   street?: string;
   streetNumber?: string;
   quarter?: string;
-  /** The block, entrance, floor and apartment. */
-  other?: string;
+  block?: string;
+  entrance?: string;
+  floor?: string;
+  apartment?: string;
+  /** What the customer tells the courier; it never locates the door. */
+  note?: string;
 }
 
 export function isLocatableAddress({
   street,
   streetNumber,
   quarter,
-  other,
-}: Pick<
-  DeliveryAddressDto,
-  'street' | 'streetNumber' | 'quarter' | 'other'
->): boolean {
+  block,
+  entrance,
+  floor,
+  apartment,
+}: Omit<DeliveryAddressDto, 'placeId'>): boolean {
   const isFilled = (value: string | undefined) => Boolean(value?.trim());
+  const isPlacedInQuarter = [block, entrance, floor, apartment].some(isFilled);
 
   return (
     (isFilled(street) && isFilled(streetNumber)) ||
-    (isFilled(quarter) && isFilled(other))
+    (isFilled(quarter) && isPlacedInQuarter)
   );
 }
 

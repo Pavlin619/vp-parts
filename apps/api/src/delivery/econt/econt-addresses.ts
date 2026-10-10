@@ -188,11 +188,10 @@ function correctionOf(
   }
 
   return {
-    placeId: sent.placeId,
+    ...sent,
     ...(street && { street }),
     ...(textOf(address.num) && { streetNumber: textOf(address.num) }),
     ...(quarter && { quarter }),
-    ...(textOf(address.other) && { other: textOf(address.other) }),
   };
 }
 

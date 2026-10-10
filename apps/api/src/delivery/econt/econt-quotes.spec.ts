@@ -37,7 +37,7 @@ const ADDRESS: DeliveryDestinationDto = {
     street: 'бул. Витоша',
     streetNumber: '10',
     quarter: 'кв. Лозенец',
-    other: 'ет. 3',
+    floor: '3',
   },
 };
 

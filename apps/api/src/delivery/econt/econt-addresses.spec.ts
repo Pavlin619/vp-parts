@@ -18,12 +18,11 @@ function validated(
     street: string | null;
     num: string | null;
     quarter: string | null;
-    other: string | null;
   }>,
 ) {
   return {
     validationStatus,
-    address: { street: null, num: null, quarter: '', other: null, ...address },
+    address: { street: null, num: null, quarter: '', ...address },
   };
 }
 
@@ -143,7 +142,7 @@ describe('EcontAddresses', () => {
         validated('normal', { street: 'бул. Витоша', num: '10' }),
       );
 
-      await addresses.validate({ ...sent, other: 'вх. А' });
+      await addresses.validate({ ...sent, entrance: 'А', note: 'звънец' });
 
       expect(readNomenclature).toHaveBeenCalledWith(
         'Nomenclatures/AddressService.validateAddress',
@@ -152,7 +151,7 @@ describe('EcontAddresses', () => {
             city: { id: 41 },
             street: 'бул. Витоша',
             num: '10',
-            other: 'вх. А',
+            other: 'вх. А; звънец',
           },
         },
       );
@@ -196,20 +195,22 @@ describe('EcontAddresses', () => {
 
     it('offers the corrected quarter', async () => {
       readNomenclature.mockResolvedValue(
-        validated('normal', { quarter: 'кв. Младост-1', other: 'бл. 5' }),
+        validated('normal', { quarter: 'кв. Младост-1' }),
       );
 
       const { status, suggested } = await addresses.validate({
         placeId: SOFIA,
         quarter: 'младост 1',
-        other: 'бл. 5',
+        block: '5',
+        note: 'звънец',
       });
 
       expect(status).toBe(DeliveryAddressValidationStatus.UNCERTAIN);
       expect(suggested).toEqual({
         placeId: SOFIA,
         quarter: 'кв. Младост-1',
-        other: 'бл. 5',
+        block: '5',
+        note: 'звънец',
       });
     });
 

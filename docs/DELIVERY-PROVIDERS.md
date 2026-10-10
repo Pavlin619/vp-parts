@@ -331,9 +331,23 @@ stays on the server. Other cities: Plovdiv 1,138, Varna 1,054, Pleven 437.
 "region and any `to_door_*`", with the three refused places and the 88 suspended ones
 as the open question above.
 
+**Econt's address has five fields, and only `other` is free text.** Measured 2026-10-10
+on production `validateAddress` and a demo `createLabel` (`mode: "create"`, each label
+deleted straight after). `city`, `quarter`, `street`, `num` and `other` are read.
+`bl`, `vh`, `et`, `ap` and the long names (`block`, `entrance`, `floor`, `apartment`)
+are accepted and dropped: not echoed, not in `fullAddress`, and they do not satisfy the
+quarter rule (`Необходимо е да добавите блок или да попълните поле Друго`). `other` is
+folded into `fullAddress` (`бул. Витоша 60 звънец не работи`). **No length limit
+showed:** `validateAddress` and a created label took 8,000 characters in `other`, so
+the cap is ours. **[VERIFY]** How much of it the printed label shows.
+
 **How the backend uses it.** An address is `{ placeId, street?, streetNumber?, quarter?,
-other? }` and must name street + number or quarter + other (checked at the boundary and
-by `addressSchema`). `DeliveryService` checks `placeId` against `/address-places` before
+block?, entrance?, floor?, apartment?, note? }` and must name street + number, or a
+quarter + one of block, entrance, floor, apartment (checked at the boundary and by
+`addressSchema`; a note never locates a door). `econtAddressOf` folds the last five into
+`other` — `бл. 5, вх. Б, ет. 3, ап. 12; звънецът не работи`, the note last — and the
+limits in `DELIVERY_ADDRESS_LIMITS` keep the longest of them under
+`ECONT_OTHER_MAX_LENGTH` (200), which a test checks. `DeliveryService` checks `placeId` against `/address-places` before
 calling Econt, answering `422 DELIVERY_ADDRESS_NOT_SERVED`; a receiver Econt refuses is
 `422 DELIVERY_ADDRESS_REFUSED`. `validate` maps `invalid` and `517 ExInvalidAddress` to
 `INVALID`, and a street or quarter Econt returned different from the one sent to
