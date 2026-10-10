@@ -428,3 +428,14 @@ Settled from the two sources above, so none of it needs the Test Client.
 `shippingProfileOf` (`tecdoc/shipping-profile.ts`) reads a part's weight (criteria `3852`, `683`, `2612`, `212`) and package size (`1620`–`1622`) from the `rawValue` of the criteria the detail call already asks for, and `ArticleDetailRead` carries it beside the DTO, the same way it carries `genericArticleIds`. Nothing renders it; the cart stores it on each line when a part is added, and the delivery module weighs the cart from there. Coverage is thin: most categories file neither. The measurements and the fallback rules are in [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md).
 
 **The logistics table is a second, packed source.** `includeArticleLogisticsCriteria` returns `articleLogisticsCriteria`, shaped like the article criteria: `3870` is the packed weight in grams, and `4197`/`4198`/`4199` the packed length, width and height in **millimetres**, not centimetres. Measured on the parcel-estimate spike (`apps/api/scripts/parcel-estimate-coverage-probe.mjs`), it is filled for about 8% of in-stock parts, mostly control arms. Logistics figures describe the part as shipped and the article criteria mostly the bare part, so `shippingProfileOf` takes each half from logistics first. The flag is on the detail read only, never on a list call.
+
+
+#### Listing every article of a product type (the parcel-profile builder)
+
+Measured on 2026-10-07 while building `ProductTypeParcelProfile` (see `DELIVERY-PROVIDERS.md`):
+
+- **There is no published rate limit and no rate-limit header.** Replies carry no `X-RateLimit-*` or `Retry-After`. Several hundred sequential calls at 5–15/s returned only normal replies; the builder runs at 1/s. The quota on our key is unknown, so ask TecAlliance.
+- **`dataSupplierIds` takes our full 896-brand list** and matches any of them.
+- **A type's listing comes back in blocks by brand, and only the first ~10,000 are reachable** (`maxAllowedPage` 10 at `perPage: 1000`). Page 1 of a big type is one or two brands, and `sort: articleNumber` does not change that. So a big type is read per brand, choosing brands our catalogue weighs.
+- **Product types are not leaf categories:** 9,218 types against 1,138 leaves; a leaf holds several types and a type can sit in several leaves.
+- **The assembly-group facet ignores a `genericArticleIds` filter.**

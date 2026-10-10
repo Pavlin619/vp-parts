@@ -76,7 +76,7 @@ describe('OfficeList', () => {
       offices: [office({ name: 'Офис автомат', type: DeliveryOfficeType.LOCKER })],
       parcelCheck: {
         state: 'ready',
-        parcel: { weightGrams: 90_000, unmeasuredArticles: [], isLockerEligible: false },
+        parcel: { weightGrams: 90_000, isLockerEligible: false },
       },
     })
 

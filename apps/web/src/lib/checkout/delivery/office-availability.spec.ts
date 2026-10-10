@@ -33,7 +33,6 @@ function ready(overrides: Partial<ParcelEstimateDto> = {}): ParcelCheck {
     state: 'ready',
     parcel: {
       weightGrams: 1200,
-      unmeasuredArticles: [],
       isLockerEligible: true,
       ...overrides,
     },

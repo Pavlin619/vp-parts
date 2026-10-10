@@ -8,7 +8,7 @@ import { parseRunArguments } from './parcel-profiles/run-arguments';
 
 /**
  * Rebuilds the product-type parcel fallback table. About 3.5 hours against the
- * real TecDoc; see docs/PARCEL-ESTIMATION-PLAN.md, phase 2.
+ * real TecDoc; see docs/DELIVERY-PROVIDERS.md.
  *
  *   npm run parcel-profiles:build -- --limit 20 --dry-run
  *   npm run parcel-profiles:build -- --resume

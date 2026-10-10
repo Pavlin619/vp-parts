@@ -127,11 +127,21 @@ const PROFILES: Record<string, object> = {
 };
 
 const BRAKE_DISC = 82;
+const BUMPER = 9001;
+const BUMPER_WEIGHT_GRAMS = 3000;
+
+function genericArticleIdsOf(articleNumber: string): number[] {
+  if (articleNumber === 'EQUIVALENT_DISC') {
+    return [BRAKE_DISC];
+  }
+
+  return articleNumber === 'DISC' ? [BUMPER] : [];
+}
 
 const readArticle = (_brandId: number, articleNumber: string) =>
   Promise.resolve({
     detail: {},
-    genericArticleIds: articleNumber === 'EQUIVALENT_DISC' ? [BRAKE_DISC] : [],
+    genericArticleIds: genericArticleIdsOf(articleNumber),
     shippingProfile: PROFILES[articleNumber],
   });
 
@@ -181,6 +191,15 @@ describe('Delivery (e2e)', () => {
       builder.overrideProvider(CrossReferencesTecDoc).useValue(crossReferences);
     });
     prisma = app.get(PrismaService);
+    await prisma.productTypeParcelProfile.create({
+      data: {
+        genericArticleId: BUMPER,
+        productTypeName: 'Бронь',
+        weightGrams: BUMPER_WEIGHT_GRAMS,
+        sampleSize: 5,
+        computedAt: new Date(),
+      },
+    });
     jest
       .spyOn(app.get(SupplierCatalogRepository), 'findPackageProfiles')
       .mockImplementation((identities) =>
@@ -199,6 +218,9 @@ describe('Delivery (e2e)', () => {
 
   afterAll(async () => {
     await prisma.cart.deleteMany({ where: { token: { in: mintedTokens } } });
+    await prisma.productTypeParcelProfile.deleteMany({
+      where: { genericArticleId: BUMPER },
+    });
     await app.close();
   });
 
@@ -291,12 +313,11 @@ describe('Delivery (e2e)', () => {
 
       expect(response.body).toEqual({
         weightGrams: 47 + 2000,
-        unmeasuredArticles: [],
         isLockerEligible: false,
       });
     });
 
-    it('gives no weight for a part with none, and names it', async () => {
+    it('weighs a part nothing else weighs by its product type, out of a locker', async () => {
       const token = await openCart('FILTER', 'DISC');
 
       const response = await request(app.getHttpServer())
@@ -306,8 +327,7 @@ describe('Delivery (e2e)', () => {
         .expect(200);
 
       expect(response.body).toEqual({
-        weightGrams: null,
-        unmeasuredArticles: [{ brandId: '30', articleNumber: 'DISC' }],
+        weightGrams: 47 + BUMPER_WEIGHT_GRAMS,
         isLockerEligible: false,
       });
     });
@@ -332,7 +352,6 @@ describe('Delivery (e2e)', () => {
 
       expect(response.body).toEqual({
         weightGrams: 6700,
-        unmeasuredArticles: [],
         isLockerEligible: false,
       });
     });
@@ -450,23 +469,6 @@ describe('Delivery (e2e)', () => {
         statusCode: 422,
         errorCode: AppErrorCode.DELIVERY_LOCKER_INELIGIBLE,
       });
-    });
-
-    it('refuses a parcel holding a part with no weight', async () => {
-      const token = await openCart('FILTER', 'DISC');
-      econt.call.mockClear();
-
-      const response = await request(app.getHttpServer())
-        .post('/delivery/quote')
-        .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
-        .expect(422);
-
-      expect(response.body).toEqual({
-        statusCode: 422,
-        errorCode: AppErrorCode.DELIVERY_PARCEL_UNMEASURED,
-      });
-      expect(econt.call).not.toHaveBeenCalled();
     });
 
     it('refuses a locker for a parcel that cannot be shown to fit', async () => {

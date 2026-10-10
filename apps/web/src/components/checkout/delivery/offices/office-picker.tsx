@@ -14,7 +14,6 @@ import {
 import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { resolveSelectedOffice } from "@/lib/checkout/delivery/office-availability";
 import { OfficeBrowser } from "./office-browser";
-import { ParcelUnmeasuredNotice } from "./parcel-unmeasured-notice";
 import { SelectedOfficeCard } from "./selected-office-card";
 
 const NO_OFFICES: DeliveryOfficeDto[] = [];
@@ -57,7 +56,6 @@ export function OfficePicker({ carrier }: OfficePickerProps) {
   const offices = officesQuery.data ?? NO_OFFICES;
   const places = placesQuery.data ?? NO_PLACES;
   const selectedOffice = resolveSelectedOffice(offices, selectedCode, parcelCheck);
-  const isUnmeasured = parcelCheck.state === "ready" && parcelCheck.parcel.weightGrams === null;
   const carrierName = CARRIER_NAMES[carrier];
 
   const handleChoose = (code: string) => {
@@ -67,8 +65,6 @@ export function OfficePicker({ carrier }: OfficePickerProps) {
 
   return (
     <div className="flex flex-col gap-2.5">
-      {isUnmeasured && <ParcelUnmeasuredNotice />}
-
       {selectedOffice && !isChanging ? (
         <SelectedOfficeCard
           office={selectedOffice}

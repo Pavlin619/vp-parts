@@ -35,7 +35,6 @@ jest.mock('@/lib/api/cart')
 
 const PARCEL: ParcelEstimateDto = {
   weightGrams: 2300,
-  unmeasuredArticles: [],
   isLockerEligible: true,
 }
 
@@ -102,17 +101,6 @@ describe('useDeliverySummary', () => {
     await waitFor(() => expect(result.current.parcelCheck.state).toBe('ready'))
 
     expect(result.current.delivery).toEqual({ kind: 'not-quoted' })
-    expect(getQuote).not.toHaveBeenCalled()
-  })
-
-  // Weightless parts are priced by phone; the API would refuse the quote anyway.
-  it('does not ask for a quote when a part has no weight', async () => {
-    getParcel.mockResolvedValue({ ...PARCEL, weightGrams: null })
-
-    const { result } = renderHook(() => useDeliverySummary(), { wrapper })
-
-    await waitFor(() => expect(result.current.delivery).toEqual({ kind: 'by-phone' }))
-
     expect(getQuote).not.toHaveBeenCalled()
   })
 

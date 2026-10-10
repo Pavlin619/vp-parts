@@ -2,7 +2,11 @@ import { Test } from '@nestjs/testing';
 import { ArticleReadCache, CrossReferencesService } from '../../catalog';
 import { SupplierCatalogRepository } from '../../inventory';
 import { CatalogUnavailableException } from '../../tecdoc';
-import { ShippingProfileResolver } from './shipping-profile.resolver';
+import { ProductTypeParcelProfileRepository } from './product-type-parcel-profile.repository';
+import {
+  ShippingProfileResolver,
+  UNKNOWN_PRODUCT_TYPE_PROFILE,
+} from './shipping-profile.resolver';
 
 const PART = { brandId: '421', articleNumber: 'ADC1718V' };
 const BOX = { length: 30, width: 30, height: 6 };
@@ -20,6 +24,7 @@ describe('ShippingProfileResolver', () => {
   const findPackageProfiles = jest.fn();
   const readArticle = jest.fn();
   const getCandidates = jest.fn();
+  const findByGenericArticleId = jest.fn();
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -30,6 +35,7 @@ describe('ShippingProfileResolver', () => {
       genericArticleIds: [OIL_FILTER],
     });
     getCandidates.mockResolvedValue([]);
+    findByGenericArticleId.mockResolvedValue(null);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -40,6 +46,10 @@ describe('ShippingProfileResolver', () => {
         },
         { provide: ArticleReadCache, useValue: { read: readArticle } },
         { provide: CrossReferencesService, useValue: { getCandidates } },
+        {
+          provide: ProductTypeParcelProfileRepository,
+          useValue: { findByGenericArticleId },
+        },
       ],
     }).compile();
 
@@ -138,19 +148,75 @@ describe('ShippingProfileResolver', () => {
     });
   });
 
-  it('stays unweighed when no equivalent is weighed', async () => {
+  it('falls back to the product type when no equivalent is weighed', async () => {
     getCandidates.mockResolvedValue([equivalent('EQ0')]);
-    findPackageProfiles.mockResolvedValue([]);
+    findByGenericArticleId.mockResolvedValue({
+      weightGrams: 420,
+      packageCm: BOX,
+      sampleSize: 9,
+    });
 
     const profile = await resolver.resolve(PART);
 
-    expect(profile).toEqual({ ...UNKNOWN, isEstimated: false });
+    expect(findByGenericArticleId).toHaveBeenCalledWith(OIL_FILTER);
+    expect(profile).toEqual({
+      weightGrams: 420,
+      packageCm: BOX,
+      isEstimated: true,
+    });
   });
 
-  it('stays unweighed for a part with no equivalents', async () => {
+  it('keeps the part’s own box when only the product type weighs it', async () => {
+    const ownBox = { length: 40, width: 10, height: 10 };
+    findPackageProfile.mockResolvedValue({
+      weightGrams: null,
+      packageCm: ownBox,
+    });
+    findByGenericArticleId.mockResolvedValue({
+      weightGrams: 420,
+      packageCm: BOX,
+      sampleSize: 9,
+    });
+
     const profile = await resolver.resolve(PART);
 
-    expect(profile).toEqual({ ...UNKNOWN, isEstimated: false });
+    expect(profile).toEqual({
+      weightGrams: 420,
+      packageCm: ownBox,
+      isEstimated: true,
+    });
+  });
+
+  it('uses the global default when the product type has no row', async () => {
+    const profile = await resolver.resolve(PART);
+
+    expect(profile).toEqual({
+      ...UNKNOWN_PRODUCT_TYPE_PROFILE,
+      isEstimated: true,
+    });
+  });
+
+  it('uses the global default when TecDoc names no product type', async () => {
+    readArticle.mockResolvedValue({
+      shippingProfile: UNKNOWN,
+      genericArticleIds: [],
+    });
+
+    const profile = await resolver.resolve(PART);
+
+    expect(findByGenericArticleId).not.toHaveBeenCalled();
+    expect(profile).toEqual({
+      ...UNKNOWN_PRODUCT_TYPE_PROFILE,
+      isEstimated: true,
+    });
+  });
+
+  it('does not read the product type table when equivalents weigh the part', async () => {
+    givenEquivalentsWeighing(1200);
+
+    await resolver.resolve(PART);
+
+    expect(findByGenericArticleId).not.toHaveBeenCalled();
   });
 
   it('lets a TecDoc outage fail the read rather than resolve a line unweighed', async () => {

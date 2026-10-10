@@ -47,7 +47,6 @@ export enum AppErrorCode {
   /** The parcel does not fit, or cannot be shown to fit, a parcel locker. */
   DELIVERY_LOCKER_INELIGIBLE = 'DELIVERY_LOCKER_INELIGIBLE',
   /** A selected part has no known weight, so the courier cannot be asked for a price. */
-  DELIVERY_PARCEL_UNMEASURED = 'DELIVERY_PARCEL_UNMEASURED',
   /** The courier's API could not be reached or failed. Retryable. */
   DELIVERY_UNAVAILABLE = 'DELIVERY_UNAVAILABLE',
 }

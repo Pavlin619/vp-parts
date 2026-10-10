@@ -44,7 +44,7 @@ const PROGRESS_LOG_EVERY = 50;
 /**
  * Rebuilds the product-type fallback table: TecDoc says which articles each
  * type holds, our own catalogue says what they weigh. See
- * docs/PARCEL-ESTIMATION-PLAN.md, phase 2.
+ * docs/DELIVERY-PROVIDERS.md.
  */
 @Injectable()
 export class ParcelProfileBuilder {

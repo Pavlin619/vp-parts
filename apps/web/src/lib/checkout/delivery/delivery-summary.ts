@@ -8,7 +8,6 @@ export type DeliverySummary =
   | { kind: "not-quoted" }
   | { kind: "awaiting-office" }
   | { kind: "pending" }
-  | { kind: "by-phone" }
   | { kind: "office-unusable" }
   | { kind: "failed" }
   | { kind: "quoted"; priceIncVatCents: number; expectedDeliveryDate: string | null };
@@ -53,10 +52,6 @@ export function resolveDeliverySummary({
     return { kind: parcelCheck.state === "checking" ? "pending" : "failed" };
   }
 
-  if (parcelCheck.parcel.weightGrams === null) {
-    return { kind: "by-phone" };
-  }
-
   return summariseQuote(quote);
 }
 
@@ -94,13 +89,9 @@ function summariseQuote(quote: QuoteState | null): DeliverySummary {
   return { kind: summariseQuoteError(quote.error) };
 }
 
-function summariseQuoteError(error: Error | null): "by-phone" | "office-unusable" | "failed" {
+function summariseQuoteError(error: Error | null): "office-unusable" | "failed" {
   if (!(error instanceof ApiError)) {
     return "failed";
-  }
-
-  if (error.errorCode === AppErrorCode.DELIVERY_PARCEL_UNMEASURED) {
-    return "by-phone";
   }
 
   return OFFICE_UNUSABLE_CODES.includes(error.errorCode) ? "office-unusable" : "failed";

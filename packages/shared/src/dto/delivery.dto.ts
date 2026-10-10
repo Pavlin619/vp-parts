@@ -1,5 +1,4 @@
 import { ShippingMethod } from '../enums';
-import { ArticleIdentityDto } from './inventory.dto';
 
 export enum DeliveryOfficeType {
   OFFICE = 'OFFICE',
@@ -47,13 +46,7 @@ export interface DeliveryPlaceDto {
 
 /** What the selected cart lines weigh as one parcel, and whether the asked carrier's locker takes it. */
 export interface ParcelEstimateDto {
-  /**
-   * Null when any selected part has no known weight. Delivery then cannot be quoted:
-   * the shop measures the part and calls the customer with the price.
-   */
-  weightGrams: number | null;
-  /** The selected parts with no known weight; empty exactly when `weightGrams` is set. */
-  unmeasuredArticles: ArticleIdentityDto[];
+  weightGrams: number;
   isLockerEligible: boolean;
 }
 

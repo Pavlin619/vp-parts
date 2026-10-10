@@ -33,9 +33,9 @@ valuation: it changes only with a TecDoc data release, not with stock or price.
 - **The API reads it, never the client.** `CartService.addLine` takes it from
   `ShippingProfileResolver`: the supplier catalogue, then `ArticleReadCache` (usually
   cached by the page the part was added from), then the median of the part's
-  cross-references. The request body cannot supply it, because it decides a delivery
+  cross-references, then the weight of the part's product type. The request body cannot supply it, because it decides a delivery
   price. The chain is in [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md).
-- **`isShippingEstimated` is true when any half came from the cross-references.** An
+- **`isShippingEstimated` is true when any half came from the cross-references or the product type.** An
   estimate is close enough to price an office parcel on, but not to promise a locker
   cell, so delivery keeps such a parcel out of lockers.
 - **So an add reads the catalogue, and can fail on it.** When the supplier catalogue
