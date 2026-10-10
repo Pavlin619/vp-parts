@@ -3,6 +3,7 @@ import request from 'supertest';
 import {
   AppErrorCode,
   CART_TOKEN_HEADER,
+  DELIVERY_ADDRESS_LIMITS,
   DeliveryAddressValidationStatus,
   DeliveryDestinationType,
   DeliveryOfficeType,
@@ -691,10 +692,28 @@ describe('Delivery (e2e)', () => {
             destination: addressTo({
               placeId: String(SOFIA_ID),
               quarter: 'кв. Слатина',
-              other: 'бл. 5',
+              block: '5',
             }),
           })
           .expect(200);
+      });
+
+      it('refuses a note longer than the address allows', async () => {
+        const token = await openCart('FILTER');
+
+        await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo({
+              placeId: String(SOFIA_ID),
+              street: 'бул. Витоша',
+              streetNumber: '10',
+              note: 'а'.repeat(DELIVERY_ADDRESS_LIMITS.note + 1),
+            }),
+          })
+          .expect(400);
       });
 
       it('refuses a destination of an unknown type', async () => {

@@ -10,6 +10,7 @@ import {
 } from "@/lib/checkout/delivery/delivery-methods";
 import type { DeliveryPromise } from "@/lib/delivery/promise";
 import { DeliveryOptionCard } from "./delivery-option-card";
+import { AddressPicker } from "./address";
 import { OfficePicker } from "./offices";
 
 const METHOD_ICONS: Record<DeliveryMethod, ReactNode> = {
@@ -73,12 +74,8 @@ function ProviderSlot({ method }: { method: DeliveryMethod }) {
   }
 
   return (
-    <div
-      data-testid="delivery-provider-slot"
-      data-method={method}
-      className="mt-2.5 rounded-[10px] border border-dashed border-line-2 bg-canvas p-3.5 text-[12.5px] text-ink-3"
-    >
-      Тук ще въведете адреса за доставка.
+    <div data-testid="delivery-provider-slot" data-method={method} className="mt-2.5">
+      <AddressPicker carrier={OFFICE_DELIVERY_CARRIER} />
     </div>
   );
 }

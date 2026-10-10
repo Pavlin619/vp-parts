@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import type { DeliveryPromise } from '@/lib/delivery/promise'
 import { DeliveryMethodPanel } from './delivery-method-panel'
 
+jest.mock('./address', () => ({
+  AddressPicker: () => <div data-testid="address-picker" />,
+}))
+
 jest.mock('./offices', () => ({
   OfficePicker: ({ carrier }: { carrier: string }) => (
     <div data-testid="office-picker" data-carrier={carrier} />
@@ -74,8 +78,7 @@ describe('DeliveryMethodPanel', () => {
     expect(screen.getByTestId('office-picker')).toHaveAttribute('data-carrier', 'ECONT')
   })
 
-  // The address form lands with address delivery.
-  it('keeps a slot for the address form under delivery to an address', () => {
+  it('shows the address picker under delivery to an address', () => {
     render(
       <DeliveryMethodPanel
         method="courier-address"
@@ -88,6 +91,7 @@ describe('DeliveryMethodPanel', () => {
       'data-method',
       'courier-address',
     )
+    expect(screen.getByTestId('address-picker')).toBeInTheDocument()
     expect(screen.queryByTestId('office-picker')).not.toBeInTheDocument()
   })
 

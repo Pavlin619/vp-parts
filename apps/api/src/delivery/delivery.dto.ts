@@ -15,6 +15,7 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 import {
+  DELIVERY_ADDRESS_LIMITS,
   DeliveryAddressDto,
   DeliveryDestinationType,
   DeliveryQuoteRequestDto,
@@ -24,6 +25,8 @@ import {
 
 /** Must name only carriers registered under DELIVERY_CARRIERS in DeliveryModule. */
 const SUPPORTED_CARRIERS = [ShippingMethod.ECONT];
+
+const LIMITS = DELIVERY_ADDRESS_LIMITS;
 
 const PLACE_ID_PATTERN = /^\d{1,10}$/;
 
@@ -60,23 +63,43 @@ export class DeliveryAddressBodyDto implements DeliveryAddressDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(LIMITS.street)
   street?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(10)
+  @MaxLength(LIMITS.streetNumber)
   streetNumber?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(LIMITS.quarter)
   quarter?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(100)
-  other?: string;
+  @MaxLength(LIMITS.block)
+  block?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(LIMITS.entrance)
+  entrance?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(LIMITS.floor)
+  floor?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(LIMITS.apartment)
+  apartment?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(LIMITS.note)
+  note?: string;
 }
 
 export class DeliveryAddressValidateBodyDto {
