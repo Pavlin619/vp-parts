@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { ShippingMethod } from "@vp-parts-shop/shared";
+import type { DeliveryAddressDto, ShippingMethod } from "@vp-parts-shop/shared";
 import {
   DEFAULT_DELIVERY_METHOD,
   type DeliveryMethod,
@@ -14,13 +14,22 @@ export interface SelectedOffice {
   code: string;
 }
 
+/** An address the carrier accepted, with the line the customer reads back. */
+export interface SelectedAddress {
+  carrier: ShippingMethod;
+  address: DeliveryAddressDto;
+  label: string;
+}
+
 interface CheckoutDeliveryState {
   method: DeliveryMethod;
   office: SelectedOffice | null;
+  address: SelectedAddress | null;
 
   setMethod: (method: DeliveryMethod) => void;
   selectOffice: (office: SelectedOffice) => void;
   clearOffice: () => void;
+  selectAddress: (address: SelectedAddress) => void;
 }
 
 /**
@@ -33,14 +42,20 @@ export const useCheckoutDelivery = create<CheckoutDeliveryState>()(
     (set) => ({
       method: DEFAULT_DELIVERY_METHOD,
       office: null,
+      address: null,
 
       setMethod: (method) => set({ method }),
       selectOffice: (office) => set({ office }),
       clearOffice: () => set({ office: null }),
+      selectAddress: (address) => set({ address }),
     }),
     {
       name: "vp-checkout-delivery",
-      partialize: ({ method, office }) => ({ method, office }),
+      partialize: ({ method, office, address }) => ({
+        method,
+        office,
+        address,
+      }),
     },
   ),
 );
@@ -58,4 +73,12 @@ export function useSelectedOfficeCode(carrier: ShippingMethod): string | null {
   const office = useCheckoutDelivery((state) => state.office);
 
   return isHydrated && office?.carrier === carrier ? office.code : null;
+}
+
+/** The remembered address, if it was accepted for this carrier. */
+export function useSelectedAddress(carrier: ShippingMethod): SelectedAddress | null {
+  const isHydrated = useIsHydrated();
+  const address = useCheckoutDelivery((state) => state.address);
+
+  return isHydrated && address?.carrier === carrier ? address : null;
 }

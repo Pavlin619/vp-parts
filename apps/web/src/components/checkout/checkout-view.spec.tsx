@@ -41,16 +41,20 @@ jest.mock('@/lib/api/delivery', () => ({
     enabled: cartId !== '',
   }),
   deliveryQuoteQueryOptions: (
-    request: { carrier: string; destination: unknown },
+    request: { carrier: string; destination: unknown } | null,
     cartId: string,
     cartVersion: number,
   ) => ({
-    queryKey: ['delivery', 'quote', request.carrier, request.destination, cartId, cartVersion],
+    queryKey: ['delivery', 'quote', request?.carrier, request?.destination, cartId, cartVersion],
     queryFn: () => getQuote(request) as Promise<unknown>,
   }),
 }))
 
 jest.mock('@/lib/api/cart')
+
+jest.mock('./delivery/address', () => ({
+  AddressPicker: () => <div data-testid="address-picker" />,
+}))
 
 jest.mock('./delivery/offices', () => ({
   OfficePicker: () => <div data-testid="office-picker" />,

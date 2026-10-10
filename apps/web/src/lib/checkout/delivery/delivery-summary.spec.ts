@@ -7,6 +7,12 @@ function parcel(overrides: Partial<ParcelEstimateDto> = {}): ParcelEstimateDto {
   return { weightGrams: 2300, isLockerEligible: true, ...overrides }
 }
 
+const OFFICE = { type: DeliveryDestinationType.OFFICE, officeCode: '1127' } as const
+const ADDRESS = {
+  type: DeliveryDestinationType.ADDRESS,
+  address: { placeId: '41', street: 'бул. Витоша', streetNumber: '1' },
+} as const
+
 const READY: ParcelCheck = { state: 'ready', parcel: parcel() }
 
 const QUOTE: DeliveryQuoteDto = {
@@ -25,15 +31,40 @@ function quoteState(overrides: Partial<NonNullable<QuoteState>> = {}): QuoteStat
 }
 
 describe('resolveDeliverySummary', () => {
-  it('leaves delivery to an address unpriced until addresses exist', () => {
+  it('asks for an address before anything is priced', () => {
     expect(
-      resolveDeliverySummary({ method: 'courier-address', officeCode: null, parcelCheck: READY, quote: null }),
-    ).toEqual({ kind: 'not-quoted' })
+      resolveDeliverySummary({ method: 'courier-address', destination: null, parcelCheck: READY, quote: null }),
+    ).toEqual({ kind: 'awaiting-address' })
   })
+
+  it('prices an address like an office', () => {
+    expect(
+      resolveDeliverySummary({
+        method: 'courier-address',
+        destination: ADDRESS,
+        parcelCheck: READY,
+        quote: quoteState({ data: { ...QUOTE, destination: ADDRESS } }),
+      }),
+    ).toEqual({ kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: '2026-09-30' })
+  })
+
+  it.each(['DELIVERY_ADDRESS_REFUSED', 'DELIVERY_ADDRESS_NOT_SERVED'])(
+    'asks to check the address when the quote says %s',
+    (errorCode) => {
+      expect(
+        resolveDeliverySummary({
+          method: 'courier-address',
+          destination: ADDRESS,
+          parcelCheck: READY,
+          quote: quoteState({ error: new ApiError(422, errorCode) }),
+        }),
+      ).toEqual({ kind: 'address-unusable' })
+    },
+  )
 
   it('asks for an office before anything is priced', () => {
     expect(
-      resolveDeliverySummary({ method: 'courier-office', officeCode: null, parcelCheck: READY, quote: null }),
+      resolveDeliverySummary({ method: 'courier-office', destination: null, parcelCheck: READY, quote: null }),
     ).toEqual({ kind: 'awaiting-office' })
   })
 
@@ -41,7 +72,7 @@ describe('resolveDeliverySummary', () => {
     expect(
       resolveDeliverySummary({
         method: 'courier-office',
-        officeCode: '1127',
+        destination: OFFICE,
         parcelCheck: { state: 'checking' },
         quote: null,
       }),
@@ -52,7 +83,7 @@ describe('resolveDeliverySummary', () => {
     expect(
       resolveDeliverySummary({
         method: 'courier-office',
-        officeCode: '1127',
+        destination: OFFICE,
         parcelCheck: { state: 'failed' },
         quote: null,
       }),
@@ -63,7 +94,7 @@ describe('resolveDeliverySummary', () => {
     expect(
       resolveDeliverySummary({
         method: 'courier-office',
-        officeCode: '1127',
+        destination: OFFICE,
         parcelCheck: READY,
         quote: quoteState({ isPending: true }),
       }),
@@ -74,7 +105,7 @@ describe('resolveDeliverySummary', () => {
     expect(
       resolveDeliverySummary({
         method: 'courier-office',
-        officeCode: '1127',
+        destination: OFFICE,
         parcelCheck: READY,
         quote: quoteState({ data: QUOTE }),
       }),
@@ -87,7 +118,7 @@ describe('resolveDeliverySummary', () => {
       expect(
         resolveDeliverySummary({
           method: 'courier-office',
-          officeCode: '1127',
+          destination: OFFICE,
           parcelCheck: READY,
           quote: quoteState({ error: new ApiError(422, errorCode) }),
         }),
@@ -99,7 +130,7 @@ describe('resolveDeliverySummary', () => {
     expect(
       resolveDeliverySummary({
         method: 'courier-office',
-        officeCode: '1127',
+        destination: OFFICE,
         parcelCheck: READY,
         quote: quoteState({ error: new ApiError(503, 'DELIVERY_UNAVAILABLE') }),
       }),

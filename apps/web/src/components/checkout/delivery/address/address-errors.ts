@@ -1,28 +1,31 @@
-import { isLocatableAddress } from "@vp-parts-shop/shared";
-import { isCityValid, isPostcodeValid, type AddressFormValues } from "./address-form-values";
+import { isPlaceChosen, type AddressFormValues, type LocatorMode } from "./address-form-values";
 
 export type AddressErrors = Partial<
-  Record<"city" | "postcode" | "street" | "streetNumber" | "block", string>
+  Record<"place" | "street" | "streetNumber" | "quarter" | "block", string>
 >;
 
-/** The field that is missing for the route the customer started on: a street, or a quarter. */
-export function addressErrors(values: AddressFormValues): AddressErrors {
+/** What is missing for the route the customer chose: a street and number, or a quarter and where in it. */
+export function addressErrors(values: AddressFormValues, mode: LocatorMode): AddressErrors {
   return {
-    ...(!isCityValid(values) && { city: "Въведи населено място" }),
-    ...(!isPostcodeValid(values) && { postcode: "Въведи 4 цифри" }),
-    ...locatorErrors(values),
+    ...(!isPlaceChosen(values) && { place: "Избери населено място от списъка" }),
+    ...(mode === "street" ? streetErrors(values) : quarterErrors(values)),
   };
 }
 
-function locatorErrors(values: AddressFormValues): AddressErrors {
-  if (isLocatableAddress(values)) return {};
+function streetErrors({ street, streetNumber }: AddressFormValues): AddressErrors {
+  return {
+    ...(!street.trim() && { street: "Въведи улица" }),
+    ...(!streetNumber.trim() && { streetNumber: "Въведи номер" }),
+  };
+}
 
-  const hasStreet = Boolean(values.street.trim());
-  const hasNumber = Boolean(values.streetNumber.trim());
+function quarterErrors(values: AddressFormValues): AddressErrors {
+  const isPlacedInQuarter = [values.block, values.entrance, values.floor, values.apartment].some(
+    (part) => part.trim(),
+  );
 
-  if (hasStreet) return { streetNumber: "Въведи номер" };
-  if (hasNumber) return { street: "Въведи улица" };
-  if (values.quarter.trim()) return { block: "Добави блок, вход, етаж или апартамент" };
-
-  return { street: "Въведи улица и номер" };
+  return {
+    ...(!values.quarter.trim() && { quarter: "Въведи квартал или ж.к." }),
+    ...(!isPlacedInQuarter && { block: "Добави блок, вход, етаж или апартамент" }),
+  };
 }
