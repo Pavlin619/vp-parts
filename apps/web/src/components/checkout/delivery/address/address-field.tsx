@@ -7,6 +7,8 @@ interface AddressFieldProps
   value: string;
   onValueChange: (value: string) => void;
   isOptional?: boolean;
+  /** Names offered while typing; anything else typed is still accepted. */
+  suggestions?: string[];
   error?: string;
   className?: string;
 }
@@ -16,12 +18,14 @@ export function AddressField({
   value,
   onValueChange,
   isOptional = false,
+  suggestions,
   error,
   className,
   ...inputProps
 }: AddressFieldProps) {
   const inputId = useId();
   const errorId = useId();
+  const suggestionsId = useId();
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-[5px]", className)}>
@@ -38,12 +42,20 @@ export function AddressField({
         value={value}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
+        list={suggestions?.length ? suggestionsId : undefined}
         onChange={(event) => onValueChange(event.target.value)}
         className={cn(
           "h-[42px] w-full rounded-lg border border-line bg-bg-card px-3 text-[13.5px] text-ink placeholder:text-ink-4 focus:border-ink focus:outline-none focus:ring-[3px] focus:ring-ink/5",
           error && "border-danger",
         )}
       />
+      {suggestions && (
+        <datalist id={suggestionsId}>
+          {suggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+      )}
       {error && (
         <span id={errorId} className="text-[11.5px] text-danger">
           {error}

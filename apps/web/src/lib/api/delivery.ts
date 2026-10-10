@@ -1,6 +1,10 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, skipToken } from "@tanstack/react-query";
 import type {
+  DeliveryAddressDto,
+  DeliveryAddressValidationDto,
   DeliveryOfficeDto,
+  DeliveryQuarterDto,
+  DeliveryStreetDto,
   DeliveryPlaceDto,
   DeliveryQuoteDto,
   DeliveryQuoteRequestDto,
@@ -30,6 +34,20 @@ export function getDeliveryPlaces(
   return apiFetch<DeliveryPlaceDto[]>(`/delivery/places?${carrierParam(carrier)}`);
 }
 
+export function getDeliveryAddressPlaces(carrier: ShippingMethod): Promise<DeliveryPlaceDto[]> {
+  return apiFetch<DeliveryPlaceDto[]>(`/delivery/address-places?${carrierParam(carrier)}`);
+}
+
+export function validateDeliveryAddress(request: {
+  carrier: ShippingMethod;
+  address: DeliveryAddressDto;
+}): Promise<DeliveryAddressValidationDto> {
+  return apiFetch<DeliveryAddressValidationDto>("/delivery/address/validate", {
+    method: "POST",
+    body: request,
+  });
+}
+
 /** What the requester's selected cart lines weigh as one parcel for this carrier. */
 export function getParcelEstimate(
   carrier: ShippingMethod,
@@ -57,6 +75,25 @@ export const deliveryPlacesQueryOptions = (carrier: ShippingMethod) =>
     staleTime: CARRIER_LIST_STALE_TIME_MS,
   });
 
+export const deliveryAddressPlacesQueryOptions = (carrier: ShippingMethod) =>
+  queryOptions({
+    queryKey: ["delivery", "address-places", carrier] as const,
+    queryFn: () => getDeliveryAddressPlaces(carrier),
+    staleTime: CARRIER_LIST_STALE_TIME_MS,
+  });
+
+export const deliveryStreetSuggestionsQueryOptions = (
+  carrier: ShippingMethod,
+  placeId: string | null,
+  query: string,
+) => nameSuggestionsQueryOptions<DeliveryStreetDto>("streets", carrier, placeId, query);
+
+export const deliveryQuarterSuggestionsQueryOptions = (
+  carrier: ShippingMethod,
+  placeId: string | null,
+  query: string,
+) => nameSuggestionsQueryOptions<DeliveryQuarterDto>("quarters", carrier, placeId, query);
+
 /**
  * Keyed by the cart and its version, so a changed quantity or selection — or the
  * account cart adopted at sign-in — is a new entry, and an entry never goes stale.
@@ -75,7 +112,7 @@ export const parcelEstimateQueryOptions = (
 
 /** Keyed like the parcel estimate: a changed cart is a new parcel and so a new price. */
 export const deliveryQuoteQueryOptions = (
-  request: DeliveryQuoteRequestDto,
+  request: DeliveryQuoteRequestDto | null,
   cartId: string,
   cartVersion: number,
 ) =>
@@ -83,17 +120,36 @@ export const deliveryQuoteQueryOptions = (
     queryKey: [
       "delivery",
       "quote",
-      request.carrier,
-      request.destination,
+      request?.carrier,
+      request?.destination,
       cartId,
       cartVersion,
     ] as const,
-    queryFn: () => getDeliveryQuote(request),
+    queryFn: request ? () => getDeliveryQuote(request) : skipToken,
     staleTime: QUOTE_STALE_TIME_MS,
-    enabled: cartId !== "",
+    enabled: request !== null && cartId !== "",
     retry: (failureCount: number, error: Error) =>
       !isRefusal(error) && failureCount < MAX_QUOTE_OUTAGE_RETRIES,
   });
+
+function nameSuggestionsQueryOptions<Suggestion>(
+  list: "streets" | "quarters",
+  carrier: ShippingMethod,
+  placeId: string | null,
+  query: string,
+) {
+  const trimmed = query.trim();
+
+  return queryOptions({
+    queryKey: ["delivery", list, carrier, placeId, trimmed] as const,
+    queryFn: () =>
+      apiFetch<Suggestion[]>(
+        `/delivery/${list}?${new URLSearchParams({ carrier, placeId: placeId ?? "", q: trimmed })}`,
+      ),
+    staleTime: CARRIER_LIST_STALE_TIME_MS,
+    enabled: placeId !== null && trimmed !== "",
+  });
+}
 
 /** A 4xx answers the same on a retry; only an outage is worth asking again. */
 function isRefusal(error: Error): boolean {

@@ -3,11 +3,12 @@ import { ShippingMethod } from '@vp-parts-shop/shared'
 import {
   useCheckoutDelivery,
   useDeliveryMethod,
+  useSelectedAddress,
   useSelectedOfficeCode,
 } from './use-checkout-delivery'
 
 beforeEach(() => {
-  useCheckoutDelivery.setState({ method: 'courier-address', office: null })
+  useCheckoutDelivery.setState({ method: 'courier-address', office: null, address: null })
   window.localStorage.clear()
 })
 
@@ -58,6 +59,7 @@ describe('useCheckoutDelivery', () => {
     expect(saved.state).toEqual({
       method: 'courier-office',
       office: { carrier: ShippingMethod.ECONT, code: '1127' },
+      address: null,
     })
   })
 })
@@ -92,5 +94,29 @@ describe('useSelectedOfficeCode', () => {
     const { result } = renderHook(() => useSelectedOfficeCode(ShippingMethod.SPEEDY))
 
     expect(result.current).toBeNull()
+  })
+})
+
+describe('the remembered address', () => {
+  const selected = {
+    carrier: ShippingMethod.ECONT,
+    address: { placeId: '41', street: 'бул. Витоша', streetNumber: '1' },
+    label: 'бул. Витоша 1, София',
+  }
+
+  it('is kept once selected', () => {
+    useCheckoutDelivery.getState().selectAddress(selected)
+
+    expect(useCheckoutDelivery.getState().address).toEqual(selected)
+  })
+
+  it('is read only for the carrier it was accepted for', () => {
+    useCheckoutDelivery.getState().selectAddress(selected)
+
+    const { result } = renderHook(() => useSelectedAddress(ShippingMethod.ECONT))
+    const other = renderHook(() => useSelectedAddress(ShippingMethod.SPEEDY))
+
+    expect(result.current).toEqual(selected)
+    expect(other.result.current).toBeNull()
   })
 })

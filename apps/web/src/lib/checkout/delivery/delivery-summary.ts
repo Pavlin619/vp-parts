@@ -1,4 +1,9 @@
-import { AppErrorCode, type DeliveryQuoteDto } from "@vp-parts-shop/shared";
+import {
+  AppErrorCode,
+  DeliveryDestinationType,
+  type DeliveryDestinationDto,
+  type DeliveryQuoteDto,
+} from "@vp-parts-shop/shared";
 import { ApiError } from "@/lib/api";
 import type { DeliveryMethod } from "./delivery-methods";
 import type { ParcelCheck } from "./office-availability";
@@ -7,8 +12,10 @@ import type { ParcelCheck } from "./office-availability";
 export type DeliverySummary =
   | { kind: "not-quoted" }
   | { kind: "awaiting-office" }
+  | { kind: "awaiting-address" }
   | { kind: "pending" }
   | { kind: "office-unusable" }
+  | { kind: "address-unusable" }
   | { kind: "failed" }
   | { kind: "quoted"; priceIncVatCents: number; expectedDeliveryDate: string | null };
 
@@ -21,7 +28,8 @@ export interface QuoteState {
 
 interface DeliverySummaryInput {
   method: DeliveryMethod;
-  officeCode: string | null;
+  /** Where the chosen method delivers to; null until the customer has picked it. */
+  destination: DeliveryDestinationDto | null;
   parcelCheck: ParcelCheck;
   quote: QuoteState | null;
 }
@@ -32,27 +40,28 @@ const OFFICE_UNUSABLE_CODES: readonly string[] = [
   AppErrorCode.DELIVERY_OFFICE_NOT_FOUND,
 ];
 
+const ADDRESS_UNUSABLE_CODES: readonly string[] = [
+  AppErrorCode.DELIVERY_ADDRESS_REFUSED,
+  AppErrorCode.DELIVERY_ADDRESS_NOT_SERVED,
+];
+
 const GRAMS_PER_KILOGRAM = 1000;
 
 export function resolveDeliverySummary({
   method,
-  officeCode,
+  destination,
   parcelCheck,
   quote,
 }: DeliverySummaryInput): DeliverySummary {
-  if (method !== "courier-office") {
-    return { kind: "not-quoted" };
-  }
-
-  if (officeCode === null) {
-    return { kind: "awaiting-office" };
+  if (destination === null) {
+    return { kind: method === "courier-office" ? "awaiting-office" : "awaiting-address" };
   }
 
   if (parcelCheck.state !== "ready") {
     return { kind: parcelCheck.state === "checking" ? "pending" : "failed" };
   }
 
-  return summariseQuote(quote);
+  return summariseQuote(quote, destination.type);
 }
 
 /** Goods plus the delivery price, once there is one. */
@@ -75,7 +84,10 @@ export function formatWeight(grams: number): string {
   return `${kilograms} кг`;
 }
 
-function summariseQuote(quote: QuoteState | null): DeliverySummary {
+function summariseQuote(
+  quote: QuoteState | null,
+  destinationType: DeliveryDestinationType,
+): DeliverySummary {
   if (quote === null || quote.isPending) {
     return { kind: "pending" };
   }
@@ -86,13 +98,24 @@ function summariseQuote(quote: QuoteState | null): DeliverySummary {
     return { kind: "quoted", priceIncVatCents, expectedDeliveryDate };
   }
 
-  return { kind: summariseQuoteError(quote.error) };
+  return { kind: summariseQuoteError(quote.error, destinationType) };
 }
 
-function summariseQuoteError(error: Error | null): "office-unusable" | "failed" {
+function summariseQuoteError(
+  error: Error | null,
+  destinationType: DeliveryDestinationType,
+): "office-unusable" | "address-unusable" | "failed" {
   if (!(error instanceof ApiError)) {
     return "failed";
   }
 
-  return OFFICE_UNUSABLE_CODES.includes(error.errorCode) ? "office-unusable" : "failed";
+  if (OFFICE_UNUSABLE_CODES.includes(error.errorCode)) {
+    return "office-unusable";
+  }
+
+  const isAddressProblem =
+    destinationType === DeliveryDestinationType.ADDRESS &&
+    ADDRESS_UNUSABLE_CODES.includes(error.errorCode);
+
+  return isAddressProblem ? "address-unusable" : "failed";
 }

@@ -5,6 +5,10 @@ import {
   type DeliveryOfficeDto,
 } from '@vp-parts-shop/shared'
 import {
+  deliveryAddressPlacesQueryOptions,
+  deliveryQuarterSuggestionsQueryOptions,
+  deliveryStreetSuggestionsQueryOptions,
+  validateDeliveryAddress,
   deliveryOfficesQueryOptions,
   deliveryPlacesQueryOptions,
   getDeliveryOffices,
@@ -180,5 +184,54 @@ describe('deliveryQuoteQueryOptions', () => {
     expect(retryIf(0, new ApiError(422, 'DELIVERY_OFFICE_REFUSED'))).toBe(false)
     expect(retryIf(0, new ApiError(503, 'DELIVERY_UNAVAILABLE'))).toBe(true)
     expect(retryIf(2, new ApiError(503, 'DELIVERY_UNAVAILABLE'))).toBe(false)
+  })
+})
+
+describe('address lookups', () => {
+  it('reads the places a courier delivers to from the public endpoint', async () => {
+    mockApiFetch.mockResolvedValue([])
+
+    await deliveryAddressPlacesQueryOptions(ShippingMethod.ECONT).queryFn?.({} as never)
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/delivery/address-places?carrier=ECONT')
+  })
+
+  it('asks for streets of one place by what was typed', async () => {
+    mockApiFetch.mockResolvedValue([])
+
+    await deliveryStreetSuggestionsQueryOptions(ShippingMethod.ECONT, '41', 'витоша').queryFn?.(
+      {} as never,
+    )
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      '/delivery/streets?carrier=ECONT&placeId=41&q=%D0%B2%D0%B8%D1%82%D0%BE%D1%88%D0%B0',
+    )
+  })
+
+  it('asks for quarters the same way', async () => {
+    mockApiFetch.mockResolvedValue([])
+
+    await deliveryQuarterSuggestionsQueryOptions(ShippingMethod.ECONT, '41', 'мла').queryFn?.(
+      {} as never,
+    )
+
+    expect(mockApiFetch.mock.calls[0][0]).toMatch(/^\/delivery\/quarters\?carrier=ECONT&placeId=41&q=/)
+  })
+
+  it('does not ask until a place and a letter are given', () => {
+    expect(deliveryStreetSuggestionsQueryOptions(ShippingMethod.ECONT, null, 'ви').enabled).toBe(false)
+    expect(deliveryStreetSuggestionsQueryOptions(ShippingMethod.ECONT, '41', ' ').enabled).toBe(false)
+    expect(deliveryStreetSuggestionsQueryOptions(ShippingMethod.ECONT, '41', 'ви').enabled).toBe(true)
+  })
+
+  it('validates an address with a post', () => {
+    const address = { placeId: '41', street: 'бул. Витоша', streetNumber: '1' }
+
+    validateDeliveryAddress({ carrier: ShippingMethod.ECONT, address })
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/delivery/address/validate', {
+      method: 'POST',
+      body: { carrier: ShippingMethod.ECONT, address },
+    })
   })
 })

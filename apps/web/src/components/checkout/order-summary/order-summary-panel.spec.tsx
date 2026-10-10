@@ -85,6 +85,8 @@ describe('OrderSummaryPanel', () => {
       [{ kind: 'not-quoted' }, '—'],
       [{ kind: 'awaiting-office' }, 'Изберете офис'],
       [{ kind: 'office-unusable' }, 'Изберете друг офис'],
+      [{ kind: 'awaiting-address' }, 'Въведете адрес'],
+      [{ kind: 'address-unusable' }, 'Проверете адреса'],
       [{ kind: 'failed' }, 'Не може да се изчисли'],
     ] as const)('reads %j as "%s" and leaves the total to the goods', (delivery, text) => {
       renderPanel({ delivery })
