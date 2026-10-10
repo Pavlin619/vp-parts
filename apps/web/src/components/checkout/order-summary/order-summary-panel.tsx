@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Phone } from "lucide-react";
 import { formatPrice } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
 import type { CartTotals } from "@/lib/cart/cart-totals";
@@ -27,6 +27,8 @@ interface OrderSummaryPanelProps {
   isPending: boolean;
   parcelCheck: ParcelCheck;
   delivery: DeliverySummary;
+  /** A quick order is requested for a call-back rather than placed outright. */
+  isQuickOrder: boolean;
 }
 
 /**
@@ -38,6 +40,7 @@ export function OrderSummaryPanel({
   isPending,
   parcelCheck,
   delivery,
+  isQuickOrder,
 }: OrderSummaryPanelProps) {
   return (
     <section className="rounded-[12px] border border-line bg-bg-card p-5">
@@ -79,8 +82,17 @@ export function OrderSummaryPanel({
         disabled
         className="mt-4 h-12 w-full gap-2 rounded-md text-sm font-semibold"
       >
-        Поръчай сега
-        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        {isQuickOrder ? (
+          <>
+            <Phone className="h-4 w-4" aria-hidden="true" />
+            Заяви поръчка
+          </>
+        ) : (
+          <>
+            Поръчай сега
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </>
+        )}
       </Button>
     </section>
   );

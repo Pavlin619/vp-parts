@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { CartAvailabilityError, CartEmpty, CheckoutSteps } from "@/components/cart";
@@ -11,6 +12,8 @@ import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-del
 import { useDeliverySummary } from "@/hooks/use-delivery-summary";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
+import { DEFAULT_CONTACT_MODE, type ContactMode } from "@/lib/checkout/contact/contact-modes";
+import { ContactPanel } from "./contact";
 import { DeliveryMethodPanel } from "./delivery";
 import { OrderItemsPanel } from "./order-items";
 import { OrderSummaryPanel } from "./order-summary";
@@ -25,6 +28,7 @@ export function CheckoutView() {
   const lines = useCartLines();
   const deliveryMethod = useDeliveryMethod();
   const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
+  const [contactMode, setContactMode] = useState<ContactMode>(DEFAULT_CONTACT_MODE);
 
   const availability = useCartAvailability(lines);
   const { parcelCheck, delivery } = useDeliverySummary();
@@ -61,6 +65,7 @@ export function CheckoutView() {
 
           <div className="grid items-start gap-7 pb-16 xl:grid-cols-[minmax(0,1fr)_400px]">
             <div className="flex min-w-0 flex-col gap-3">
+              <ContactPanel mode={contactMode} onModeChange={setContactMode} />
               <DeliveryMethodPanel
                 method={deliveryMethod}
                 onMethodChange={setDeliveryMethod}
@@ -75,6 +80,7 @@ export function CheckoutView() {
                 isPending={availability.isPending}
                 parcelCheck={parcelCheck}
                 delivery={delivery}
+                isQuickOrder={contactMode === "quick"}
               />
             </aside>
           </div>

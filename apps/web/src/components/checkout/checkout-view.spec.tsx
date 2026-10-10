@@ -185,6 +185,23 @@ describe('CheckoutView', () => {
     expect(screen.getByTestId('office-picker')).toBeInTheDocument()
   })
 
+  it('starts on a quick order and switches the order button with the contact mode', async () => {
+    const user = userEvent.setup()
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+
+    expect(
+      await screen.findByRole('radio', { name: /Бърза поръчка/ }),
+    ).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: /Вход/ }))
+
+    expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+  })
+
   // A reload, or a return visit, finds the customer's choice where they left it.
   it('remembers the chosen delivery method', async () => {
     const user = userEvent.setup()
