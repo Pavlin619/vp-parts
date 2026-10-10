@@ -10,15 +10,23 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type {
+  DeliveryAddressValidationDto,
   DeliveryOfficeDto,
   DeliveryPlaceDto,
+  DeliveryQuarterDto,
   DeliveryQuoteDto,
+  DeliveryStreetDto,
   ParcelEstimateDto,
 } from '@vp-parts-shop/shared';
 import { Public } from '../auth';
 import { CartRequesterOf } from '../cart';
 import type { CartRequester } from '../cart';
-import { DeliveryCarrierQueryDto, DeliveryQuoteBodyDto } from './delivery.dto';
+import {
+  DeliveryAddressValidateBodyDto,
+  DeliveryCarrierQueryDto,
+  DeliveryNameQueryDto,
+  DeliveryQuoteBodyDto,
+} from './delivery.dto';
 import { DeliveryService } from './delivery.service';
 
 // Tighter than the site-wide default: a quote the cache lacks is a call to the courier.
@@ -45,6 +53,41 @@ export class DeliveryController {
     @Query() { carrier }: DeliveryCarrierQueryDto,
   ): Promise<DeliveryPlaceDto[]> {
     return this.delivery.listPlaces(carrier);
+  }
+
+  @Get('address-places')
+  @Header('Cache-Control', 'public, max-age=3600')
+  listAddressPlaces(
+    @Query() { carrier }: DeliveryCarrierQueryDto,
+  ): Promise<DeliveryPlaceDto[]> {
+    return this.delivery.listAddressPlaces(carrier);
+  }
+
+  @Get('streets')
+  @Header('Cache-Control', 'public, max-age=3600')
+  findStreets(
+    @Query() { carrier, placeId, q }: DeliveryNameQueryDto,
+  ): Promise<DeliveryStreetDto[]> {
+    return this.delivery.findStreets(carrier, placeId, q);
+  }
+
+  @Get('quarters')
+  @Header('Cache-Control', 'public, max-age=3600')
+  findQuarters(
+    @Query() { carrier, placeId, q }: DeliveryNameQueryDto,
+  ): Promise<DeliveryQuarterDto[]> {
+    return this.delivery.findQuarters(carrier, placeId, q);
+  }
+
+  @Post('address/validate')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: { limit: QUOTE_RATE_LIMIT, ttl: QUOTE_RATE_LIMIT_WINDOW_MS },
+  })
+  validateAddress(
+    @Body() { carrier, address }: DeliveryAddressValidateBodyDto,
+  ): Promise<DeliveryAddressValidationDto> {
+    return this.delivery.validateAddress(carrier, address);
   }
 
   @Get('parcel')

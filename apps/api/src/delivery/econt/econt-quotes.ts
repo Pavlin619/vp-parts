@@ -1,12 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  DeliveryDestinationDto,
+  DeliveryDestinationType,
+} from '@vp-parts-shop/shared';
 import type { CarrierQuote } from '../delivery-carrier';
 import {
+  DeliveryAddressRefusedException,
   DeliveryOfficeRefusedException,
   DeliveryUnavailableException,
 } from '../delivery.exceptions';
 import { Parcel, singleBoxOf } from '../parcel/parcel-estimate';
 import { shopDateOf } from '../shop-date';
+import { econtAddressOf } from './econt-address';
 import {
   EcontCalculatedLabel,
   isCalculatedLabel,
@@ -35,13 +41,13 @@ export class EcontQuotes {
   }
 
   async quote(
-    receiverOfficeCode: string,
+    destination: DeliveryDestinationDto,
     parcel: Parcel,
     sendDate: string | null,
   ): Promise<CarrierQuote> {
     const response = await this.calculate(
-      receiverOfficeCode,
-      this.labelFor(receiverOfficeCode, parcel, sendDate),
+      destination,
+      this.labelFor(destination, parcel, sendDate),
     );
     const calculated = this.calculatedLabelOf(response);
     const { label } = calculated;
@@ -53,7 +59,7 @@ export class EcontQuotes {
       throw new DeliveryUnavailableException();
     }
 
-    this.warnAboutSurprises(receiverOfficeCode, calculated);
+    this.warnAboutSurprises(destination, calculated);
 
     return {
       priceIncVatCents: Math.round(label.totalPrice * 100),
@@ -65,7 +71,7 @@ export class EcontQuotes {
   }
 
   private async calculate(
-    receiverOfficeCode: string,
+    destination: DeliveryDestinationDto,
     label: object,
   ): Promise<unknown> {
     try {
@@ -78,7 +84,9 @@ export class EcontQuotes {
         error instanceof EcontRefusedException &&
         refusesReceiver(error.refusal)
       ) {
-        throw new DeliveryOfficeRefusedException();
+        throw destination.type === DeliveryDestinationType.ADDRESS
+          ? new DeliveryAddressRefusedException()
+          : new DeliveryOfficeRefusedException();
       }
 
       throw error;
@@ -96,7 +104,7 @@ export class EcontQuotes {
 
   /** Econt reprices a heavy parcel as cargo on its own; see docs/DELIVERY-PROVIDERS.md. */
   private warnAboutSurprises(
-    receiverOfficeCode: string,
+    destination: DeliveryDestinationDto,
     { label, delayedDeliveryWarning }: EcontCalculatedLabel,
   ): void {
     if (
@@ -104,7 +112,7 @@ export class EcontQuotes {
       label.shipmentType !== SHIPMENT_TYPE
     ) {
       this.logger.warn(
-        `Econt priced a ${SHIPMENT_TYPE} to ${receiverOfficeCode} as ${label.shipmentType}`,
+        `Econt priced a ${SHIPMENT_TYPE} to ${destinationLabel(destination)} as ${label.shipmentType}`,
       );
     }
 
@@ -113,13 +121,13 @@ export class EcontQuotes {
       delayedDeliveryWarning.trim()
     ) {
       this.logger.warn(
-        `Econt expects a late delivery to ${receiverOfficeCode}: ${delayedDeliveryWarning.trim()}`,
+        `Econt expects a late delivery to ${destinationLabel(destination)}: ${delayedDeliveryWarning.trim()}`,
       );
     }
   }
 
   private labelFor(
-    receiverOfficeCode: string,
+    destination: DeliveryDestinationDto,
     parcel: Parcel,
     sendDate: string | null,
   ) {
@@ -127,7 +135,7 @@ export class EcontQuotes {
 
     return {
       senderOfficeCode: this.senderOfficeCode,
-      receiverOfficeCode,
+      ...receiverOf(destination),
       shipmentType: SHIPMENT_TYPE,
       packCount: 1,
       weight: parcel.weightGrams / 1000,
@@ -140,4 +148,16 @@ export class EcontQuotes {
       }),
     };
   }
+}
+
+function receiverOf(destination: DeliveryDestinationDto): object {
+  return destination.type === DeliveryDestinationType.ADDRESS
+    ? { receiverAddress: econtAddressOf(destination.address) }
+    : { receiverOfficeCode: destination.officeCode };
+}
+
+function destinationLabel(destination: DeliveryDestinationDto): string {
+  return destination.type === DeliveryDestinationType.ADDRESS
+    ? `place ${destination.address.placeId}`
+    : destination.officeCode;
 }

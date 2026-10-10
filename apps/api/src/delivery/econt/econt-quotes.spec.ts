@@ -1,9 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DeliveryAddressRefusedException,
   DeliveryOfficeRefusedException,
   DeliveryUnavailableException,
 } from '../delivery.exceptions';
+import {
+  DeliveryDestinationDto,
+  DeliveryDestinationType,
+} from '@vp-parts-shop/shared';
 import type { Parcel } from '../parcel/parcel-estimate';
 import { EcontQuotes } from './econt-quotes';
 import { EcontRefusedException } from './econt.transport';
@@ -18,6 +23,28 @@ const PARCEL: Parcel = {
   weightGrams: 2300,
   unitsCm: null,
   hasEstimatedUnits: false,
+};
+
+const OFFICE: DeliveryDestinationDto = {
+  type: DeliveryDestinationType.OFFICE,
+  officeCode: '9035',
+};
+
+const ADDRESS: DeliveryDestinationDto = {
+  type: DeliveryDestinationType.ADDRESS,
+  address: {
+    placeId: '41',
+    street: 'бул. Витоша',
+    streetNumber: '10',
+    quarter: 'кв. Лозенец',
+    other: 'ет. 3',
+  },
+};
+
+const RECEIVER_REFUSAL = {
+  type: 'ExInvalidParam',
+  message: 'получател: ',
+  innerErrors: [],
 };
 
 const SEND_DATE = '2026-09-28';
@@ -46,7 +73,7 @@ describe('EcontQuotes', () => {
   });
 
   it('asks Econt to price, not create, an office-to-office parcel paid by us', async () => {
-    await quotes.quote('9035', PARCEL, SEND_DATE);
+    await quotes.quote(OFFICE, PARCEL, SEND_DATE);
 
     expect(call).toHaveBeenCalledWith('Shipments/LabelService.createLabel', {
       mode: 'calculate',
@@ -63,7 +90,7 @@ describe('EcontQuotes', () => {
   });
 
   it('lets Econt assume today when the parcel has no ready date', async () => {
-    await quotes.quote('9035', PARCEL, null);
+    await quotes.quote(OFFICE, PARCEL, null);
 
     const [, body] = call.mock.calls[0];
     expect(body.label).not.toHaveProperty('sendDate');
@@ -71,7 +98,7 @@ describe('EcontQuotes', () => {
 
   it('sends the box size when the parcel has one', async () => {
     await quotes.quote(
-      '9035',
+      OFFICE,
       { ...PARCEL, unitsCm: [{ length: 30, width: 20, height: 10 }] },
       SEND_DATE,
     );
@@ -87,14 +114,14 @@ describe('EcontQuotes', () => {
   it('sends no box size for several units, whose packing is unknown', async () => {
     const box = { length: 30, width: 20, height: 10 };
 
-    await quotes.quote('9035', { ...PARCEL, unitsCm: [box, box] }, SEND_DATE);
+    await quotes.quote(OFFICE, { ...PARCEL, unitsCm: [box, box] }, SEND_DATE);
 
     const [, body] = call.mock.calls[0];
     expect(body.label).not.toHaveProperty('shipmentDimensionsL');
   });
 
   it('answers the price in cents and the Bulgarian delivery date', async () => {
-    expect(await quotes.quote('9035', PARCEL, SEND_DATE)).toEqual({
+    expect(await quotes.quote(OFFICE, PARCEL, SEND_DATE)).toEqual({
       priceIncVatCents: 413,
       expectedDeliveryDate: '2026-09-25',
     });
@@ -106,7 +133,7 @@ describe('EcontQuotes', () => {
     });
 
     expect(
-      (await quotes.quote('9035', PARCEL, SEND_DATE)).expectedDeliveryDate,
+      (await quotes.quote(OFFICE, PARCEL, SEND_DATE)).expectedDeliveryDate,
     ).toBeNull();
   });
 
@@ -127,7 +154,7 @@ describe('EcontQuotes', () => {
     call.mockResolvedValueOnce(body);
 
     await expect(
-      quotes.quote('9035', PARCEL, SEND_DATE),
+      quotes.quote(OFFICE, PARCEL, SEND_DATE),
     ).rejects.toBeInstanceOf(DeliveryUnavailableException);
   });
 
@@ -141,7 +168,7 @@ describe('EcontQuotes', () => {
     );
 
     await expect(
-      quotes.quote('9035', PARCEL, SEND_DATE),
+      quotes.quote(OFFICE, PARCEL, SEND_DATE),
     ).rejects.toBeInstanceOf(DeliveryOfficeRefusedException);
   });
 
@@ -152,7 +179,7 @@ describe('EcontQuotes', () => {
     });
     call.mockRejectedValueOnce(refusal);
 
-    await expect(quotes.quote('9035', PARCEL, SEND_DATE)).rejects.toBe(refusal);
+    await expect(quotes.quote(OFFICE, PARCEL, SEND_DATE)).rejects.toBe(refusal);
   });
 
   it('warns when Econt priced the parcel as another shipment type', async () => {
@@ -166,7 +193,7 @@ describe('EcontQuotes', () => {
       },
     });
 
-    await quotes.quote('9035', PARCEL, SEND_DATE);
+    await quotes.quote(OFFICE, PARCEL, SEND_DATE);
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('cargo'));
   });
@@ -183,7 +210,7 @@ describe('EcontQuotes', () => {
       delayedDeliveryWarning: 'Закъснение поради празници',
     });
 
-    await quotes.quote('9035', PARCEL, SEND_DATE);
+    await quotes.quote(OFFICE, PARCEL, SEND_DATE);
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('Закъснение поради празници'),
@@ -202,7 +229,7 @@ describe('EcontQuotes', () => {
       delayedDeliveryWarning: '',
     });
 
-    await quotes.quote('9035', PARCEL, SEND_DATE);
+    await quotes.quote(OFFICE, PARCEL, SEND_DATE);
 
     expect(warn).not.toHaveBeenCalled();
   });
@@ -214,7 +241,76 @@ describe('EcontQuotes', () => {
     });
 
     await expect(
-      quotes.quote('9035', PARCEL, SEND_DATE),
+      quotes.quote(OFFICE, PARCEL, SEND_DATE),
     ).rejects.toBeInstanceOf(DeliveryUnavailableException);
+  });
+
+  describe('to an address', () => {
+    it('prices the parcel to the place and street, with no receiver office', async () => {
+      await quotes.quote(ADDRESS, PARCEL, SEND_DATE);
+
+      const [, body] = call.mock.calls[0];
+      expect(body.label).toEqual({
+        senderOfficeCode: '1127',
+        receiverAddress: {
+          city: { id: 41 },
+          street: 'бул. Витоша',
+          num: '10',
+          quarter: 'кв. Лозенец',
+          other: 'ет. 3',
+        },
+        shipmentType: 'pack',
+        packCount: 1,
+        weight: 2.3,
+        paymentSenderMethod: 'cash',
+        sendDate: SEND_DATE,
+      });
+    });
+
+    it('sends only the place when that is all the address names', async () => {
+      await quotes.quote(
+        {
+          type: DeliveryDestinationType.ADDRESS,
+          address: { placeId: '41' },
+        },
+        PARCEL,
+        SEND_DATE,
+      );
+
+      const [, body] = call.mock.calls[0];
+      expect(body.label.receiverAddress).toEqual({ city: { id: 41 } });
+    });
+
+    it('answers the price in cents and the delivery date', async () => {
+      expect(await quotes.quote(ADDRESS, PARCEL, SEND_DATE)).toEqual({
+        priceIncVatCents: 413,
+        expectedDeliveryDate: '2026-09-25',
+      });
+    });
+
+    it('blames the address when Econt refuses the receiver', async () => {
+      call.mockRejectedValueOnce(new EcontRefusedException(RECEIVER_REFUSAL));
+
+      await expect(
+        quotes.quote(ADDRESS, PARCEL, SEND_DATE),
+      ).rejects.toBeInstanceOf(DeliveryAddressRefusedException);
+    });
+
+    it('names the place in the late-delivery warning', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      call.mockResolvedValueOnce({
+        label: {
+          shipmentType: 'pack',
+          totalPrice: 4.13,
+          currency: 'EUR',
+          expectedDeliveryDate: EXPECTED_AT,
+        },
+        delayedDeliveryWarning: 'Закъснение',
+      });
+
+      await quotes.quote(ADDRESS, PARCEL, SEND_DATE);
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('place 41'));
+    });
   });
 });

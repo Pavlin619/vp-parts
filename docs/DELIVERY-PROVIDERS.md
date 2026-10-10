@@ -11,9 +11,12 @@ fees, label creation and Speedy are not built yet.
 | `GET /delivery/offices?carrier=ECONT` | Every Econt office and Econtomat, carrier-neutral (`DeliveryOfficeDto`) | Redis 24 h, in-process 1 h, `public, max-age=3600` |
 | `GET /delivery/places?carrier=ECONT` | The settlements a customer can collect a parcel for, each naming its serving office when it has none of its own (`DeliveryPlaceDto`) | Econt's list in Redis 24 h; matched to the offices in-process, 1 h; `public, max-age=3600` |
 | `GET /delivery/parcel?carrier=ECONT` | What the requester's **selected** cart lines weigh as one parcel, and whether that carrier's locker takes it | `no-store` |
-| `POST /delivery/quote` `{ carrier, officeCode }` | Econt's price for that parcel to that office, the expected date, and the cart version priced | Redis 5 min by carrier, office, weight, box and send date; 20 requests/min per client |
+| `POST /delivery/quote` `{ carrier, destination }` | Econt's price for that parcel to the destination (`{ type: 'OFFICE', officeCode }` or `{ type: 'ADDRESS', address }`), the expected date, and the cart version priced | Redis 5 min by carrier, office or place, weight, box and send date; 20 requests/min per client |
+| `GET /delivery/address-places?carrier=ECONT` | The places a courier delivers to at the door (`DeliveryPlaceDto`, never a serving office) | Same Econt list as `/places`; `public, max-age=3600` |
+| `GET /delivery/streets?carrier=ECONT&placeId=&q=` and `/quarters` | Up to 20 streets (quarters) of the place whose name holds every word of `q` (`DeliveryStreetDto`) | Econt's whole list per place in Redis 24 h, filtered on the server; `public, max-age=3600` |
+| `POST /delivery/address/validate` `{ carrier, address }` | `VALID`, `UNCERTAIN` (with the corrected address in `suggested`) or `INVALID` | Not cached; 20 requests/min per client |
 
-The quote reads the cart on the server. The client sends only the office, never
+The quote reads the cart on the server. The client sends only the destination, never
 lines, weights or prices. Order creation must refuse a quote whose `cartVersion` is
 not the cart's current version. That check lands with orders.
 
@@ -259,6 +262,83 @@ picks the nearest town.
   that slips through stays `INTERNAL_ERROR`.
 - **[VERIFY] Whether `totalPrice` includes VAT.** We treat it as VAT-inclusive. The
   cents conversion in `econt-quotes.ts` is the one place to change if not.
+
+### Delivery to an address: what Econt answers
+
+Measured 2026-10-10: demo `calculate`, production `validateAddress`, `getStreets`,
+`getQuarters` and `getCities`. A 2 kg parcel from office 1127.
+
+- **`calculate` takes `receiverAddress: { city: { id } }` and nothing else.** `city.name`
+  + `postCode` works too. A street, number, quarter or `other` is accepted in any
+  combination and never changes the answer.
+- **The price depends on the city only, in two tiers:** €5.62 for 207 places and €6.71
+  for 803, whatever the street (Sofia, three streets and a quarter: all €5.62). Four
+  mountain localities cost €127.50 and €158.18 (Ментешето, Бодрост, Картала, Водна
+  кула). So the quote cache key is `place:{placeId}`, with no street in it. An office in
+  the same town is cheaper (€3.78 against €5.62).
+- **`calculate` does not check the address.** An unknown street, or `zzzzzz`, prices
+  normally. Only `validateAddress` can say it is wrong.
+- **An unknown city id is priced, not refused.** `city.id` 999999 answered €101.50. `0`
+  and `-5` are refused. So the service must check `placeId` against our own list before
+  calling Econt.
+- **The refusal shape is the one `refusesReceiver` reads.** 3 of 1,017 places
+  (Манастир Драгалевци, Хижа Алеко, Миндя) answer `517` with `ExInvalidParam: получател:`
+  → `ExInvalidCity: Невалиднo населено място.`; an unknown postcode is `ExInvalidCity`
+  and `-5` is `ExInvalidID`, all behind the same `получател:` prefix.
+- **`expectedDeliveryDate` follows the place's weekdays.** `getCities` carries
+  `monday`…`sunday` flags (`serviceDays` is `0` on every place, so ignore it). Китен is
+  served Mon and Thu: sent Mon–Wed it arrives Thu, sent Thu–Sat the next Mon. Бургас
+  (Mon–Sat) is dated the same as its office, except sent Friday: office Sat, address Mon.
+  The date can sit days later than an office quote, so the two must not be compared.
+- **Over 50 kg prices to an address as `cargo`:** 60 kg €34.18 (`cargo`), 50 kg €29.86
+  (`pack`).
+- **Many places are door-served only by cargo.** Of the 964 places with a region, 877
+  have `to_door_courier`, 957 any `to_door_*`, and 78 only `to_door_cargo`. `calculate`
+  priced all of them as `pack` (€6.71 for the cargo-only ones).
+
+**`validateAddress` answers without credentials**, on production and on the demo alike.
+
+- **`validationStatus` is `normal` or `invalid`.** There is no "uncertain". It silently
+  corrects: `бул. Витошаа`, `витоша` and a street missing its `ул.`/`бул.` prefix all
+  answer `normal` with `address.street` set to the canonical name (`бул. Витоша`).
+  A suggestion is therefore the returned street differing from what was sent.
+- **An unknown street or quarter is `517 ExInvalidAddress`** in a city that has a
+  street list (`…проверете изписването на улицата. Не открихме улица с това име…`,
+  and the same for `квартала`). In a village with no list it is `normal`/`invalid` with
+  `street: null`: 622 of 1,017 places answered `invalid` to the same made-up street,
+  mostly villages. A real street without a number is still `normal`.
+- **`zip` is always `null`** and a wrong `postCode` is accepted. `location` has
+  coordinates, with `confidence` 0.
+- **`serviceInfo` is about courier pickup, not delivery.** `allowedPacksCourierRequest`
+  is `false` for most places, including Sofia's бул. Цар Борис III, and absent for 240.
+  `deliveryPacksExtraDelayDays` is `0` wherever present. Do not read it as "couriers
+  serve this place".
+- **`517 ExInvalidParam: Приемът е временно преустановен.`** answered for 88 places
+  (Златни Пясъци, Китен, Черноморец, Априлци…) on production, while the demo
+  `calculate` and `validateAddress` priced them. **[VERIFY]** Whether this is seasonal
+  and whether to treat it as not served.
+
+**Streets and quarters are public nomenclatures** (`getStreets` / `getQuarters`,
+`{ countryCode: "BGR", cityID }`) and answer on production without credentials; the demo
+credentials are refused there. Sofia: 4,048 streets, 637 KB, 81 ms; 164 quarters,
+25 KB. Rows are `{ id, cityID, name, nameEn }`, and `name` carries the prefix
+(`бул. Ген. Скобелев`). The whole Sofia list is too large for the browser, so filtering
+stays on the server. Other cities: Plovdiv 1,138, Varna 1,054, Pleven 437.
+
+**Which places to offer.** `getCities` returned 1,017 places today (1,093 on
+2026-09-27 — **[VERIFY]** the drop). 964 have a region; 957 of those have some
+`to_door_*` serving type, against the 485 the office picker keeps. The address list is
+"region and any `to_door_*`", with the three refused places and the 88 suspended ones
+as the open question above.
+
+**How the backend uses it.** An address is `{ placeId, street?, streetNumber?, quarter?,
+other? }` and must name street + number or quarter + other (checked at the boundary and
+by `addressSchema`). `DeliveryService` checks `placeId` against `/address-places` before
+calling Econt, answering `422 DELIVERY_ADDRESS_NOT_SERVED`; a receiver Econt refuses is
+`422 DELIVERY_ADDRESS_REFUSED`. `validate` maps `invalid` and `517 ExInvalidAddress` to
+`INVALID`, and a street or quarter Econt returned different from the one sent to
+`UNCERTAIN`. Street and quarter lists are public nomenclatures, so they go through
+`readNomenclature` like offices and places.
 
 ### Weight and size both change the price
 

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import {
+  DeliveryDestinationType,
   ShippingMethod,
   type DeliveryQuoteDto,
   type DeliveryQuoteRequestDto,
@@ -25,7 +26,7 @@ jest.mock('@/lib/api/delivery', () => ({
     cartId: string,
     cartVersion: number,
   ) => ({
-    queryKey: ['delivery', 'quote', request.carrier, request.officeCode, cartId, cartVersion],
+    queryKey: ['delivery', 'quote', request.carrier, request.destination, cartId, cartVersion],
     queryFn: () => getQuote(request),
     retry: false,
   }),
@@ -40,7 +41,7 @@ const PARCEL: ParcelEstimateDto = {
 
 const QUOTE: DeliveryQuoteDto = {
   carrier: ShippingMethod.ECONT,
-  officeCode: '1127',
+  destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
   priceIncVatCents: 714,
   expectedDeliveryDate: '2026-09-30',
   parcel: PARCEL,
@@ -79,7 +80,10 @@ describe('useDeliverySummary', () => {
       priceIncVatCents: 714,
       expectedDeliveryDate: '2026-09-30',
     })
-    expect(getQuote).toHaveBeenCalledWith({ carrier: ShippingMethod.ECONT, officeCode: '1127' })
+    expect(getQuote).toHaveBeenCalledWith({
+      carrier: ShippingMethod.ECONT,
+      destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
+    })
   })
 
   it('does not ask for a quote before an office is chosen', async () => {

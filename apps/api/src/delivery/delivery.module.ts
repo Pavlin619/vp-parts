@@ -5,6 +5,7 @@ import { RedisModule } from '../redis';
 import { DELIVERY_CARRIERS } from './delivery-carrier';
 import { DeliveryController } from './delivery.controller';
 import { DeliveryService } from './delivery.service';
+import { EcontAddresses } from './econt/econt-addresses';
 import { EcontOffices } from './econt/econt-offices';
 import { EcontPlaces } from './econt/econt-places';
 import { EcontQuotes } from './econt/econt-quotes';
@@ -21,6 +22,7 @@ import { EcontTransport } from './econt/econt.transport';
     EcontOffices,
     EcontPlaces,
     EcontQuotes,
+    EcontAddresses,
     EcontCarrier,
     {
       provide: DELIVERY_CARRIERS,

@@ -3,13 +3,18 @@ import request from 'supertest';
 import {
   AppErrorCode,
   CART_TOKEN_HEADER,
+  DeliveryAddressValidationStatus,
+  DeliveryDestinationType,
   DeliveryOfficeType,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import type Redis from 'ioredis';
 import { ArticlesTecDoc, CrossReferencesTecDoc } from '../src/catalog';
-import { EcontTransport } from '../src/delivery/econt/econt.transport';
+import {
+  EcontRefusedException,
+  EcontTransport,
+} from '../src/delivery/econt/econt.transport';
 import { InventoryService, SupplierCatalogRepository } from '../src/inventory';
 import { PrismaService } from '../src/prisma';
 import { REDIS_CLIENT } from '../src/redis';
@@ -49,15 +54,55 @@ function econtCity(id: number, name: string, toOfficeCode: string) {
   };
 }
 
+function officeTo(officeCode: string) {
+  return { type: DeliveryDestinationType.OFFICE, officeCode };
+}
+
+const SOFIA_ID = 41;
+
+const SOFIA_ADDRESS = {
+  placeId: String(SOFIA_ID),
+  street: 'бул. Витоша',
+  streetNumber: '10',
+};
+
+function addressTo(address: object = SOFIA_ADDRESS) {
+  return { type: DeliveryDestinationType.ADDRESS, address };
+}
+
 const NOMENCLATURES: Record<string, object> = {
   'Nomenclatures/NomenclaturesService.getOffices': {
     offices: [econtOffice('9035', false), econtOffice('9010', true)],
+  },
+  'Nomenclatures/NomenclaturesService.getStreets': {
+    streets: [
+      { id: 1, cityID: SOFIA_ID, name: 'бул. Витоша', nameEn: 'bul. Vitosha' },
+      { id: 2, cityID: SOFIA_ID, name: 'ул. Граф Игнатиев', nameEn: 'ul.' },
+    ],
+  },
+  'Nomenclatures/NomenclaturesService.getQuarters': {
+    quarters: [
+      { id: 210, cityID: SOFIA_ID, name: 'кв. Слатина', nameEn: 'kv. Slatina' },
+    ],
+  },
+  'Nomenclatures/AddressService.validateAddress': {
+    validationStatus: 'normal',
+    address: { street: 'бул. Витоша', num: '10', quarter: '', other: null },
   },
   'Nomenclatures/NomenclaturesService.getCities': {
     cities: [
       econtCity(9000, 'Варна', '9035'),
       econtCity(9154, 'Константиново', '9035'),
       econtCity(9155, 'Мобилно', '90450'),
+      {
+        id: SOFIA_ID,
+        name: 'София',
+        regionName: 'София',
+        postCode: '1000',
+        servingOffices: [
+          { officeCode: '9035', servingType: 'to_door_courier' },
+        ],
+      },
     ],
   },
 };
@@ -403,12 +448,12 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
         .expect(200);
 
       expect(response.body).toMatchObject({
         carrier: ShippingMethod.ECONT,
-        officeCode: '9035',
+        destination: officeTo('9035'),
         priceIncVatCents: 413,
         expectedDeliveryDate: '2026-09-24',
         cartVersion: expect.any(Number),
@@ -423,7 +468,7 @@ describe('Delivery (e2e)', () => {
       await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
         .expect(200);
 
       expect(econt.call).toHaveBeenCalledWith(
@@ -440,7 +485,7 @@ describe('Delivery (e2e)', () => {
       await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9010' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9010') })
         .expect(200);
     });
 
@@ -450,7 +495,7 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
         .expect(200);
 
       expect(response.body.parcel.weightGrams).toBe(6700);
@@ -462,7 +507,7 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9010' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9010') })
         .expect(422);
 
       expect(response.body).toEqual({
@@ -477,7 +522,7 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9010' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9010') })
         .expect(422);
 
       expect(response.body).toEqual({
@@ -492,7 +537,7 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '0000' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('0000') })
         .expect(404);
 
       expect(response.body.errorCode).toBe(
@@ -512,7 +557,7 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
         .expect(422);
 
       expect(response.body.errorCode).toBe(AppErrorCode.CART_EMPTY);
@@ -525,7 +570,7 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, officeCode: '9035' })
+        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
         .expect(200);
 
       expect(response.headers['x-ratelimit-limit']).toBe('20');
@@ -535,6 +580,240 @@ describe('Delivery (e2e)', () => {
       await request(app.getHttpServer())
         .post('/delivery/quote')
         .send({ carrier: ShippingMethod.ECONT })
+        .expect(400);
+    });
+
+    describe('to an address', () => {
+      it('prices the cart to a place Econt delivers to', async () => {
+        const token = await openCart('FILTER', 'PAD');
+        econt.call.mockClear();
+
+        const response = await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({ carrier: ShippingMethod.ECONT, destination: addressTo() })
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          destination: addressTo(),
+          priceIncVatCents: 413,
+        });
+        expect(econt.call).toHaveBeenCalledWith(
+          'Shipments/LabelService.createLabel',
+          expect.objectContaining({
+            label: expect.objectContaining({
+              receiverAddress: expect.objectContaining({
+                city: { id: SOFIA_ID },
+              }),
+            }),
+          }),
+        );
+      });
+
+      it('refuses an address Econt refuses', async () => {
+        const token = await openCart('FILTER');
+        await app.get<Redis>(REDIS_CLIENT).flushall();
+        econt.call.mockRejectedValueOnce(
+          new EcontRefusedException({
+            type: 'ExInvalidParam',
+            message: 'получател: ',
+          }),
+        );
+
+        const response = await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({ carrier: ShippingMethod.ECONT, destination: addressTo() })
+          .expect(422);
+
+        expect(response.body).toEqual({
+          statusCode: 422,
+          errorCode: AppErrorCode.DELIVERY_ADDRESS_REFUSED,
+        });
+      });
+
+      it('refuses a place couriers do not deliver to without asking Econt', async () => {
+        const token = await openCart('FILTER');
+        econt.call.mockClear();
+
+        const response = await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo({ ...SOFIA_ADDRESS, placeId: '999999' }),
+          })
+          .expect(422);
+
+        expect(response.body.errorCode).toBe(
+          AppErrorCode.DELIVERY_ADDRESS_NOT_SERVED,
+        );
+        expect(econt.call).not.toHaveBeenCalled();
+      });
+
+      it('refuses an address naming neither a street nor a quarter', async () => {
+        const token = await openCart('FILTER');
+
+        await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo({ placeId: String(SOFIA_ID) }),
+          })
+          .expect(400);
+      });
+
+      it('refuses a street without its number', async () => {
+        const token = await openCart('FILTER');
+
+        await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo({
+              placeId: String(SOFIA_ID),
+              street: 'бул. Витоша',
+            }),
+          })
+          .expect(400);
+      });
+
+      it('takes a quarter with where in it instead of a street', async () => {
+        const token = await openCart('FILTER');
+
+        await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo({
+              placeId: String(SOFIA_ID),
+              quarter: 'кв. Слатина',
+              other: 'бл. 5',
+            }),
+          })
+          .expect(200);
+      });
+
+      it('refuses a destination of an unknown type', async () => {
+        const token = await openCart('FILTER');
+
+        await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: { type: 'HOME', officeCode: '9035' },
+          })
+          .expect(400);
+      });
+    });
+  });
+
+  describe('GET /delivery/address-places', () => {
+    it('lists the places Econt delivers to at the door', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/delivery/address-places')
+        .query({ carrier: ShippingMethod.ECONT })
+        .expect(200);
+
+      expect(response.body).toEqual([
+        expect.objectContaining({
+          id: String(SOFIA_ID),
+          servingOfficeCode: null,
+        }),
+      ]);
+      expect(response.headers['cache-control']).toBe('public, max-age=3600');
+    });
+  });
+
+  describe('GET /delivery/streets and /delivery/quarters', () => {
+    it('suggests the streets of a place that match the query', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/delivery/streets')
+        .query({ carrier: ShippingMethod.ECONT, placeId: SOFIA_ID, q: 'вит' })
+        .expect(200);
+
+      expect(response.body).toEqual([{ id: '1', name: 'бул. Витоша' }]);
+      expect(response.headers['cache-control']).toBe('public, max-age=3600');
+    });
+
+    it('suggests the quarters of a place', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/delivery/quarters')
+        .query({ carrier: ShippingMethod.ECONT, placeId: SOFIA_ID, q: 'сла' })
+        .expect(200);
+
+      expect(response.body).toEqual([{ id: '210', name: 'кв. Слатина' }]);
+    });
+
+    it.each([
+      ['a missing query', { placeId: SOFIA_ID }],
+      ['an over-long query', { placeId: SOFIA_ID, q: 'a'.repeat(51) }],
+      ['a place id that is not a number', { placeId: 'sofia', q: 'вит' }],
+    ])('refuses %s', async (_case, query) => {
+      await request(app.getHttpServer())
+        .get('/delivery/streets')
+        .query({ carrier: ShippingMethod.ECONT, ...query })
+        .expect(400);
+    });
+  });
+
+  describe('POST /delivery/address/validate', () => {
+    it('calls an address Econt keeps as sent valid', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/delivery/address/validate')
+        .send({ carrier: ShippingMethod.ECONT, address: SOFIA_ADDRESS })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        status: DeliveryAddressValidationStatus.VALID,
+        suggested: null,
+      });
+    });
+
+    it('offers the street Econt corrects a typo to', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/delivery/address/validate')
+        .send({
+          carrier: ShippingMethod.ECONT,
+          address: { ...SOFIA_ADDRESS, street: 'Витошаа' },
+        })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        status: DeliveryAddressValidationStatus.UNCERTAIN,
+        suggested: SOFIA_ADDRESS,
+      });
+    });
+
+    it('calls an unknown street invalid', async () => {
+      econt.readNomenclature.mockRejectedValueOnce(
+        new EcontRefusedException({
+          type: 'ExInvalidParam',
+          innerErrors: [{ type: 'ExInvalidAddress', message: 'Не открихме' }],
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/delivery/address/validate')
+        .send({ carrier: ShippingMethod.ECONT, address: SOFIA_ADDRESS })
+        .expect(200);
+
+      expect(response.body.status).toBe(
+        DeliveryAddressValidationStatus.INVALID,
+      );
+    });
+
+    it('refuses an address naming neither a street nor a quarter', async () => {
+      await request(app.getHttpServer())
+        .post('/delivery/address/validate')
+        .send({
+          carrier: ShippingMethod.ECONT,
+          address: { placeId: String(SOFIA_ID) },
+        })
         .expect(400);
     });
   });

@@ -1,4 +1,4 @@
-import { ShippingMethod, type DeliveryQuoteDto, type ParcelEstimateDto } from '@vp-parts-shop/shared'
+import { DeliveryDestinationType, ShippingMethod, type DeliveryQuoteDto, type ParcelEstimateDto } from '@vp-parts-shop/shared'
 import { ApiError } from '@/lib/api'
 import type { ParcelCheck } from './office-availability'
 import { formatWeight, resolveDeliverySummary, summaryTotal } from './delivery-summary'
@@ -11,7 +11,7 @@ const READY: ParcelCheck = { state: 'ready', parcel: parcel() }
 
 const QUOTE: DeliveryQuoteDto = {
   carrier: ShippingMethod.ECONT,
-  officeCode: '1127',
+  destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
   priceIncVatCents: 714,
   expectedDeliveryDate: '2026-09-30',
   parcel: parcel(),

@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   CartDto,
+  DeliveryAddressDto,
+  DeliveryAddressValidationDto,
+  DeliveryDestinationDto,
+  DeliveryDestinationType,
+  DeliveryQuarterDto,
+  DeliveryStreetDto,
   DeliveryOfficeDto,
   DeliveryOfficeType,
   DeliveryPlaceDto,
@@ -19,6 +25,7 @@ import {
   DeliveryCarrier,
 } from './delivery-carrier';
 import {
+  DeliveryAddressNotServedException,
   DeliveryLockerIneligibleException,
   DeliveryOfficeNotFoundException,
 } from './delivery.exceptions';
@@ -62,6 +69,33 @@ export class DeliveryService {
     return this.carrierFor(carrier).listPlaces();
   }
 
+  listAddressPlaces(carrier: ShippingMethod): Promise<DeliveryPlaceDto[]> {
+    return this.carrierFor(carrier).listAddressPlaces();
+  }
+
+  findStreets(
+    carrier: ShippingMethod,
+    placeId: string,
+    query: string,
+  ): Promise<DeliveryStreetDto[]> {
+    return this.carrierFor(carrier).findStreets(placeId, query);
+  }
+
+  findQuarters(
+    carrier: ShippingMethod,
+    placeId: string,
+    query: string,
+  ): Promise<DeliveryQuarterDto[]> {
+    return this.carrierFor(carrier).findQuarters(placeId, query);
+  }
+
+  validateAddress(
+    carrier: ShippingMethod,
+    address: DeliveryAddressDto,
+  ): Promise<DeliveryAddressValidationDto> {
+    return this.carrierFor(carrier).validateAddress(address);
+  }
+
   async estimateParcel(
     requester: CartRequester,
     carrier: ShippingMethod,
@@ -74,41 +108,61 @@ export class DeliveryService {
 
   async quote(
     requester: CartRequester,
-    { carrier, officeCode }: DeliveryQuoteRequestDto,
+    { carrier, destination }: DeliveryQuoteRequestDto,
   ): Promise<DeliveryQuoteDto> {
     const courier = this.carrierFor(carrier);
-    const office = await courier.findOffice(officeCode);
-
-    if (!office) {
-      throw new DeliveryOfficeNotFoundException();
-    }
-
     const { cart, lines, estimate } = await this.parcelOf(requester);
-
     const parcelDto = toParcelEstimateDto(estimate, courier);
 
-    if (
-      office.type === DeliveryOfficeType.LOCKER &&
-      !parcelDto.isLockerEligible
-    ) {
-      throw new DeliveryLockerIneligibleException();
-    }
+    await this.checkDestination(courier, destination, parcelDto);
 
     const sendDate = await this.readyDateOf(lines);
     const { priceIncVatCents, expectedDeliveryDate } = await this.cachedQuote(
       courier,
-      officeCode,
+      destination,
       { parcel: estimate, sendDate },
     );
 
     return {
       carrier,
-      officeCode,
+      destination,
       priceIncVatCents,
       expectedDeliveryDate: sendDate === null ? null : expectedDeliveryDate,
       parcel: parcelDto,
       cartVersion: cart.version,
     };
+  }
+
+  private async checkDestination(
+    courier: DeliveryCarrier,
+    destination: DeliveryDestinationDto,
+    parcel: ParcelEstimateDto,
+  ): Promise<void> {
+    if (destination.type === DeliveryDestinationType.ADDRESS) {
+      return this.checkAddressPlace(courier, destination.address.placeId);
+    }
+
+    const office = await courier.findOffice(destination.officeCode);
+
+    if (!office) {
+      throw new DeliveryOfficeNotFoundException();
+    }
+
+    if (office.type === DeliveryOfficeType.LOCKER && !parcel.isLockerEligible) {
+      throw new DeliveryLockerIneligibleException();
+    }
+  }
+
+  /** The carrier prices an unknown place id instead of refusing it, so only our list guards it. */
+  private async checkAddressPlace(
+    courier: DeliveryCarrier,
+    placeId: string,
+  ): Promise<void> {
+    const places = await courier.listAddressPlaces();
+
+    if (!places.some(({ id }) => id === placeId)) {
+      throw new DeliveryAddressNotServedException();
+    }
   }
 
   private async parcelOf(requester: CartRequester): Promise<CartParcel> {
@@ -135,13 +189,13 @@ export class DeliveryService {
 
   private cachedQuote(
     courier: DeliveryCarrier,
-    officeCode: string,
+    destination: DeliveryDestinationDto,
     { parcel, sendDate }: Shipment,
   ): Promise<CarrierQuote> {
     return this.cache.cached(
-      quoteCacheKey(courier.carrier, officeCode, { parcel, sendDate }),
+      quoteCacheKey(courier.carrier, destination, { parcel, sendDate }),
       QUOTE_TTL,
-      () => courier.quote(officeCode, parcel, sendDate),
+      () => courier.quote(destination, parcel, sendDate),
     );
   }
 
@@ -158,13 +212,20 @@ export class DeliveryService {
 
 function quoteCacheKey(
   carrier: ShippingMethod,
-  officeCode: string,
+  destination: DeliveryDestinationDto,
   { parcel, sendDate }: Shipment,
 ): string {
   const box = singleBoxOf(parcel);
   const boxKey = box ? `${box.length}x${box.width}x${box.height}` : 'nobox';
 
-  return `delivery:quote:${carrier}:${officeCode}:${parcel.weightGrams}:${boxKey}:${sendDate ?? 'undated'}`;
+  return `delivery:quote:${carrier}:${destinationKey(destination)}:${parcel.weightGrams}:${boxKey}:${sendDate ?? 'undated'}`;
+}
+
+/** The price follows the place alone; the street never changes it. */
+function destinationKey(destination: DeliveryDestinationDto): string {
+  return destination.type === DeliveryDestinationType.ADDRESS
+    ? `place:${destination.address.placeId}`
+    : `office:${destination.officeCode}`;
 }
 
 function toParcelEstimateDto(

@@ -1,4 +1,5 @@
 import {
+  DeliveryDestinationType,
   DeliveryOfficeType,
   ShippingMethod,
   type DeliveryOfficeDto,
@@ -138,27 +139,29 @@ describe('parcelEstimateQueryOptions', () => {
   })
 })
 
+const OFFICE = { type: DeliveryDestinationType.OFFICE, officeCode: '1127' } as const
+
 describe('getDeliveryQuote', () => {
   // The server prices the cart it owns; the client names only the office.
   it('asks for the price of the cart this device owns to one office', () => {
-    getDeliveryQuote({ carrier: ShippingMethod.ECONT, officeCode: '1127' })
+    getDeliveryQuote({ carrier: ShippingMethod.ECONT, destination: OFFICE })
 
     expect(mockCartFetch).toHaveBeenCalledWith('/delivery/quote', {
       method: 'POST',
-      body: { carrier: ShippingMethod.ECONT, officeCode: '1127' },
+      body: { carrier: ShippingMethod.ECONT, destination: OFFICE },
     })
   })
 })
 
 describe('deliveryQuoteQueryOptions', () => {
-  const request = { carrier: ShippingMethod.ECONT, officeCode: '1127' }
+  const request = { carrier: ShippingMethod.ECONT, destination: OFFICE }
 
   it('keys the quote by carrier, office, cart and cart version', () => {
     expect(deliveryQuoteQueryOptions(request, 'cart-1', 7).queryKey).toEqual([
       'delivery',
       'quote',
       ShippingMethod.ECONT,
-      '1127',
+      OFFICE,
       'cart-1',
       7,
     ])

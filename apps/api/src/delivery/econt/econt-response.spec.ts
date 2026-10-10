@@ -4,7 +4,10 @@ import {
   EcontOfficeRecord,
   isCalculatedLabel,
   isCityRecord,
+  isNamedRecord,
   isOfficeRecord,
+  isValidatedAddress,
+  refusesAddress,
   refusesReceiver,
 } from './econt-response';
 
@@ -165,6 +168,65 @@ describe('refusesReceiver', () => {
       refusesReceiver({
         type: 'ExAccessDenied',
         message: 'Невалидно потребителско име и/или парола.',
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('refusesAddress', () => {
+  it('finds an unknown street behind the wrapping error', () => {
+    expect(
+      refusesAddress({
+        type: 'ExInvalidParam',
+        message: '',
+        innerErrors: [
+          { type: 'ExInvalidAddress', message: 'Не открихме улица' },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('ignores a refusal that is not about the address', () => {
+    expect(refusesAddress(refusalOf('получател'))).toBe(false);
+  });
+});
+
+describe('isNamedRecord', () => {
+  it('accepts a street row', () => {
+    expect(isNamedRecord({ id: 3, cityID: 41, name: 'бул. Витоша' })).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ['a text id', { id: '3', name: 'бул. Витоша' }],
+    ['no name', { id: 3 }],
+    ['a blank name', { id: 3, name: '  ' }],
+    ['null', null],
+  ])('rejects a row with %s', (_label, row) => {
+    expect(isNamedRecord(row)).toBe(false);
+  });
+});
+
+describe('isValidatedAddress', () => {
+  const answer = {
+    validationStatus: 'normal',
+    address: { street: 'бул. Витоша', num: '10', quarter: '', other: null },
+  };
+
+  it('accepts the shape Econt answers', () => {
+    expect(isValidatedAddress(answer)).toBe(true);
+  });
+
+  it('rejects an answer without a status', () => {
+    expect(isValidatedAddress({ address: answer.address })).toBe(false);
+  });
+
+  it('rejects an answer whose address is not text', () => {
+    expect(
+      isValidatedAddress({
+        ...answer,
+        address: { ...answer.address, num: 10 },
       }),
     ).toBe(false);
   });

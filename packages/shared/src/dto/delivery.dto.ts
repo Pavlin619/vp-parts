@@ -50,14 +50,76 @@ export interface ParcelEstimateDto {
   isLockerEligible: boolean;
 }
 
+export enum DeliveryDestinationType {
+  OFFICE = 'OFFICE',
+  ADDRESS = 'ADDRESS',
+}
+
+/**
+ * Where a parcel is delivered. Econt's rule: name a street and its number, or a
+ * quarter and what stands in it ({@link isLocatableAddress}). Name, phone and
+ * postcode belong to the order, not to the address a quote or a check is asked for.
+ */
+export interface DeliveryAddressDto {
+  /** The {@link DeliveryPlaceDto.id} of the settlement; never its name. */
+  placeId: string;
+  street?: string;
+  streetNumber?: string;
+  quarter?: string;
+  /** The block, entrance, floor and apartment. */
+  other?: string;
+}
+
+export function isLocatableAddress({
+  street,
+  streetNumber,
+  quarter,
+  other,
+}: Pick<
+  DeliveryAddressDto,
+  'street' | 'streetNumber' | 'quarter' | 'other'
+>): boolean {
+  const isFilled = (value: string | undefined) => Boolean(value?.trim());
+
+  return (
+    (isFilled(street) && isFilled(streetNumber)) ||
+    (isFilled(quarter) && isFilled(other))
+  );
+}
+
+export type DeliveryDestinationDto =
+  | { type: DeliveryDestinationType.OFFICE; officeCode: string }
+  | { type: DeliveryDestinationType.ADDRESS; address: DeliveryAddressDto };
+
+export enum DeliveryAddressValidationStatus {
+  VALID = 'VALID',
+  /** The carrier accepts the address but corrected the street or quarter. */
+  UNCERTAIN = 'UNCERTAIN',
+  INVALID = 'INVALID',
+}
+
+export interface DeliveryAddressValidationDto {
+  status: DeliveryAddressValidationStatus;
+  /** The carrier's corrected address; set only when the status is UNCERTAIN. */
+  suggested: DeliveryAddressDto | null;
+}
+
+/** A street or quarter the carrier lists in a place, named as it files it ("бул. Витоша"). */
+export interface DeliveryStreetDto {
+  id: string;
+  name: string;
+}
+
+export type DeliveryQuarterDto = DeliveryStreetDto;
+
 export interface DeliveryQuoteRequestDto {
   carrier: ShippingMethod;
-  officeCode: string;
+  destination: DeliveryDestinationDto;
 }
 
 export interface DeliveryQuoteDto {
   carrier: ShippingMethod;
-  officeCode: string;
+  destination: DeliveryDestinationDto;
   priceIncVatCents: number;
   /** Shop-local `YYYY-MM-DD` the carrier expects to deliver on, when it gives one. */
   expectedDeliveryDate: string | null;

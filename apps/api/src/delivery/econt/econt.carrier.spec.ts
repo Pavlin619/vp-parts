@@ -1,7 +1,12 @@
 import type { ConfigService } from '@nestjs/config';
-import { DeliveryOfficeType, ShippingMethod } from '@vp-parts-shop/shared';
+import {
+  DeliveryDestinationType,
+  DeliveryOfficeType,
+  ShippingMethod,
+} from '@vp-parts-shop/shared';
 import type { Parcel } from '../parcel/parcel-estimate';
 import { EcontCarrier } from './econt.carrier';
+import type { EcontAddresses } from './econt-addresses';
 import type { EcontOffices } from './econt-offices';
 import type { EcontPlaces } from './econt-places';
 import type { EcontQuotes } from './econt-quotes';
@@ -25,7 +30,15 @@ describe('EcontCarrier', () => {
     find: jest.fn().mockResolvedValue(office),
   };
   const place = { id: '27183', servingOfficeCode: '5817' };
-  const places = { list: jest.fn().mockResolvedValue([place]) };
+  const places = {
+    list: jest.fn().mockResolvedValue([place]),
+    listForAddress: jest.fn().mockResolvedValue([place]),
+  };
+  const addresses = {
+    streets: jest.fn().mockResolvedValue([{ id: '1', name: 'бул. Витоша' }]),
+    quarters: jest.fn().mockResolvedValue([{ id: '2', name: 'кв. Слатина' }]),
+    validate: jest.fn().mockResolvedValue({ status: 'VALID', suggested: null }),
+  };
   const quotes = {
     quote: jest
       .fn()
@@ -35,6 +48,7 @@ describe('EcontCarrier', () => {
     offices as unknown as EcontOffices,
     places as unknown as EcontPlaces,
     quotes as unknown as EcontQuotes,
+    addresses as unknown as EcontAddresses,
     { get: (key: string) => CONFIG[key] } as unknown as ConfigService,
   );
 
@@ -60,11 +74,48 @@ describe('EcontCarrier', () => {
     await expect(carrier.listPlaces()).resolves.toEqual([place]);
   });
 
+  it('lists the address places from the Econt door-served places', async () => {
+    await expect(carrier.listAddressPlaces()).resolves.toEqual([place]);
+    expect(places.listForAddress).toHaveBeenCalled();
+  });
+
+  it('suggests streets and quarters from the Econt address lists', async () => {
+    await expect(carrier.findStreets('41', 'вит')).resolves.toEqual([
+      { id: '1', name: 'бул. Витоша' },
+    ]);
+    await expect(carrier.findQuarters('41', 'сла')).resolves.toEqual([
+      { id: '2', name: 'кв. Слатина' },
+    ]);
+    expect(addresses.streets).toHaveBeenCalledWith('41', 'вит');
+    expect(addresses.quarters).toHaveBeenCalledWith('41', 'сла');
+  });
+
+  it('validates an address with Econt', async () => {
+    const address = { placeId: '41', street: 'бул. Витоша', streetNumber: '1' };
+
+    await expect(carrier.validateAddress(address)).resolves.toEqual({
+      status: 'VALID',
+      suggested: null,
+    });
+    expect(addresses.validate).toHaveBeenCalledWith(address);
+  });
+
   it('prices a parcel with an Econt quote', async () => {
-    await expect(carrier.quote('9035', PARCEL, '2026-09-28')).resolves.toEqual({
+    const destination = {
+      type: DeliveryDestinationType.OFFICE,
+      officeCode: '9035',
+    } as const;
+
+    await expect(
+      carrier.quote(destination, PARCEL, '2026-09-28'),
+    ).resolves.toEqual({
       priceIncVatCents: 413,
       expectedDeliveryDate: null,
     });
-    expect(quotes.quote).toHaveBeenCalledWith('9035', PARCEL, '2026-09-28');
+    expect(quotes.quote).toHaveBeenCalledWith(
+      destination,
+      PARCEL,
+      '2026-09-28',
+    );
   });
 });
