@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useAuth } from '@clerk/nextjs'
 import {
   articleIdentityKey,
   EMPTY_CART,
@@ -57,6 +58,19 @@ jest.mock('@/lib/api/cart', () => ({
   cartQueryOptions: jest.requireActual('@/lib/api/cart').cartQueryOptions,
 }))
 
+jest.mock('@clerk/nextjs', () => ({
+  useAuth: jest.fn(),
+  SignIn: () => <div data-testid="clerk-sign-in" />,
+}))
+
+jest.mock('@/hooks/use-profile-delivery-default', () => ({
+  useProfileDeliveryDefault: jest.fn(),
+}))
+
+jest.mock('./contact/signed-in-contact', () => ({
+  SignedInContact: () => <div data-testid="signed-in-contact" />,
+}))
+
 jest.mock('./delivery/address', () => ({
   AddressPicker: () => <div data-testid="address-picker" />,
 }))
@@ -111,6 +125,10 @@ function renderView() {
 
 describe('CheckoutView', () => {
   beforeEach(() => {
+    jest.mocked(useAuth).mockReturnValue({
+      isLoaded: true,
+      isSignedIn: false,
+    } as ReturnType<typeof useAuth>)
     useCart.setState({ lines: [], lastWriteError: null })
     useCheckoutDelivery.setState({ method: 'courier-address', office: null })
     getAvailability.mockReset()
@@ -206,6 +224,33 @@ describe('CheckoutView', () => {
     await user.click(screen.getByRole('radio', { name: /Вход/ }))
 
     expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+  })
+
+  it('places a signed-in order through the account, not as a quick order', async () => {
+    jest.mocked(useAuth).mockReturnValue({
+      isLoaded: true,
+      isSignedIn: true,
+    } as ReturnType<typeof useAuth>)
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+
+    expect(await screen.findByTestId('signed-in-contact')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+  })
+
+  it('does not offer a quick order before the session is known', async () => {
+    jest.mocked(useAuth).mockReturnValue({
+      isLoaded: false,
+      isSignedIn: undefined,
+    } as unknown as ReturnType<typeof useAuth>)
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+
+    expect(await screen.findByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
   })
 

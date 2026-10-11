@@ -24,6 +24,9 @@ export const CONTACT_MODES: readonly ContactModeOption[] = [
 
 export const DEFAULT_CONTACT_MODE: ContactMode = "quick";
 
+/** Where signing in or out from the contact panel lands, so the order is not left behind. */
+export const CHECKOUT_PATH = "/checkout";
+
 const MIN_NAME_LENGTH = 3;
 
 export function contactNameError(name: string): string | undefined {

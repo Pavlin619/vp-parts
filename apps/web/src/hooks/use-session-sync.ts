@@ -12,7 +12,11 @@ import {
   getCart,
   readCartToken,
 } from "@/lib/api/cart";
-import { customerProfileQueryOptions, fileCustomer } from "@/lib/api/customers";
+import {
+  customerProfileQueryOptions,
+  fileCustomer,
+  isCustomerNotFiled,
+} from "@/lib/api/customers";
 import { useCart } from "./use-cart";
 import { useCheckoutDelivery } from "./use-checkout-delivery";
 
@@ -80,7 +84,7 @@ async function ensureCustomer(queryClient: QueryClient): Promise<void> {
   try {
     await queryClient.fetchQuery(customerProfileQueryOptions);
   } catch (error) {
-    if (!isNotFiledYet(error)) {
+    if (!isCustomerNotFiled(error)) {
       throw error;
     }
 
@@ -132,13 +136,6 @@ function forgetSession(queryClient: QueryClient): void {
   // Reset rather than removed: the mounted cart read then fetches the guest's
   // answer, where a removed query would keep handing its observer the old cart.
   void queryClient.resetQueries({ queryKey: cartQueryOptions.queryKey });
-}
-
-function isNotFiledYet(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    error.errorCode === AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE
-  );
 }
 
 /**

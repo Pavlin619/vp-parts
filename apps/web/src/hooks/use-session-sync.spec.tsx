@@ -25,6 +25,7 @@ jest.mock('@/lib/api/customers', () => {
   return {
     getCustomerProfile,
     fileCustomer: jest.fn(),
+    isCustomerNotFiled: jest.requireActual('@/lib/api/customers').isCustomerNotFiled,
     customerProfileQueryOptions: {
       queryKey: ['customers', 'me'],
       queryFn: () => getCustomerProfile(),

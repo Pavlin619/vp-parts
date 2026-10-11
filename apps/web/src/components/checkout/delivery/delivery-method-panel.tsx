@@ -5,7 +5,7 @@ import { MapPin, Truck } from "lucide-react";
 import { DeliveryCutoffPromise } from "@/components/delivery";
 import {
   B2C_DELIVERY_METHODS,
-  OFFICE_DELIVERY_CARRIER,
+  CHECKOUT_CARRIER,
   type DeliveryMethod,
 } from "@/lib/checkout/delivery/delivery-methods";
 import type { DeliveryPromise } from "@/lib/delivery/promise";
@@ -68,14 +68,14 @@ function ProviderSlot({ method }: { method: DeliveryMethod }) {
   if (method === "courier-office") {
     return (
       <div data-testid="delivery-provider-slot" data-method={method} className="mt-2.5">
-        <OfficePicker carrier={OFFICE_DELIVERY_CARRIER} />
+        <OfficePicker carrier={CHECKOUT_CARRIER} />
       </div>
     );
   }
 
   return (
     <div data-testid="delivery-provider-slot" data-method={method} className="mt-2.5">
-      <AddressPicker carrier={OFFICE_DELIVERY_CARRIER} />
+      <AddressPicker carrier={CHECKOUT_CARRIER} />
     </div>
   );
 }

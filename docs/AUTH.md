@@ -114,6 +114,21 @@ calls customers about orders.
 is optional at registration; one given there becomes the default. The carrier
 is not asked to validate it on save — every quote re-validates the destination.
 
+At checkout the default pre-selects delivery to that address
+(`useProfileDeliveryDefault`), but only when the device has no office or
+address chosen yet: a choice made on this device is more recent than the
+profile. Only an address for the carrier checkout delivers with is used.
+
+## Checkout's contact panel
+
+Signed out, it offers three tabs: "Вход" mounts Clerk's `<SignIn routing="hash"/>`
+with its own sign-up link hidden (the "Регистрация" tab sits beside it),
+"Регистрация" mounts `RegistrationForm`, and "Бърза поръчка" takes a name and a
+phone. Signed in, it shows the profile's name, email and phone with a way to
+sign out. While the session sync is still filing a new customer, the profile
+read answers `CUSTOMER_PROFILE_INCOMPLETE`; the card shows its skeleton until
+the filed profile lands in the same query.
+
 ## Tokens
 
 `JwtGuard` verifies every Clerk session token with `authorizedParties` set to

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { TriangleAlert } from "lucide-react";
 import { CartAvailabilityError, CartEmpty, CheckoutSteps } from "@/components/cart";
 import { buttonVariants } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { useCartAvailability } from "@/hooks/use-cart-availability";
 import { useCartStatus } from "@/hooks/use-cart-status";
 import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-delivery";
 import { useDeliverySummary } from "@/hooks/use-delivery-summary";
+import { useProfileDeliveryDefault } from "@/hooks/use-profile-delivery-default";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
 import { DEFAULT_CONTACT_MODE, type ContactMode } from "@/lib/checkout/contact/contact-modes";
@@ -29,6 +31,8 @@ export function CheckoutView() {
   const deliveryMethod = useDeliveryMethod();
   const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
   const [contactMode, setContactMode] = useState<ContactMode>(DEFAULT_CONTACT_MODE);
+  const { isSignedIn } = useAuth();
+  useProfileDeliveryDefault();
 
   const availability = useCartAvailability(lines);
   const { parcelCheck, delivery } = useDeliverySummary();
@@ -80,7 +84,7 @@ export function CheckoutView() {
                 isPending={availability.isPending}
                 parcelCheck={parcelCheck}
                 delivery={delivery}
-                isQuickOrder={contactMode === "quick"}
+                isQuickOrder={isSignedIn === false && contactMode === "quick"}
               />
             </aside>
           </div>

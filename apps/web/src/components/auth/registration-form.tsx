@@ -39,7 +39,7 @@ const DEFAULT_ADDRESS_CARRIER = ShippingMethod.ECONT;
 
 interface RegistrationFormProps {
   /** Called once the account is signed in; the session sync merges the cart on its own. */
-  onComplete: () => void;
+  onComplete?: () => void;
   /** Called before Clerk is asked; the session can go live before `onComplete`. */
   onSignUpStart?: () => void;
   className?: string;
@@ -130,7 +130,7 @@ export function RegistrationForm({
       return;
     }
 
-    onComplete();
+    onComplete?.();
   };
 
   return (
