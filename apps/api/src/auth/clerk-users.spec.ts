@@ -25,17 +25,19 @@ describe('ClerkUsers', () => {
     });
   });
 
-  it('reads the primary email and names of a user', async () => {
+  it('reads the primary email, names and unsafe metadata of a user', async () => {
     getUser.mockResolvedValue({
       primaryEmailAddress: { emailAddress: 'ivan@example.com' },
       firstName: 'Иван',
       lastName: 'Петров',
+      unsafeMetadata: { phoneNumber: '0888123456' },
     });
 
     await expect(users.findIdentity('clerk-1')).resolves.toEqual({
       email: 'ivan@example.com',
       firstName: 'Иван',
       lastName: 'Петров',
+      unsafeMetadata: { phoneNumber: '0888123456' },
     });
     expect(getUser).toHaveBeenCalledWith('clerk-1');
   });

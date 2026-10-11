@@ -7,7 +7,7 @@ import { GlobalExceptionFilter } from './common/exception.filter';
 import { LoggingInterceptor } from './common/logging.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.enableCors({
     origin: app.get(ConfigService).getOrThrow<string>('CORS_ORIGIN'),

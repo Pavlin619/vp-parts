@@ -7,33 +7,67 @@ joined by `Customer.clerkId`, and only `CustomersService` knows that.
 ## Registering
 
 ```
-Browser ── useSignUp (email, password, names) ──▶ Clerk      account + session
-Browser ── POST /customers/me { phone, address? } ──▶ API
-             API ── users.getUser(clerkId) ──▶ Clerk         email + names
+Browser ── signUp.create (email, password, names,
+                          unsafeMetadata { phoneNumber, address? }) ──▶ Clerk
+Browser ── POST /customers/me (no body) ──▶ API                 ─┐
+Clerk   ── POST /webhooks/clerk  user.created ──▶ API           ─┤ either, or both
+             API ── users.getUser(clerkId) ──▶ Clerk               │ email, names, metadata
              API ── one INSERT: Customer (+ default Address) ──▶ Postgres
 ```
 
-- **Email and names are read from Clerk, never from the body.** The body
-  carries only what Clerk does not hold: the phone and an optional address. The
-  DTO refuses `email`/`firstName`/`lastName` outright (`forbidNonWhitelisted`).
-- **Safe to retry.** A user already filed is returned unchanged, and two
-  concurrent calls resolve to the one row the database let through (the
-  `clerkId` unique constraint). A lost response never turns into an error.
-- **A Clerk account with no customer row** is possible: the sign-up succeeded and
-  `POST /customers/me` never landed. `GET /customers/me` answers
-  `404 CUSTOMER_PROFILE_INCOMPLETE`, and the web app asks for the phone again.
-  The same path will serve any sign-in method that brings no phone (Google).
-- **An email another customer already holds** is `409 EMAIL_ALREADY_EXISTS`.
+**No Clerk account may end up without a customer row.** Clerk's sign-up and our
+insert are two systems with no shared transaction, so two paths run the same
+idempotent filing (`CustomersService.register`):
+
+- **The browser's `POST /customers/me`**, straight after sign-up. It is what a
+  customer who registers in checkout and orders at once relies on: the webhook
+  may arrive seconds later, after the order needed the row.
+- **The `user.created` webhook** is the guarantee. Clerk retries until we answer
+  `2xx`, so a closed tab, a lost response or an API that was down at sign-up
+  still ends with a row.
+
+Either may land first, and a webhook can be redelivered; whichever arrives
+second finds the row and returns it unchanged. Two concurrent calls resolve to
+the one row the database let through (the `clerkId` unique constraint).
+
+**What gets filed comes only from Clerk.** Email and names are Clerk's own
+fields. The phone and the optional address travel in Clerk's `unsafeMetadata`,
+which the registration form sets at `signUp.create` — the only carrier both
+paths can read. It is *unsafe* because the browser can rewrite it at any time,
+so the API reads it only when filing, never afterwards, and validates it with
+the same shared schema the form uses (`registrationMetadataSchema`). After
+filing, our row is the record: a later edit to the metadata changes nothing.
+
+**When filing cannot succeed**, retrying will not help either:
+
+- No email, names or valid metadata (a user created in the Clerk dashboard, or
+  tampered metadata) → `422 VALIDATION_ERROR`. There is no "complete your
+  profile" form; the web app tells the customer to contact us.
+- An email another customer already holds → `409 EMAIL_ALREADY_EXISTS`.
   Reachable only when a Clerk user was deleted and recreated without our row
   following it.
 
-### Why not the `user.created` webhook
+The webhook logs both at `error` and answers `200`, so Clerk stops retrying a
+delivery that would fail the same way forever. Any other failure answers `5xx`
+and Clerk retries. A signed-in user with no row yet gets
+`404 CUSTOMER_PROFILE_INCOMPLETE` from `GET /customers/me`, and the browser
+files them.
 
-The webhook would create the row asynchronously, seconds after sign-up. It
-cannot, because the phone is mandatory and Clerk never sees it; and if it could,
-a customer who registers in checkout and orders straight away would race it.
-The webhook still has a job — `user.updated` (an email or name changed through
-Clerk's account menu) and `user.deleted` (erasure) — and is not built yet.
+### The webhook endpoint
+
+`POST /webhooks/clerk` is public; `ClerkWebhooks` verifies Clerk's signature
+over the raw request body (Nest runs with `rawBody: true`) with
+`CLERK_WEBHOOK_SECRET`, and a request that fails is `400`. Only `user.created`
+is handled. `user.updated` (an email or name changed through Clerk's account
+menu) and `user.deleted` (erasure) are accepted and ignored until they are
+built.
+
+Set it up in the dashboard under **Configure → Webhooks**: endpoint
+`https://<api host>/webhooks/clerk`, event `user.created`, and copy the signing
+secret (`whsec_…`) into `CLERK_WEBHOOK_SECRET`. To receive it locally, expose
+the API through a tunnel (`ngrok http 3001`) and register that URL on the
+development instance. Without one, local development still works: the
+browser's call files every customer on its own.
 
 ## The phone
 
@@ -47,8 +81,8 @@ calls customers about orders.
   refused. Google's BG mobile ranges are `87`–`89` and `98` with seven more
   digits, plus a few eight-digit machine-to-machine ranges (`43x`, `996`, `999`)
   it also files as mobile; we accept its verdict rather than hand-tune it.
-- The DTO normalises before it validates, so what is checked is exactly what is
-  stored, however the customer typed it.
+- The schema normalises before it validates, so what is checked is exactly what
+  is stored, however the customer typed it.
 - A mechanic's **business** phone stays looser (`bulgarianPhoneSchema`): a
   business line may be a landline.
 

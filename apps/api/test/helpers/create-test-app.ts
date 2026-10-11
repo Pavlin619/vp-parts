@@ -49,7 +49,7 @@ export async function createTestApp(
 
   const moduleRef = await builder.compile();
 
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
 
   app.useGlobalPipes(
     new ValidationPipe({

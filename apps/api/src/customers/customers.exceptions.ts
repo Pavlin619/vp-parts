@@ -2,9 +2,9 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '@vp-parts-shop/shared';
 
 /**
- * Thrown for someone Clerk has signed in who has no customer row: they
- * registered but the call that files them never landed. The UI answers by
- * asking for the phone again.
+ * Thrown for someone Clerk has signed in who has no customer row yet: neither
+ * the browser's filing call nor the webhook has landed. The browser answers by
+ * filing them.
  */
 export class CustomerProfileIncompleteException extends HttpException {
   constructor() {
@@ -32,8 +32,9 @@ export class EmailAlreadyExistsException extends HttpException {
 }
 
 /**
- * Thrown when Clerk holds no email or names for the user — the dashboard is
- * not requiring them at sign-up. Nothing the caller sends can fix that.
+ * Thrown when Clerk holds no email, names or valid registration metadata for
+ * the user — the dashboard is not requiring them, or the user was not made by
+ * our registration form. Retrying cannot fix that.
  */
 export class ClerkIdentityIncompleteException extends HttpException {
   constructor() {
