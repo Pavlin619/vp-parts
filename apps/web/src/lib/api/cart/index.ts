@@ -8,6 +8,7 @@ import {
   type UpdateCartLineInput,
 } from "@vp-parts-shop/shared";
 import { cartFetch } from "./cart-fetch";
+import { getSessionToken } from "../session-token";
 import { readCartToken } from "./cart-token";
 
 export { clearCartToken, readCartToken } from "./cart-token";
@@ -21,14 +22,22 @@ export const cartQueryOptions = queryOptions({
   staleTime: 30_000,
 });
 
-export function getCart(): Promise<CartDto> {
-  // A visitor with no token has no cart, and asking for one is a round trip
+export async function getCart(): Promise<CartDto> {
+  // A guest with no token has no cart, and asking for one is a round trip
   // whose answer we already know.
-  if (!readCartToken()) {
-    return Promise.resolve(EMPTY_CART);
+  if (!(await hasCartToRead())) {
+    return EMPTY_CART;
   }
 
   return cartFetch("/cart");
+}
+
+/**
+ * Whether the server could name a cart for this visitor: a guest's by the
+ * device's token, a customer's by their account.
+ */
+export async function hasCartToRead(): Promise<boolean> {
+  return readCartToken() !== null || (await getSessionToken()) !== null;
 }
 
 export function addCartLine(line: AddCartLineInput): Promise<CartDto> {

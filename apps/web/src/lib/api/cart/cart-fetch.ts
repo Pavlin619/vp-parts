@@ -21,6 +21,7 @@ export async function cartFetch<T>(
   return apiFetch<T>(path, {
     method,
     body,
+    withSession: true,
     headers: token ? { [CART_TOKEN_HEADER]: token } : undefined,
     onHeaders: (headers) => {
       const minted = headers.get(CART_TOKEN_HEADER);

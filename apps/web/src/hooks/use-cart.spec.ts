@@ -56,20 +56,30 @@ function fillCart(): void {
   })
 }
 
+/** Lets the first queued write leave, without waiting for its answer. */
+const sent = () => new Promise((resolve) => setTimeout(resolve, 0))
+
 /** Lets the serialised write chain drain. */
 const settle = () => useCart.getState().whenSettled()
 
 describe('useCart', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    useCart.setState({ lines: [], cartId: '', version: 0, lastWriteError: null })
+    useCart.setState({
+      lines: [],
+      cartId: '',
+      version: 0,
+      lastWriteError: null,
+      ownerId: null,
+      droppedLines: [],
+    })
     api.addCartLine.mockImplementation(() => Promise.resolve(echoed()))
     api.updateCartLine.mockImplementation(() => Promise.resolve(echoed()))
     api.removeCartLine.mockImplementation(() => Promise.resolve(echoed()))
     api.setCartSelection.mockImplementation(() => Promise.resolve(echoed()))
     api.clearCart.mockImplementation(() => Promise.resolve(echoed()))
     api.getCart.mockImplementation(() => Promise.resolve(echoed()))
-    api.readCartToken.mockReturnValue('a-cart-token')
+    api.hasCartToRead.mockResolvedValue(true)
   })
 
   describe('what the shopper sees immediately', () => {
@@ -370,7 +380,7 @@ describe('useCart', () => {
     // token rather than from the server, and quietly undo the failed click.
     it('does not read an empty cart back over a failed first add', async () => {
       api.addCartLine.mockRejectedValue(new Error('offline'))
-      api.readCartToken.mockReturnValue(null)
+      api.hasCartToRead.mockResolvedValue(false)
 
       useCart.getState().addLine(article(), 1)
       await settle()
@@ -387,7 +397,7 @@ describe('useCart', () => {
     it('does not read an empty cart back when the token is gone but the cart id remains', async () => {
       useCart.setState({ cartId: 'cart-1', lines: [line()] })
       api.addCartLine.mockRejectedValue(new Error('offline'))
-      api.readCartToken.mockReturnValue(null)
+      api.hasCartToRead.mockResolvedValue(false)
 
       useCart.getState().addLine(article({ articleNumber: 'NEW-PART' }), 1)
       await settle()
@@ -419,6 +429,180 @@ describe('useCart', () => {
       await settle()
 
       expect(useCart.getState().lastWriteError).toBeNull()
+    })
+  })
+
+  describe('who the mirror belongs to', () => {
+    it('is nobody until a sign-in hands it an account cart', () => {
+      expect(useCart.getState().ownerId).toBeNull()
+    })
+
+    it('is taken from the account whose cart was adopted', () => {
+      useCart.getState().adoptServerCart({ id: 'cart-9', version: 1, lines: [] }, 'user_1')
+
+      expect(useCart.getState().ownerId).toBe('user_1')
+    })
+
+    // A background read or a write answer says nothing new about the owner.
+    it('is kept when a cart is adopted without naming one', () => {
+      useCart.setState({ ownerId: 'user_1' })
+
+      useCart.getState().adoptServerCart({ id: 'cart-9', version: 1, lines: [] })
+
+      expect(useCart.getState().ownerId).toBe('user_1')
+    })
+    // Kept across a reload, so a sign-out in another tab or an expired session
+    // is still recognised as someone else's cart on this device.
+    it('is remembered with the lines, while a merge notice is not', () => {
+      useCart.setState({
+        ownerId: 'user_1',
+        droppedLines: [{ brandId: '30', articleNumber: 'GUEST-1', brandName: 'BOSCH' }],
+      })
+
+      const stored = JSON.parse(window.localStorage.getItem('vp-cart-mirror') ?? '{}')
+
+      expect(stored.state.ownerId).toBe('user_1')
+      expect(stored.state).not.toHaveProperty('droppedLines')
+    })
+  })
+
+  describe('reset', () => {
+    it('forgets the lines, the cart and its owner', () => {
+      useCart.setState({
+        lines: [line()],
+        cartId: 'cart-1',
+        version: 7,
+        ownerId: 'user_1',
+        lastWriteError: { code: 'OFFLINE' },
+        droppedLines: [{ brandId: '268', articleNumber: 'X', brandName: 'WIX' }],
+      })
+
+      useCart.getState().reset()
+
+      expect(useCart.getState()).toMatchObject({
+        lines: [],
+        cartId: '',
+        version: 0,
+        ownerId: null,
+        lastWriteError: null,
+        droppedLines: [],
+      })
+    })
+
+    it('cancels a quantity change still waiting out its pause', async () => {
+      useCart.setState({ lines: [line()] })
+      useCart.getState().setQuantity(article(), 3)
+
+      useCart.getState().reset()
+      await settle()
+
+      expect(api.updateCartLine).not.toHaveBeenCalled()
+      expect(useCart.getState().hasPendingWrite()).toBe(false)
+    })
+
+    // The account's cart answering after sign-out would paint it back onto a
+    // device that no longer belongs to anyone.
+    it('drops the answer to a write that was in flight', async () => {
+      let answer: (cart: CartDto) => void = () => {}
+      api.addCartLine.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+      )
+
+      useCart.getState().addLine(article(), 1)
+      await sent()
+      useCart.getState().reset()
+      answer({ id: 'cart-1', version: 3, lines: echoed().lines })
+      await settle()
+
+      expect(useCart.getState().lines).toEqual([])
+      expect(useCart.getState().cartId).toBe('')
+    })
+
+    it('does not send a write queued behind the one in flight', async () => {
+      let answer: (cart: CartDto) => void = () => {}
+      api.addCartLine.mockReturnValueOnce(
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+      )
+
+      useCart.getState().addLine(article(), 1)
+      useCart.getState().addLine(article({ articleNumber: 'SECOND' }), 1)
+      await sent()
+      useCart.getState().reset()
+      answer(echoed())
+      await settle()
+
+      expect(api.addCartLine).toHaveBeenCalledTimes(1)
+    })
+
+    it('still sends writes made after it', async () => {
+      useCart.getState().reset()
+
+      useCart.getState().addLine(article(), 1)
+      await settle()
+
+      expect(api.addCartLine).toHaveBeenCalledTimes(1)
+      expect(useCart.getState().lines).toHaveLength(1)
+    })
+  })
+
+  describe('adopting a merged cart', () => {
+    const merged: CartDto = {
+      id: 'account-cart',
+      version: 5,
+      lines: [{ ...line(), addedAt: '2026-09-01T10:00:00.000Z' }],
+    }
+
+    it('takes the merged cart and its owner', () => {
+      useCart.getState().adoptMergedCart({ cart: merged, droppedLines: [] }, 'user_1')
+
+      expect(useCart.getState()).toMatchObject({
+        cartId: 'account-cart',
+        version: 5,
+        ownerId: 'user_1',
+      })
+      expect(useCart.getState().lines).toHaveLength(1)
+    })
+
+    // The server names a dropped part by its identity only; the brand the
+    // notice shows is the one the guest mirror held for it.
+    it('names the parts the merge dropped from the guest lines', () => {
+      useCart.setState({
+        lines: [line({ articleNumber: 'GUEST-1', brandName: 'BOSCH', brandId: '30' })],
+      })
+
+      useCart.getState().adoptMergedCart(
+        { cart: merged, droppedLines: [{ brandId: '30', articleNumber: 'GUEST-1' }] },
+        'user_1',
+      )
+
+      expect(useCart.getState().droppedLines).toEqual([
+        { brandId: '30', articleNumber: 'GUEST-1', brandName: 'BOSCH' },
+      ])
+    })
+
+    it('falls back to no brand name for a part the mirror never held', () => {
+      useCart.getState().adoptMergedCart(
+        { cart: merged, droppedLines: [{ brandId: '30', articleNumber: 'UNKNOWN' }] },
+        'user_1',
+      )
+
+      expect(useCart.getState().droppedLines).toEqual([
+        { brandId: '30', articleNumber: 'UNKNOWN', brandName: '' },
+      ])
+    })
+
+    it('lets the notice be dismissed', () => {
+      useCart.setState({
+        droppedLines: [{ brandId: '30', articleNumber: 'GUEST-1', brandName: 'BOSCH' }],
+      })
+
+      useCart.getState().dismissDroppedLines()
+
+      expect(useCart.getState().droppedLines).toEqual([])
     })
   })
 

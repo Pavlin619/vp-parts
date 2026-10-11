@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { bgBG } from "@clerk/localizations";
 import { shadcn } from "@clerk/ui/themes";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { SessionSync, SessionTokenBridge } from "@/components/auth";
 import { CartDrawer, CartSync } from "@/components/cart";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -45,6 +46,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ClerkProvider localization={bgBG} appearance={{ theme: shadcn }}>
+          <SessionTokenBridge />
           <Providers>
             {children}
 
@@ -56,6 +58,7 @@ export default function RootLayout({
             {/* The cart lives on the server; this reconciles the copy the
                 browser paints from. Renders nothing. */}
             <CartSync />
+            <SessionSync />
           </Providers>
         </ClerkProvider>
       </body>

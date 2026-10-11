@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   articleIdentityKey,
+  EMPTY_CART,
   DeliveryDestinationType,
   ShippingMethod,
   type ArticleIdentityDto,
@@ -10,6 +11,7 @@ import {
   type ParcelEstimateDto,
 } from '@vp-parts-shop/shared'
 import { useCart, type CartLine } from '@/hooks/use-cart'
+import { cartQueryOptions } from '@/lib/api/cart'
 import { useCheckoutDelivery } from '@/hooks/use-checkout-delivery'
 import { CheckoutView } from './checkout-view'
 
@@ -50,7 +52,10 @@ jest.mock('@/lib/api/delivery', () => ({
   }),
 }))
 
-jest.mock('@/lib/api/cart')
+jest.mock('@/lib/api/cart', () => ({
+  ...jest.createMockFromModule<object>('@/lib/api/cart'),
+  cartQueryOptions: jest.requireActual('@/lib/api/cart').cartQueryOptions,
+}))
 
 jest.mock('./delivery/address', () => ({
   AddressPicker: () => <div data-testid="address-picker" />,
@@ -94,6 +99,8 @@ function renderView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+  // Stands in for the read `CartSync` makes at the root, so an empty mirror is believed.
+  queryClient.setQueryData(cartQueryOptions.queryKey, EMPTY_CART)
 
   return render(
     <QueryClientProvider client={queryClient}>

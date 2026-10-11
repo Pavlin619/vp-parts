@@ -7,6 +7,7 @@ import {
   MAX_CART_LINE_QUANTITY,
   MAX_CART_LINES,
   type ArticleIdentityDto,
+  type CartAdoptResponseDto,
   type CartDto,
   type CartLineDto,
 } from "@vp-parts-shop/shared";
@@ -15,7 +16,7 @@ import {
   addCartLine,
   clearCart,
   getCart,
-  readCartToken,
+  hasCartToRead,
   removeCartLine,
   setCartSelection,
   updateCartLine,
@@ -67,6 +68,11 @@ export type CartLineArticle = Omit<
   "quantity" | "isSelected" | "addedAtPriceIncVat"
 >;
 
+/** A part a sign-in merge could not keep, named as the guest cart showed it. */
+export interface DroppedCartLine extends ArticleIdentityDto {
+  brandName: string;
+}
+
 /** How long the stepper may be held before the change is sent. */
 const QUANTITY_WRITE_DELAY_MS = 400;
 
@@ -78,6 +84,13 @@ interface CartState {
   version: number;
   /** Why the last write did not land; cleared by the next one that does. */
   lastWriteError: CartWriteError | null;
+  /**
+   * The Clerk user whose account cart this is, or null for a guest's. Lets the
+   * session sync tell a signed-out device still showing an account's lines.
+   */
+  ownerId: string | null;
+  /** What the last sign-in merge had to leave out, until dismissed. */
+  droppedLines: DroppedCartLine[];
 
   /**
    * Adds `quantity`, or raises the existing line by it when the part is in.
@@ -100,8 +113,16 @@ interface CartState {
   removeLine: (article: ArticleIdentityDto) => void;
   clear: () => void;
 
-  /** Takes the server's cart as the truth, unless it is older than what we hold. */
-  adoptServerCart: (cart: CartDto) => void;
+  /**
+   * Takes the server's cart as the truth, unless it is older than what we hold.
+   * `ownerId` is passed only when the cart is known to be an account's.
+   */
+  adoptServerCart: (cart: CartDto, ownerId?: string | null) => void;
+  /** Takes the cart a sign-in merge produced, and notes what it left out. */
+  adoptMergedCart: (merge: CartAdoptResponseDto, ownerId: string) => void;
+  dismissDroppedLines: () => void;
+  /** Forgets the cart and drops every write not yet answered — for a sign-out. */
+  reset: () => void;
   /** Dismisses the current {@link lastWriteError} before the next write clears it. */
   dismissWriteError: () => void;
   /** Records that the background read failed, unless a write already has. */
@@ -153,6 +174,8 @@ export const useCart = create<CartState>()(
         cartId: "",
         version: 0,
         lastWriteError: null,
+        ownerId: null,
+        droppedLines: [],
 
         canAddLine: (article) => hasRoomFor(get().lines, article),
 
@@ -270,7 +293,7 @@ export const useCart = create<CartState>()(
           write.send("clear", clearCart);
         },
 
-        adoptServerCart: (cart) => {
+        adoptServerCart: (cart, ownerId = get().ownerId) => {
           // A response that crossed with a newer one would rewind the cart. A
           // different id is always taken: that is a sign-in handing us the
           // account's cart, not an older answer about this one.
@@ -283,6 +306,29 @@ export const useCart = create<CartState>()(
             cartId: cart.id,
             version: cart.version,
             lastWriteError: null,
+            ownerId,
+          });
+        },
+
+        adoptMergedCart: ({ cart, droppedLines }, ownerId) => {
+          const guestLines = get().lines;
+
+          get().adoptServerCart(cart, ownerId);
+          set({ droppedLines: droppedLines.map((dropped) => named(dropped, guestLines)) });
+        },
+
+        dismissDroppedLines: () => set({ droppedLines: [] }),
+
+        reset: () => {
+          write.reset();
+
+          set({
+            lines: [],
+            cartId: "",
+            version: 0,
+            lastWriteError: null,
+            ownerId: null,
+            droppedLines: [],
           });
         },
 
@@ -302,7 +348,12 @@ export const useCart = create<CartState>()(
     {
       name: "vp-cart-mirror",
       version: 1,
-      partialize: ({ lines, cartId, version }) => ({ lines, cartId, version }),
+      partialize: ({ lines, cartId, version, ownerId }) => ({
+        lines,
+        cartId,
+        version,
+        ownerId,
+      }),
     },
   ),
 );
@@ -327,15 +378,31 @@ function writeQueue(set: SetCartState, get: GetCartState) {
   let chain: Promise<void> = Promise.resolve();
   let inFlight = 0;
   const pending = new Map<string, DebouncedWrite>();
+  // Bumped by a reset, so a write made for the previous owner neither goes out
+  // nor lands once its answer arrives.
+  let generation = 0;
 
   const run = (request: () => Promise<CartDto>): Promise<void> => {
+    const queuedIn = generation;
+    const isStale = () => queuedIn !== generation;
+
     inFlight += 1;
     chain = chain
       .then(async () => {
+        if (isStale()) {
+          return;
+        }
+
         try {
-          get().adoptServerCart(await request());
+          const cart = await request();
+
+          if (!isStale()) {
+            get().adoptServerCart(cart);
+          }
         } catch (error) {
-          await recover(toWriteErrorCode(error));
+          if (!isStale()) {
+            await recover(toWriteErrorCode(error));
+          }
         }
       })
       .finally(() => {
@@ -351,8 +418,8 @@ function writeQueue(set: SetCartState, get: GetCartState) {
    * be done either, the optimistic lines stay on screen — the shopper is
    * offline, and blanking their cart is the worse of the two wrong answers.
    *
-   * A missing cart token is the case to be careful with, whether because no
-   * cart was ever minted or because it was evicted after one was: a read
+   * A guest with no cart token is the case to be careful with, whether because
+   * no cart was ever minted or because it was evicted after one was: a read
    * would answer "empty" from the absence of a token rather than from the
    * server, and quietly undo the click that failed.
    *
@@ -360,7 +427,7 @@ function writeQueue(set: SetCartState, get: GetCartState) {
    * whether the mirror can still be trusted, not what caused the write to fail.
    */
   const recover = async (code: CartWriteErrorCode) => {
-    if (!readCartToken()) {
+    if (!(await hasCartToRead())) {
       set({ lastWriteError: { code } });
       return;
     }
@@ -413,6 +480,14 @@ function writeQueue(set: SetCartState, get: GetCartState) {
       return inFlight > 0 || pending.size > 0;
     },
 
+    reset() {
+      generation += 1;
+
+      for (const key of [...pending.keys()]) {
+        cancel(key);
+      }
+    },
+
     async whenSettled() {
       while (pending.size > 0) {
         await Promise.all([...pending.values()].map((write) => write.settled));
@@ -449,6 +524,13 @@ function onlyCartFields(article: CartLineArticle): CartLineArticle {
     description: article.description,
     thumbnailUrl: article.thumbnailUrl,
   };
+}
+
+function named(dropped: ArticleIdentityDto, guestLines: CartLine[]): DroppedCartLine {
+  const key = lineKey(dropped);
+  const guestLine = guestLines.find((line) => lineKey(line) === key);
+
+  return { ...identityOf(dropped), brandName: guestLine?.brandName ?? "" };
 }
 
 /** The wire line without `addedAt`, which nothing on a cart surface renders. */

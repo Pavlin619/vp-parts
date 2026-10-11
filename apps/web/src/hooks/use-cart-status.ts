@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { cartQueryOptions, readCartToken } from "@/lib/api/cart";
+import { cartQueryOptions } from "@/lib/api/cart";
 import { useCartLines } from "./use-cart";
 import { useIsHydrated } from "./use-is-hydrated";
 
@@ -12,9 +12,10 @@ export type CartStatus = "loading" | "empty" | "ready";
  * The cart's state as a page renders it.
  *
  * `loading` until hydration, since the server cannot see the mirror. After
- * that an empty mirror is believed only when there is no cart to ask about or
- * the server has already answered — a device holding a cart token may be about
- * to receive lines filled on another one.
+ * that an empty mirror is believed only once the server has answered — a
+ * device holding a cart token, or a signed-in customer, may be about to
+ * receive lines filled on another device, and which of those this visitor is
+ * is known only once Clerk has loaded.
  */
 export function useCartStatus(): CartStatus {
   const isHydrated = useIsHydrated();
@@ -30,5 +31,5 @@ export function useCartStatus(): CartStatus {
     return "ready";
   }
 
-  return readCartToken() && !isFetched ? "loading" : "empty";
+  return isFetched ? "empty" : "loading";
 }

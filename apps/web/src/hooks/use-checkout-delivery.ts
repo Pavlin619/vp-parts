@@ -30,7 +30,15 @@ interface CheckoutDeliveryState {
   selectOffice: (office: SelectedOffice) => void;
   clearOffice: () => void;
   selectAddress: (address: SelectedAddress) => void;
+  /** Forgets every choice — the next person on this device starts fresh. */
+  reset: () => void;
 }
+
+const INITIAL_DELIVERY = {
+  method: DEFAULT_DELIVERY_METHOD,
+  office: null,
+  address: null,
+} satisfies Pick<CheckoutDeliveryState, "method" | "office" | "address">;
 
 /**
  * How the customer wants the order delivered, kept on the device so a reload or
@@ -40,14 +48,13 @@ interface CheckoutDeliveryState {
 export const useCheckoutDelivery = create<CheckoutDeliveryState>()(
   persist(
     (set) => ({
-      method: DEFAULT_DELIVERY_METHOD,
-      office: null,
-      address: null,
+      ...INITIAL_DELIVERY,
 
       setMethod: (method) => set({ method }),
       selectOffice: (office) => set({ office }),
       clearOffice: () => set({ office: null }),
       selectAddress: (address) => set({ address }),
+      reset: () => set(INITIAL_DELIVERY),
     }),
     {
       name: "vp-checkout-delivery",

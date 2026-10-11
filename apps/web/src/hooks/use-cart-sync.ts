@@ -2,7 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { cartQueryOptions } from "@/lib/api/cart";
+import { cartQueryOptions, readCartToken } from "@/lib/api/cart";
+import { hasSession } from "@/lib/api/session-token";
 import { useCart } from "./use-cart";
 
 /**
@@ -27,7 +28,7 @@ export function useCartSync() {
     // A mirror ahead of the server — a write still in flight or waiting out
     // its debounce — knows more than this read does; adopting it here would
     // rewind an optimistic change that hasn't been answered yet.
-    if (data && !useCart.getState().hasPendingWrite()) {
+    if (data && !useCart.getState().hasPendingWrite() && !isClaimPending()) {
       adoptServerCart(data);
     }
   }, [data, adoptServerCart]);
@@ -39,4 +40,13 @@ export function useCartSync() {
   }, [isError, reportSyncFailure]);
 
   return { isError };
+}
+
+/**
+ * Signed in with a guest token still held: the read answers with the account's
+ * cart, but `useSessionSync` is about to merge the guest's into it and needs
+ * the guest's lines in the mirror until then.
+ */
+function isClaimPending(): boolean {
+  return readCartToken() !== null && hasSession();
 }

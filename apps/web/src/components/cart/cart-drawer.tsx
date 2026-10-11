@@ -14,6 +14,7 @@ import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { buildCartRows, cartTotals } from "@/lib/cart/cart-totals";
 import { CartEmpty } from "./cart-empty";
 import { CartDrawerRow } from "./cart-drawer-row";
+import { CartMergeNotice } from "./cart-merge-notice";
 import { CartWriteErrorBanner } from "./cart-write-error";
 
 /**
@@ -110,6 +111,7 @@ function CartDrawerContent({ onClose }: { onClose: () => void }) {
 
       <div className="flex-1 overflow-y-auto px-5">
         <CartWriteErrorBanner />
+        <CartMergeNotice />
 
         {lines.length === 0 ? (
           <CartEmpty className="border-0 bg-transparent px-2 py-16" />
