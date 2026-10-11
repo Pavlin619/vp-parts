@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { AppErrorCode, ShippingMethod } from '@vp-parts-shop/shared';
+import { AppErrorCode } from '@vp-parts-shop/shared';
 import { ClerkUsers } from '../auth';
 import {
   CustomerIdentity,
@@ -24,22 +24,12 @@ describe('CustomersService', () => {
     phoneNumber: '+359888123456',
     role: 'CUSTOMER',
     createdAt: new Date('2026-10-11T08:00:00.000Z'),
-    addresses: [],
   };
 
   const IDENTITY = {
     email: 'ivan@example.com',
     firstName: 'Иван',
     lastName: 'Петров',
-  };
-
-  const ADDRESS = {
-    carrier: ShippingMethod.ECONT,
-    placeId: '41',
-    city: 'София',
-    postCode: '1000',
-    street: 'бул. Витоша',
-    streetNumber: '60',
   };
 
   beforeEach(async () => {
@@ -85,7 +75,6 @@ describe('CustomersService', () => {
 
       await expect(service.getProfile('clerk-1')).resolves.toMatchObject({
         id: 'customer-1',
-        defaultAddress: null,
       });
     });
 
@@ -107,7 +96,7 @@ describe('CustomersService', () => {
     it('files the customer under the identity and registration Clerk holds', async () => {
       findProfileByClerkId.mockResolvedValue(null);
       findIdentity.mockResolvedValue(
-        identityWith({ phoneNumber: '0888 123 456', address: ADDRESS }),
+        identityWith({ phoneNumber: '0888 123 456' }),
       );
       create.mockResolvedValue({ kind: 'created', profile: PROFILE });
 
@@ -120,14 +109,17 @@ describe('CustomersService', () => {
         clerkId: 'clerk-1',
         ...IDENTITY,
         phoneNumber: '+359888123456',
-        address: ADDRESS,
       });
     });
 
-    it('files a customer who left no address', async () => {
+    it('files nothing but the phone from metadata the browser could have added to', async () => {
       findProfileByClerkId.mockResolvedValue(null);
       findIdentity.mockResolvedValue(
-        identityWith({ phoneNumber: '0888123456' }),
+        identityWith({
+          phoneNumber: '0888123456',
+          role: 'MECHANIC',
+          address: {},
+        }),
       );
       create.mockResolvedValue({ kind: 'created', profile: PROFILE });
 
@@ -191,13 +183,6 @@ describe('CustomersService', () => {
     it.each([
       ['no registration metadata', {}],
       ['a landline', { phoneNumber: '02 987 6543' }],
-      [
-        'an address that cannot be located',
-        {
-          phoneNumber: '0888123456',
-          address: { ...ADDRESS, street: undefined },
-        },
-      ],
     ])(
       'refuses to file a customer whose metadata has %s',
       async (_case, metadata) => {

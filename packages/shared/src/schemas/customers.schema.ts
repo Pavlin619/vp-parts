@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { toBulgarianMobile } from '../phone';
-import { customerAddressSchema } from './address.schema';
 
 /** A business line may be a landline, so this is looser than a customer's mobile. */
 const bulgarianPhoneSchema = z
@@ -26,7 +25,6 @@ export const bulgarianMobileSchema = z.string().transform((value, context) => {
  */
 export const registrationMetadataSchema = z.object({
   phoneNumber: bulgarianMobileSchema,
-  address: customerAddressSchema.optional(),
 });
 
 export const registerCustomerSchema = registrationMetadataSchema.extend({

@@ -7,7 +7,6 @@ export * from './phone';
 export * from './utils';
 export * from './types/value-objects';
 
-export * from './schemas/address.schema';
 export * from './schemas/cart.schema';
 export * from './schemas/checkout.schema';
 export * from './schemas/customers.schema';

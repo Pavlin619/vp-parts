@@ -8,11 +8,11 @@ joined by `Customer.clerkId`, and only `CustomersService` knows that.
 
 ```
 Browser ── signUp.password (email, password, names,
-                            unsafeMetadata { phoneNumber, address? }) ──▶ Clerk
+                            unsafeMetadata { phoneNumber }) ──▶ Clerk
 Browser ── POST /customers/me (no body) ──▶ API                 ─┐
 Clerk   ── POST /webhooks/clerk  user.created ──▶ API           ─┤ either, or both
              API ── users.getUser(clerkId) ──▶ Clerk               │ email, names, metadata
-             API ── one INSERT: Customer (+ default Address) ──▶ Postgres
+             API ── INSERT Customer ──▶ Postgres
 ```
 
 **No Clerk account may end up without a customer row.** Clerk's sign-up and our
@@ -31,12 +31,13 @@ second finds the row and returns it unchanged. Two concurrent calls resolve to
 the one row the database let through (the `clerkId` unique constraint).
 
 **What gets filed comes only from Clerk.** Email and names are Clerk's own
-fields. The phone and the optional address travel in Clerk's `unsafeMetadata`,
+fields. The phone travels in Clerk's `unsafeMetadata`,
 which the registration form sets at `signUp.password` — the only carrier both
 paths can read. It is *unsafe* because the browser can rewrite it at any time,
 so the API reads it only when filing, never afterwards, and validates it with
-the same shared schema the form uses (`registrationMetadataSchema`). After
-filing, our row is the record: a later edit to the metadata changes nothing.
+the same shared schema the form uses (`registrationMetadataSchema`), which
+files the phone and drops anything else the browser put there. After filing,
+our row is the record: a later edit to the metadata changes nothing.
 
 **When filing cannot succeed**, retrying will not help either:
 
@@ -56,10 +57,10 @@ files them.
 ### The registration form
 
 `/sign-up` and checkout's "Регистрация" tab render our `RegistrationForm`, not
-Clerk's `<SignUp/>`, which has no place for the phone or the address. It checks
-everything against `registerCustomerSchema` before Clerk is asked, so once Clerk
-accepts, filing can fail only on transport. The address is optional and closed
-by default; one given becomes the profile's default.
+Clerk's `<SignUp/>`, which has no place for the phone. It checks everything
+against `registerCustomerSchema` before Clerk is asked, so once Clerk accepts,
+filing can fail only on transport. It asks for no address: few would fill one
+in before they need it, and checkout asks anyway.
 
 It needs the Clerk instance set up to match (**Configure → User & authentication**):
 email and password on, first and last name on and required, Clerk's own phone
@@ -110,14 +111,12 @@ calls customers about orders.
 ## Addresses
 
 `Address` is shaped like the carrier's address (`DeliveryAddressDto`), because
-`placeId` is that carrier's settlement id and means nothing to another one. It
-is optional at registration; one given there becomes the default. The carrier
-is not asked to validate it on save — every quote re-validates the destination.
+`placeId` is that carrier's settlement id and means nothing to another one.
 
-At checkout the default pre-selects delivery to that address
-(`useProfileDeliveryDefault`), but only when the device has no office or
-address chosen yet: a choice made on this device is more recent than the
-profile. Only an address for the carrier checkout delivers with is used.
+Registration asks for none. A customer's addresses will be recorded from the
+orders they have delivered to a door, and the most recent one offered first at
+their next checkout — task T091c, built with the order endpoint. Until then no
+`Address` row is written and checkout starts every customer at an empty form.
 
 ## Checkout's contact panel
 

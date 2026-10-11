@@ -63,10 +63,6 @@ jest.mock('@clerk/nextjs', () => ({
   SignIn: () => <div data-testid="clerk-sign-in" />,
 }))
 
-jest.mock('@/hooks/use-profile-delivery-default', () => ({
-  useProfileDeliveryDefault: jest.fn(),
-}))
-
 jest.mock('./contact/signed-in-contact', () => ({
   SignedInContact: () => <div data-testid="signed-in-contact" />,
 }))

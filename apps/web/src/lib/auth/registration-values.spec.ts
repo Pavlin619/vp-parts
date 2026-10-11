@@ -1,4 +1,3 @@
-import { ShippingMethod, type CustomerAddressInput } from '@vp-parts-shop/shared'
 import {
   EMPTY_REGISTRATION,
   validateRegistration,
@@ -13,15 +12,6 @@ const filled: RegistrationValues = {
   phoneNumber: '0888 123 456',
 }
 
-const address: CustomerAddressInput = {
-  carrier: ShippingMethod.ECONT,
-  placeId: '41',
-  city: 'София',
-  postCode: '1303',
-  street: 'ул. Опълченска',
-  streetNumber: '46',
-}
-
 describe('validateRegistration', () => {
   it('hands back what Clerk and the API take: trimmed, with the phone normalised', () => {
     expect(validateRegistration(filled)).toEqual({
@@ -34,12 +24,6 @@ describe('validateRegistration', () => {
         phoneNumber: '+359888123456',
       },
     })
-  })
-
-  it('carries the address when one was given', () => {
-    const result = validateRegistration(filled, address)
-
-    expect(result.success && result.data.address).toEqual(address)
   })
 
   it('names every empty field in Bulgarian', () => {
@@ -70,11 +54,4 @@ describe('validateRegistration', () => {
     })
   })
 
-  it('reports an address the shared schema refuses', () => {
-    const result = validateRegistration(filled, { ...address, postCode: '13' })
-
-    expect(!result.success && result.errors).toEqual({
-      address: 'Проверете адреса за доставка',
-    })
-  })
 })
