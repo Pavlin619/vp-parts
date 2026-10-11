@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CART_TOKEN_HEADER } from '@vp-parts-shop/shared';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/exception.filter';
@@ -8,9 +9,8 @@ import { LoggingInterceptor } from './common/logging.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
   app.enableCors({
-    origin: corsOrigin,
+    origin: app.get(ConfigService).getOrThrow<string>('CORS_ORIGIN'),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', CART_TOKEN_HEADER],
     // The browser cannot read a response header it was not told about, and the

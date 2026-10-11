@@ -57,7 +57,7 @@ graph TB
     PGBOUNCER --> PG
     WEB -->|hosted sign-in / sign-up| CLERK
     API -->|verify JWT · update user metadata| CLERK
-    CLERK -->|user.created webhook| API
+    CLERK -->|user.updated / deleted webhook| API
     API -->|JSON / HTTPS| TECDOC
     API --> PAY
     API --> SHIP
@@ -96,7 +96,7 @@ Managed with **Turborepo**. `npm run dev` from root starts both apps. The `share
 | Database | PostgreSQL | Shared with backoffice (existing Lightsail VM) |
 | Cache | Redis | TecDoc cache, sessions, cart |
 | Real-time | Server-Sent Events (SSE) | Order status push from NestJS to browser |
-| Auth | Clerk | Hosted sign-in/sign-up UI, JWT issuance, webhook-driven DB sync |
+| Auth | Clerk | Sign-in/sign-up, JWT issuance; Customer created by the API |
 | Message queue | AWS SQS | Async events — two queues, both directions |
 | Language | TypeScript | Both frontend and backend |
 
@@ -125,7 +125,7 @@ Lightsail VM 4GB (~$20/mo) — eu-central-1 EXISTING, unchanged
 Clerk (SaaS — external)
   └── Hosted sign-in / sign-up pages
   └── JWT issuance (RS256, auto-rotating keys)
-  └── Webhook: user.created → NestJS creates Customer record
+  └── Webhook: user.updated / user.deleted → NestJS keeps Customer in sync (not built yet)
 ```
 
 **Total: ~$30/mo at launch.** All components in eu-central-1 (Frankfurt) — minimal latency between services and to Bulgarian users.
@@ -514,7 +514,7 @@ src/
 ├── inventory/      # Direct read-only reads of public.autoparts + supplier_stock; best-offer selection
 ├── orders/         # Order state machine, checkout, SQS publisher, SSE streams
 ├── payments/       # Stripe, myPOS, COD adapters
-├── customers/      # Accounts, mechanic approval flow, Clerk webhook handler
+├── customers/      # Accounts, registration from Clerk identity, mechanic approval
 ├── auth/           # Clerk JWT guard, InternalGuard (shared-secret), @Public() decorator
 ├── events/         # SQS consumers (fulfillment-events), email worker
 └── common/         # Global exception filter, interceptors, decorators
@@ -538,7 +538,7 @@ src/
 ## Auth Flow
 
 - **Auth provider**: Clerk (SaaS). No self-hosted Keycloak. Clerk issues RS256 JWTs; NestJS verifies them using `@clerk/backend` SDK.
-- **End users:** Customers sign up and sign in via Clerk's hosted pages (or Clerk's embedded `<SignIn>` / `<SignUp>` components in the Next.js frontend). After registration, Clerk fires a `user.created` webhook; NestJS receives it, verifies the Clerk webhook signature, and creates a `Customer` record in Postgres. Custom fields (phone number) are collected via a short onboarding step after first sign-in — `PATCH /customers/me`.
+- **End users:** Customers register through our own form on Clerk's `useSignUp` (email, password, names) and sign in through Clerk's embedded `<SignIn>`. Right after sign-up the browser calls `POST /customers/me` with the phone and an optional address; NestJS reads the email and names from Clerk and creates the `Customer` record. See `docs/AUTH.md`.
 - **Mechanic approval:** Mechanic submits application → NestJS saves `MechanicProfile` as `PENDING`. Backoffice operator approves via `POST /internal/mechanic-approve/:customerId`. NestJS upgrades `Customer.role` to `MECHANIC` in Postgres **and** calls the Clerk Backend API to set `publicMetadata.role = 'MECHANIC'` on the Clerk user. The mechanic's next JWT session will carry `role: MECHANIC` in its public metadata claims — NestJS `JwtGuard` reads the role from the JWT without a DB lookup.
 - **Service-to-service:** Spring Boot backoffice calls NestJS internal endpoints using `Authorization: Bearer <INTERNAL_API_TOKEN>`. NestJS `InternalGuard` compares the token to `process.env.INTERNAL_API_TOKEN`. Internal endpoints are bound to the private Lightsail network interface and are not reachable from the public internet — the shared secret is a defence-in-depth measure, not the primary access control.
 
@@ -580,7 +580,7 @@ Secrets in GitHub Actions secrets (CI) and Lightsail console environment variabl
 - **Pre-checkout live availability check** — always a fresh non-cached direct DB read before payment, failing *closed* (`InventoryUnavailableException`) on a DB error. Redis cache is for browse performance only, never used for financial decisions.
 - **SSE for real-time order status** — NestJS pushes status changes to the customer's browser when fulfillment events are consumed. No polling.
 - **Shared-secret bearer token for all service-to-service calls** — `INTERNAL_API_TOKEN` shared between NestJS and Spring Boot. Internal endpoints are private-network only; shared secret is defence in depth.
-- **Clerk for all user auth** — hosted sign-in/sign-up UI, JWT issuance, and user webhook (`user.created`) drive Customer DB sync. No self-hosted Keycloak required.
+- **Clerk for all user auth** — sign-in/sign-up, JWT issuance; the API creates the `Customer` itself from the Clerk identity (`docs/AUTH.md`). No self-hosted Keycloak required.
 - **`fulfillment_tasks` in backoffice schema** — backoffice owns and manages fulfillment entirely. Shop gets SELECT only to read task status.
 - **`shop_app` reads stock directly, column-scoped** — NestJS reads `public.autoparts` and `public.supplier_stock` over the private network with read-only, column-scoped `SELECT` grants (no cost/internal columns on `autoparts`). Database permissions are the enforcement boundary; the legacy backoffice price/availability REST endpoint is no longer used.
 - **PgBouncer transaction mode + Prisma** — requires `?pgbouncer=true` in the pooled `DATABASE_URL` used by the runtime client. Migrations connect directly to Postgres on port 5432 via `DIRECT_URL` (consumed by `prisma.config.ts`), bypassing PgBouncer; `DIRECT_URL` falls back to `DATABASE_URL` where no pooler exists.

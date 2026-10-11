@@ -1,21 +1,38 @@
 import { z } from 'zod';
+import { toBulgarianMobile } from '../phone';
+import { customerAddressSchema } from './address.schema';
 
+/** A business line may be a landline, so this is looser than a customer's mobile. */
 const bulgarianPhoneSchema = z
   .string()
   .regex(/^(\+359|0)[0-9]{8,9}$/, 'Must be a valid Bulgarian phone number');
+
+/** Normalises to E.164, so what is validated is exactly what is stored. */
+export const bulgarianMobileSchema = z.string().transform((value, context) => {
+  const mobile = toBulgarianMobile(value);
+
+  if (!mobile) {
+    context.addIssue({ code: 'custom', message: 'Must be a Bulgarian mobile number' });
+
+    return z.NEVER;
+  }
+
+  return mobile;
+});
 
 export const registerCustomerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   firstName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed'),
   lastName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed'),
-  phoneNumber: bulgarianPhoneSchema,
+  phoneNumber: bulgarianMobileSchema,
+  address: customerAddressSchema.optional(),
 });
 
 export const updateProfileSchema = z.object({
   firstName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed').optional(),
   lastName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed').optional(),
-  phoneNumber: bulgarianPhoneSchema.optional(),
+  phoneNumber: bulgarianMobileSchema.optional(),
 });
 
 export const mechanicApplicationSchema = z.object({
