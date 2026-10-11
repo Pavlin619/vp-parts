@@ -15,7 +15,9 @@ export function getCustomerProfile(): Promise<CustomerProfileDto> {
 /**
  * Files the signed-in Clerk user as a customer, from what the registration form
  * stored on them. Safe to repeat: someone already filed is returned as they are.
+ * Pass `token` when the session was activated a moment ago and may not be
+ * bridged to the API client yet.
  */
-export function fileCustomer(): Promise<CustomerProfileDto> {
-  return apiFetch("/customers/me", { method: "POST", withSession: true });
+export function fileCustomer(token?: string): Promise<CustomerProfileDto> {
+  return apiFetch("/customers/me", { method: "POST", token, withSession: !token });
 }

@@ -1,4 +1,9 @@
-import { type DeliveryAddressDto, type DeliveryPlaceDto } from "@vp-parts-shop/shared";
+import {
+  type CustomerAddressInput,
+  type DeliveryAddressDto,
+  type DeliveryPlaceDto,
+  type ShippingMethod,
+} from "@vp-parts-shop/shared";
 
 export interface AddressFormValues {
   place: DeliveryPlaceDto | null;
@@ -64,6 +69,19 @@ export function toDeliveryAddress(values: AddressFormValues): DeliveryAddressDto
   });
 
   return { placeId: values.place?.id ?? "", ...Object.fromEntries(filled) };
+}
+
+/** The address as a customer profile keeps it, naming its carrier and place. */
+export function toCustomerAddress(
+  values: AddressFormValues,
+  carrier: ShippingMethod,
+): CustomerAddressInput {
+  return {
+    ...toDeliveryAddress(values),
+    carrier,
+    city: values.place?.name ?? "",
+    postCode: values.place?.postCode ?? "",
+  };
 }
 
 /** The form as the carrier's address fills it, for editing an accepted address again. */

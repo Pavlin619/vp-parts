@@ -7,8 +7,8 @@ joined by `Customer.clerkId`, and only `CustomersService` knows that.
 ## Registering
 
 ```
-Browser ── signUp.create (email, password, names,
-                          unsafeMetadata { phoneNumber, address? }) ──▶ Clerk
+Browser ── signUp.password (email, password, names,
+                            unsafeMetadata { phoneNumber, address? }) ──▶ Clerk
 Browser ── POST /customers/me (no body) ──▶ API                 ─┐
 Clerk   ── POST /webhooks/clerk  user.created ──▶ API           ─┤ either, or both
              API ── users.getUser(clerkId) ──▶ Clerk               │ email, names, metadata
@@ -32,7 +32,7 @@ the one row the database let through (the `clerkId` unique constraint).
 
 **What gets filed comes only from Clerk.** Email and names are Clerk's own
 fields. The phone and the optional address travel in Clerk's `unsafeMetadata`,
-which the registration form sets at `signUp.create` — the only carrier both
+which the registration form sets at `signUp.password` — the only carrier both
 paths can read. It is *unsafe* because the browser can rewrite it at any time,
 so the API reads it only when filing, never afterwards, and validates it with
 the same shared schema the form uses (`registrationMetadataSchema`). After
@@ -52,6 +52,27 @@ delivery that would fail the same way forever. Any other failure answers `5xx`
 and Clerk retries. A signed-in user with no row yet gets
 `404 CUSTOMER_PROFILE_INCOMPLETE` from `GET /customers/me`, and the browser
 files them.
+
+### The registration form
+
+`/sign-up` and checkout's "Регистрация" tab render our `RegistrationForm`, not
+Clerk's `<SignUp/>`, which has no place for the phone or the address. It checks
+everything against `registerCustomerSchema` before Clerk is asked, so once Clerk
+accepts, filing can fail only on transport. The address is optional and closed
+by default; one given becomes the profile's default.
+
+It needs the Clerk instance set up to match (**Configure → User & authentication**):
+email and password on, first and last name on and required, Clerk's own phone
+field off. **Email verification at sign-up must be off**: the form has no code
+step, so a sign-up Clerk leaves `missing_requirements` is shown as a generic
+failure and logged. Bot protection renders into `<div id="clerk-captcha">`.
+
+The filing call sends the fresh session's token explicitly
+(`fileCustomer(token)`): straight after `finalize()`, `SessionTokenBridge` may
+not have registered the new session yet. If that call fails anyway the form
+still completes — the account exists, and the session sync or the webhook files
+it. Clerk's error codes are put into Bulgarian in `lib/auth/clerk-errors.ts`;
+`bgBG` localizes only Clerk's own components.
 
 ### The webhook endpoint
 

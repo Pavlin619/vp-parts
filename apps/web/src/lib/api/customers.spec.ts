@@ -37,7 +37,7 @@ beforeEach(() => {
     headers: new Headers(),
     json: () => Promise.resolve(PROFILE),
   })
-  jest.mocked(getSessionToken).mockResolvedValue('session-jwt')
+  jest.mocked(getSessionToken).mockReset().mockResolvedValue('session-jwt')
 })
 
 describe('getCustomerProfile', () => {
@@ -61,6 +61,14 @@ describe('fileCustomer', () => {
     expect(init.method).toBe('POST')
     expect(init.body).toBeUndefined()
     expect(init.headers.get('Authorization')).toBe('Bearer session-jwt')
+  })
+
+  // Right after sign-up the bridged session can still read as signed out.
+  it('sends a token it is handed instead of the bridged session', async () => {
+    await fileCustomer('fresh-jwt')
+
+    expect(requestOf()[1].headers.get('Authorization')).toBe('Bearer fresh-jwt')
+    expect(getSessionToken).not.toHaveBeenCalled()
   })
 })
 
