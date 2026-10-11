@@ -5,4 +5,5 @@ export { Public } from './public.decorator';
 export type { AuthenticatedUser } from './jwt.guard';
 export { ClerkUsers } from './clerk-users';
 export type { ClerkIdentity } from './clerk-users';
+export { ClerkWebhooks } from './clerk-webhooks';
 export { CurrentUser } from './current-user.decorator';

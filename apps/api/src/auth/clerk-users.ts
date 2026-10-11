@@ -7,6 +7,8 @@ export interface ClerkIdentity {
   email: string;
   firstName: string;
   lastName: string;
+  /** Written by the browser at sign-up, so the caller must validate it. */
+  unsafeMetadata: Record<string, unknown>;
 }
 
 @Injectable()
@@ -31,6 +33,6 @@ export class ClerkUsers {
       return null;
     }
 
-    return { email, firstName, lastName };
+    return { email, firstName, lastName, unsafeMetadata: user.unsafeMetadata };
   }
 }

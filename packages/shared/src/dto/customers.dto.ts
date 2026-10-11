@@ -39,15 +39,6 @@ export interface CustomerAddressDto extends CustomerAddressInputDto {
   id: string;
 }
 
-/**
- * Completes a Clerk sign-up into a customer. Email and names are read from
- * Clerk by the API, never taken from this body.
- */
-export interface CreateCustomerRequestDto {
-  phoneNumber: string;
-  address?: CustomerAddressInputDto;
-}
-
 export interface SavedVehicleDto {
   id: string;
   tecdocVehicleId: string;

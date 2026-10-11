@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  CreateCustomerRequestDto,
+import {
   CustomerProfileDto,
+  RegistrationMetadata,
+  registrationMetadataSchema,
 } from '@vp-parts-shop/shared';
 import { ClerkUsers } from '../auth';
 import {
@@ -52,28 +53,23 @@ export class CustomersService {
   }
 
   /**
-   * Files a Clerk user as a customer. Safe to retry: someone already filed is
-   * returned as they are, so a lost response never turns into an error.
+   * Files a Clerk user as a customer, from what Clerk holds for them. Both the
+   * browser and the `user.created` webhook call it, so it is safe to repeat:
+   * someone already filed is returned as they are.
    */
-  async register(
-    clerkId: string,
-    request: CreateCustomerRequestDto,
-  ): Promise<CustomerProfileDto> {
+  async register(clerkId: string): Promise<CustomerProfileDto> {
     const existing = await this.customers.findProfileByClerkId(clerkId);
 
     if (existing) {
       return toCustomerProfileDto(existing);
     }
 
-    const created = await this.create(clerkId, request);
+    const created = await this.create(clerkId);
 
     return toCustomerProfileDto(created);
   }
 
-  private async create(
-    clerkId: string,
-    request: CreateCustomerRequestDto,
-  ): Promise<CustomerProfileRecord> {
+  private async create(clerkId: string): Promise<CustomerProfileRecord> {
     const identity = await this.clerkUsers.findIdentity(clerkId);
 
     if (!identity) {
@@ -81,10 +77,13 @@ export class CustomersService {
       throw new ClerkIdentityIncompleteException();
     }
 
+    const { unsafeMetadata, ...names } = identity;
+    const registration = this.parseRegistration(clerkId, unsafeMetadata);
+
     const result = await this.customers.create({
       clerkId,
-      ...identity,
-      ...request,
+      ...names,
+      ...registration,
     });
 
     if (result.kind === 'created') {
@@ -96,6 +95,23 @@ export class CustomersService {
     }
 
     return this.findRegisteredConcurrently(clerkId);
+  }
+
+  private parseRegistration(
+    clerkId: string,
+    unsafeMetadata: unknown,
+  ): RegistrationMetadata {
+    const parsed = registrationMetadataSchema.safeParse(unsafeMetadata);
+
+    if (!parsed.success) {
+      const fields = parsed.error.issues.map((issue) => issue.path.join('.'));
+      this.logger.warn(
+        `Clerk user ${clerkId} has invalid registration metadata: ${fields.join(', ')}`,
+      );
+      throw new ClerkIdentityIncompleteException();
+    }
+
+    return parsed.data;
   }
 
   private async findRegisteredConcurrently(

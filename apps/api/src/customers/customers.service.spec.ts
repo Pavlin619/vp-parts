@@ -99,17 +99,21 @@ describe('CustomersService', () => {
   });
 
   describe('register', () => {
-    it('files the customer under the identity Clerk holds, with the phone and address given', async () => {
+    const identityWith = (unsafeMetadata: Record<string, unknown>) => ({
+      ...IDENTITY,
+      unsafeMetadata,
+    });
+
+    it('files the customer under the identity and registration Clerk holds', async () => {
       findProfileByClerkId.mockResolvedValue(null);
-      findIdentity.mockResolvedValue(IDENTITY);
+      findIdentity.mockResolvedValue(
+        identityWith({ phoneNumber: '0888 123 456', address: ADDRESS }),
+      );
       create.mockResolvedValue({ kind: 'created', profile: PROFILE });
 
-      await expect(
-        service.register('clerk-1', {
-          phoneNumber: '+359888123456',
-          address: ADDRESS,
-        }),
-      ).resolves.toMatchObject({ id: 'customer-1' });
+      await expect(service.register('clerk-1')).resolves.toMatchObject({
+        id: 'customer-1',
+      });
 
       expect(findIdentity).toHaveBeenCalledWith('clerk-1');
       expect(create).toHaveBeenCalledWith({
@@ -120,13 +124,29 @@ describe('CustomersService', () => {
       });
     });
 
-    // The browser retries when a response is lost; the retry must not fail.
+    it('files a customer who left no address', async () => {
+      findProfileByClerkId.mockResolvedValue(null);
+      findIdentity.mockResolvedValue(
+        identityWith({ phoneNumber: '0888123456' }),
+      );
+      create.mockResolvedValue({ kind: 'created', profile: PROFILE });
+
+      await service.register('clerk-1');
+
+      expect(create).toHaveBeenCalledWith({
+        clerkId: 'clerk-1',
+        ...IDENTITY,
+        phoneNumber: '+359888123456',
+      });
+    });
+
+    // The browser and the webhook both file the same user; the second must not fail.
     it('returns the existing customer unchanged when called again', async () => {
       findProfileByClerkId.mockResolvedValue(PROFILE);
 
-      await expect(
-        service.register('clerk-1', { phoneNumber: '+359877000000' }),
-      ).resolves.toMatchObject({ phoneNumber: '+359888123456' });
+      await expect(service.register('clerk-1')).resolves.toMatchObject({
+        phoneNumber: '+359888123456',
+      });
 
       expect(findIdentity).not.toHaveBeenCalled();
       expect(create).not.toHaveBeenCalled();
@@ -136,22 +156,24 @@ describe('CustomersService', () => {
       findProfileByClerkId
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(PROFILE);
-      findIdentity.mockResolvedValue(IDENTITY);
+      findIdentity.mockResolvedValue(
+        identityWith({ phoneNumber: '0888123456' }),
+      );
       create.mockResolvedValue({ kind: 'conflict', field: 'clerkId' });
 
-      await expect(
-        service.register('clerk-1', { phoneNumber: '+359888123456' }),
-      ).resolves.toMatchObject({ id: 'customer-1' });
+      await expect(service.register('clerk-1')).resolves.toMatchObject({
+        id: 'customer-1',
+      });
     });
 
     it('refuses an email another customer already holds', async () => {
       findProfileByClerkId.mockResolvedValue(null);
-      findIdentity.mockResolvedValue(IDENTITY);
+      findIdentity.mockResolvedValue(
+        identityWith({ phoneNumber: '0888123456' }),
+      );
       create.mockResolvedValue({ kind: 'conflict', field: 'email' });
 
-      await expect(
-        service.register('clerk-1', { phoneNumber: '+359888123456' }),
-      ).rejects.toMatchObject({
+      await expect(service.register('clerk-1')).rejects.toMatchObject({
         response: { errorCode: AppErrorCode.EMAIL_ALREADY_EXISTS },
       });
     });
@@ -160,12 +182,33 @@ describe('CustomersService', () => {
       findProfileByClerkId.mockResolvedValue(null);
       findIdentity.mockResolvedValue(null);
 
-      await expect(
-        service.register('clerk-1', { phoneNumber: '+359888123456' }),
-      ).rejects.toMatchObject({
+      await expect(service.register('clerk-1')).rejects.toMatchObject({
         response: { errorCode: AppErrorCode.VALIDATION_ERROR },
       });
       expect(create).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ['no registration metadata', {}],
+      ['a landline', { phoneNumber: '02 987 6543' }],
+      [
+        'an address that cannot be located',
+        {
+          phoneNumber: '0888123456',
+          address: { ...ADDRESS, street: undefined },
+        },
+      ],
+    ])(
+      'refuses to file a customer whose metadata has %s',
+      async (_case, metadata) => {
+        findProfileByClerkId.mockResolvedValue(null);
+        findIdentity.mockResolvedValue(identityWith(metadata));
+
+        await expect(service.register('clerk-1')).rejects.toMatchObject({
+          response: { errorCode: AppErrorCode.VALIDATION_ERROR },
+        });
+        expect(create).not.toHaveBeenCalled();
+      },
+    );
   });
 });

@@ -20,13 +20,20 @@ export const bulgarianMobileSchema = z.string().transform((value, context) => {
   return mobile;
 });
 
-export const registerCustomerSchema = z.object({
+/**
+ * What the registration form leaves in Clerk's `unsafeMetadata` for the API to
+ * file the customer from. The browser can rewrite it, so it is validated here.
+ */
+export const registrationMetadataSchema = z.object({
+  phoneNumber: bulgarianMobileSchema,
+  address: customerAddressSchema.optional(),
+});
+
+export const registerCustomerSchema = registrationMetadataSchema.extend({
   email: z.string().email(),
   password: z.string().min(8),
   firstName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed'),
   lastName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed'),
-  phoneNumber: bulgarianMobileSchema,
-  address: customerAddressSchema.optional(),
 });
 
 export const updateProfileSchema = z.object({
@@ -54,6 +61,7 @@ export const saveVehicleSchema = z.object({
 });
 
 export type RegisterCustomerInput = z.infer<typeof registerCustomerSchema>;
+export type RegistrationMetadata = z.infer<typeof registrationMetadataSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type MechanicApplicationInput = z.infer<typeof mechanicApplicationSchema>;
 export type SaveVehicleInput = z.infer<typeof saveVehicleSchema>;
