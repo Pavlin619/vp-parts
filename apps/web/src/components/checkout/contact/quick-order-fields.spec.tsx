@@ -8,7 +8,7 @@ describe('QuickOrderFields', () => {
 
     expect(screen.queryByText('Въведете име и фамилия')).not.toBeInTheDocument()
     expect(
-      screen.queryByText('Въведете валиден телефонен номер'),
+      screen.queryByText('Въведете валиден мобилен номер'),
     ).not.toBeInTheDocument()
   })
 
@@ -20,7 +20,7 @@ describe('QuickOrderFields', () => {
     await userEvent.tab()
 
     expect(screen.getByText('Въведете име и фамилия')).toBeInTheDocument()
-    expect(screen.getByText('Въведете валиден телефонен номер')).toBeInTheDocument()
+    expect(screen.getByText('Въведете валиден мобилен номер')).toBeInTheDocument()
     expect(screen.getByLabelText('Телефон')).toHaveAttribute('aria-invalid', 'true')
   })
 
@@ -33,7 +33,7 @@ describe('QuickOrderFields', () => {
 
     expect(screen.queryByText('Въведете име и фамилия')).not.toBeInTheDocument()
     expect(
-      screen.queryByText('Въведете валиден телефонен номер'),
+      screen.queryByText('Въведете валиден мобилен номер'),
     ).not.toBeInTheDocument()
   })
 })

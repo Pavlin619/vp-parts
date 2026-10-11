@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Phone } from "lucide-react";
 import { contactNameError, contactPhoneError } from "@/lib/checkout/contact/contact-modes";
+import { PhoneField } from "@/components/auth/phone-field";
 import { AddressField } from "../delivery/address/address-field";
 
 type QuickOrderField = "name" | "phone";
@@ -30,12 +31,7 @@ export function QuickOrderFields() {
           onBlur={markTouched("name")}
           error={touched.name ? contactNameError(name) : undefined}
         />
-        <AddressField
-          label="Телефон"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          placeholder="+359 88 123 4567"
+        <PhoneField
           value={phone}
           onValueChange={setPhone}
           onBlur={markTouched("phone")}

@@ -12,13 +12,21 @@ describe('contactNameError', () => {
 })
 
 describe('contactPhoneError', () => {
-  it('rejects a number with fewer than nine digits', () => {
-    expect(contactPhoneError('')).toBe('Въведете валиден телефонен номер')
-    expect(contactPhoneError('+359 88')).toBe('Въведете валиден телефонен номер')
+  it('accepts a Bulgarian mobile in national or international form', () => {
+    expect(contactPhoneError('0888123456')).toBeUndefined()
+    expect(contactPhoneError('+359 88 123 4567')).toBeUndefined()
   })
 
-  it('counts only the digits, ignoring spaces and the plus sign', () => {
-    expect(contactPhoneError('+359 88 123 4567')).toBeUndefined()
-    expect(contactPhoneError('0881234567')).toBeUndefined()
+  it('refuses an empty or truncated number', () => {
+    expect(contactPhoneError('')).toBe('Въведете валиден мобилен номер')
+    expect(contactPhoneError('+359 88')).toBe('Въведете валиден мобилен номер')
+  })
+
+  it('refuses a landline', () => {
+    expect(contactPhoneError('021234567')).toBe('Въведете валиден мобилен номер')
+  })
+
+  it('refuses a foreign mobile', () => {
+    expect(contactPhoneError('+44 7700 900123')).toBe('Въведете валиден мобилен номер')
   })
 })
