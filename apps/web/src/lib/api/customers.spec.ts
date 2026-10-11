@@ -1,9 +1,11 @@
-import { CustomerRole, type CustomerProfileDto } from '@vp-parts-shop/shared'
+import { AppErrorCode, CustomerRole, type CustomerProfileDto } from '@vp-parts-shop/shared'
 import {
   customerProfileQueryOptions,
   fileCustomer,
   getCustomerProfile,
+  isCustomerNotFiled,
 } from './customers'
+import { ApiError } from './index'
 import { getSessionToken } from './session-token'
 
 jest.mock('./session-token')
@@ -81,5 +83,21 @@ describe('customerProfileQueryOptions', () => {
   // retrying the read only delays that.
   it('does not retry', () => {
     expect(customerProfileQueryOptions.retry).toBe(false)
+  })
+})
+
+describe('isCustomerNotFiled', () => {
+  it('recognises a signed-in user the API has no customer for yet', () => {
+    expect(
+      isCustomerNotFiled(new ApiError(404, AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE)),
+    ).toBe(true)
+  })
+
+  it.each([
+    ['another API error', new ApiError(503, 'UNKNOWN_ERROR')],
+    ['a network failure', new TypeError('Failed to fetch')],
+    ['nothing', null],
+  ])('refuses %s', (_, error) => {
+    expect(isCustomerNotFiled(error)).toBe(false)
   })
 })

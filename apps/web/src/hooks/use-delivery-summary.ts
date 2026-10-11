@@ -15,7 +15,7 @@ import {
 } from "@/hooks/use-checkout-delivery";
 import { deliveryQuoteQueryOptions } from "@/lib/api/delivery";
 import {
-  OFFICE_DELIVERY_CARRIER,
+  CHECKOUT_CARRIER,
   type DeliveryMethod,
 } from "@/lib/checkout/delivery/delivery-methods";
 import {
@@ -35,7 +35,7 @@ interface DeliverySummaryState {
  * is asked only once there is a destination and a weighed parcel.
  */
 export function useDeliverySummary(): DeliverySummaryState {
-  const carrier = OFFICE_DELIVERY_CARRIER;
+  const carrier = CHECKOUT_CARRIER;
   const method = useDeliveryMethod();
   const officeCode = useSelectedOfficeCode(carrier);
   const selectedAddress = useSelectedAddress(carrier);

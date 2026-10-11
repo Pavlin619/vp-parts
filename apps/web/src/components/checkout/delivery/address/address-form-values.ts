@@ -29,6 +29,11 @@ export const EMPTY_ADDRESS_FORM: AddressFormValues = {
   note: "",
 };
 
+/** The form with only as much of its place as a saved address keeps, without the carrier's list. */
+export type AddressLineValues = Omit<AddressFormValues, "place"> & {
+  place: Pick<DeliveryPlaceDto, "id" | "name" | "postCode"> | null;
+};
+
 export type LocatorMode = "street" | "quarter";
 
 /** The route the values already take; a street wins, as it does for the carrier. */
@@ -61,7 +66,7 @@ const LOCATOR_FIELDS = [
 export const isPlaceChosen = ({ place }: AddressFormValues) => place !== null;
 
 /** The address as the API takes it: keyed by place, with what was left empty dropped. */
-export function toDeliveryAddress(values: AddressFormValues): DeliveryAddressDto {
+export function toDeliveryAddress(values: AddressLineValues): DeliveryAddressDto {
   const filled = LOCATOR_FIELDS.flatMap((field) => {
     const value = values[field].trim();
 
@@ -99,7 +104,7 @@ export function addressFormValuesOf(
 }
 
 /** "ул. Опълченска 46, бл. 3, вх. Б, 1303 София" — the address on one line, without the note. */
-export function formatAddress(values: AddressFormValues): string {
+export function formatAddress(values: AddressLineValues): string {
   const street = [values.street, values.streetNumber].filter(Boolean).join(" ");
   const parts = [
     street,

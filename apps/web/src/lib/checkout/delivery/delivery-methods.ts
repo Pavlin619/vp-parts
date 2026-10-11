@@ -28,8 +28,8 @@ export const B2C_DELIVERY_METHODS: readonly DeliveryMethodOption[] = [
 
 export const DEFAULT_DELIVERY_METHOD: DeliveryMethod = "courier-address";
 
-/** The carrier an office delivery goes by, while Econt is the only one we integrate. */
-export const OFFICE_DELIVERY_CARRIER = ShippingMethod.ECONT;
+/** The carrier checkout delivers with, to an office or an address; Econt is our only one. */
+export const CHECKOUT_CARRIER = ShippingMethod.ECONT;
 
 export const CARRIER_NAMES: Record<ShippingMethod, string> = {
   [ShippingMethod.ECONT]: "Еконт",

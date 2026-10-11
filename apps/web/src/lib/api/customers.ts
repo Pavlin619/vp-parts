@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
-import type { CustomerProfileDto } from "@vp-parts-shop/shared";
-import { apiFetch } from "./index";
+import { AppErrorCode, type CustomerProfileDto } from "@vp-parts-shop/shared";
+import { ApiError, apiFetch } from "./index";
 
 export const customerProfileQueryOptions = queryOptions({
   queryKey: ["customers", "me"] as const,
@@ -20,4 +20,12 @@ export function getCustomerProfile(): Promise<CustomerProfileDto> {
  */
 export function fileCustomer(token?: string): Promise<CustomerProfileDto> {
   return apiFetch("/customers/me", { method: "POST", token, withSession: !token });
+}
+
+/** A signed-in Clerk user the API has not filed as a customer yet. */
+export function isCustomerNotFiled(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.errorCode === AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE
+  );
 }
