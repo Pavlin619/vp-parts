@@ -3,16 +3,9 @@ import { renderToString } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import { EMPTY_CART } from '@vp-parts-shop/shared'
-import { cartQueryOptions, readCartToken } from '@/lib/api/cart'
+import { cartQueryOptions } from '@/lib/api/cart'
 import { useCart, type CartLine } from './use-cart'
 import { useCartStatus } from './use-cart-status'
-
-jest.mock('@/lib/api/cart', () => ({
-  ...jest.requireActual('@/lib/api/cart'),
-  readCartToken: jest.fn(),
-}))
-
-const mockedReadCartToken = jest.mocked(readCartToken)
 
 function line(): CartLine {
   return {
@@ -41,7 +34,6 @@ function Probe() {
 describe('useCartStatus', () => {
   beforeEach(() => {
     useCart.setState({ lines: [] })
-    mockedReadCartToken.mockReturnValue(null)
   })
 
   it('is loading on the server, whatever the mirror holds', () => {
@@ -65,22 +57,15 @@ describe('useCartStatus', () => {
     expect(result.current).toBe('ready')
   })
 
-  it('is empty on a device that never had a cart', () => {
-    const { result } = renderHook(() => useCartStatus(), { wrapper: withQueryClient() })
-
-    expect(result.current).toBe('empty')
-  })
-
-  it('waits for the server before calling a known cart empty', () => {
-    mockedReadCartToken.mockReturnValue('cart-token')
-
+  // Even a guest with no token waits: the read first waits for Clerk to say
+  // whether this is a signed-in customer, whose cart the account names.
+  it('waits for the server before calling an empty mirror empty', () => {
     const { result } = renderHook(() => useCartStatus(), { wrapper: withQueryClient() })
 
     expect(result.current).toBe('loading')
   })
 
   it('is empty once the server has answered with no lines', () => {
-    mockedReadCartToken.mockReturnValue('cart-token')
     const queryClient = new QueryClient()
     queryClient.setQueryData(cartQueryOptions.queryKey, EMPTY_CART)
 

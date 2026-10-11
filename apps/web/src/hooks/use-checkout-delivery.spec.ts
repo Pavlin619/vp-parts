@@ -64,6 +64,30 @@ describe('useCheckoutDelivery', () => {
   })
 })
 
+describe('reset', () => {
+  // The remembered office and address are the signed-out customer's, not the
+  // next person's to use this device.
+  it('forgets the method, office and address', () => {
+    useCheckoutDelivery.setState({
+      method: 'courier-office',
+      office: { carrier: ShippingMethod.ECONT, code: '1127' },
+      address: {
+        carrier: ShippingMethod.ECONT,
+        address: { placeId: '41', street: 'бул. Витоша', streetNumber: '1' },
+        label: 'бул. Витоша 1, София',
+      },
+    })
+
+    useCheckoutDelivery.getState().reset()
+
+    expect(useCheckoutDelivery.getState()).toMatchObject({
+      method: 'courier-address',
+      office: null,
+      address: null,
+    })
+  })
+})
+
 describe('useDeliveryMethod', () => {
   it('reads the chosen method once hydrated', () => {
     useCheckoutDelivery.setState({ method: 'courier-office' })

@@ -3,11 +3,13 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   articleIdentityKey,
+  EMPTY_CART,
   type ArticleIdentityDto,
   type ArticlesAvailabilityDto,
   type CartDto,
 } from '@vp-parts-shop/shared'
 import * as cartApi from '@/lib/api/cart'
+import { cartQueryOptions } from '@/lib/api/cart'
 import { MAX_CART_LINES, useCart, type CartLineArticle } from '@/hooks/use-cart'
 import { CartView } from './cart-view'
 
@@ -33,7 +35,10 @@ jest.mock('@/lib/api/catalog', () => ({
 // shows for a cart already in the mirror, not about that request. Each write
 // is echoed straight back so it always lands, keeping the write-failure
 // banner (see cart-write-error.spec.tsx) out of these cases.
-jest.mock('@/lib/api/cart')
+jest.mock('@/lib/api/cart', () => ({
+  ...jest.createMockFromModule<object>('@/lib/api/cart'),
+  cartQueryOptions: jest.requireActual('@/lib/api/cart').cartQueryOptions,
+}))
 
 const cart = jest.mocked(cartApi)
 
@@ -76,6 +81,8 @@ function renderView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+  // Stands in for the read `CartSync` makes at the root, so an empty mirror is believed.
+  queryClient.setQueryData(cartQueryOptions.queryKey, EMPTY_CART)
 
   return render(
     <QueryClientProvider client={queryClient}>

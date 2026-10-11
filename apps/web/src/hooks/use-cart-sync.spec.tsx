@@ -3,12 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CartDto } from '@vp-parts-shop/shared'
 import * as cartApi from '@/lib/api/cart'
+import { hasSession } from '@/lib/api/session-token'
 import { useCart } from './use-cart'
 import { useCartSync } from './use-cart-sync'
 
 jest.mock('@/lib/api/cart')
+jest.mock('@/lib/api/session-token')
 
 const api = jest.mocked(cartApi)
+const mockedHasSession = jest.mocked(hasSession)
 
 const SERVER_CART: CartDto = {
   id: 'cart-1',
@@ -40,6 +43,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('useCartSync', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockedHasSession.mockReturnValue(false)
     useCart.setState({ lines: [], cartId: '', version: 0, lastWriteError: null })
   })
 
@@ -122,6 +126,34 @@ describe('useCartSync', () => {
     expect(useCart.getState().lastWriteError).toEqual({ code: 'CART_FULL' })
   })
 
+  // Signed in with a guest token still held, the read answers with the account's
+  // cart; the merge that follows needs the guest's lines still in the mirror.
+  it('leaves a guest mirror alone while a sign-in merge is pending', async () => {
+    api.readCartToken.mockReturnValue('guest-token')
+    mockedHasSession.mockReturnValue(true)
+    api.getCart.mockResolvedValue(SERVER_CART)
+    useCart.setState({ cartId: 'guest-cart', version: 1 })
+
+    renderHook(() => useCartSync(), { wrapper })
+
+    await waitFor(() => expect(api.getCart).toHaveBeenCalled())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(useCart.getState().cartId).toBe('guest-cart')
+  })
+
+  it('takes the account cart once the guest token is gone', async () => {
+    api.readCartToken.mockReturnValue(null)
+    mockedHasSession.mockReturnValue(true)
+    api.getCart.mockResolvedValue(SERVER_CART)
+
+    renderHook(() => useCartSync(), { wrapper })
+
+    await waitFor(() => expect(useCart.getState().cartId).toBe('cart-1'))
+  })
+
   // A background refetch (e.g. on window focus) can return the pre-write
   // snapshot while an optimistic add is still in flight, at the same version
   // the mirror already shows — adopting it would make the add vanish.
@@ -162,4 +194,3 @@ describe('useCartSync', () => {
     expect(useCart.getState().lines).toHaveLength(1)
   })
 })
-

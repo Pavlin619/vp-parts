@@ -1,4 +1,5 @@
 import type { ApiErrorResponse } from "@vp-parts-shop/shared";
+import { getSessionToken } from "./session-token";
 
 const API_BASE_URL =
   typeof window === "undefined"
@@ -17,6 +18,12 @@ export class ApiError extends Error {
 
 interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   token?: string;
+  /**
+   * Sends the signed-in customer's Clerk session. Opt-in: an `Authorization`
+   * header turns every cross-origin read into a CORS preflight, and the catalog
+   * reads need no session.
+   */
+  withSession?: boolean;
   body?: unknown;
   /**
    * Handed the response headers before the body is read, for the few reads
@@ -27,16 +34,17 @@ interface ApiFetchOptions extends Omit<RequestInit, "body"> {
 
 export async function apiFetch<T>(
   path: string,
-  { token, body, onHeaders, ...init }: ApiFetchOptions = {},
+  { token, withSession, body, onHeaders, ...init }: ApiFetchOptions = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
+  const bearer = token ?? (withSession ? await getSessionToken() : null);
 
   if (body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
 
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  if (bearer) {
+    headers.set("Authorization", `Bearer ${bearer}`);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {

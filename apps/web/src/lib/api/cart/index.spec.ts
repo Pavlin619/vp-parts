@@ -1,13 +1,20 @@
 import { CART_TOKEN_HEADER, EMPTY_CART } from '@vp-parts-shop/shared'
 import {
+  adoptCart,
   addCartLine,
   clearCart,
   getCart,
+  hasCartToRead,
   removeCartLine,
   setCartSelection,
   updateCartLine,
 } from './index'
 import { clearCartToken, readCartToken } from './cart-token'
+import { getSessionToken } from '../session-token'
+
+jest.mock('../session-token')
+
+const mockedGetSessionToken = jest.mocked(getSessionToken)
 
 const mockFetch = jest.fn()
 global.fetch = mockFetch
@@ -45,6 +52,7 @@ beforeEach(() => {
   mockFetch.mockReset()
   window.localStorage.clear()
   mockFetch.mockResolvedValue(response(EMPTY_CART))
+  mockedGetSessionToken.mockResolvedValue(null)
 })
 
 describe('the cart token', () => {
@@ -124,6 +132,61 @@ describe('getCart', () => {
     const [url, init] = requestOf()
     expect(url).toContain('/cart')
     expect(init.method).toBe('GET')
+  })
+
+  // A signed-in customer's cart is found by their account, and the device
+  // holds no guest token for it.
+  it('asks the server for a signed-in customer with no cart token', async () => {
+    mockedGetSessionToken.mockResolvedValue('session-jwt')
+
+    await getCart()
+
+    const [, init] = requestOf()
+    expect(init.headers.get('Authorization')).toBe('Bearer session-jwt')
+    expect(init.headers.get(CART_TOKEN_HEADER)).toBeNull()
+  })
+})
+
+describe('hasCartToRead', () => {
+  it('is false for a signed-out visitor with no cart token', async () => {
+    await expect(hasCartToRead()).resolves.toBe(false)
+  })
+
+  it('is true once the device holds a cart token', async () => {
+    window.localStorage.setItem('vp-cart-token', TOKEN)
+
+    await expect(hasCartToRead()).resolves.toBe(true)
+  })
+
+  it('is true for a signed-in customer', async () => {
+    mockedGetSessionToken.mockResolvedValue('session-jwt')
+
+    await expect(hasCartToRead()).resolves.toBe(true)
+  })
+})
+
+describe('the session', () => {
+  it('is sent with every cart write', async () => {
+    mockedGetSessionToken.mockResolvedValue('session-jwt')
+
+    await addCartLine(LINE)
+
+    const [, init] = requestOf()
+    expect(init.headers.get('Authorization')).toBe('Bearer session-jwt')
+  })
+
+  it('is sent with the adopt alongside the guest token', async () => {
+    mockedGetSessionToken.mockResolvedValue('session-jwt')
+    window.localStorage.setItem('vp-cart-token', TOKEN)
+    mockFetch.mockResolvedValue(response({ cart: EMPTY_CART, droppedLines: [] }))
+
+    await adoptCart()
+
+    const [url, init] = requestOf()
+    expect(url).toMatch(/\/cart\/adopt$/)
+    expect(init.method).toBe('POST')
+    expect(init.headers.get('Authorization')).toBe('Bearer session-jwt')
+    expect(init.headers.get(CART_TOKEN_HEADER)).toBe(TOKEN)
   })
 })
 

@@ -189,3 +189,35 @@ Two details that are not obvious:
 - A refused write re-reads the cart rather than guessing. The exception is a
   refused *first* write: no cart was minted, so a read would answer "empty"
   from the missing token rather than from the server and quietly undo the click.
+- Every cart call carries the Clerk session as well as the guest token, so a
+  signed-in customer — who holds no token — is still read and written by their
+  account. The session is opt-in per call (`apiFetch({ withSession: true })`)
+  because an `Authorization` header makes every cross-origin catalog read a CORS
+  preflight. Calls wait for Clerk to load (up to `SESSION_WAIT_MS`); asked
+  earlier, a signed-in customer would read as a guest and see an empty cart.
+
+### Whose copy it is
+
+The mirror persists `ownerId`: the Clerk user whose account cart it shows, or
+null for a guest's. `useSessionSync` (mounted at the root beside `CartSync`)
+compares it with the session on every load, not on sign-in and sign-out events,
+so a reload, another tab and an expired session all land in the same place:
+
+- **Signed in** — the customer is filed if they have no row yet (see
+  [AUTH.md](AUTH.md#registering)). Then, if the device holds a guest token, the
+  queued writes settle, `POST /cart/adopt` merges, the token is dropped and the
+  merged cart becomes the account's mirror. With no token and a mirror that is
+  not yet theirs, the account's cart is read instead. Until that merge lands,
+  `CartSync` ignores its own read: the server already answers it with the
+  account's cart, and taking it would replace the guest lines the merge (and
+  its dropped-lines notice) still needs.
+- **Signed out, or another user**, while `ownerId` names someone — the mirror,
+  the remembered delivery choice and the cached profile are cleared. A write
+  still in flight is discarded when it answers, so the account's lines cannot
+  come back on a device that no longer belongs to anyone.
+- A guest's own mirror (`ownerId` null) is kept: it is what the next sign-in
+  adopts.
+
+Parts the merge dropped (see Merging) stay in the store, not persisted, and
+`CartMergeNotice` lists them on the cart page and in the drawer until dismissed.
+

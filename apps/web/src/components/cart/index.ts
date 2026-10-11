@@ -5,6 +5,7 @@ export { CartDrawerRow } from "./cart-drawer-row";
 export { CartEmpty } from "./cart-empty";
 export { CartListActions } from "./cart-list-actions";
 export { CartListHeader } from "./cart-list-header";
+export { CartMergeNotice } from "./cart-merge-notice";
 export { CartRow } from "./cart-row";
 export { CartRowDelivery } from "./cart-row-delivery";
 export { CartSync } from "./cart-sync";

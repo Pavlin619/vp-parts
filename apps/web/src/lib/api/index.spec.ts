@@ -1,4 +1,9 @@
 import { apiFetch, ApiError } from './index'
+import { getSessionToken } from './session-token'
+
+jest.mock('./session-token')
+
+const mockedGetSessionToken = jest.mocked(getSessionToken)
 
 const mockFetch = jest.fn()
 global.fetch = mockFetch
@@ -21,6 +26,7 @@ function makeErrorResponse(status: number, body: unknown) {
 
 beforeEach(() => {
   mockFetch.mockClear()
+  mockedGetSessionToken.mockReset()
 })
 
 describe('apiFetch', () => {
@@ -95,5 +101,36 @@ describe('apiFetch', () => {
     await apiFetch('/some-path', { body: { a: 1 } })
     const [, init] = mockFetch.mock.calls[0] as [string, { body: string }]
     expect(init.body).toBe(JSON.stringify({ a: 1 }))
+  })
+
+  describe('withSession', () => {
+    it('sends the signed-in session as the bearer token', async () => {
+      mockFetch.mockResolvedValue(makeOkResponse({}))
+      mockedGetSessionToken.mockResolvedValue('session-jwt')
+
+      await apiFetch('/customers/me', { withSession: true })
+
+      const [, init] = mockFetch.mock.calls[0] as [string, { headers: Headers }]
+      expect(init.headers.get('Authorization')).toBe('Bearer session-jwt')
+    })
+
+    it('sends no Authorization header for a signed-out visitor', async () => {
+      mockFetch.mockResolvedValue(makeOkResponse({}))
+      mockedGetSessionToken.mockResolvedValue(null)
+
+      await apiFetch('/cart', { withSession: true })
+
+      const [, init] = mockFetch.mock.calls[0] as [string, { headers: Headers }]
+      expect(init.headers.get('Authorization')).toBeNull()
+    })
+
+    // An Authorization header makes every cross-origin catalog read preflight.
+    it('is not asked for unless the call opts in', async () => {
+      mockFetch.mockResolvedValue(makeOkResponse({}))
+
+      await apiFetch('/catalog/manufacturers')
+
+      expect(mockedGetSessionToken).not.toHaveBeenCalled()
+    })
   })
 })

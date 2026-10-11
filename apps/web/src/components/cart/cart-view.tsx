@@ -22,6 +22,7 @@ import { CartAvailabilityError } from "./cart-availability-error";
 import { CartListHeader } from "./cart-list-header";
 import { CartEmpty } from "./cart-empty";
 import { CartListActions } from "./cart-list-actions";
+import { CartMergeNotice } from "./cart-merge-notice";
 import { CartRow } from "./cart-row";
 import { CartSummary } from "./cart-summary";
 import { CartWriteErrorBanner } from "./cart-write-error";
@@ -63,6 +64,7 @@ export function CartView() {
       <CheckoutSteps current={1} />
 
       <CartWriteErrorBanner />
+      <CartMergeNotice />
 
       {isFull && <CartFullNotice />}
 

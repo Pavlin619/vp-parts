@@ -105,6 +105,18 @@ token**):
 { "publicMetadata": "{{user.public_metadata}}" }
 ```
 
+The browser sends that token only where a call asks for it — the cart and
+`/customers/me` — through `withSession` in `apps/web/src/lib/api/index.ts`.
+`SessionTokenBridge` hands Clerk's `getToken` to that module-level client,
+because the cart's write queue runs outside React. Server Components send no
+session yet: none makes an authenticated read, and `auth()` cannot be called
+inside `'use cache'`.
+
+If filing fails with `VALIDATION_ERROR` or `EMAIL_ALREADY_EXISTS`, no retry can
+help, and `SessionSync` blocks the page with a notice that offers only signing
+out. That is reachable only with tampered metadata or a user created in the
+Clerk dashboard.
+
 ## Clerk dashboard settings this relies on
 
 Email required and **not verified at sign-up**; password on; first and last name
