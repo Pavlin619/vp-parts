@@ -1,5 +1,4 @@
-import { CustomerRole, MechanicApprovalStatus, ShippingMethod } from '../enums';
-import type { DeliveryAddressDto } from './delivery.dto';
+import { CustomerRole, MechanicApprovalStatus } from '../enums';
 
 export interface CustomerProfileDto {
   id: string;
@@ -10,7 +9,6 @@ export interface CustomerProfileDto {
   role: CustomerRole;
   createdAt: string;
   mechanicProfile?: MechanicProfileDto;
-  defaultAddress: CustomerAddressDto | null;
 }
 
 export interface MechanicProfileDto {
@@ -23,20 +21,6 @@ export interface MechanicProfileDto {
   appliedAt: string;
   reviewedAt: string | null;
   rejectionReason: string | null;
-}
-
-/**
- * An address a customer keeps on file. Tied to one carrier, because `placeId`
- * is that carrier's settlement id; `city` and `postCode` are kept for display.
- */
-export interface CustomerAddressInputDto extends DeliveryAddressDto {
-  carrier: ShippingMethod;
-  city: string;
-  postCode: string;
-}
-
-export interface CustomerAddressDto extends CustomerAddressInputDto {
-  id: string;
 }
 
 export interface SavedVehicleDto {

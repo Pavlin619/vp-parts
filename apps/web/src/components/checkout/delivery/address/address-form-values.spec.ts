@@ -1,6 +1,5 @@
 import {
   ShippingMethod,
-  customerAddressSchema,
   type DeliveryPlaceDto,
 } from '@vp-parts-shop/shared'
 import {
@@ -9,7 +8,6 @@ import {
   formatAddress,
   locatorModeOf,
   withLocatorMode,
-  toCustomerAddress,
   toDeliveryAddress,
   type AddressFormValues,
 } from './address-form-values'
@@ -54,26 +52,6 @@ describe('toDeliveryAddress', () => {
       streetNumber: '46',
       block: '3',
     })
-  })
-})
-
-describe('toCustomerAddress', () => {
-  it('names the carrier and the place alongside the door, as a profile keeps it', () => {
-    expect(toCustomerAddress({ ...streetAddress, note: ' звънец ' }, ShippingMethod.ECONT)).toEqual({
-      carrier: ShippingMethod.ECONT,
-      placeId: '41',
-      city: 'София',
-      postCode: '1303',
-      street: 'ул. Опълченска',
-      streetNumber: '46',
-      note: 'звънец',
-    })
-  })
-
-  it('passes the shared customer address schema', () => {
-    const address = toCustomerAddress(streetAddress, ShippingMethod.ECONT)
-
-    expect(customerAddressSchema.safeParse(address).success).toBe(true)
   })
 })
 

@@ -4,12 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useClerk, useSignUp } from '@clerk/nextjs'
 import { ClerkAPIResponseError } from '@clerk/nextjs/errors'
-import {
-  CustomerRole,
-  ShippingMethod,
-  type CustomerProfileDto,
-  type DeliveryPlaceDto,
-} from '@vp-parts-shop/shared'
+import { CustomerRole, type CustomerProfileDto } from '@vp-parts-shop/shared'
 import { fileCustomer } from '@/lib/api/customers'
 import { RegistrationForm } from './registration-form'
 
@@ -18,28 +13,6 @@ jest.mock('@/lib/api/customers', () => ({
   ...jest.requireActual('@/lib/api/customers'),
   fileCustomer: jest.fn(),
 }))
-jest.mock('@/hooks/use-delivery-name-suggestions', () => ({
-  useDeliveryNameSuggestions: () => [],
-}))
-
-const getPlaces = jest.fn<Promise<DeliveryPlaceDto[]>, []>()
-
-jest.mock('@/lib/api/delivery', () => ({
-  deliveryAddressPlacesQueryOptions: (carrier: string) => ({
-    queryKey: ['delivery', 'address-places', carrier],
-    queryFn: () => getPlaces(),
-  }),
-}))
-
-const SOFIA: DeliveryPlaceDto = {
-  carrier: ShippingMethod.ECONT,
-  id: '41',
-  name: 'София',
-  region: 'София-град',
-  postCode: '1303',
-  servingOfficeCode: null,
-}
-
 const PROFILE: CustomerProfileDto = {
   id: 'customer-1',
   email: 'ivan@example.com',
@@ -48,7 +21,6 @@ const PROFILE: CustomerProfileDto = {
   phoneNumber: '+359888123456',
   role: CustomerRole.CUSTOMER,
   createdAt: '2026-10-11T10:00:00.000Z',
-  defaultAddress: null,
 }
 
 const SUBMIT = 'Създай профил'
@@ -104,7 +76,6 @@ beforeEach(() => {
     session: { getToken },
   } as unknown as ReturnType<typeof useClerk>)
   getToken.mockResolvedValue('fresh-jwt')
-  getPlaces.mockResolvedValue([SOFIA])
   mockedFileCustomer.mockResolvedValue(PROFILE)
 })
 
@@ -159,60 +130,6 @@ describe('RegistrationForm', () => {
         unsafeMetadata: { phoneNumber: '+359888123456' },
       }),
     )
-  })
-
-  it('carries an address given by hand in the metadata', async () => {
-    const user = userEvent.setup()
-    renderForm()
-
-    await fillAccount(user)
-    await user.click(screen.getByRole('button', { name: /Добави адрес за доставка/ }))
-    await user.type(await screen.findByRole('searchbox', { name: 'Населено място' }), 'соф')
-    await user.click(screen.getByRole('button', { name: /София/ }))
-    await user.type(screen.getByLabelText('Улица / бул.'), 'ул. Опълченска')
-    await user.type(screen.getByLabelText('Номер'), '46')
-    await user.click(screen.getByRole('button', { name: SUBMIT }))
-
-    await waitFor(() => expect(signUp.password).toHaveBeenCalled())
-    expect(signUp.password.mock.calls[0][0].unsafeMetadata).toEqual({
-      phoneNumber: '+359888123456',
-      address: {
-        carrier: ShippingMethod.ECONT,
-        placeId: '41',
-        city: 'София',
-        postCode: '1303',
-        street: 'ул. Опълченска',
-        streetNumber: '46',
-      },
-    })
-  })
-
-  it('holds back an address left half done', async () => {
-    const user = userEvent.setup()
-    renderForm()
-
-    await fillAccount(user)
-    await user.click(screen.getByRole('button', { name: /Добави адрес за доставка/ }))
-    await screen.findByRole('searchbox', { name: 'Населено място' })
-    await user.click(screen.getByRole('button', { name: SUBMIT }))
-
-    expect(screen.getByText('Избери населено място от списъка')).toBeInTheDocument()
-    expect(signUp.password).not.toHaveBeenCalled()
-  })
-
-  it('sends no address once the section is closed again', async () => {
-    const user = userEvent.setup()
-    renderForm()
-
-    await fillAccount(user)
-    await user.click(screen.getByRole('button', { name: /Добави адрес за доставка/ }))
-    await user.click(await screen.findByRole('button', { name: 'Без адрес' }))
-    await user.click(screen.getByRole('button', { name: SUBMIT }))
-
-    await waitFor(() => expect(signUp.password).toHaveBeenCalled())
-    expect(signUp.password.mock.calls[0][0].unsafeMetadata).toEqual({
-      phoneNumber: '+359888123456',
-    })
   })
 
   it('announces the sign-up before asking Clerk', async () => {

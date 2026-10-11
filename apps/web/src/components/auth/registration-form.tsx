@@ -3,21 +3,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useClerk, useSignUp } from "@clerk/nextjs";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import {
-  ShippingMethod,
-  type RegisterCustomerInput,
-  type RegistrationMetadata,
-} from "@vp-parts-shop/shared";
+import type { RegisterCustomerInput, RegistrationMetadata } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
 import { PRIMARY_ACTION_CLASS } from "@/components/checkout/delivery/address/address-action-buttons";
 import { AddressField } from "@/components/checkout/delivery/address/address-field";
-import { addressErrors } from "@/components/checkout/delivery/address/address-errors";
-import {
-  EMPTY_ADDRESS_FORM,
-  toCustomerAddress,
-  type AddressFormValues,
-  type LocatorMode,
-} from "@/components/checkout/delivery/address/address-form-values";
 import { customerProfileQueryOptions, fileCustomer } from "@/lib/api/customers";
 import {
   describeSignUpError,
@@ -33,9 +22,6 @@ import {
 import { focusFirstInvalidField } from "@/lib/focus-first-invalid-field";
 import { cn } from "@/lib/utils";
 import { PhoneField } from "./phone-field";
-import { RegistrationAddressSection } from "./registration-address-section";
-
-const DEFAULT_ADDRESS_CARRIER = ShippingMethod.ECONT;
 
 interface RegistrationFormProps {
   /** Called once the account is signed in; the session sync merges the cart on its own. */
@@ -52,8 +38,8 @@ interface SignUpDependencies {
 }
 
 /**
- * Our own sign-up: Clerk's `<SignUp/>` cannot take the phone and address the
- * API files the customer with. See docs/AUTH.md.
+ * Our own sign-up: Clerk's `<SignUp/>` cannot take the phone the API files the
+ * customer with. See docs/AUTH.md.
  */
 export function RegistrationForm({
   onComplete,
@@ -70,9 +56,6 @@ export function RegistrationForm({
   const [submitAttempts, setSubmitAttempts] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [failure, setFailure] = useState<SignUpErrorMessage | null>(null);
-  const [isAddressOpen, setIsAddressOpen] = useState(false);
-  const [address, setAddress] = useState<AddressFormValues>(EMPTY_ADDRESS_FORM);
-  const [addressMode, setAddressMode] = useState<LocatorMode>("street");
 
   const validation = validateRegistration(values);
   const fieldErrors = validation.success ? {} : validation.errors;
@@ -99,25 +82,12 @@ export function RegistrationForm({
     error: errorOf(field),
   });
 
-  const readRegistration = (): RegisterCustomerInput | null => {
-    if (isAddressOpen && Object.keys(addressErrors(address, addressMode)).length > 0) {
-      return null;
-    }
-
-    const result = validateRegistration(
-      values,
-      isAddressOpen ? toCustomerAddress(address, DEFAULT_ADDRESS_CARRIER) : undefined,
-    );
-
-    return result.success ? result.data : null;
-  };
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitAttempts((attempts) => attempts + 1);
 
-    const registration = readRegistration();
-    if (!registration) return;
+    if (!validation.success) return;
+    const registration = validation.data;
 
     setIsSubmitting(true);
     setFailure(null);
@@ -154,17 +124,6 @@ export function RegistrationForm({
       />
       <PhoneField {...fieldProps("phoneNumber")} />
 
-      <RegistrationAddressSection
-        carrier={DEFAULT_ADDRESS_CARRIER}
-        isOpen={isAddressOpen}
-        onOpenChange={setIsAddressOpen}
-        values={address}
-        onValuesChange={setAddress}
-        mode={addressMode}
-        onModeChange={setAddressMode}
-        showAllErrors={submitAttempts > 0}
-      />
-
       <div id="clerk-captcha" />
 
       {failure && !failure.field && (
@@ -183,9 +142,9 @@ export function RegistrationForm({
 /** Signs up with Clerk and files the customer; returns what went wrong, or null. */
 async function signUpCustomer(
   { signUp, clerk, queryClient }: SignUpDependencies,
-  { email, password, firstName, lastName, phoneNumber, address }: RegisterCustomerInput,
+  { email, password, firstName, lastName, phoneNumber }: RegisterCustomerInput,
 ): Promise<SignUpErrorMessage | null> {
-  const unsafeMetadata: RegistrationMetadata = { phoneNumber, ...(address && { address }) };
+  const unsafeMetadata: RegistrationMetadata = { phoneNumber };
   const { error } = await signUp.password({
     emailAddress: email,
     password,

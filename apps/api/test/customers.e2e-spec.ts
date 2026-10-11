@@ -1,10 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import {
-  AppErrorCode,
-  CustomerProfileDto,
-  ShippingMethod,
-} from '@vp-parts-shop/shared';
+import { AppErrorCode, CustomerProfileDto } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { ClerkJwtStrategy } from '../src/auth/clerk-jwt.strategy';
 import { ClerkUsers, ClerkWebhooks } from '../src/auth';
@@ -50,15 +46,6 @@ const clerkWebhooks = {
       : Promise.reject(new Error('Unable to verify incoming webhook')),
 };
 
-const ADDRESS = {
-  carrier: ShippingMethod.ECONT,
-  placeId: '41',
-  city: 'София',
-  postCode: '1000',
-  street: 'бул. Витоша',
-  streetNumber: '60',
-};
-
 describe('Customers (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -75,7 +62,6 @@ describe('Customers (e2e)', () => {
   afterAll(async () => {
     const customers = { clerkId: { startsWith: RUN } };
 
-    await prisma.address.deleteMany({ where: { customer: customers } });
     await prisma.cart.deleteMany({ where: { customer: customers } });
     await prisma.customer.deleteMany({ where: customers });
     await app.close();
@@ -122,10 +108,7 @@ describe('Customers (e2e)', () => {
     let created: CustomerProfileDto;
 
     beforeAll(async () => {
-      registrations.set(clerkId, {
-        phoneNumber: '0888 123 456',
-        address: ADDRESS,
-      });
+      registrations.set(clerkId, { phoneNumber: '0888 123 456' });
 
       const response = await request(app.getHttpServer())
         .post('/customers/me')
@@ -143,10 +126,6 @@ describe('Customers (e2e)', () => {
         phoneNumber: '+359888123456',
         role: 'CUSTOMER',
       });
-    });
-
-    it('keeps the address as the default one', () => {
-      expect(created.defaultAddress).toMatchObject(ADDRESS);
     });
 
     it('reads the same profile back', async () => {
@@ -175,18 +154,6 @@ describe('Customers (e2e)', () => {
         .set('Authorization', tokenFor(clerkId))
         .expect(200);
     });
-  });
-
-  it('registers a customer without an address', async () => {
-    const clerkId = `${RUN}-no-address`;
-    registrations.set(clerkId, { phoneNumber: '+359 98 812 3456' });
-
-    const response = await request(app.getHttpServer())
-      .post('/customers/me')
-      .set('Authorization', tokenFor(clerkId))
-      .expect(201);
-
-    expect(response.body.defaultAddress).toBeNull();
   });
 
   it('refuses an email another customer already holds', async () => {
@@ -233,10 +200,7 @@ describe('Customers (e2e)', () => {
 
     it('files the customer a new Clerk user stands for, without a session', async () => {
       const clerkId = `${RUN}-webhook`;
-      registrations.set(clerkId, {
-        phoneNumber: '0888 123 456',
-        address: ADDRESS,
-      });
+      registrations.set(clerkId, { phoneNumber: '0888 123 456' });
 
       await request(app.getHttpServer())
         .post('/webhooks/clerk')

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { CustomerAddressInputDto } from '@vp-parts-shop/shared';
 import { Prisma } from '../generated/prisma';
 import { PrismaService } from '../prisma';
 
@@ -16,7 +15,6 @@ export interface NewCustomer {
   firstName: string;
   lastName: string;
   phoneNumber: string;
-  address?: CustomerAddressInputDto;
 }
 
 const PROFILE_SELECT = {
@@ -27,25 +25,6 @@ const PROFILE_SELECT = {
   phoneNumber: true,
   role: true,
   createdAt: true,
-  addresses: {
-    where: { isDefault: true },
-    take: 1,
-    select: {
-      id: true,
-      carrier: true,
-      placeId: true,
-      city: true,
-      postCode: true,
-      street: true,
-      streetNumber: true,
-      quarter: true,
-      block: true,
-      entrance: true,
-      floor: true,
-      apartment: true,
-      note: true,
-    },
-  },
 } satisfies Prisma.CustomerSelect;
 
 export type CustomerProfileRecord = Prisma.CustomerGetPayload<{
@@ -76,17 +55,10 @@ export class CustomersRepository {
     });
   }
 
-  async create({
-    address,
-    ...customer
-  }: NewCustomer): Promise<CustomerCreateResult> {
-    const data: Prisma.CustomerCreateInput = address
-      ? { ...customer, addresses: { create: { ...address, isDefault: true } } }
-      : customer;
-
+  async create(customer: NewCustomer): Promise<CustomerCreateResult> {
     try {
       const profile = await this.prisma.customer.create({
-        data,
+        data: customer,
         select: PROFILE_SELECT,
       });
 

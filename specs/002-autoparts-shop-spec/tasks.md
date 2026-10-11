@@ -242,6 +242,7 @@
 - [ ] T090 [US5] Implement OrdersRepository (atomic create order + items + initial OrderStatusHistory entry; query history; update status) in `apps/api/src/orders/orders.repository.ts`
 - [ ] T091 [US5] Implement CheckoutService (live confirm via InventoryService — no Redis cache; detect price changes; halt on out-of-stock; compute totals via PriceCalculator; create Order atomically) in `apps/api/src/orders/checkout.service.ts`. **Reads the cart server-side by id** — the client submits neither lines nor prices — and returns the `cartVersion` it priced.
 - [ ] T091b [US5] Implement the cart → order transition, in the same transaction as the order: refuse a `cartVersion` that has moved (`CART_STALE`); copy **only the selected lines** into `OrderItem` with `brandId` *and* `articleNumber`; set `cart.status = ORDERED` and `cart.orderId` (UNIQUE — this is the idempotency key a retried payment webhook is checked against); move any unselected lines to a fresh ACTIVE cart. The cart row is never deleted. Rules and reasoning in `docs/CART.md` → "What happens when the customer buys".
+- [ ] T091c [US5] Remember the delivery address of every successful order on the customer (registration no longer asks for one — see `docs/AUTH.md` → "Addresses"). When a signed-in customer's order to a door is placed, record that address: reuse the row when the same door was used before (same carrier, `placeId` and address lines, compared trimmed), bumping its `lastUsedAt` and updating its `note`; otherwise insert one. Saving runs after the order commits and must never fail it — publish an order-placed event the customers module handles, since orders must not inject `CustomersService` for a write. Expose `GET /customers/me/addresses` (most recent first); at checkout pre-select the most recent one for `CHECKOUT_CARRIER` when the device has no delivery chosen yet, and list the others beside "Нов адрес". Reshape `Address` as needed (`lastUsedAt` in place of `isDefault`). Offices are T138a.
 - [ ] T092 [US5] Implement SqsPublisher (publish OrderPlaced event to fulfillment SQS queue) in `apps/api/src/events/sqs.publisher.ts`
 - [ ] T093 [US5] Implement OrdersService (list orders, get order detail, request cancellation) in `apps/api/src/orders/orders.service.ts`
 - [ ] T094 [US5] Implement OrdersController (POST /orders/checkout/confirm, POST /orders, GET /orders, GET /orders/:id, POST /orders/:id/cancel, GET /orders/:id/status SSE via @Sse()) in `apps/api/src/orders/orders.controller.ts`
@@ -307,19 +308,19 @@
 
 ### Tests for User Story 7
 
-- [ ] T129 [P] [US7] Write unit tests for CustomersService (handleClerkWebhook creates Customer on user.created event; handleClerkWebhook syncs email/name on user.updated; profile update via PATCH /customers/me; address CRUD with isDefault constraint) in `apps/api/src/customers/customers.service.spec.ts`
+- [ ] T129 [P] [US7] Write unit tests for CustomersService (handleClerkWebhook creates Customer on user.created event; handleClerkWebhook syncs email/name on user.updated; profile update via PATCH /customers/me; address CRUD (most recently used first)) in `apps/api/src/customers/customers.service.spec.ts`
 - [ ] T130 [US7] Write integration tests for CustomersController (POST /customers/register, GET /customers/me, PATCH /customers/me, CRUD /customers/me/addresses) in `apps/api/test/customers.e2e-spec.ts`
 
 ### Implementation for User Story 7
 
 - [ ] T131 [US7] Implement CustomersRepository (customer CRUD, address CRUD, lookup by `clerkId` and email) in `apps/api/src/customers/customers.repository.ts`
-- [ ] T132 [US7] Implement CustomersService (handleClerkUserCreated: verify Clerk webhook signature via `svix`, upsert Customer; handleClerkUserUpdated: sync email/name; profile update; address management with max-default enforcement) in `apps/api/src/customers/customers.service.ts`
+- [ ] T132 [US7] Implement CustomersService (handleClerkUserCreated: verify Clerk webhook signature via `svix`, upsert Customer; handleClerkUserUpdated: sync email/name; profile update; address management) in `apps/api/src/customers/customers.service.ts`
 - [ ] T132b [US7] Implement ClerkWebhookController (@Public POST /webhooks/clerk; verify svix signature using CLERK_WEBHOOK_SECRET; dispatch to CustomersService.handleClerkUserCreated or handleClerkUserUpdated) in `apps/api/src/customers/clerk-webhook.controller.ts`
 - [ ] T133 [US7] Implement CustomersController (protected GET/PATCH /customers/me; protected CRUD /customers/me/addresses) in `apps/api/src/customers/customers.controller.ts`
 - [ ] T134 [US7] Create CustomersModule and barrel in `apps/api/src/customers/index.ts`
 - [ ] T135 [US7] Implement customers API functions (getProfile, updateProfile, listAddresses, addAddress, updateAddress, deleteAddress) in `apps/web/src/lib/api/customers.ts`
 - [ ] T135b [US7] Implement onboarding page (Client Component; shown once after Clerk sign-up to collect phone number; calls PATCH /customers/me; redirects to shop on completion) in `apps/web/src/app/(shop)/onboarding/page.tsx`
-- [ ] T137 [P] [US7] Create AddressManager component (list saved addresses, add/edit/delete, set default, used at checkout address step) in `apps/web/src/components/account/address-manager.tsx`
+- [ ] T137 [P] [US7] Create AddressManager component (list saved addresses, most recently used first, edit/delete; the checkout list is T091c) in `apps/web/src/components/account/address-manager.tsx`
 - [ ] T138 [US7] Implement account settings page (Client Component: profile details, AddressManager, links to order history and mechanic application section) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/account/page.tsx`
 
 ### Deferred into US7 from the checkout office picker
@@ -327,7 +328,7 @@
 Both need a signed-in customer. The picker's starting order and why are in `docs/DELIVERY-PROVIDERS.md` → "The office picker in the web checkout".
 
 - [ ] T138a [US7] Remember the last chosen office on the account, so it follows a signed-in customer across devices: store `{ carrier, officeCode }` on the `Customer` (protected `GET`/`PUT /customers/me/delivery-office`, validated against the carrier's office list), read it in `use-checkout-delivery` before the browser-only copy, and write it on every choice. Guests keep the browser-only copy. A stored office the carrier no longer lists, or a locker the parcel does not fit, still opens the picker in its place. Blocked on Clerk in `apps/web`.
-- [ ] T138b [US7] Start the office picker at the customer's default saved address: geocode the address once, when it is saved, and store its latitude and longitude on `Address` (never at checkout). In `usePlaceScope`, rank it after the office chosen before and ahead of the location guessed from the IP: the place of the office nearest the address, sorted from the address itself, with the note naming the address instead of a guess. Pick the geocoder then; OSM's public Nominatim forbids this use. Blocked on T137 and Clerk.
+- [ ] T138b [US7] Start the office picker at the customer's most recently used saved address: geocode the address once, when it is saved, and store its latitude and longitude on `Address` (never at checkout). In `usePlaceScope`, rank it after the office chosen before and ahead of the location guessed from the IP: the place of the office nearest the address, sorted from the address itself, with the note naming the address instead of a guess. Pick the geocoder then; OSM's public Nominatim forbids this use. Blocked on T137 and Clerk.
 
 **Checkpoint**: Full registration and login flow functional. Saved address management works. Account area accessible.
 

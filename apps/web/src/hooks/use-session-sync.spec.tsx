@@ -58,7 +58,6 @@ const PROFILE: CustomerProfileDto = {
   phoneNumber: '+359888123456',
   role: CustomerRole.CUSTOMER,
   createdAt: '2026-10-01T10:00:00.000Z',
-  defaultAddress: null,
 }
 
 function line(articleNumber: string): CartLine {

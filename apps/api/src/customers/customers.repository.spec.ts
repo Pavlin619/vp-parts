@@ -1,5 +1,4 @@
 import { Test } from '@nestjs/testing';
-import { ShippingMethod } from '@vp-parts-shop/shared';
 import { Prisma } from '../generated/prisma';
 import { PrismaService } from '../prisma';
 import { CustomersRepository, NewCustomer } from './customers.repository';
@@ -12,25 +11,6 @@ const PROFILE_SELECT = {
   phoneNumber: true,
   role: true,
   createdAt: true,
-  addresses: {
-    where: { isDefault: true },
-    take: 1,
-    select: {
-      id: true,
-      carrier: true,
-      placeId: true,
-      city: true,
-      postCode: true,
-      street: true,
-      streetNumber: true,
-      quarter: true,
-      block: true,
-      entrance: true,
-      floor: true,
-      apartment: true,
-      note: true,
-    },
-  },
 };
 
 function uniqueViolation(field: string) {
@@ -88,7 +68,7 @@ describe('CustomersRepository', () => {
   });
 
   describe('findProfileByClerkId', () => {
-    it('reads the profile with only the default address', async () => {
+    it('reads the profile', async () => {
       findUnique.mockResolvedValue({ id: 'customer-1' });
 
       await expect(repository.findProfileByClerkId('clerk-1')).resolves.toEqual(
@@ -110,16 +90,7 @@ describe('CustomersRepository', () => {
       phoneNumber: '+359888123456',
     };
 
-    const ADDRESS = {
-      carrier: ShippingMethod.ECONT,
-      placeId: '41',
-      city: 'София',
-      postCode: '1000',
-      street: 'бул. Витоша',
-      streetNumber: '60',
-    };
-
-    it('creates the customer alone when no address was given', async () => {
+    it('creates the customer', async () => {
       create.mockResolvedValue({ id: 'customer-1' });
 
       await expect(repository.create(CUSTOMER)).resolves.toEqual({
@@ -128,22 +99,6 @@ describe('CustomersRepository', () => {
       });
       expect(create).toHaveBeenCalledWith({
         data: CUSTOMER,
-        select: PROFILE_SELECT,
-      });
-    });
-
-    // One statement, so a customer is never left behind without the address
-    // they asked to keep.
-    it('creates the address as the default in the same write', async () => {
-      create.mockResolvedValue({ id: 'customer-1' });
-
-      await repository.create({ ...CUSTOMER, address: ADDRESS });
-
-      expect(create).toHaveBeenCalledWith({
-        data: {
-          ...CUSTOMER,
-          addresses: { create: { ...ADDRESS, isDefault: true } },
-        },
         select: PROFILE_SELECT,
       });
     });

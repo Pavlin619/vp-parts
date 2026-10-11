@@ -538,7 +538,7 @@ src/
 ## Auth Flow
 
 - **Auth provider**: Clerk (SaaS). No self-hosted Keycloak. Clerk issues RS256 JWTs; NestJS verifies them using `@clerk/backend` SDK.
-- **End users:** Customers register through our own form on Clerk's `useSignUp` (email, password, names) and sign in through Clerk's embedded `<SignIn>`. Right after sign-up the browser calls `POST /customers/me` with the phone and an optional address; NestJS reads the email and names from Clerk and creates the `Customer` record. See `docs/AUTH.md`.
+- **End users:** Customers register through our own form on Clerk's `useSignUp` (email, password, names) and sign in through Clerk's embedded `<SignIn>`. Right after sign-up the browser calls `POST /customers/me` with the phone; NestJS reads the email and names from Clerk and creates the `Customer` record. See `docs/AUTH.md`.
 - **Mechanic approval:** Mechanic submits application → NestJS saves `MechanicProfile` as `PENDING`. Backoffice operator approves via `POST /internal/mechanic-approve/:customerId`. NestJS upgrades `Customer.role` to `MECHANIC` in Postgres **and** calls the Clerk Backend API to set `publicMetadata.role = 'MECHANIC'` on the Clerk user. The mechanic's next JWT session will carry `role: MECHANIC` in its public metadata claims — NestJS `JwtGuard` reads the role from the JWT without a DB lookup.
 - **Service-to-service:** Spring Boot backoffice calls NestJS internal endpoints using `Authorization: Bearer <INTERNAL_API_TOKEN>`. NestJS `InternalGuard` compares the token to `process.env.INTERNAL_API_TOKEN`. Internal endpoints are bound to the private Lightsail network interface and are not reachable from the public internet — the shared secret is a defence-in-depth measure, not the primary access control.
 
