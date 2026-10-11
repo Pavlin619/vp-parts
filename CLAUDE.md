@@ -45,7 +45,7 @@ docker compose down    # Stop
 
 This is a TypeScript monorepo (Turborepo + npm workspaces) for an automotive parts e-commerce shop. Read `docs/ARCHITECTURE.md` for diagrams, rationale, and implementation detail — it is the authoritative design document.
 
-The rest of `docs/` carries the detail deliberately kept out of this file: `TECDOC.md` (what the TecDoc endpoint actually does, measured, and the features built on it), `CROSS-REFERENCES.md` (which parts replace a part), `PRICING-AND-DELIVERY.md`, `DELIVERY-LOGIC.md`, `CART.md` (how a cart is owned, merged, expired and turned into an order) and `DELIVERY-PROVIDERS.md` (Econt, and how a cart is weighed into a parcel).
+The rest of `docs/` carries the detail deliberately kept out of this file: `TECDOC.md` (what the TecDoc endpoint actually does, measured, and the features built on it), `CROSS-REFERENCES.md` (which parts replace a part), `PRICING-AND-DELIVERY.md`, `DELIVERY-LOGIC.md`, `CART.md` (how a cart is owned, merged, expired and turned into an order), `AUTH.md` (Clerk accounts, how a customer is filed, the phone rule) and `DELIVERY-PROVIDERS.md` (Econt, and how a cart is weighed into a parcel).
 
 ### Workspaces
 | Path | Package | Purpose |
@@ -87,7 +87,7 @@ The Spring Boot backoffice owns all supplier/pricing logic. The NestJS API integ
 - **Prisma** uses `?pgbouncer=true` in the pooled `DATABASE_URL` (runtime client) because PgBouncer runs in transaction mode. Migrations and other Prisma CLI commands need a direct, non-pooled connection via `DIRECT_URL` (used by `prisma.config.ts`); it falls back to `DATABASE_URL` for local/CI environments without a pooler.
 - **Pre-checkout availability check** is always fresh (no cache) to avoid selling unavailable stock.
 - **TecDoc data** is cached in Redis with TTL; no Postgres cache at launch.
-- **Auth** is Clerk — all NestJS routes validate Clerk-issued JWTs via `@clerk/backend` SDK. Clerk handles sign-in/sign-up UI; a `user.created` webhook creates the `Customer` record in Postgres. Internal backoffice endpoints are protected by `InternalGuard` (shared-secret bearer token, private-network only).
+- **Auth** is Clerk — all NestJS routes validate Clerk-issued JWTs via `@clerk/backend` SDK. Clerk handles sign-in/sign-up; the browser then calls `POST /customers/me` and the API creates the `Customer` from the Clerk identity (see `docs/AUTH.md`). Internal backoffice endpoints are protected by `InternalGuard` (shared-secret bearer token, private-network only).
 - `packages/shared` is the contract layer between `web` and `api`; put Zod schemas and TS types there, never inline them in one app only.
 
 ### TecDoc Pegasus 3.0 API integration

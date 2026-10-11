@@ -12,6 +12,7 @@ import { ClientIpOptions, CommonModule, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
 import { CartModule } from './cart';
 import { CatalogModule } from './catalog';
+import { CustomersModule } from './customers';
 import { DeliveryModule } from './delivery';
 import { InventoryModule } from './inventory';
 import { SearchModule } from './search';
@@ -115,7 +116,8 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
           .positive()
           .default(20000),
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
-        CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
+        // The web app's origin: CORS allows it, and a Clerk token must name it.
+        CORS_ORIGIN: Joi.string().uri().default('http://localhost:3000'),
 
         // Rate-limit attribution (see resolveClientIp). Required in production
         // because getting either wrong degrades silently into every visitor
@@ -179,6 +181,7 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
     PrismaModule,
     CartModule,
     CatalogModule,
+    CustomersModule,
     DeliveryModule,
     InventoryModule,
     SearchModule,

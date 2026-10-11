@@ -58,6 +58,7 @@ model Customer {
   email       String       @unique
   firstName   String
   lastName    String
+  /// A Bulgarian mobile in E.164. Never verified by SMS — see docs/AUTH.md.
   phoneNumber String
   role        CustomerRole @default(CUSTOMER)
   createdAt   DateTime     @default(now())
@@ -86,19 +87,27 @@ model MechanicProfile {
   customer Customer @relation(fields: [customerId], references: [id])
 }
 
+/// A place a customer keeps on file to have parcels delivered to. Shaped like
+/// the carrier's own address, because `placeId` is that carrier's settlement id
+/// and means nothing to another one.
 model Address {
-  id           String   @id @default(uuid())
+  id           String         @id @default(uuid())
   customerId   String
-  fullName     String
+  carrier      ShippingMethod
+  placeId      String
   city         String
-  postcode     String
-  street       String
-  streetNumber String
+  postCode     String
+  street       String?
+  streetNumber String?
+  quarter      String?
+  block        String?
+  entrance     String?
+  floor        String?
   apartment    String?
-  phoneNumber  String
-  isDefault    Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  note         String?
+  isDefault    Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   customer Customer @relation(fields: [customerId], references: [id])
 

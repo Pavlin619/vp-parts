@@ -3,3 +3,6 @@ export { JwtGuard } from './jwt.guard';
 export { InternalGuard } from './internal.guard';
 export { Public } from './public.decorator';
 export type { AuthenticatedUser } from './jwt.guard';
+export { ClerkUsers } from './clerk-users';
+export type { ClerkIdentity } from './clerk-users';
+export { CurrentUser } from './current-user.decorator';

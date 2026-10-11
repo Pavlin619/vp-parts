@@ -6,6 +6,11 @@ export {
   type IncomingRequest,
 } from './client-ip';
 export { batched, mapWithConcurrency } from './concurrency';
+export {
+  DeliveryAddressBodyDto,
+  PLACE_ID_PATTERN,
+  SUPPORTED_CARRIERS,
+} from './delivery-address.dto';
 export { ExpiringMemo } from './expiring-memo';
 export { GlobalExceptionFilter } from './exception.filter';
 export { LoggingInterceptor } from './logging.interceptor';
