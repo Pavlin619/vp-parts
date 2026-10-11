@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { SiteLogo } from "./site-logo";
 import { MainNav } from "./main-nav";
 import { HeaderSearch } from "./header-search";
 import { VehiclePill } from "./vehicle-pill";
 import { CartLink } from "./cart-link";
+import { AccountControl } from "./account-control";
 import { VehicleSelector } from "@/components/catalog/vehicle-selector";
 
 export function ShopHeader() {
@@ -28,26 +28,7 @@ export function ShopHeader() {
           <div className="ml-auto flex items-center gap-2 flex-shrink-0 md:ml-0">
             <VehiclePill onOpenSelector={() => setVehicleSelectorOpen(true)} />
 
-            <Link
-              href="/account"
-              className="p-2 rounded-lg hover:bg-bg-sunken transition-colors"
-              aria-label="Акаунт"
-            >
-              <svg
-                className="w-5 h-5 text-ink"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                />
-              </svg>
-            </Link>
+            <AccountControl />
 
             <CartLink />
           </div>

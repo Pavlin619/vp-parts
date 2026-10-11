@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
+import { bgBG } from "@clerk/localizations";
+import { shadcn } from "@clerk/ui/themes";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { CartDrawer, CartSync } from "@/components/cart";
 import { Providers } from "./providers";
@@ -41,18 +44,20 @@ export default function RootLayout({
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Providers>
-          {children}
+        <ClerkProvider localization={bgBG} appearance={{ theme: shadcn }}>
+          <Providers>
+            {children}
 
-          {/* Mounted once at the root rather than per route group: the
-              marketing and shop layouts each have their own header with a
-              cart icon, and both need the same drawer to open from it. */}
-          <CartDrawer />
+            {/* Mounted once at the root rather than per route group: the
+                marketing and shop layouts each have their own header with a
+                cart icon, and both need the same drawer to open from it. */}
+            <CartDrawer />
 
-          {/* The cart lives on the server; this reconciles the copy the
-              browser paints from. Renders nothing. */}
-          <CartSync />
-        </Providers>
+            {/* The cart lives on the server; this reconciles the copy the
+                browser paints from. Renders nothing. */}
+            <CartSync />
+          </Providers>
+        </ClerkProvider>
       </body>
     </html>
   );
