@@ -2,9 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { AppErrorCode } from "@vp-parts-shop/shared";
-import { ApiError } from "@/lib/api";
+import { useEffect } from "react";
 import {
   adoptCart,
   cartQueryOptions,
@@ -16,7 +14,10 @@ import {
   customerProfileQueryOptions,
   fileCustomer,
   isCustomerNotFiled,
+  isCustomerUnfileable,
+  isPhoneRequired,
 } from "@/lib/api/customers";
+import { useAccountSetupStore, type AccountSetupStall } from "./use-account-setup";
 import { useCart } from "./use-cart";
 import { useCheckoutDelivery } from "./use-checkout-delivery";
 
@@ -27,10 +28,10 @@ import { useCheckoutDelivery } from "./use-checkout-delivery";
  * a reload, a sign-out in another tab and an expired session all land here the
  * same way. See docs/AUTH.md and docs/CART.md.
  */
-export function useSessionSync(): { hasAccountSetupFailed: boolean } {
+export function useSessionSync(): void {
   const { isLoaded, userId } = useAuth();
   const queryClient = useQueryClient();
-  const [failedUserId, setFailedUserId] = useState<string | null>(null);
+  const attempt = useAccountSetupStore((state) => state.attempt);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -50,15 +51,15 @@ export function useSessionSync(): { hasAccountSetupFailed: boolean } {
     const session = new AbortController();
 
     joinSession(queryClient, userId, session.signal).catch((error: unknown) => {
-      if (!session.signal.aborted && isUnfileable(error)) {
-        setFailedUserId(userId);
+      const accountSetup = describeStall(error);
+
+      if (!session.signal.aborted && accountSetup) {
+        useAccountSetupStore.getState().report(userId, accountSetup);
       }
     });
 
     return () => session.abort();
-  }, [isLoaded, userId, queryClient]);
-
-  return { hasAccountSetupFailed: failedUserId !== null && failedUserId === userId };
+  }, [isLoaded, userId, queryClient, attempt]);
 }
 
 async function joinSession(
@@ -138,14 +139,11 @@ function forgetSession(queryClient: QueryClient): void {
   void queryClient.resetQueries({ queryKey: cartQueryOptions.queryKey });
 }
 
-/**
- * A filing no retry can fix: the Clerk user carries no valid registration
- * metadata, or their email already belongs to another customer.
- */
-function isUnfileable(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.errorCode === AppErrorCode.VALIDATION_ERROR ||
-      error.errorCode === AppErrorCode.EMAIL_ALREADY_EXISTS)
-  );
+/** What the customer must be shown, or null for a failure the next load retries. */
+function describeStall(error: unknown): AccountSetupStall | null {
+  if (isPhoneRequired(error)) {
+    return "phone-required";
+  }
+
+  return isCustomerUnfileable(error) ? "failed" : null;
 }

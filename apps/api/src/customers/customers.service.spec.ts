@@ -181,16 +181,16 @@ describe('CustomersService', () => {
     });
 
     it.each([
-      ['no registration metadata', {}],
+      ['no registration metadata (an SSO sign-in)', {}],
       ['a landline', { phoneNumber: '02 987 6543' }],
     ])(
-      'refuses to file a customer whose metadata has %s',
+      'asks for a phone from a customer whose metadata has %s',
       async (_case, metadata) => {
         findProfileByClerkId.mockResolvedValue(null);
         findIdentity.mockResolvedValue(identityWith(metadata));
 
         await expect(service.register('clerk-1')).rejects.toMatchObject({
-          response: { errorCode: AppErrorCode.VALIDATION_ERROR },
+          response: { errorCode: AppErrorCode.CUSTOMER_PHONE_REQUIRED },
         });
         expect(create).not.toHaveBeenCalled();
       },

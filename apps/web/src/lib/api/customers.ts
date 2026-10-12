@@ -29,3 +29,22 @@ export function isCustomerNotFiled(error: unknown): boolean {
     error.errorCode === AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE
   );
 }
+
+/** A signed-in Clerk user, usually from Google or Facebook, who has not given a phone yet. */
+export function isPhoneRequired(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.errorCode === AppErrorCode.CUSTOMER_PHONE_REQUIRED
+  );
+}
+
+/**
+ * A filing no retry can fix: Clerk holds no email or names for the user, or
+ * their email already belongs to another customer.
+ */
+export function isCustomerUnfileable(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.errorCode === AppErrorCode.VALIDATION_ERROR ||
+      error.errorCode === AppErrorCode.EMAIL_ALREADY_EXISTS)
+  );
+}

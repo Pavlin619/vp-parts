@@ -1,4 +1,9 @@
-import { contactNameError, contactPhoneError } from './contact-modes'
+import {
+  contactNameError,
+  contactPhoneError,
+  DEFAULT_CONTACT_MODE,
+  initialContactMode,
+} from './contact-modes'
 
 describe('contactNameError', () => {
   it('asks for a name shorter than three characters once trimmed', () => {
@@ -28,5 +33,23 @@ describe('contactPhoneError', () => {
 
   it('refuses a foreign mobile', () => {
     expect(contactPhoneError('+44 7700 900123')).toBe('Въведете валиден мобилен номер')
+  })
+})
+
+describe('initialContactMode', () => {
+  it('starts a visitor on the default mode', () => {
+    expect(initialContactMode('')).toBe(DEFAULT_CONTACT_MODE)
+  })
+
+  // Only the "Вход" tab mounts Clerk's <SignIn/>, which finishes the callback.
+  it.each(['#/sso-callback', '#/sso-callback?state=x', '#/continue'])(
+    'opens the sign-in tab when Clerk returns to a route of its own (%s)',
+    (hash) => {
+      expect(initialContactMode(hash)).toBe('login')
+    },
+  )
+
+  it('ignores an ordinary in-page anchor', () => {
+    expect(initialContactMode('#delivery')).toBe(DEFAULT_CONTACT_MODE)
   })
 })

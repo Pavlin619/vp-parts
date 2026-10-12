@@ -1,17 +1,26 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useClerk } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
-import { Mail, Phone, User } from "lucide-react";
 import type { CustomerProfileDto } from "@vp-parts-shop/shared";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
+import { useAccountSetup } from "@/hooks/use-account-setup";
 import { customerProfileQueryOptions, isCustomerNotFiled } from "@/lib/api/customers";
-import { CHECKOUT_PATH } from "@/lib/checkout/contact/contact-modes";
+import { AccountSetupFailedContact } from "./account-setup-failed-contact";
+import { CompleteProfileContact } from "./complete-profile-contact";
+import { ContactIdentity } from "./contact-identity";
 
 /** Who a signed-in customer's order is for, read from their profile. */
 export function SignedInContact() {
   const profile = useQuery(customerProfileQueryOptions);
+  const { accountSetup, resume } = useAccountSetup();
+
+  if (accountSetup === "phone-required") {
+    return <CompleteProfileContact onComplete={resume} />;
+  }
+
+  if (accountSetup === "failed") {
+    return <AccountSetupFailedContact />;
+  }
 
   // The session sync is filing them right now; its answer lands in this query.
   if (profile.isPending || isCustomerNotFiled(profile.error)) {
@@ -33,53 +42,13 @@ export function SignedInContact() {
 }
 
 function ContactCard({ profile }: { profile: CustomerProfileDto }) {
-  const { signOut } = useClerk();
-
   return (
-    <div className="rounded-[10px] border border-line bg-bg-sunken px-4 py-3.5">
-      <dl className="flex flex-col gap-1.5 text-[13px] text-ink-2">
-        <ContactLine icon={<User />} label="Име">
-          <span className="font-semibold text-ink">
-            {profile.firstName} {profile.lastName}
-          </span>
-        </ContactLine>
-        <ContactLine icon={<Mail />} label="Имейл">
-          {profile.email}
-        </ContactLine>
-        <ContactLine icon={<Phone />} label="Телефон">
-          {profile.phoneNumber}
-        </ContactLine>
-      </dl>
-
-      <p className="mt-3 text-[12.5px] text-ink-3">
-        Не сте вие?{" "}
-        <button
-          type="button"
-          onClick={() => void signOut({ redirectUrl: CHECKOUT_PATH })}
-          className="font-semibold text-ink underline-offset-2 hover:underline"
-        >
-          Изход
-        </button>
-      </p>
-    </div>
-  );
-}
-
-interface ContactLineProps {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}
-
-function ContactLine({ icon, label, children }: ContactLineProps) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <dt className="text-ink-3 [&_svg]:h-4 [&_svg]:w-4">
-        <span aria-hidden="true">{icon}</span>
-        <span className="sr-only">{label}</span>
-      </dt>
-      <dd>{children}</dd>
-    </div>
+    <ContactIdentity
+      firstName={profile.firstName}
+      lastName={profile.lastName}
+      details={[profile.email, profile.phoneNumber]}
+      status="signed-in"
+    />
   );
 }
 
@@ -88,7 +57,7 @@ function SignedInContactSkeleton() {
     <span
       data-testid="signed-in-contact-skeleton"
       aria-hidden="true"
-      className="block h-[118px] animate-pulse rounded-[10px] bg-bg-sunken"
+      className="block h-10 animate-pulse rounded-[10px] bg-bg-sunken"
     />
   );
 }

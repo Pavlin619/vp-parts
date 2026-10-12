@@ -32,9 +32,25 @@ export class EmailAlreadyExistsException extends HttpException {
 }
 
 /**
- * Thrown when Clerk holds no email, names or valid registration metadata for
- * the user — the dashboard is not requiring them, or the user was not made by
- * our registration form. Retrying cannot fix that.
+ * Thrown when Clerk holds no valid phone in the user's registration metadata —
+ * typically someone who signed in through Google or Facebook. The browser asks
+ * them for one, stores it in the metadata and files them again.
+ */
+export class CustomerPhoneRequiredException extends HttpException {
+  constructor() {
+    super(
+      {
+        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+        errorCode: AppErrorCode.CUSTOMER_PHONE_REQUIRED,
+      },
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
+/**
+ * Thrown when Clerk holds no email or names for the user — the dashboard is
+ * not requiring them. Retrying cannot fix that.
  */
 export class ClerkIdentityIncompleteException extends HttpException {
   constructor() {

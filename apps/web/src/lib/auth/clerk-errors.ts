@@ -10,6 +10,8 @@ export interface SignUpErrorMessage {
 
 export const SIGN_UP_FAILED_MESSAGE = "Регистрацията не успя. Опитайте отново.";
 
+export const TOO_MANY_REQUESTS_MESSAGE = "Твърде много опити. Опитайте отново след малко.";
+
 const CAPTCHA_FAILED: SignUpErrorMessage = {
   field: null,
   message: "Проверката срещу ботове не мина. Презаредете страницата и опитайте отново.",
@@ -35,10 +37,7 @@ const MESSAGES_BY_CODE: Record<string, SignUpErrorMessage> = {
   captcha_invalid: CAPTCHA_FAILED,
   captcha_unavailable: CAPTCHA_FAILED,
   captcha_missing_token: CAPTCHA_FAILED,
-  too_many_requests: {
-    field: null,
-    message: "Твърде много опити. Опитайте отново след малко.",
-  },
+  too_many_requests: { field: null, message: TOO_MANY_REQUESTS_MESSAGE },
 };
 
 const INVALID_FORMAT_BY_PARAM: Record<string, SignUpErrorMessage> = {
@@ -63,4 +62,8 @@ export function describeSignUpError(error: unknown): SignUpErrorMessage {
   }
 
   return MESSAGES_BY_CODE[first?.code ?? ""] ?? GENERIC;
+}
+
+export function isClerkRateLimited(error: unknown): boolean {
+  return isClerkAPIResponseError(error) && error.errors[0]?.code === "too_many_requests";
 }
