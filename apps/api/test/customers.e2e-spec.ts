@@ -91,7 +91,7 @@ describe('Customers (e2e)', () => {
     );
   });
 
-  it('refuses a phone that is not a Bulgarian mobile', async () => {
+  it('asks again for a phone that is not a Bulgarian mobile', async () => {
     const clerkId = `${RUN}-landline`;
     registrations.set(clerkId, { phoneNumber: '02 987 6543' });
 
@@ -100,7 +100,31 @@ describe('Customers (e2e)', () => {
       .set('Authorization', tokenFor(clerkId))
       .expect(422);
 
-    expect(response.body.errorCode).toBe(AppErrorCode.VALIDATION_ERROR);
+    expect(response.body.errorCode).toBe(AppErrorCode.CUSTOMER_PHONE_REQUIRED);
+  });
+
+  it('files an SSO user once they have given a phone', async () => {
+    const clerkId = `${RUN}-sso`;
+    registrations.set(clerkId, {});
+
+    const refused = await request(app.getHttpServer())
+      .post('/customers/me')
+      .set('Authorization', tokenFor(clerkId))
+      .expect(422);
+
+    expect(refused.body).toEqual({
+      statusCode: 422,
+      errorCode: AppErrorCode.CUSTOMER_PHONE_REQUIRED,
+    });
+
+    registrations.set(clerkId, { phoneNumber: '0888 123 456' });
+
+    const filed = await request(app.getHttpServer())
+      .post('/customers/me')
+      .set('Authorization', tokenFor(clerkId))
+      .expect(201);
+
+    expect(filed.body).toMatchObject({ phoneNumber: '+359888123456' });
   });
 
   describe('registering', () => {
@@ -235,7 +259,8 @@ describe('Customers (e2e)', () => {
       expect(response.body.id).toBe(customer?.id);
     });
 
-    it('accepts a user it can never file, so Clerk stops retrying', async () => {
+    // The phone arrives later, through `user.updated`; retrying now would not help.
+    it('accepts a user with no phone yet, then files them once it lands', async () => {
       const clerkId = `${RUN}-webhook-no-phone`;
       registrations.set(clerkId, {});
 
@@ -246,15 +271,27 @@ describe('Customers (e2e)', () => {
         .expect(200);
 
       await expect(findCustomer(clerkId)).resolves.toBeNull();
-    });
 
-    it('accepts and ignores events it does not handle', async () => {
-      const clerkId = `${RUN}-updated`;
+      registrations.set(clerkId, { phoneNumber: '0888 123 456' });
 
       await request(app.getHttpServer())
         .post('/webhooks/clerk')
         .set(SIGNED, '1')
         .send({ type: 'user.updated', data: { id: clerkId } })
+        .expect(200);
+
+      await expect(findCustomer(clerkId)).resolves.toMatchObject({
+        phoneNumber: '+359888123456',
+      });
+    });
+
+    it('accepts and ignores events it does not handle', async () => {
+      const clerkId = `${RUN}-deleted`;
+
+      await request(app.getHttpServer())
+        .post('/webhooks/clerk')
+        .set(SIGNED, '1')
+        .send({ type: 'user.deleted', data: { id: clerkId } })
         .expect(200);
 
       await expect(findCustomer(clerkId)).resolves.toBeNull();

@@ -1,5 +1,5 @@
 import { ClerkAPIResponseError } from '@clerk/nextjs/errors'
-import { describeSignUpError, SIGN_UP_FAILED_MESSAGE } from './clerk-errors'
+import { describeSignUpError, isClerkRateLimited, SIGN_UP_FAILED_MESSAGE } from './clerk-errors'
 
 function apiError(code: string, paramName?: string): ClerkAPIResponseError {
   return new ClerkAPIResponseError('Clerk refused the sign-up', {
@@ -66,5 +66,18 @@ describe('describeSignUpError', () => {
       field: null,
       message: SIGN_UP_FAILED_MESSAGE,
     })
+  })
+})
+
+describe('isClerkRateLimited', () => {
+  it('recognises Clerk refusing too many attempts', () => {
+    expect(isClerkRateLimited(apiError('too_many_requests'))).toBe(true)
+  })
+
+  it.each([
+    ['another Clerk refusal', apiError('form_param_format_invalid')],
+    ['an error that is not Clerk’s', new Error('offline')],
+  ])('is false for %s', (_case, error) => {
+    expect(isClerkRateLimited(error)).toBe(false)
   })
 })

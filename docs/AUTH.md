@@ -22,9 +22,10 @@ idempotent filing (`CustomersService.register`):
 - **The browser's `POST /customers/me`**, straight after sign-up. It is what a
   customer who registers in checkout and orders at once relies on: the webhook
   may arrive seconds later, after the order needed the row.
-- **The `user.created` webhook** is the guarantee. Clerk retries until we answer
-  `2xx`, so a closed tab, a lost response or an API that was down at sign-up
-  still ends with a row.
+- **The `user.created` and `user.updated` webhooks** are the guarantee. Clerk
+  retries until we answer `2xx`, so a closed tab, a lost response or an API that
+  was down at sign-up still ends with a row. `user.updated` is what files an SSO
+  user once they have given their phone (see below).
 
 Either may land first, and a webhook can be redelivered; whichever arrives
 second finds the row and returns it unchanged. Two concurrent calls resolve to
@@ -32,18 +33,24 @@ the one row the database let through (the `clerkId` unique constraint).
 
 **What gets filed comes only from Clerk.** Email and names are Clerk's own
 fields. The phone travels in Clerk's `unsafeMetadata`,
-which the registration form sets at `signUp.password` — the only carrier both
-paths can read. It is *unsafe* because the browser can rewrite it at any time,
+which the registration form sets at `signUp.password`, and checkout's phone
+step through `user.updateMetadata` — the only carrier both paths can read. It
+is *unsafe* because the browser can rewrite it at any time,
 so the API reads it only when filing, never afterwards, and validates it with
 the same shared schema the form uses (`registrationMetadataSchema`), which
 files the phone and drops anything else the browser put there. After filing,
 our row is the record: a later edit to the metadata changes nothing.
 
+**When Clerk holds no valid phone** — no metadata, or a phone that is not a
+Bulgarian mobile → `422 CUSTOMER_PHONE_REQUIRED`. That is every first sign-in
+through Google or Facebook, so it is not a failure: the browser asks for the
+phone (below), and the webhook logs it at `warn` and answers `200`.
+
 **When filing cannot succeed**, retrying will not help either:
 
-- No email, names or valid metadata (a user created in the Clerk dashboard, or
-  tampered metadata) → `422 VALIDATION_ERROR`. There is no "complete your
-  profile" form; the web app tells the customer to contact us.
+- No email or names (a user created in the Clerk dashboard without them) →
+  `422 VALIDATION_ERROR`. Checkout's contact panel tells the customer to contact
+  us, or to sign out and order as a guest.
 - An email another customer already holds → `409 EMAIL_ALREADY_EXISTS`.
   Reachable only when a Clerk user was deleted and recreated without our row
   following it.
@@ -75,17 +82,56 @@ still completes — the account exists, and the session sync or the webhook file
 it. Clerk's error codes are put into Bulgarian in `lib/auth/clerk-errors.ts`;
 `bgBG` localizes only Clerk's own components.
 
+### Signing in with Google or Facebook
+
+Clerk's `<SignIn/>` creates a Clerk user for someone new without asking for a
+phone, so filing them answers `CUSTOMER_PHONE_REQUIRED`. The session sync then
+records `phone-required` in `useAccountSetupStore` instead of carrying on.
+Checkout's contact panel reads it and shows who signed in with a phone field in
+place of the contact card (`CompleteProfileContact`, logic in
+`useCompleteProfile`); once saved, the panel turns into the ordinary card. No
+dialog interrupts other pages: the phone is needed only to order, and until
+then the API treats the unfiled account's cart as a guest's.
+
+```
+Browser ── POST /customers/me ──▶ API   422 CUSTOMER_PHONE_REQUIRED
+Panel   ── user.updateMetadata (unsafeMetadata { phoneNumber }) ──▶ Clerk
+Clerk   ── POST /webhooks/clerk  user.updated ──▶ API              ─┐ either, or both
+Panel   ── POST /customers/me ──▶ API                               ─┘
+Panel   ── resume() ──▶ session sync merges or loads the cart
+```
+
+The panel validates with `registrationMetadataSchema`, so filing after it can
+fail only on transport, which it lets the customer retry. An account no retry
+can file is handed back to the session sync, and the panel then shows
+`AccountSetupFailedContact`. Nothing is filed until the phone is given; a
+customer who leaves is asked again the next time they reach checkout.
+
+Two things make the return from Google land on that step:
+
+- Clerk turns a first SSO sign-in into a sign-up, which follows the **sign-up**
+  redirect, not the sign-in one. Checkout's `<SignIn/>` therefore sets
+  `signUpForceRedirectUrl` as well as `forceRedirectUrl`; without it a new
+  customer is sent to `/`.
+- Clerk comes back to `/checkout#/sso-callback`, which only its `<SignIn/>` can
+  finish, and that is mounted only on the "Вход" tab. Checkout opens on that tab
+  whenever the URL holds one of Clerk's hash routes (`initialContactMode`);
+  otherwise the visitor stays signed out on "Бърза поръчка".
+
 ### The webhook endpoint
 
 `POST /webhooks/clerk` is public; `ClerkWebhooks` verifies Clerk's signature
 over the raw request body (Nest runs with `rawBody: true`) with
-`CLERK_WEBHOOK_SECRET`, and a request that fails is `400`. Only `user.created`
-is handled. `user.updated` (an email or name changed through Clerk's account
-menu) and `user.deleted` (erasure) are accepted and ignored until they are
-built.
+`CLERK_WEBHOOK_SECRET`, and a request that fails is `400`. `user.created` and
+`user.updated` both run the same idempotent filing: for someone already filed it
+is one read and nothing changes (an email or name changed through Clerk's account
+menu is not copied yet). `user.deleted` (erasure) is accepted and ignored until
+it is built.
 
 Set it up in the dashboard under **Configure → Webhooks**: endpoint
-`https://<api host>/webhooks/clerk`, event `user.created`, and copy the signing
+`https://<api host>/webhooks/clerk`, events `user.created` **and
+`user.updated`** (without the second, an SSO customer whose browser call is lost
+after giving a phone stays unfiled until their next visit), and copy the signing
 secret (`whsec_…`) into `CLERK_WEBHOOK_SECRET`. To receive it locally, expose
 the API through a tunnel (`ngrok http 3001`) and register that URL on the
 development instance. Without one, local development still works: the
@@ -147,14 +193,15 @@ because the cart's write queue runs outside React. Server Components send no
 session yet: none makes an authenticated read, and `auth()` cannot be called
 inside `'use cache'`.
 
-If filing fails with `VALIDATION_ERROR` or `EMAIL_ALREADY_EXISTS`, no retry can
-help, and `SessionSync` blocks the page with a notice that offers only signing
-out. That is reachable only with tampered metadata or a user created in the
-Clerk dashboard.
+If filing fails with `CUSTOMER_PHONE_REQUIRED`, checkout's contact panel asks
+for the phone (see "Signing in with Google or Facebook"). If it fails with
+`VALIDATION_ERROR` or `EMAIL_ALREADY_EXISTS`, no retry can help, and the panel
+says so and offers signing out. That is reachable only with a user created in
+the Clerk dashboard or an email another customer holds.
 
 ## Clerk dashboard settings this relies on
 
 Email required and **not verified at sign-up**; password on; first and last name
-required; phone, username, passkeys, Web3, MFA and SSO off; bot sign-up
-protection on (with no verification it is the main guard against fake
-accounts).
+required; SSO with Google and Facebook on; phone, username, passkeys, Web3 and
+MFA off; bot sign-up protection on (with no verification it is the main guard
+against fake accounts).

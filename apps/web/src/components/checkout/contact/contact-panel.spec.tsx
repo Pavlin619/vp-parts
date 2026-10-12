@@ -1,15 +1,21 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useAuth } from '@clerk/nextjs'
+import { useAuth, useClerk } from '@clerk/nextjs'
 import { ContactPanel } from './contact-panel'
 
 jest.mock('@clerk/nextjs', () => ({
   useAuth: jest.fn(),
-  SignIn: (props: { routing: string; forceRedirectUrl: string }) => (
+  useClerk: jest.fn(),
+  SignIn: (props: {
+    routing: string
+    forceRedirectUrl: string
+    signUpForceRedirectUrl: string
+  }) => (
     <div
       data-testid="clerk-sign-in"
       data-routing={props.routing}
       data-redirect={props.forceRedirectUrl}
+      data-sign-up-redirect={props.signUpForceRedirectUrl}
     />
   ),
 }))
@@ -34,7 +40,13 @@ function mockSession(session: { isLoaded: boolean; isSignedIn?: boolean }) {
   jest.mocked(useAuth).mockReturnValue(session as ReturnType<typeof useAuth>)
 }
 
-beforeEach(() => mockSession({ isLoaded: true, isSignedIn: false }))
+const signOut = jest.fn()
+
+beforeEach(() => {
+  signOut.mockReset()
+  jest.mocked(useClerk).mockReturnValue({ signOut } as unknown as ReturnType<typeof useClerk>)
+  mockSession({ isLoaded: true, isSignedIn: false })
+})
 
 describe('ContactPanel', () => {
   it('offers sign-in, registration and a quick order', () => {
@@ -75,6 +87,17 @@ describe('ContactPanel', () => {
     expect(screen.queryByLabelText('Име и фамилия')).not.toBeInTheDocument()
   })
 
+  // Clerk turns a first Google or Facebook sign-in into a sign-up, which
+  // follows its own redirect and would otherwise land on the homepage.
+  it('brings a new account made from the sign-in back to checkout too', () => {
+    render(<ContactPanel mode="login" onModeChange={jest.fn()} />)
+
+    expect(screen.getByTestId('clerk-sign-in')).toHaveAttribute(
+      'data-sign-up-redirect',
+      '/checkout',
+    )
+  })
+
   it('registers with our own form', () => {
     render(<ContactPanel mode="register" onModeChange={jest.fn()} />)
 
@@ -90,6 +113,22 @@ describe('ContactPanel', () => {
     expect(screen.getByTestId('signed-in-contact')).toBeInTheDocument()
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Регистрация' })).not.toBeInTheDocument()
+  })
+
+  // Signed out, the panel offers a quick order, so the cart can still be ordered.
+  it('signs out a signed-in customer, keeping them at checkout', async () => {
+    mockSession({ isLoaded: true, isSignedIn: true })
+    render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Изход' }))
+
+    expect(signOut).toHaveBeenCalledWith({ redirectUrl: '/checkout' })
+  })
+
+  it('offers no sign-out to a guest', () => {
+    render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Изход' })).not.toBeInTheDocument()
   })
 
   it('waits for Clerk before choosing what to show', () => {

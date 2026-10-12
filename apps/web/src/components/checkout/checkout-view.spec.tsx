@@ -60,6 +60,7 @@ jest.mock('@/lib/api/cart', () => ({
 
 jest.mock('@clerk/nextjs', () => ({
   useAuth: jest.fn(),
+  useClerk: () => ({ signOut: jest.fn() }),
   SignIn: () => <div data-testid="clerk-sign-in" />,
 }))
 
@@ -221,6 +222,20 @@ describe('CheckoutView', () => {
 
     expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+  })
+
+  // Clerk comes back from Google to `#/sso-callback`, which only the sign-in tab finishes.
+  it('opens on the sign-in tab when Clerk returns to it', async () => {
+    window.location.hash = '#/sso-callback'
+    useCart.setState({ lines: [line()] })
+
+    try {
+      renderView()
+
+      expect(await screen.findByRole('radio', { name: /Вход/ })).toBeChecked()
+    } finally {
+      window.location.hash = ''
+    }
   })
 
   it('places a signed-in order through the account, not as a quick order', async () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { SignIn, useAuth } from "@clerk/nextjs";
+import { SignIn, useAuth, useClerk } from "@clerk/nextjs";
 import { Phone, Plus, User } from "lucide-react";
 import { RegistrationForm } from "@/components/auth/registration-form";
 import {
@@ -37,12 +37,15 @@ export function ContactPanel({ mode, onModeChange }: ContactPanelProps) {
 
   return (
     <section className="rounded-[12px] border border-line bg-bg-card p-5">
-      <h2
-        id={titleId}
-        className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3"
-      >
-        Данни за контакт
-      </h2>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2
+          id={titleId}
+          className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3"
+        >
+          Данни за контакт
+        </h2>
+        {isLoaded && isSignedIn && <SignOutButton />}
+      </div>
 
       {!isLoaded && <ContactPanelSkeleton />}
 
@@ -72,6 +75,20 @@ export function ContactPanel({ mode, onModeChange }: ContactPanelProps) {
   );
 }
 
+function SignOutButton() {
+  const { signOut } = useClerk();
+
+  return (
+    <button
+      type="button"
+      onClick={() => void signOut({ redirectUrl: CHECKOUT_PATH })}
+      className="text-[13px] font-semibold text-brand hover:text-brand-hover"
+    >
+      Изход
+    </button>
+  );
+}
+
 function GuestContact({ mode }: { mode: ContactMode }) {
   switch (mode) {
     case "login":
@@ -80,6 +97,7 @@ function GuestContact({ mode }: { mode: ContactMode }) {
           <SignIn
             routing="hash"
             forceRedirectUrl={CHECKOUT_PATH}
+            signUpForceRedirectUrl={CHECKOUT_PATH}
             appearance={CHECKOUT_SIGN_IN_APPEARANCE}
           />
         </div>

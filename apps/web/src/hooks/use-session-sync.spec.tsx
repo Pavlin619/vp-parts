@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useAuth } from '@clerk/nextjs'
@@ -13,6 +13,7 @@ import {
 import { ApiError } from '@/lib/api'
 import { adoptCart, clearCartToken, getCart, readCartToken } from '@/lib/api/cart'
 import { fileCustomer, getCustomerProfile } from '@/lib/api/customers'
+import { useAccountSetup, useAccountSetupStore } from './use-account-setup'
 import { useCart, type CartLine } from './use-cart'
 import { useCheckoutDelivery } from './use-checkout-delivery'
 import { useSessionSync } from './use-session-sync'
@@ -23,9 +24,9 @@ jest.mock('@/lib/api/customers', () => {
   const getCustomerProfile = jest.fn()
 
   return {
+    ...jest.requireActual('@/lib/api/customers'),
     getCustomerProfile,
     fileCustomer: jest.fn(),
-    isCustomerNotFiled: jest.requireActual('@/lib/api/customers').isCustomerNotFiled,
     customerProfileQueryOptions: {
       queryKey: ['customers', 'me'],
       queryFn: () => getCustomerProfile(),
@@ -98,7 +99,13 @@ function renderSync(queryClient = new QueryClient()) {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
 
-  return { ...renderHook(() => useSessionSync(), { wrapper }), queryClient }
+  // Reads back what the sync reported, as checkout's contact panel does.
+  const useSyncAndReport = () => {
+    useSessionSync()
+    return useAccountSetup()
+  }
+
+  return { ...renderHook(useSyncAndReport, { wrapper }), queryClient }
 }
 
 const notFiled = () => new ApiError(404, 'CUSTOMER_PROFILE_INCOMPLETE')
@@ -107,6 +114,7 @@ const { whenSettled } = useCart.getState()
 
 beforeEach(() => {
   jest.clearAllMocks()
+  useAccountSetupStore.setState({ stall: null, attempt: 0 })
   useCart.setState({ whenSettled })
   useCart.getState().reset()
   useCheckoutDelivery.getState().reset()
@@ -159,10 +167,50 @@ describe('useSessionSync', () => {
 
         const { result } = renderSync()
 
-        await waitFor(() => expect(result.current.hasAccountSetupFailed).toBe(true))
+        await waitFor(() => expect(result.current.accountSetup).toBe('failed'))
         expect(mockedAdoptCart).not.toHaveBeenCalled()
       },
     )
+
+    describe('who signed in through Google or Facebook with no phone', () => {
+      beforeEach(() => {
+        mockedGetProfile.mockRejectedValue(notFiled())
+        mockedFileCustomer.mockRejectedValue(new ApiError(422, 'CUSTOMER_PHONE_REQUIRED'))
+        mockedReadCartToken.mockReturnValue('guest-token')
+        mockedAdoptCart.mockResolvedValue({ cart: EMPTY_CART, droppedLines: [] })
+      })
+
+      it('asks for the phone and leaves the guest cart alone', async () => {
+        const { result } = renderSync()
+
+        await waitFor(() => expect(result.current.accountSetup).toBe('phone-required'))
+        expect(mockedAdoptCart).not.toHaveBeenCalled()
+      })
+
+      // The dialog filed them; the cart merge it held back runs now.
+      it('carries on with the cart once resumed', async () => {
+        const { result } = renderSync()
+        await waitFor(() => expect(result.current.accountSetup).toBe('phone-required'))
+
+        mockedGetProfile.mockResolvedValue(PROFILE)
+        act(() => result.current.resume())
+
+        expect(result.current.accountSetup).toBe('ok')
+        await waitFor(() => expect(mockedAdoptCart).toHaveBeenCalledTimes(1))
+        expect(result.current.accountSetup).toBe('ok')
+      })
+
+      it('does not ask the next account to sign in on this device', async () => {
+        const { result, rerender } = renderSync()
+        await waitFor(() => expect(result.current.accountSetup).toBe('phone-required'))
+
+        mockedGetProfile.mockResolvedValue(PROFILE)
+        signedIn('user_2')
+        rerender()
+
+        expect(result.current.accountSetup).toBe('ok')
+      })
+    })
 
     // A dropped connection says nothing about the account; the next load retries.
     it('does not report a transient failure, and leaves the cart alone', async () => {
@@ -173,7 +221,7 @@ describe('useSessionSync', () => {
 
       await waitFor(() => expect(mockedGetProfile).toHaveBeenCalled())
       await Promise.resolve()
-      expect(result.current.hasAccountSetupFailed).toBe(false)
+      expect(result.current.accountSetup).toBe('ok')
       expect(mockedAdoptCart).not.toHaveBeenCalled()
     })
 

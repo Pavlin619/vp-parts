@@ -13,7 +13,7 @@ import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-del
 import { useDeliverySummary } from "@/hooks/use-delivery-summary";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
-import { DEFAULT_CONTACT_MODE, type ContactMode } from "@/lib/checkout/contact/contact-modes";
+import { initialContactMode, type ContactMode } from "@/lib/checkout/contact/contact-modes";
 import { ContactPanel } from "./contact";
 import { DeliveryMethodPanel } from "./delivery";
 import { OrderItemsPanel } from "./order-items";
@@ -29,7 +29,10 @@ export function CheckoutView() {
   const lines = useCartLines();
   const deliveryMethod = useDeliveryMethod();
   const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
-  const [contactMode, setContactMode] = useState<ContactMode>(DEFAULT_CONTACT_MODE);
+  // Safe to read the URL here: the panel first renders after the cart hydrates.
+  const [contactMode, setContactMode] = useState<ContactMode>(() =>
+    initialContactMode(typeof window === "undefined" ? "" : window.location.hash),
+  );
   const { isSignedIn } = useAuth();
 
   const availability = useCartAvailability(lines);
