@@ -21,9 +21,12 @@ import {
 } from "@/lib/auth/registration-values";
 import { focusFirstInvalidField } from "@/lib/focus-first-invalid-field";
 import { cn } from "@/lib/utils";
+import { GoogleSignUpButton } from "./google-sign-up-button";
 import { PhoneField } from "./phone-field";
 
 interface RegistrationFormProps {
+  /** Where signing up with Google comes back to, as `redirect_url` carried it. */
+  redirectUrl?: string;
   /** Called once the account is signed in; the session sync merges the cart on its own. */
   onComplete?: () => void;
   /** Called before Clerk is asked; the session can go live before `onComplete`. */
@@ -42,6 +45,7 @@ interface SignUpDependencies {
  * customer with. See docs/AUTH.md.
  */
 export function RegistrationForm({
+  redirectUrl,
   onComplete,
   onSignUpStart,
   className,
@@ -111,6 +115,9 @@ export function RegistrationForm({
       onSubmit={submit}
       className={cn("flex flex-col gap-3", className)}
     >
+      <GoogleSignUpButton redirectUrl={redirectUrl} />
+      <OrDivider />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <TextField label="Име" autoComplete="given-name" {...fieldProps("firstName")} />
         <TextField label="Фамилия" autoComplete="family-name" {...fieldProps("lastName")} />
@@ -136,6 +143,16 @@ export function RegistrationForm({
         {isSubmitting ? "Създаваме профила…" : "Създай профил"}
       </Button>
     </form>
+  );
+}
+
+function OrDivider() {
+  return (
+    <div className="flex items-center gap-3 text-[12px] text-ink-3">
+      <span className="h-px flex-1 bg-line" />
+      или
+      <span className="h-px flex-1 bg-line" />
+    </div>
   );
 }
 

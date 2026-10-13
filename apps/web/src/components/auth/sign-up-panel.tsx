@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { sameOriginPath } from "@/lib/auth/redirect-target";
+import { sameOriginPath, withRedirectUrl } from "@/lib/auth/redirect-target";
 import { RegistrationForm } from "./registration-form";
 
 interface SignUpPanelProps {
@@ -31,10 +31,6 @@ export function SignUpPanel({ redirectUrl }: SignUpPanelProps) {
     return null;
   }
 
-  const signInHref = redirectUrl
-    ? `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`
-    : "/sign-in";
-
   return (
     <div className="w-full max-w-[480px] rounded-[12px] border border-line bg-bg-card p-5 sm:p-6">
       <h1 className="text-[20px] font-semibold text-ink">Регистрация</h1>
@@ -42,11 +38,18 @@ export function SignUpPanel({ redirectUrl }: SignUpPanelProps) {
         Създайте профил и следете поръчките си.
       </p>
 
-      <RegistrationForm onComplete={continueOn} onSignUpStart={() => setIsSigningUp(true)} />
+      <RegistrationForm
+        redirectUrl={redirectUrl}
+        onComplete={continueOn}
+        onSignUpStart={() => setIsSigningUp(true)}
+      />
 
       <p className="mt-4 text-center text-[13px] text-ink-3">
         Вече имате профил?{" "}
-        <Link href={signInHref} className="font-semibold text-ink underline-offset-2 hover:underline">
+        <Link
+          href={withRedirectUrl("/sign-in", redirectUrl)}
+          className="font-semibold text-ink underline-offset-2 hover:underline"
+        >
           Вход
         </Link>
       </p>

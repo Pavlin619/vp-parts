@@ -109,6 +109,31 @@ still completes — the account exists, and the session sync or the webhook file
 it. Clerk's error codes are put into Bulgarian in `lib/auth/clerk-errors.ts`;
 `bgBG` localizes only Clerk's own components.
 
+### Registering with Google
+
+`RegistrationForm` opens with "Регистрация с Google" (`GoogleSignUpButton`), so
+`/sign-up` and checkout's tab both get it. It calls `signUp.sso` with
+`oauth_google`; of its two URLs, `redirectCallbackUrl` is where Google comes back
+(`/sign-up/sso-callback`) and `redirectUrl` is the final destination — the
+panel's `redirect_url`, or `/checkout` from checkout, kept on this site by
+`sameOriginPath`. The callback URL carries the destination too, because the
+page that finishes the flow decides where to go.
+
+`/sign-up/sso-callback` renders `SignUpSsoCallback`, a wrapper around Clerk's
+`HandleSSOCallback` (the signals-API counterpart of `signUp.sso`;
+`AuthenticateWithRedirectCallback` belongs to the older `authenticateWithRedirect`).
+With names not required, a new Google user always ends with a session there; a
+Google account that already exists is transferred to a sign-in. A flow that needs
+more (a factor, a failed bot check) is sent to `/sign-in` or `/sign-up` with the
+same `redirect_url`. A flow `HandleSSOCallback` cannot place — cancelled at
+Google, or the page opened with no flow at all — gets no navigation from it, so
+after a few seconds the page offers a link back to `/sign-up`. The customer is then filed by the session sync, perhaps
+incomplete, and checkout asks for what is missing — the same path as signing in
+with Google below.
+
+`/sign-up` stays a plain route, not Clerk's catch-all: nothing of Clerk's is
+mounted under it, so `sso-callback` is its own static segment.
+
 ### Signing in with Google
 
 Clerk's `<SignIn/>` creates a Clerk user for someone new without asking for a
@@ -227,4 +252,6 @@ Email required and **not verified at sign-up**; password on; first and last name
 on but **not required** (see "The registration form"); SSO with Google on and
 Facebook off; phone, username, passkeys, Web3 and MFA off; bot sign-up
 protection on (with no verification it is the main guard against fake
-accounts). Webhook: `user.created` only.
+accounts). Webhook: `user.created` only. On the production instance, the shop's
+domain must be an allowed redirect origin so Google can return to
+`/sign-up/sso-callback` and the destination after it.

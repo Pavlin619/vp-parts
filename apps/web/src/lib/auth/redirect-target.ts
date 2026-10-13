@@ -20,3 +20,7 @@ export function sameOriginPath(target: string | undefined, origin: string): stri
     return HOME;
   }
 }
+
+export function withRedirectUrl(path: string, redirectUrl: string | undefined): string {
+  return redirectUrl ? `${path}?redirect_url=${encodeURIComponent(redirectUrl)}` : path;
+}
