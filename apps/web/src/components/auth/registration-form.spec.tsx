@@ -13,6 +13,13 @@ jest.mock('@/lib/api/customers', () => ({
   ...jest.requireActual('@/lib/api/customers'),
   fileCustomer: jest.fn(),
 }))
+jest.mock('./google-sign-up-button', () => ({
+  GoogleSignUpButton: ({ redirectUrl }: { redirectUrl?: string }) => (
+    <button type="button" data-redirect-url={redirectUrl}>
+      Регистрация с Google
+    </button>
+  ),
+}))
 const PROFILE: CustomerProfileDto = {
   id: 'customer-1',
   email: 'ivan@example.com',
@@ -35,13 +42,20 @@ let signUp: FakeSignUp
 const getToken = jest.fn()
 const mockedFileCustomer = jest.mocked(fileCustomer)
 
-function renderForm(onComplete = jest.fn(), onSignUpStart = jest.fn()) {
+function renderForm(onComplete = jest.fn(), onSignUpStart = jest.fn(), redirectUrl = '/cart') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
 
-  render(<RegistrationForm onComplete={onComplete} onSignUpStart={onSignUpStart} />, { wrapper })
+  render(
+    <RegistrationForm
+      redirectUrl={redirectUrl}
+      onComplete={onComplete}
+      onSignUpStart={onSignUpStart}
+    />,
+    { wrapper },
+  )
 
   return { onComplete, onSignUpStart, queryClient }
 }
@@ -81,6 +95,19 @@ beforeEach(() => {
 
 describe('RegistrationForm', () => {
   // Clerk's bot protection renders its widget into this element.
+  it('offers Google above the fields, returning to the same target as the form', () => {
+    renderForm(jest.fn(), jest.fn(), '/checkout')
+
+    const google = screen.getByRole('button', { name: 'Регистрация с Google' })
+
+    expect(google).toHaveAttribute('data-redirect-url', '/checkout')
+    expect(screen.getByText('или')).toBeInTheDocument()
+    expect(
+      google.compareDocumentPosition(screen.getByLabelText('Име')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('holds the element Clerk mounts its captcha into', () => {
     renderForm()
 

@@ -1,4 +1,4 @@
-import { sameOriginPath } from './redirect-target'
+import { sameOriginPath, withRedirectUrl } from './redirect-target'
 
 const ORIGIN = 'https://vp-parts.bg'
 
@@ -27,5 +27,17 @@ describe('sameOriginPath', () => {
   it('goes home without a target', () => {
     expect(sameOriginPath(undefined, ORIGIN)).toBe('/')
     expect(sameOriginPath('', ORIGIN)).toBe('/')
+  })
+})
+
+describe('withRedirectUrl', () => {
+  it('carries the target in the query string', () => {
+    expect(withRedirectUrl('/sign-in', '/checkout?step=2')).toBe(
+      '/sign-in?redirect_url=%2Fcheckout%3Fstep%3D2',
+    )
+  })
+
+  it('leaves the path alone without a target', () => {
+    expect(withRedirectUrl('/sign-in', undefined)).toBe('/sign-in')
   })
 })

@@ -103,7 +103,7 @@ function GuestContact({ mode }: { mode: ContactMode }) {
         </div>
       );
     case "register":
-      return <RegistrationForm className="mt-3.5" />;
+      return <RegistrationForm redirectUrl={CHECKOUT_PATH} className="mt-3.5" />;
     case "quick":
       return <QuickOrderFields />;
   }
