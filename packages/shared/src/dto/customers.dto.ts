@@ -3,9 +3,10 @@ import { CustomerRole, MechanicApprovalStatus } from '../enums';
 export interface CustomerProfileDto {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  phoneNumber: string;
+  /** Null until given: a Google account need not have a last name and never has a phone. */
+  firstName: string | null;
+  lastName: string | null;
+  phoneNumber: string | null;
   role: CustomerRole;
   createdAt: string;
   mechanicProfile?: MechanicProfileDto;

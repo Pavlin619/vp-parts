@@ -9,7 +9,7 @@ function signedIn(userId: string | null) {
 }
 
 beforeEach(() => {
-  useAccountSetupStore.setState({ stall: null, attempt: 0 })
+  useAccountSetupStore.setState({ failedUserId: null })
   signedIn('user_1')
 })
 
@@ -17,34 +17,24 @@ describe('useAccountSetup', () => {
   it('is in order until the session sync reports otherwise', () => {
     const { result } = renderHook(() => useAccountSetup())
 
-    expect(result.current.accountSetup).toBe('ok')
+    expect(result.current).toBe('ok')
   })
 
-  it('reports what the sync stalled on for the signed-in user', () => {
+  it('reports an account the sync could not file for the signed-in user', () => {
     const { result } = renderHook(() => useAccountSetup())
 
-    act(() => useAccountSetupStore.getState().report('user_1', 'phone-required'))
+    act(() => useAccountSetupStore.getState().reportFailed('user_1'))
 
-    expect(result.current.accountSetup).toBe('phone-required')
+    expect(result.current).toBe('failed')
   })
 
-  // A stall belongs to the account it was found on, not to whoever signs in next.
-  it('ignores a stall reported for another user', () => {
-    useAccountSetupStore.getState().report('user_1', 'failed')
+  // A failure belongs to the account it was found on, not to whoever signs in next.
+  it('ignores a failure reported for another user', () => {
+    useAccountSetupStore.getState().reportFailed('user_1')
     signedIn('user_2')
 
     const { result } = renderHook(() => useAccountSetup())
 
-    expect(result.current.accountSetup).toBe('ok')
-  })
-
-  it('clears the stall and asks the sync for another pass when resumed', () => {
-    useAccountSetupStore.getState().report('user_1', 'phone-required')
-    const { result } = renderHook(() => useAccountSetup())
-
-    act(() => result.current.resume())
-
-    expect(result.current.accountSetup).toBe('ok')
-    expect(useAccountSetupStore.getState().attempt).toBe(1)
+    expect(result.current).toBe('ok')
   })
 })

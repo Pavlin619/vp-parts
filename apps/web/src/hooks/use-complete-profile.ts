@@ -1,107 +1,89 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useUser } from "@clerk/nextjs";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  registrationMetadataSchema,
-  type RegistrationMetadata,
+  completeProfileSchema,
+  missingProfileDetails,
+  type CustomerProfileDto,
+  type ProfileDetail,
 } from "@vp-parts-shop/shared";
-import {
-  customerProfileQueryOptions,
-  fileCustomer,
-  isCustomerUnfileable,
-} from "@/lib/api/customers";
-import { isClerkRateLimited, TOO_MANY_REQUESTS_MESSAGE } from "@/lib/auth/clerk-errors";
+import { customerProfileQueryOptions, updateCustomerProfile } from "@/lib/api/customers";
+import { REGISTRATION_FIELD_MESSAGES } from "@/lib/auth/registration-values";
 
-type ClerkUser = NonNullable<ReturnType<typeof useUser>["user"]>;
+const SAVE_FAILED_MESSAGE = "Не успяхме да запазим данните. Опитайте отново.";
 
-const PHONE_INVALID_MESSAGE = "Въведете валиден мобилен номер";
-const SAVE_FAILED_MESSAGE = "Не успяхме да запазим телефона. Опитайте отново.";
+export interface ProfileFieldProps {
+  value: string;
+  onValueChange: (value: string) => void;
+  onBlur: () => void;
+  error: string | undefined;
+}
 
 export interface CompleteProfile {
-  phoneNumber: string;
-  changePhoneNumber: (value: string) => void;
-  markTouched: () => void;
-  phoneError: string | undefined;
-  /** What went wrong saving it, for the whole form. */
+  /** What the profile lacks, in form order; the only fields asked for. */
+  missing: ProfileDetail[];
+  fieldProps: (detail: ProfileDetail) => ProfileFieldProps;
+  /** What went wrong saving them, for the whole form. */
   failure: string | null;
   isSubmitting: boolean;
   submit: (event?: FormEvent) => Promise<void>;
 }
 
 /**
- * Collects the phone a signed-in customer Clerk holds none for — someone who
- * came through Google or Facebook — and files them with it. See docs/AUTH.md.
- *
- * `onComplete` runs once they are filed, or can never be, so the session sync
- * carries on and reports which.
+ * Collects the details a filed customer's profile lacks — a Google sign-in has
+ * no phone and perhaps no last name — and saves them. Saving puts the complete
+ * profile in its query, which is what moves checkout on. See docs/AUTH.md.
  */
-export function useCompleteProfile(onComplete: () => void): CompleteProfile {
-  const { user } = useUser();
+export function useCompleteProfile(profile: CustomerProfileDto): CompleteProfile {
   const queryClient = useQueryClient();
+  const missing = missingProfileDetails(profile);
 
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [isTouched, setIsTouched] = useState(false);
+  const [values, setValues] = useState<Partial<Record<ProfileDetail, string>>>({});
+  const [touched, setTouched] = useState<ReadonlySet<ProfileDetail>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const validation = registrationMetadataSchema.safeParse({ phoneNumber });
+  const validation = completeProfileSchema.safeParse(
+    Object.fromEntries(missing.map((detail) => [detail, values[detail]?.trim() ?? ""])),
+  );
+  const invalid = new Set(validation.error?.issues.map((issue) => issue.path[0]));
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
-    setIsTouched(true);
+    setTouched(new Set(missing));
 
-    if (!validation.success || !user) return;
+    if (!validation.success) return;
 
     setIsSubmitting(true);
     setFailure(null);
-    const refusal =
-      (await storePhone(user, validation.data)) ?? (await fileCustomerWithPhone(queryClient));
-    setIsSubmitting(false);
 
-    if (refusal) {
-      setFailure(refusal);
-      return;
+    try {
+      const saved = await updateCustomerProfile(validation.data);
+      queryClient.setQueryData(customerProfileQueryOptions.queryKey, saved);
+    } catch {
+      setFailure(SAVE_FAILED_MESSAGE);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onComplete();
   };
 
   return {
-    phoneNumber,
-    changePhoneNumber: (value) => {
-      setPhoneNumber(value);
-      setFailure(null);
-    },
-    markTouched: () => setIsTouched(true),
-    phoneError: isTouched && !validation.success ? PHONE_INVALID_MESSAGE : undefined,
+    missing,
+    fieldProps: (detail) => ({
+      value: values[detail] ?? "",
+      onValueChange: (value) => {
+        setValues((current) => ({ ...current, [detail]: value }));
+        setFailure(null);
+      },
+      onBlur: () => setTouched((current) => new Set(current).add(detail)),
+      error:
+        touched.has(detail) && invalid.has(detail)
+          ? REGISTRATION_FIELD_MESSAGES[detail]
+          : undefined,
+    }),
     failure,
     isSubmitting,
     submit,
   };
-}
-
-/** Stores the phone where the API reads it; returns what went wrong, or null. */
-async function storePhone(
-  user: ClerkUser,
-  unsafeMetadata: RegistrationMetadata,
-): Promise<string | null> {
-  try {
-    await user.updateMetadata({ unsafeMetadata });
-    return null;
-  } catch (error) {
-    return isClerkRateLimited(error) ? TOO_MANY_REQUESTS_MESSAGE : SAVE_FAILED_MESSAGE;
-  }
-}
-
-/** Files the customer from the phone just stored; returns what went wrong, or null. */
-async function fileCustomerWithPhone(queryClient: QueryClient): Promise<string | null> {
-  try {
-    queryClient.setQueryData(customerProfileQueryOptions.queryKey, await fileCustomer());
-    return null;
-  } catch (error) {
-    // The session sync reports an account no retry can file; anything else is worth retrying here.
-    return isCustomerUnfileable(error) ? null : SAVE_FAILED_MESSAGE;
-  }
 }

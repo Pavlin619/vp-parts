@@ -991,6 +991,9 @@ Response `201`:
 }
 ```
 
+Errors: `422 CUSTOMER_DETAILS_REQUIRED` — the signed-in customer's profile lacks a
+name or phone (task T091d).
+
 ---
 
 ### Order History
@@ -1161,6 +1164,7 @@ Returns `400` if signature verification fails.
 **`GET /customers/me`** (Protected)
 
 Response `200`: Customer profile + mechanic profile status if applicable.
+`firstName`, `lastName` and `phoneNumber` are `null` until given.
 
 ---
 
@@ -1168,9 +1172,15 @@ Response `200`: Customer profile + mechanic profile status if applicable.
 
 **`PATCH /customers/me`** (Protected)
 
-Request body: subset of `{ firstName, lastName, phoneNumber }`.
+Request body: subset of `{ firstName, lastName, phoneNumber }` — validated with
+the same field schemas as registration (`personNameSchema`, `bulgarianMobileSchema`); the phone must
+be a Bulgarian mobile and is stored in E.164. Sets only the fields given; may
+overwrite present ones. This is how a customer filed from Google completes their
+profile (`docs/AUTH.md` → "Incomplete profiles").
 
 Response `200`: updated profile.
+
+Errors: `400 VALIDATION_ERROR`; `404 CUSTOMER_PROFILE_INCOMPLETE` (not filed yet).
 
 ---
 

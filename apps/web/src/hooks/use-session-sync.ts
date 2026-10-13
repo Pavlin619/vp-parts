@@ -15,9 +15,8 @@ import {
   fileCustomer,
   isCustomerNotFiled,
   isCustomerUnfileable,
-  isPhoneRequired,
 } from "@/lib/api/customers";
-import { useAccountSetupStore, type AccountSetupStall } from "./use-account-setup";
+import { useAccountSetupStore } from "./use-account-setup";
 import { useCart } from "./use-cart";
 import { useCheckoutDelivery } from "./use-checkout-delivery";
 
@@ -31,7 +30,6 @@ import { useCheckoutDelivery } from "./use-checkout-delivery";
 export function useSessionSync(): void {
   const { isLoaded, userId } = useAuth();
   const queryClient = useQueryClient();
-  const attempt = useAccountSetupStore((state) => state.attempt);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -50,16 +48,15 @@ export function useSessionSync(): void {
 
     const session = new AbortController();
 
+    // Any other failure says nothing about the account; the next load retries.
     joinSession(queryClient, userId, session.signal).catch((error: unknown) => {
-      const accountSetup = describeStall(error);
-
-      if (!session.signal.aborted && accountSetup) {
-        useAccountSetupStore.getState().report(userId, accountSetup);
+      if (!session.signal.aborted && isCustomerUnfileable(error)) {
+        useAccountSetupStore.getState().reportFailed(userId);
       }
     });
 
     return () => session.abort();
-  }, [isLoaded, userId, queryClient, attempt]);
+  }, [isLoaded, userId, queryClient]);
 }
 
 async function joinSession(
@@ -80,7 +77,10 @@ async function joinSession(
   }
 }
 
-/** Reads the profile, and files the customer when the API has none yet. */
+/**
+ * Reads the profile, and files the customer when the API has none yet. A profile
+ * still missing details is filed all the same; checkout asks for them.
+ */
 async function ensureCustomer(queryClient: QueryClient): Promise<void> {
   try {
     await queryClient.fetchQuery(customerProfileQueryOptions);
@@ -137,13 +137,4 @@ function forgetSession(queryClient: QueryClient): void {
   // Reset rather than removed: the mounted cart read then fetches the guest's
   // answer, where a removed query would keep handing its observer the old cart.
   void queryClient.resetQueries({ queryKey: cartQueryOptions.queryKey });
-}
-
-/** What the customer must be shown, or null for a failure the next load retries. */
-function describeStall(error: unknown): AccountSetupStall | null {
-  if (isPhoneRequired(error)) {
-    return "phone-required";
-  }
-
-  return isCustomerUnfileable(error) ? "failed" : null;
 }

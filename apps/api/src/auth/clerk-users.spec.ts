@@ -42,18 +42,39 @@ describe('ClerkUsers', () => {
     expect(getUser).toHaveBeenCalledWith('clerk-1');
   });
 
-  it.each([
-    ['no primary email', { primaryEmailAddress: null }],
-    ['no first name', { firstName: null }],
-    ['a blank last name', { lastName: '  ' }],
-  ])('returns null for a user with %s', async (_case, gap) => {
+  it('returns null for a user with no primary email', async () => {
     getUser.mockResolvedValue({
-      primaryEmailAddress: { emailAddress: 'ivan@example.com' },
+      primaryEmailAddress: null,
       firstName: 'Иван',
       lastName: 'Петров',
-      ...gap,
+      unsafeMetadata: {},
     });
 
     await expect(users.findIdentity('clerk-1')).resolves.toBeNull();
   });
+
+  // A Google account need not have a last name; the customer gives it at checkout.
+  it.each([
+    ['no first name', { firstName: null }, { firstName: null }],
+    ['a blank last name', { lastName: '  ' }, { lastName: null }],
+  ])(
+    'reads a missing name as null for a user with %s',
+    async (_case, gap, read) => {
+      getUser.mockResolvedValue({
+        primaryEmailAddress: { emailAddress: 'ivan@example.com' },
+        firstName: 'Иван',
+        lastName: 'Петров',
+        unsafeMetadata: {},
+        ...gap,
+      });
+
+      await expect(users.findIdentity('clerk-1')).resolves.toEqual({
+        email: 'ivan@example.com',
+        firstName: 'Иван',
+        lastName: 'Петров',
+        unsafeMetadata: {},
+        ...read,
+      });
+    },
+  );
 });

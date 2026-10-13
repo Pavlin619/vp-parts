@@ -15,7 +15,9 @@ jest.mock('@clerk/nextjs', () => ({
   useAuth: jest.fn(() => ({ userId: 'user_1' })),
 }))
 jest.mock('./complete-profile-contact', () => ({
-  CompleteProfileContact: () => <div data-testid="complete-profile-contact" />,
+  CompleteProfileContact: ({ profile }: { profile: CustomerProfileDto }) => (
+    <div data-testid="complete-profile-contact" data-email={profile.email} />
+  ),
 }))
 jest.mock('./account-setup-failed-contact', () => ({
   AccountSetupFailedContact: () => <div data-testid="account-setup-failed-contact" />,
@@ -61,7 +63,7 @@ function renderContact() {
 }
 
 beforeEach(() => {
-  useAccountSetupStore.setState({ stall: null, attempt: 0 })
+  useAccountSetupStore.setState({ failedUserId: null })
   mockedGetProfile.mockReset()
 })
 
@@ -92,7 +94,6 @@ describe('SignedInContact', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  // An SSO customer is filed only once the phone dialog has their number.
   it('fills in once the customer is filed', async () => {
     mockedGetProfile.mockRejectedValue(
       new ApiError(404, AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE),
@@ -105,21 +106,32 @@ describe('SignedInContact', () => {
     expect(await screen.findByText('Иван Петров')).toBeInTheDocument()
   })
 
-  // A Google or Facebook sign-in carries no phone; the panel asks for it.
-  it('asks for the phone the session sync could not file the customer without', async () => {
-    mockedGetProfile.mockRejectedValue(
-      new ApiError(404, AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE),
-    )
-    useAccountSetupStore.getState().report('user_1', 'phone-required')
+  // A Google sign-in is filed with no phone; the panel asks for what is missing.
+  it('asks an incomplete profile for what it lacks', async () => {
+    mockedGetProfile.mockResolvedValue({ ...PROFILE, phoneNumber: null })
     renderContact()
 
-    expect(screen.getByTestId('complete-profile-contact')).toBeInTheDocument()
-    expect(screen.queryByTestId('signed-in-contact-skeleton')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('complete-profile-contact')).toHaveAttribute(
+      'data-email',
+      'ivan@example.bg',
+    )
+    expect(screen.queryByText('Влязъл')).not.toBeInTheDocument()
+  })
+
+  it('turns into the card once the profile is complete', async () => {
+    mockedGetProfile.mockResolvedValue({ ...PROFILE, phoneNumber: null })
+    const { queryClient } = renderContact()
+    await screen.findByTestId('complete-profile-contact')
+
+    act(() => queryClient.setQueryData(['customers', 'me'], PROFILE))
+
+    expect(await screen.findByText('Влязъл')).toBeInTheDocument()
+    expect(screen.queryByTestId('complete-profile-contact')).not.toBeInTheDocument()
   })
 
   it('says so in place of the card when the account can never be filed', async () => {
     mockedGetProfile.mockRejectedValue(new ApiError(409, AppErrorCode.EMAIL_ALREADY_EXISTS))
-    useAccountSetupStore.getState().report('user_1', 'failed')
+    useAccountSetupStore.getState().reportFailed('user_1')
     renderContact()
 
     expect(screen.getByTestId('account-setup-failed-contact')).toBeInTheDocument()

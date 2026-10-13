@@ -21,18 +21,35 @@ const clerkJwtStrategy = {
 /** Set to make Clerk report another user's email, as a second account would. */
 let emailOwner: string | null = null;
 
-/** What the registration form left in each user's `unsafeMetadata`. */
-const registrations = new Map<string, Record<string, unknown>>();
+interface HeldIdentity {
+  firstName: string | null;
+  lastName: string | null;
+  unsafeMetadata: Record<string, unknown>;
+}
+
+/** What Clerk holds for someone who came through the registration form. */
+const REGISTERED: HeldIdentity = {
+  firstName: 'Иван',
+  lastName: 'Петров',
+  unsafeMetadata: { phoneNumber: '0888 123 456' },
+};
+
+/** A Google account with no last name: no metadata, so no phone either. */
+const GOOGLE: HeldIdentity = {
+  firstName: 'Иван',
+  lastName: null,
+  unsafeMetadata: {},
+};
+
+/** Who each user is in Clerk, when not REGISTERED. */
+const identities = new Map<string, Partial<HeldIdentity>>();
 
 const clerkUsers = {
   findIdentity: (clerkId: string) =>
     Promise.resolve({
       email: `${emailOwner ?? clerkId}@example.com`,
-      firstName: 'Иван',
-      lastName: 'Петров',
-      unsafeMetadata: registrations.get(clerkId) ?? {
-        phoneNumber: '0888 123 456',
-      },
+      ...REGISTERED,
+      ...identities.get(clerkId),
     }),
 };
 
@@ -91,40 +108,88 @@ describe('Customers (e2e)', () => {
     );
   });
 
-  it('asks again for a phone that is not a Bulgarian mobile', async () => {
+  describe('a Google sign-in', () => {
+    const clerkId = `${RUN}-google`;
+
+    const completeProfile = (details: Record<string, unknown>) =>
+      request(app.getHttpServer())
+        .patch('/customers/me')
+        .set('Authorization', tokenFor(clerkId))
+        .send(details);
+
+    beforeAll(() => identities.set(clerkId, GOOGLE));
+
+    it('cannot complete a profile before it is filed', async () => {
+      const response = await completeProfile({ phoneNumber: '0888 123 456' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.errorCode).toBe(
+        AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE,
+      );
+    });
+
+    it('is filed at once, with what Clerk does not hold left empty', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/customers/me')
+        .set('Authorization', tokenFor(clerkId))
+        .expect(201);
+
+      expect(response.body).toMatchObject({
+        email: `${clerkId}@example.com`,
+        firstName: 'Иван',
+        lastName: null,
+        phoneNumber: null,
+      });
+    });
+
+    it('refuses a phone that is not a Bulgarian mobile', async () => {
+      const response = await completeProfile({ phoneNumber: '02 987 6543' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        statusCode: 400,
+        errorCode: AppErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('refuses a detail the profile does not own', async () => {
+      const response = await completeProfile({ email: 'other@example.com' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('completes with what was missing, and reads it back', async () => {
+      const response = await completeProfile({
+        lastName: ' Петров ',
+        phoneNumber: '0888 123 456',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        firstName: 'Иван',
+        lastName: 'Петров',
+        phoneNumber: '+359888123456',
+      });
+
+      const read = await request(app.getHttpServer())
+        .get('/customers/me')
+        .set('Authorization', tokenFor(clerkId))
+        .expect(200);
+
+      expect(read.body).toEqual(response.body);
+    });
+  });
+
+  it('files a registration phone that is not a Bulgarian mobile as missing', async () => {
     const clerkId = `${RUN}-landline`;
-    registrations.set(clerkId, { phoneNumber: '02 987 6543' });
+    identities.set(clerkId, { unsafeMetadata: { phoneNumber: '02 987 6543' } });
 
     const response = await request(app.getHttpServer())
       .post('/customers/me')
       .set('Authorization', tokenFor(clerkId))
-      .expect(422);
-
-    expect(response.body.errorCode).toBe(AppErrorCode.CUSTOMER_PHONE_REQUIRED);
-  });
-
-  it('files an SSO user once they have given a phone', async () => {
-    const clerkId = `${RUN}-sso`;
-    registrations.set(clerkId, {});
-
-    const refused = await request(app.getHttpServer())
-      .post('/customers/me')
-      .set('Authorization', tokenFor(clerkId))
-      .expect(422);
-
-    expect(refused.body).toEqual({
-      statusCode: 422,
-      errorCode: AppErrorCode.CUSTOMER_PHONE_REQUIRED,
-    });
-
-    registrations.set(clerkId, { phoneNumber: '0888 123 456' });
-
-    const filed = await request(app.getHttpServer())
-      .post('/customers/me')
-      .set('Authorization', tokenFor(clerkId))
       .expect(201);
 
-    expect(filed.body).toMatchObject({ phoneNumber: '+359888123456' });
+    expect(response.body.phoneNumber).toBeNull();
   });
 
   describe('registering', () => {
@@ -132,8 +197,6 @@ describe('Customers (e2e)', () => {
     let created: CustomerProfileDto;
 
     beforeAll(async () => {
-      registrations.set(clerkId, { phoneNumber: '0888 123 456' });
-
       const response = await request(app.getHttpServer())
         .post('/customers/me')
         .set('Authorization', tokenFor(clerkId))
@@ -162,7 +225,9 @@ describe('Customers (e2e)', () => {
     });
 
     it('returns the same customer when the request is retried', async () => {
-      registrations.set(clerkId, { phoneNumber: '0877 000 000' });
+      identities.set(clerkId, {
+        unsafeMetadata: { phoneNumber: '0877 000 000' },
+      });
 
       const response = await request(app.getHttpServer())
         .post('/customers/me')
@@ -224,7 +289,6 @@ describe('Customers (e2e)', () => {
 
     it('files the customer a new Clerk user stands for, without a session', async () => {
       const clerkId = `${RUN}-webhook`;
-      registrations.set(clerkId, { phoneNumber: '0888 123 456' });
 
       await request(app.getHttpServer())
         .post('/webhooks/clerk')
@@ -259,10 +323,9 @@ describe('Customers (e2e)', () => {
       expect(response.body.id).toBe(customer?.id);
     });
 
-    // The phone arrives later, through `user.updated`; retrying now would not help.
-    it('accepts a user with no phone yet, then files them once it lands', async () => {
-      const clerkId = `${RUN}-webhook-no-phone`;
-      registrations.set(clerkId, {});
+    it('files a Google user with no phone or last name straight away', async () => {
+      const clerkId = `${RUN}-webhook-google`;
+      identities.set(clerkId, GOOGLE);
 
       await request(app.getHttpServer())
         .post('/webhooks/clerk')
@@ -270,29 +333,22 @@ describe('Customers (e2e)', () => {
         .send(userCreated(clerkId))
         .expect(200);
 
-      await expect(findCustomer(clerkId)).resolves.toBeNull();
-
-      registrations.set(clerkId, { phoneNumber: '0888 123 456' });
-
-      await request(app.getHttpServer())
-        .post('/webhooks/clerk')
-        .set(SIGNED, '1')
-        .send({ type: 'user.updated', data: { id: clerkId } })
-        .expect(200);
-
       await expect(findCustomer(clerkId)).resolves.toMatchObject({
-        phoneNumber: '+359888123456',
+        lastName: null,
+        phoneNumber: null,
       });
     });
 
     it('accepts and ignores events it does not handle', async () => {
-      const clerkId = `${RUN}-deleted`;
+      const clerkId = `${RUN}-unhandled`;
 
-      await request(app.getHttpServer())
-        .post('/webhooks/clerk')
-        .set(SIGNED, '1')
-        .send({ type: 'user.deleted', data: { id: clerkId } })
-        .expect(200);
+      for (const type of ['user.updated', 'user.deleted']) {
+        await request(app.getHttpServer())
+          .post('/webhooks/clerk')
+          .set(SIGNED, '1')
+          .send({ type, data: { id: clerkId } })
+          .expect(200);
+      }
 
       await expect(findCustomer(clerkId)).resolves.toBeNull();
     });

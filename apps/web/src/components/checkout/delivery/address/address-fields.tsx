@@ -6,7 +6,7 @@ import {
   type DeliveryPlaceDto,
   type ShippingMethod,
 } from "@vp-parts-shop/shared";
-import { AddressField } from "./address-field";
+import { TextField } from "@/components/common/text-field";
 import { AddressNoteField } from "./address-note-field";
 import { PlaceFields } from "../offices/place";
 import { useDeliveryNameSuggestions } from "@/hooks/use-delivery-name-suggestions";
@@ -95,7 +95,7 @@ export function AddressFields({
 
       {mode === "street" ? (
         <div className="grid grid-cols-[1fr_96px] gap-3 sm:col-span-2">
-          <AddressField
+          <TextField
             label="Улица / бул."
             value={values.street}
             onValueChange={setValue("street")}
@@ -105,7 +105,7 @@ export function AddressFields({
             suggestions={streetNames}
             maxLength={LIMITS.street}
           />
-          <AddressField
+          <TextField
             label="Номер"
             value={values.streetNumber}
             onValueChange={setValue("streetNumber")}
@@ -116,7 +116,7 @@ export function AddressFields({
           />
         </div>
       ) : (
-        <AddressField
+        <TextField
           label="Кв. / ж.к."
           value={values.quarter}
           onValueChange={setValue("quarter")}
@@ -129,7 +129,7 @@ export function AddressFields({
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-4">
-        <AddressField
+        <TextField
           label="Блок"
           value={values.block}
           onValueChange={setValue("block")}
@@ -138,21 +138,21 @@ export function AddressFields({
           placeholder="бл."
           maxLength={LIMITS.block}
         />
-        <AddressField
+        <TextField
           label="Вход"
           value={values.entrance}
           onValueChange={setValue("entrance")}
           placeholder="вх."
           maxLength={LIMITS.entrance}
         />
-        <AddressField
+        <TextField
           label="Етаж"
           value={values.floor}
           onValueChange={setValue("floor")}
           placeholder="ет."
           maxLength={LIMITS.floor}
         />
-        <AddressField
+        <TextField
           label="Апартамент"
           value={values.apartment}
           onValueChange={setValue("apartment")}

@@ -1,7 +1,7 @@
 import { useId, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-interface AddressFieldProps
+interface TextFieldProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "id"> {
   label: string;
   value: string;
@@ -15,7 +15,7 @@ interface AddressFieldProps
   className?: string;
 }
 
-export function AddressField({
+export function TextField({
   label,
   value,
   onValueChange,
@@ -26,7 +26,7 @@ export function AddressField({
   action,
   className,
   ...inputProps
-}: AddressFieldProps) {
+}: TextFieldProps) {
   const inputId = useId();
   const errorId = useId();
   const suggestionsId = useId();

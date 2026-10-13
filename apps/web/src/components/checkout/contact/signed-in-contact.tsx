@@ -1,22 +1,22 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { CustomerProfileDto } from "@vp-parts-shop/shared";
+import {
+  isProfileComplete,
+  type CompleteProfileDetails,
+  type CustomerProfileDto,
+} from "@vp-parts-shop/shared";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { useAccountSetup } from "@/hooks/use-account-setup";
 import { customerProfileQueryOptions, isCustomerNotFiled } from "@/lib/api/customers";
 import { AccountSetupFailedContact } from "./account-setup-failed-contact";
 import { CompleteProfileContact } from "./complete-profile-contact";
-import { ContactIdentity } from "./contact-identity";
+import { ContactIdentity, profileNameOf } from "./contact-identity";
 
 /** Who a signed-in customer's order is for, read from their profile. */
 export function SignedInContact() {
   const profile = useQuery(customerProfileQueryOptions);
-  const { accountSetup, resume } = useAccountSetup();
-
-  if (accountSetup === "phone-required") {
-    return <CompleteProfileContact onComplete={resume} />;
-  }
+  const accountSetup = useAccountSetup();
 
   if (accountSetup === "failed") {
     return <AccountSetupFailedContact />;
@@ -38,14 +38,17 @@ export function SignedInContact() {
     );
   }
 
+  if (!isProfileComplete(profile.data)) {
+    return <CompleteProfileContact profile={profile.data} />;
+  }
+
   return <ContactCard profile={profile.data} />;
 }
 
-function ContactCard({ profile }: { profile: CustomerProfileDto }) {
+function ContactCard({ profile }: { profile: CompleteProfileDetails<CustomerProfileDto> }) {
   return (
     <ContactIdentity
-      firstName={profile.firstName}
-      lastName={profile.lastName}
+      name={profileNameOf(profile)}
       details={[profile.email, profile.phoneNumber]}
       status="signed-in"
     />

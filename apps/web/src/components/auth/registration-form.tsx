@@ -6,7 +6,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { RegisterCustomerInput, RegistrationMetadata } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
 import { PRIMARY_ACTION_CLASS } from "@/components/checkout/delivery/address/address-action-buttons";
-import { AddressField } from "@/components/checkout/delivery/address/address-field";
+import { TextField } from "@/components/common/text-field";
 import { customerProfileQueryOptions, fileCustomer } from "@/lib/api/customers";
 import {
   describeSignUpError,
@@ -112,11 +112,11 @@ export function RegistrationForm({
       className={cn("flex flex-col gap-3", className)}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <AddressField label="Име" autoComplete="given-name" {...fieldProps("firstName")} />
-        <AddressField label="Фамилия" autoComplete="family-name" {...fieldProps("lastName")} />
+        <TextField label="Име" autoComplete="given-name" {...fieldProps("firstName")} />
+        <TextField label="Фамилия" autoComplete="family-name" {...fieldProps("lastName")} />
       </div>
-      <AddressField label="Имейл" type="email" autoComplete="email" {...fieldProps("email")} />
-      <AddressField
+      <TextField label="Имейл" type="email" autoComplete="email" {...fieldProps("email")} />
+      <TextField
         label="Парола"
         type="password"
         autoComplete="new-password"

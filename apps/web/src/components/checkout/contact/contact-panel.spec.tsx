@@ -87,7 +87,7 @@ describe('ContactPanel', () => {
     expect(screen.queryByLabelText('Име и фамилия')).not.toBeInTheDocument()
   })
 
-  // Clerk turns a first Google or Facebook sign-in into a sign-up, which
+  // Clerk turns a first Google sign-in into a sign-up, which
   // follows its own redirect and would otherwise land on the homepage.
   it('brings a new account made from the sign-in back to checkout too', () => {
     render(<ContactPanel mode="login" onModeChange={jest.fn()} />)

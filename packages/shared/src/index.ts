@@ -1,3 +1,4 @@
+export * from './customer-profile';
 export * from './delivery';
 export * from './stock-scope';
 export * from './enums';

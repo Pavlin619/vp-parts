@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Phone } from "lucide-react";
 import { contactNameError, contactPhoneError } from "@/lib/checkout/contact/contact-modes";
 import { PhoneField } from "@/components/auth/phone-field";
-import { AddressField } from "../delivery/address/address-field";
+import { TextField } from "@/components/common/text-field";
 
 type QuickOrderField = "name" | "phone";
 
@@ -23,7 +23,7 @@ export function QuickOrderFields() {
   return (
     <>
       <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
-        <AddressField
+        <TextField
           label="Име и фамилия"
           autoComplete="name"
           value={name}
