@@ -17,7 +17,8 @@ export type RegistrationValidation =
   | { success: true; data: RegisterCustomerInput }
   | { success: false; errors: RegistrationErrors };
 
-const FIELD_MESSAGES: Record<keyof RegistrationErrors, string> = {
+/** Also what checkout's profile completion says, so the two forms agree. */
+export const REGISTRATION_FIELD_MESSAGES: Record<RegistrationField, string> = {
   firstName: "Въведете име (без цифри)",
   lastName: "Въведете фамилия (без цифри)",
   email: "Въведете валиден имейл",
@@ -44,7 +45,7 @@ export function validateRegistration(values: RegistrationValues): RegistrationVa
 
   const fields = new Set(result.error.issues.map((issue) => issue.path[0]));
   const errors = Object.fromEntries(
-    Object.entries(FIELD_MESSAGES).filter(([field]) => fields.has(field)),
+    Object.entries(REGISTRATION_FIELD_MESSAGES).filter(([field]) => fields.has(field)),
   );
 
   return { success: false, errors };

@@ -27,16 +27,25 @@ export const registrationMetadataSchema = z.object({
   phoneNumber: bulgarianMobileSchema,
 });
 
+export const PERSON_NAME_MAX_LENGTH = 100;
+
+export const personNameSchema = z
+  .string()
+  .min(1)
+  .max(PERSON_NAME_MAX_LENGTH)
+  .regex(/^[^\d]+$/, 'No digits allowed');
+
 export const registerCustomerSchema = registrationMetadataSchema.extend({
   email: z.string().email(),
   password: z.string().min(8),
-  firstName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed'),
-  lastName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed'),
+  firstName: personNameSchema,
+  lastName: personNameSchema,
 });
 
-export const updateProfileSchema = z.object({
-  firstName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed').optional(),
-  lastName: z.string().min(1).max(100).regex(/^[^\d]+$/, 'No digits allowed').optional(),
+/** Fills in, or corrects, what a customer's profile holds. Every field is optional. */
+export const completeProfileSchema = z.object({
+  firstName: personNameSchema.optional(),
+  lastName: personNameSchema.optional(),
   phoneNumber: bulgarianMobileSchema.optional(),
 });
 
@@ -60,6 +69,6 @@ export const saveVehicleSchema = z.object({
 
 export type RegisterCustomerInput = z.infer<typeof registerCustomerSchema>;
 export type RegistrationMetadata = z.infer<typeof registrationMetadataSchema>;
-export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 export type MechanicApplicationInput = z.infer<typeof mechanicApplicationSchema>;
 export type SaveVehicleInput = z.infer<typeof saveVehicleSchema>;

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { CompleteProfileInput } from '@vp-parts-shop/shared';
 import { Prisma } from '../generated/prisma';
 import { PrismaService } from '../prisma';
 
@@ -12,9 +13,9 @@ export interface CustomerIdentity {
 export interface NewCustomer {
   clerkId: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  phoneNumber: string;
+  firstName: string | null;
+  lastName: string | null;
+  phoneNumber: string | null;
 }
 
 const PROFILE_SELECT = {
@@ -73,6 +74,33 @@ export class CustomersRepository {
       throw error;
     }
   }
+
+  /** Null when there is no customer to update. */
+  async updateProfile(
+    clerkId: string,
+    details: CompleteProfileInput,
+  ): Promise<CustomerProfileRecord | null> {
+    try {
+      return await this.prisma.customer.update({
+        where: { clerkId },
+        data: details,
+        select: PROFILE_SELECT,
+      });
+    } catch (error) {
+      if (isRecordNotFound(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+}
+
+function isRecordNotFound(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2025'
+  );
 }
 
 function takenUniqueField(error: unknown): 'clerkId' | 'email' | null {

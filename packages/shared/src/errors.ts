@@ -35,8 +35,8 @@ export enum AppErrorCode {
   EMAIL_ALREADY_EXISTS = 'EMAIL_ALREADY_EXISTS',
   /** Signed in with Clerk but not yet a customer: the browser files them. */
   CUSTOMER_PROFILE_INCOMPLETE = 'CUSTOMER_PROFILE_INCOMPLETE',
-  /** Clerk holds no valid phone to file them with (an SSO sign-in): the UI asks for one. */
-  CUSTOMER_PHONE_REQUIRED = 'CUSTOMER_PHONE_REQUIRED',
+  /** The profile lacks a name or the phone an order needs: the UI asks for them. */
+  CUSTOMER_DETAILS_REQUIRED = 'CUSTOMER_DETAILS_REQUIRED',
   MECHANIC_APPLICATION_ALREADY_EXISTS = 'MECHANIC_APPLICATION_ALREADY_EXISTS',
   COD_THRESHOLD_EXCEEDED = 'COD_THRESHOLD_EXCEEDED',
   /** Price/availability could not be read. Retryable. */

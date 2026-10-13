@@ -24,4 +24,10 @@ describe('toCustomerProfileDto', () => {
       createdAt: '2026-10-11T08:00:00.000Z',
     });
   });
+
+  it('keeps the details a customer has not given yet as null', () => {
+    expect(
+      toCustomerProfileDto({ ...CUSTOMER, lastName: null, phoneNumber: null }),
+    ).toMatchObject({ firstName: 'Иван', lastName: null, phoneNumber: null });
+  });
 });

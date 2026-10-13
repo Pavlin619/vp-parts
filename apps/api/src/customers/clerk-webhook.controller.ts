@@ -13,7 +13,6 @@ import type { Request } from 'express';
 import { ClerkWebhooks, Public } from '../auth';
 import {
   ClerkIdentityIncompleteException,
-  CustomerPhoneRequiredException,
   EmailAlreadyExistsException,
 } from './customers.exceptions';
 import { CustomersService } from './customers.service';
@@ -37,8 +36,7 @@ export class ClerkWebhookController {
   async receive(@Req() request: RawBodyRequest<Request>): Promise<void> {
     const event = await this.verify(request);
 
-    // An SSO user becomes fileable only once the phone lands in their metadata.
-    if (event.type === 'user.created' || event.type === 'user.updated') {
+    if (event.type === 'user.created') {
       await this.fileCustomer(event.data.id);
     }
   }
@@ -58,13 +56,6 @@ export class ClerkWebhookController {
     try {
       await this.customers.register(clerkId);
     } catch (error) {
-      if (error instanceof CustomerPhoneRequiredException) {
-        this.logger.warn(
-          `Clerk user ${clerkId} has no phone yet; filed once they give one`,
-        );
-        return;
-      }
-
       if (!isPermanentFailure(error)) {
         throw error;
       }

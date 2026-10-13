@@ -56,10 +56,11 @@ model Customer {
   id          String       @id @default(uuid())
   clerkId     String       @unique
   email       String       @unique
-  firstName   String
-  lastName    String
+  /// Null until given: a customer is filed before their profile is complete — see docs/AUTH.md.
+  firstName   String?
+  lastName    String?
   /// A Bulgarian mobile in E.164. Never verified by SMS — see docs/AUTH.md.
-  phoneNumber String
+  phoneNumber String?
   role        CustomerRole @default(CUSTOMER)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt

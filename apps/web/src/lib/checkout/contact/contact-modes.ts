@@ -25,8 +25,8 @@ export const CONTACT_MODES: readonly ContactModeOption[] = [
 export const DEFAULT_CONTACT_MODE: ContactMode = "quick";
 
 /**
- * The sign-in tab when Clerk has come back to one of its hash routes — a Google or
- * Facebook sign-in returns to `#/sso-callback`, which only its `<SignIn/>` can finish.
+ * The sign-in tab when Clerk has come back to one of its hash routes — a Google
+ * sign-in returns to `#/sso-callback`, which only its `<SignIn/>` can finish.
  */
 export function initialContactMode(hash: string): ContactMode {
   return hash.startsWith("#/") ? "login" : DEFAULT_CONTACT_MODE;

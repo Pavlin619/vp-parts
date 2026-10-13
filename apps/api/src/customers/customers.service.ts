@@ -1,13 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  CompleteProfileDetails,
+  CompleteProfileInput,
   CustomerProfileDto,
-  RegistrationMetadata,
+  isProfileComplete,
   registrationMetadataSchema,
 } from '@vp-parts-shop/shared';
 import { ClerkUsers } from '../auth';
 import {
   ClerkIdentityIncompleteException,
-  CustomerPhoneRequiredException,
+  CustomerDetailsRequiredException,
   CustomerProfileIncompleteException,
   EmailAlreadyExistsException,
 } from './customers.exceptions';
@@ -54,9 +56,10 @@ export class CustomersService {
   }
 
   /**
-   * Files a Clerk user as a customer, from what Clerk holds for them. The
-   * browser and Clerk's webhooks all call it, so it is safe to repeat: someone
-   * already filed is returned as they are.
+   * Files a Clerk user as a customer, from what Clerk holds for them — possibly
+   * no names or phone yet (see docs/AUTH.md). The browser and Clerk's webhook
+   * both call it, so it is safe to repeat: someone already filed is returned as
+   * they are.
    */
   async register(clerkId: string): Promise<CustomerProfileDto> {
     const existing = await this.customers.findProfileByClerkId(clerkId);
@@ -70,21 +73,50 @@ export class CustomersService {
     return toCustomerProfileDto(created);
   }
 
+  /** Sets the details given, whether they were missing or not. */
+  async completeProfile(
+    clerkId: string,
+    details: CompleteProfileInput,
+  ): Promise<CustomerProfileDto> {
+    const customer = await this.customers.updateProfile(clerkId, details);
+
+    if (!customer) {
+      throw new CustomerProfileIncompleteException();
+    }
+
+    return toCustomerProfileDto(customer);
+  }
+
+  /**
+   * The profile of a customer who can order. Every route that needs their
+   * contact details must call this; the UI's completion step is not the guard.
+   */
+  async requireCompleteProfile(
+    clerkId: string,
+  ): Promise<CompleteProfileDetails<CustomerProfileDto>> {
+    const profile = await this.getProfile(clerkId);
+
+    if (!isProfileComplete(profile)) {
+      throw new CustomerDetailsRequiredException();
+    }
+
+    return profile;
+  }
+
   private async create(clerkId: string): Promise<CustomerProfileRecord> {
     const identity = await this.clerkUsers.findIdentity(clerkId);
 
     if (!identity) {
-      this.logger.warn(`Clerk user ${clerkId} has no email or names`);
+      this.logger.warn(`Clerk user ${clerkId} has no email`);
       throw new ClerkIdentityIncompleteException();
     }
 
     const { unsafeMetadata, ...names } = identity;
-    const registration = this.parseRegistration(unsafeMetadata);
 
     const result = await this.customers.create({
       clerkId,
       ...names,
-      ...registration,
+      phoneNumber: this.registeredPhone(clerkId, unsafeMetadata),
     });
 
     if (result.kind === 'created') {
@@ -98,14 +130,24 @@ export class CustomersService {
     return this.findRegisteredConcurrently(clerkId);
   }
 
-  private parseRegistration(unsafeMetadata: unknown): RegistrationMetadata {
+  /** The phone the registration form left; a Google sign-in leaves none. */
+  private registeredPhone(
+    clerkId: string,
+    unsafeMetadata: Record<string, unknown>,
+  ): string | null {
+    if (unsafeMetadata.phoneNumber === undefined) {
+      return null;
+    }
+
     const parsed = registrationMetadataSchema.safeParse(unsafeMetadata);
 
     if (!parsed.success) {
-      throw new CustomerPhoneRequiredException();
+      // The form refuses such a phone, so only a bypassed form leaves one.
+      this.logger.warn(`Clerk user ${clerkId} registered an invalid phone`);
+      return null;
     }
 
-    return parsed.data;
+    return parsed.data.phoneNumber;
   }
 
   private async findRegisteredConcurrently(

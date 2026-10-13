@@ -3,36 +3,26 @@
 import { useAuth } from "@clerk/nextjs";
 import { create } from "zustand";
 
-export type AccountSetup = "ok" | "phone-required" | "failed";
-
-export type AccountSetupStall = Exclude<AccountSetup, "ok">;
+export type AccountSetup = "ok" | "failed";
 
 interface AccountSetupState {
-  stall: { userId: string; accountSetup: AccountSetupStall } | null;
-  /** Bumped by `resume`; the session sync runs again whenever it changes. */
-  attempt: number;
-  report: (userId: string, accountSetup: AccountSetupStall) => void;
-  resume: () => void;
+  /** The account the session sync could never file as a customer. */
+  failedUserId: string | null;
+  reportFailed: (userId: string) => void;
 }
 
 /**
- * What the session sync stalled on while setting up the signed-in account. Shared
- * so checkout's contact panel can ask for the phone where the customer is looking.
+ * Whether the session sync could file the signed-in account. Shared so
+ * checkout's contact panel can say so where the customer is looking.
  */
 export const useAccountSetupStore = create<AccountSetupState>((set) => ({
-  stall: null,
-  attempt: 0,
-  report: (userId, accountSetup) => set({ stall: { userId, accountSetup } }),
-  resume: () => set((state) => ({ stall: null, attempt: state.attempt + 1 })),
+  failedUserId: null,
+  reportFailed: (userId) => set({ failedUserId: userId }),
 }));
 
-export function useAccountSetup(): { accountSetup: AccountSetup; resume: () => void } {
+export function useAccountSetup(): AccountSetup {
   const { userId } = useAuth();
-  const stall = useAccountSetupStore((state) => state.stall);
-  const resume = useAccountSetupStore((state) => state.resume);
+  const failedUserId = useAccountSetupStore((state) => state.failedUserId);
 
-  return {
-    accountSetup: stall !== null && stall.userId === userId ? stall.accountSetup : "ok",
-    resume,
-  };
+  return failedUserId !== null && failedUserId === userId ? "failed" : "ok";
 }

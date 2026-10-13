@@ -13,6 +13,16 @@ const PROFILE_SELECT = {
   createdAt: true,
 };
 
+function recordNotFound() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Record to update not found',
+    {
+      code: 'P2025',
+      clientVersion: 'test',
+    },
+  );
+}
+
 function uniqueViolation(field: string) {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -24,8 +34,9 @@ function uniqueViolation(field: string) {
 describe('CustomersRepository', () => {
   const findUnique = jest.fn();
   const create = jest.fn();
+  const update = jest.fn();
   const prisma = {
-    customer: { findUnique, create },
+    customer: { findUnique, create, update },
   } as unknown as PrismaService;
 
   let repository: CustomersRepository;
@@ -120,6 +131,38 @@ describe('CustomersRepository', () => {
       create.mockRejectedValue(failure);
 
       await expect(repository.create(CUSTOMER)).rejects.toBe(failure);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('writes only the details given and reads the profile back', async () => {
+      update.mockResolvedValue({ id: 'customer-1' });
+
+      await expect(
+        repository.updateProfile('clerk-1', { phoneNumber: '+359888123456' }),
+      ).resolves.toEqual({ id: 'customer-1' });
+      expect(update).toHaveBeenCalledWith({
+        where: { clerkId: 'clerk-1' },
+        data: { phoneNumber: '+359888123456' },
+        select: PROFILE_SELECT,
+      });
+    });
+
+    it('returns null when there is no customer to update', async () => {
+      update.mockRejectedValue(recordNotFound());
+
+      await expect(
+        repository.updateProfile('clerk-unknown', { firstName: 'Иван' }),
+      ).resolves.toBeNull();
+    });
+
+    it('rethrows anything else', async () => {
+      const failure = new Error('connection lost');
+      update.mockRejectedValue(failure);
+
+      await expect(
+        repository.updateProfile('clerk-1', { firstName: 'Иван' }),
+      ).rejects.toBe(failure);
     });
   });
 });

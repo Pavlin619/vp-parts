@@ -1,20 +1,17 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
-import { useUser } from '@clerk/nextjs'
-import { ClerkAPIResponseError } from '@clerk/nextjs/errors'
 import { CustomerRole, type CustomerProfileDto } from '@vp-parts-shop/shared'
 import { ApiError } from '@/lib/api'
-import { fileCustomer } from '@/lib/api/customers'
+import { updateCustomerProfile } from '@/lib/api/customers'
 import { useCompleteProfile } from './use-complete-profile'
 
-jest.mock('@clerk/nextjs', () => ({ useUser: jest.fn() }))
 jest.mock('@/lib/api/customers', () => ({
   ...jest.requireActual('@/lib/api/customers'),
-  fileCustomer: jest.fn(),
+  updateCustomerProfile: jest.fn(),
 }))
 
-const PROFILE: CustomerProfileDto = {
+const COMPLETE: CustomerProfileDto = {
   id: 'customer-1',
   email: 'ivan@gmail.com',
   firstName: 'Иван',
@@ -24,148 +21,114 @@ const PROFILE: CustomerProfileDto = {
   createdAt: '2026-10-11T10:00:00.000Z',
 }
 
-const updateMetadata = jest.fn()
-const mockedFileCustomer = jest.mocked(fileCustomer)
+/** A Google account with no last name, as filed on first sign-in. */
+const GOOGLE: CustomerProfileDto = { ...COMPLETE, lastName: null, phoneNumber: null }
 
-function renderCompleteProfile(onComplete = jest.fn()) {
+const mockedUpdate = jest.mocked(updateCustomerProfile)
+
+function renderCompleteProfile(profile = GOOGLE) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  const { result } = renderHook(() => useCompleteProfile(onComplete), { wrapper })
+  const { result } = renderHook(() => useCompleteProfile(profile), { wrapper })
 
-  return { result, onComplete, queryClient }
+  return { result, queryClient }
 }
 
-async function submitPhone(
-  result: ReturnType<typeof renderCompleteProfile>['result'],
-  phone: string,
-) {
-  act(() => result.current.changePhoneNumber(phone))
-  await act(() => result.current.submit())
+type Result = ReturnType<typeof renderCompleteProfile>['result']
+
+function fill(result: Result, values: { lastName?: string; phoneNumber?: string }) {
+  for (const [detail, value] of Object.entries(values)) {
+    act(() => result.current.fieldProps(detail as 'lastName' | 'phoneNumber').onValueChange(value))
+  }
 }
 
 beforeEach(() => {
   jest.clearAllMocks()
-  jest.mocked(useUser).mockReturnValue({
-    user: { updateMetadata },
-  } as unknown as ReturnType<typeof useUser>)
-  updateMetadata.mockResolvedValue({})
-  mockedFileCustomer.mockResolvedValue(PROFILE)
+  mockedUpdate.mockResolvedValue(COMPLETE)
 })
 
 describe('useCompleteProfile', () => {
-  it('names nothing wrong before the customer has touched the field', () => {
+  it('asks only for what the profile is missing', () => {
     const { result } = renderCompleteProfile()
 
-    expect(result.current.phoneError).toBeUndefined()
+    expect(result.current.missing).toEqual(['lastName', 'phoneNumber'])
   })
 
-  it('names a phone that is not valid once the customer leaves the field', () => {
+  it('names nothing wrong before the customer has touched a field', () => {
     const { result } = renderCompleteProfile()
 
-    act(() => result.current.changePhoneNumber('02 987 6543'))
-    act(() => result.current.markTouched())
-
-    expect(result.current.phoneError).toBe('Въведете валиден мобилен номер')
+    expect(result.current.fieldProps('phoneNumber').error).toBeUndefined()
   })
 
-  it.each([
-    ['nothing', ''],
-    ['a landline', '02 987 6543'],
-  ])('refuses %s before Clerk is asked', async (_case, phone) => {
-    const { result, onComplete } = renderCompleteProfile()
+  it('names a field that is not valid once the customer leaves it', () => {
+    const { result } = renderCompleteProfile()
 
-    await submitPhone(result, phone)
+    fill(result, { phoneNumber: '02 987 6543' })
+    act(() => result.current.fieldProps('phoneNumber').onBlur())
 
-    expect(result.current.phoneError).toBe('Въведете валиден мобилен номер')
-    expect(updateMetadata).not.toHaveBeenCalled()
-    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.fieldProps('phoneNumber').error).toBe('Въведете валиден мобилен номер')
+    expect(result.current.fieldProps('lastName').error).toBeUndefined()
   })
 
-  // The API files the customer only from what Clerk holds, so the phone goes
-  // there first, normalised exactly as it will be stored.
-  it('stores the phone on the Clerk user, then files the customer', async () => {
-    const order: string[] = []
-    updateMetadata.mockImplementation(async () => {
-      order.push('metadata')
+  it('refuses missing details left blank or invalid before the API is asked', async () => {
+    const { result } = renderCompleteProfile()
+
+    fill(result, { phoneNumber: '02 987 6543' })
+    await act(() => result.current.submit())
+
+    expect(result.current.fieldProps('lastName').error).toBe('Въведете фамилия (без цифри)')
+    expect(result.current.fieldProps('phoneNumber').error).toBe('Въведете валиден мобилен номер')
+    expect(mockedUpdate).not.toHaveBeenCalled()
+  })
+
+  // What the profile already holds is not the panel's to change.
+  it('saves only the missing details, trimmed and normalised', async () => {
+    const { result } = renderCompleteProfile()
+
+    fill(result, { lastName: ' Петров ', phoneNumber: '0888 123 456' })
+    await act(() => result.current.submit())
+
+    expect(mockedUpdate).toHaveBeenCalledWith({
+      lastName: 'Петров',
+      phoneNumber: '+359888123456',
     })
-    mockedFileCustomer.mockImplementation(async () => {
-      order.push('file')
-      return PROFILE
-    })
-    const { result, onComplete, queryClient } = renderCompleteProfile()
-
-    await submitPhone(result, '0888 123 456')
-
-    expect(updateMetadata).toHaveBeenCalledWith({
-      unsafeMetadata: { phoneNumber: '+359888123456' },
-    })
-    expect(order).toEqual(['metadata', 'file'])
-    expect(queryClient.getQueryData(['customers', 'me'])).toEqual(PROFILE)
-    expect(onComplete).toHaveBeenCalledTimes(1)
   })
 
-  it('reports Clerk’s refusal in Bulgarian and files nothing', async () => {
-    updateMetadata.mockRejectedValue(
-      new ClerkAPIResponseError('refused', {
-        status: 429,
-        data: [{ code: 'too_many_requests', message: 'too many' }],
-      }),
-    )
-    const { result, onComplete } = renderCompleteProfile()
+  it('hands the saved profile to everything reading it', async () => {
+    const { result, queryClient } = renderCompleteProfile()
 
-    await submitPhone(result, '0888123456')
+    fill(result, { lastName: 'Петров', phoneNumber: '0888123456' })
+    await act(() => result.current.submit())
 
-    expect(result.current.failure).toBe('Твърде много опити. Опитайте отново след малко.')
-    expect(mockedFileCustomer).not.toHaveBeenCalled()
-    expect(onComplete).not.toHaveBeenCalled()
+    expect(queryClient.getQueryData(['customers', 'me'])).toEqual(COMPLETE)
+    expect(result.current.failure).toBeNull()
   })
 
-  // A sign-up message such as "registration failed" would be wrong under a phone field.
-  it('reports any other Clerk failure as the phone not being saved', async () => {
-    updateMetadata.mockRejectedValue(new Error('offline'))
-    const { result, onComplete } = renderCompleteProfile()
+  it('lets the customer try again when saving fails', async () => {
+    mockedUpdate.mockRejectedValueOnce(new ApiError(503, 'INTERNAL_ERROR'))
+    const { result, queryClient } = renderCompleteProfile()
 
-    await submitPhone(result, '0888123456')
+    fill(result, { lastName: 'Петров', phoneNumber: '0888123456' })
+    await act(() => result.current.submit())
 
-    expect(result.current.failure).toBe('Не успяхме да запазим телефона. Опитайте отново.')
-    expect(mockedFileCustomer).not.toHaveBeenCalled()
-    expect(onComplete).not.toHaveBeenCalled()
-  })
-
-  it('lets the customer try again when filing fails on transport', async () => {
-    mockedFileCustomer.mockRejectedValueOnce(new ApiError(503, 'INTERNAL_ERROR'))
-    const { result, onComplete } = renderCompleteProfile()
-
-    await submitPhone(result, '0888123456')
-
-    expect(result.current.failure).toMatch(/Опитайте отново/)
-    expect(onComplete).not.toHaveBeenCalled()
+    expect(result.current.failure).toBe('Не успяхме да запазим данните. Опитайте отново.')
+    expect(queryClient.getQueryData(['customers', 'me'])).toBeUndefined()
 
     await act(() => result.current.submit())
 
     expect(result.current.failure).toBeNull()
-    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(queryClient.getQueryData(['customers', 'me'])).toEqual(COMPLETE)
   })
 
-  // The session sync then shows the notice for an account it can never file.
-  it('hands an account that can never be filed back to the session sync', async () => {
-    mockedFileCustomer.mockRejectedValue(new ApiError(409, 'EMAIL_ALREADY_EXISTS'))
-    const { result, onComplete } = renderCompleteProfile()
-
-    await submitPhone(result, '0888123456')
-
-    expect(result.current.failure).toBeNull()
-    expect(onComplete).toHaveBeenCalledTimes(1)
-  })
-
-  it('clears a failure once the customer edits the phone', async () => {
-    mockedFileCustomer.mockRejectedValueOnce(new ApiError(503, 'INTERNAL_ERROR'))
+  it('clears a failure once the customer edits a field', async () => {
+    mockedUpdate.mockRejectedValueOnce(new ApiError(503, 'INTERNAL_ERROR'))
     const { result } = renderCompleteProfile()
-    await submitPhone(result, '0888123456')
+    fill(result, { lastName: 'Петров', phoneNumber: '0888123456' })
+    await act(() => result.current.submit())
 
-    act(() => result.current.changePhoneNumber('0888123457'))
+    fill(result, { phoneNumber: '0888123457' })
 
     expect(result.current.failure).toBeNull()
   })

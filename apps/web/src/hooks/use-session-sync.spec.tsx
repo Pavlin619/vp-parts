@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useAuth } from '@clerk/nextjs'
@@ -114,7 +114,7 @@ const { whenSettled } = useCart.getState()
 
 beforeEach(() => {
   jest.clearAllMocks()
-  useAccountSetupStore.setState({ stall: null, attempt: 0 })
+  useAccountSetupStore.setState({ failedUserId: null })
   useCart.setState({ whenSettled })
   useCart.getState().reset()
   useCheckoutDelivery.getState().reset()
@@ -167,48 +167,41 @@ describe('useSessionSync', () => {
 
         const { result } = renderSync()
 
-        await waitFor(() => expect(result.current.accountSetup).toBe('failed'))
+        await waitFor(() => expect(result.current).toBe('failed'))
         expect(mockedAdoptCart).not.toHaveBeenCalled()
       },
     )
 
-    describe('who signed in through Google or Facebook with no phone', () => {
+    // Filed without a phone or last name; checkout asks for them before an order.
+    describe('who signed in through Google for the first time', () => {
+      const merge: CartAdoptResponseDto = {
+        cart: serverCart('account-cart', 'GUEST-1'),
+        droppedLines: [],
+      }
+
       beforeEach(() => {
         mockedGetProfile.mockRejectedValue(notFiled())
-        mockedFileCustomer.mockRejectedValue(new ApiError(422, 'CUSTOMER_PHONE_REQUIRED'))
+        mockedFileCustomer.mockResolvedValue({ ...PROFILE, lastName: null, phoneNumber: null })
         mockedReadCartToken.mockReturnValue('guest-token')
-        mockedAdoptCart.mockResolvedValue({ cart: EMPTY_CART, droppedLines: [] })
+        mockedAdoptCart.mockResolvedValue(merge)
       })
 
-      it('asks for the phone and leaves the guest cart alone', async () => {
+      it('adopts the guest cart as the account’s', async () => {
         const { result } = renderSync()
 
-        await waitFor(() => expect(result.current.accountSetup).toBe('phone-required'))
-        expect(mockedAdoptCart).not.toHaveBeenCalled()
+        await waitFor(() => expect(useCart.getState().cartId).toBe('account-cart'))
+        expect(useCart.getState().ownerId).toBe('user_1')
+        expect(result.current).toBe('ok')
       })
 
-      // The dialog filed them; the cart merge it held back runs now.
-      it('carries on with the cart once resumed', async () => {
-        const { result } = renderSync()
-        await waitFor(() => expect(result.current.accountSetup).toBe('phone-required'))
+      it('keeps the incomplete profile for checkout to complete', async () => {
+        const { queryClient } = renderSync()
 
-        mockedGetProfile.mockResolvedValue(PROFILE)
-        act(() => result.current.resume())
-
-        expect(result.current.accountSetup).toBe('ok')
-        await waitFor(() => expect(mockedAdoptCart).toHaveBeenCalledTimes(1))
-        expect(result.current.accountSetup).toBe('ok')
-      })
-
-      it('does not ask the next account to sign in on this device', async () => {
-        const { result, rerender } = renderSync()
-        await waitFor(() => expect(result.current.accountSetup).toBe('phone-required'))
-
-        mockedGetProfile.mockResolvedValue(PROFILE)
-        signedIn('user_2')
-        rerender()
-
-        expect(result.current.accountSetup).toBe('ok')
+        await waitFor(() =>
+          expect(queryClient.getQueryData(['customers', 'me'])).toMatchObject({
+            phoneNumber: null,
+          }),
+        )
       })
     })
 
@@ -221,7 +214,7 @@ describe('useSessionSync', () => {
 
       await waitFor(() => expect(mockedGetProfile).toHaveBeenCalled())
       await Promise.resolve()
-      expect(result.current.accountSetup).toBe('ok')
+      expect(result.current).toBe('ok')
       expect(mockedAdoptCart).not.toHaveBeenCalled()
     })
 

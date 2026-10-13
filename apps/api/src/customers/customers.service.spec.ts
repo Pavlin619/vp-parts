@@ -12,6 +12,7 @@ describe('CustomersService', () => {
   const findByClerkId = jest.fn();
   const findProfileByClerkId = jest.fn();
   const create = jest.fn();
+  const updateProfile = jest.fn();
   const findIdentity = jest.fn();
 
   let service: CustomersService;
@@ -40,7 +41,12 @@ describe('CustomersService', () => {
         CustomersService,
         {
           provide: CustomersRepository,
-          useValue: { findByClerkId, findProfileByClerkId, create },
+          useValue: {
+            findByClerkId,
+            findProfileByClerkId,
+            create,
+            updateProfile,
+          },
         },
         { provide: ClerkUsers, useValue: { findIdentity } },
       ],
@@ -170,7 +176,7 @@ describe('CustomersService', () => {
       });
     });
 
-    it('refuses to file a customer Clerk holds no email or names for', async () => {
+    it('refuses to file a customer Clerk holds no email for', async () => {
       findProfileByClerkId.mockResolvedValue(null);
       findIdentity.mockResolvedValue(null);
 
@@ -180,20 +186,119 @@ describe('CustomersService', () => {
       expect(create).not.toHaveBeenCalled();
     });
 
-    it.each([
-      ['no registration metadata (an SSO sign-in)', {}],
-      ['a landline', { phoneNumber: '02 987 6543' }],
-    ])(
-      'asks for a phone from a customer whose metadata has %s',
-      async (_case, metadata) => {
-        findProfileByClerkId.mockResolvedValue(null);
-        findIdentity.mockResolvedValue(identityWith(metadata));
+    // A Google sign-in: no registration metadata, and perhaps no last name.
+    it('files a customer Clerk holds only an email and a first name for', async () => {
+      findProfileByClerkId.mockResolvedValue(null);
+      findIdentity.mockResolvedValue({
+        email: 'ivan@gmail.com',
+        firstName: 'Иван',
+        lastName: null,
+        unsafeMetadata: {},
+      });
+      create.mockResolvedValue({ kind: 'created', profile: PROFILE });
 
-        await expect(service.register('clerk-1')).rejects.toMatchObject({
-          response: { errorCode: AppErrorCode.CUSTOMER_PHONE_REQUIRED },
+      await service.register('clerk-1');
+
+      expect(create).toHaveBeenCalledWith({
+        clerkId: 'clerk-1',
+        email: 'ivan@gmail.com',
+        firstName: 'Иван',
+        lastName: null,
+        phoneNumber: null,
+      });
+    });
+
+    // Only a bypassed registration form leaves an invalid phone behind.
+    it('files a phone the metadata holds that is not a Bulgarian mobile as missing', async () => {
+      findProfileByClerkId.mockResolvedValue(null);
+      findIdentity.mockResolvedValue(
+        identityWith({ phoneNumber: '02 987 6543' }),
+      );
+      create.mockResolvedValue({ kind: 'created', profile: PROFILE });
+
+      await service.register('clerk-1');
+
+      expect(create).toHaveBeenCalledWith({
+        clerkId: 'clerk-1',
+        ...IDENTITY,
+        phoneNumber: null,
+      });
+    });
+  });
+
+  describe('completeProfile', () => {
+    it('sets only the details given', async () => {
+      updateProfile.mockResolvedValue(PROFILE);
+
+      await expect(
+        service.completeProfile('clerk-1', { phoneNumber: '+359888123456' }),
+      ).resolves.toMatchObject({ phoneNumber: '+359888123456' });
+
+      expect(updateProfile).toHaveBeenCalledWith('clerk-1', {
+        phoneNumber: '+359888123456',
+      });
+    });
+
+    it('may overwrite details the profile already holds', async () => {
+      updateProfile.mockResolvedValue(PROFILE);
+
+      await service.completeProfile('clerk-1', {
+        firstName: 'Иван',
+        lastName: 'Иванов',
+      });
+
+      expect(updateProfile).toHaveBeenCalledWith('clerk-1', {
+        firstName: 'Иван',
+        lastName: 'Иванов',
+      });
+    });
+
+    it('tells a signed-in user with no customer row to be filed first', async () => {
+      updateProfile.mockResolvedValue(null);
+
+      await expect(
+        service.completeProfile('clerk-1', { phoneNumber: '0888123456' }),
+      ).rejects.toMatchObject({
+        response: { errorCode: AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE },
+      });
+    });
+  });
+
+  describe('requireCompleteProfile', () => {
+    it('hands back the profile of a customer who can order', async () => {
+      findProfileByClerkId.mockResolvedValue(PROFILE);
+
+      await expect(
+        service.requireCompleteProfile('clerk-1'),
+      ).resolves.toMatchObject({
+        firstName: 'Иван',
+        lastName: 'Петров',
+        phoneNumber: '+359888123456',
+      });
+    });
+
+    it.each(['firstName', 'lastName', 'phoneNumber'] as const)(
+      'refuses a profile without a %s',
+      async (detail) => {
+        findProfileByClerkId.mockResolvedValue({ ...PROFILE, [detail]: null });
+
+        await expect(
+          service.requireCompleteProfile('clerk-1'),
+        ).rejects.toMatchObject({
+          status: 422,
+          response: { errorCode: AppErrorCode.CUSTOMER_DETAILS_REQUIRED },
         });
-        expect(create).not.toHaveBeenCalled();
       },
     );
+
+    it('refuses someone with no customer row', async () => {
+      findProfileByClerkId.mockResolvedValue(null);
+
+      await expect(
+        service.requireCompleteProfile('clerk-1'),
+      ).rejects.toMatchObject({
+        response: { errorCode: AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE },
+      });
+    });
   });
 });

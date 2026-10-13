@@ -4,6 +4,7 @@ import {
   fileCustomer,
   getCustomerProfile,
   isCustomerNotFiled,
+  updateCustomerProfile,
 } from './customers'
 import { ApiError } from './index'
 import { getSessionToken } from './session-token'
@@ -70,6 +71,20 @@ describe('fileCustomer', () => {
 
     expect(requestOf()[1].headers.get('Authorization')).toBe('Bearer fresh-jwt')
     expect(getSessionToken).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateCustomerProfile', () => {
+  it('patches only the details it is given, with the session', async () => {
+    await expect(updateCustomerProfile({ phoneNumber: '+359888123456' })).resolves.toEqual(
+      PROFILE,
+    )
+
+    const [url, init] = requestOf()
+    expect(url).toMatch(/\/customers\/me$/)
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body ?? '')).toEqual({ phoneNumber: '+359888123456' })
+    expect(init.headers.get('Authorization')).toBe('Bearer session-jwt')
   })
 })
 

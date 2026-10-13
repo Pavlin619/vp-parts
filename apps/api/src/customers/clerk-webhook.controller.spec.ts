@@ -5,7 +5,6 @@ import { ClerkWebhooks } from '../auth';
 import { ClerkWebhookController } from './clerk-webhook.controller';
 import {
   ClerkIdentityIncompleteException,
-  CustomerPhoneRequiredException,
   EmailAlreadyExistsException,
 } from './customers.exceptions';
 import { CustomersService } from './customers.service';
@@ -40,20 +39,17 @@ describe('ClerkWebhookController', () => {
     expect(register).not.toHaveBeenCalled();
   });
 
-  // `user.updated` carries the phone an SSO user gave after signing in.
-  it.each(['user.created', 'user.updated'])(
-    'files the customer a %s event stands for',
-    async (type) => {
-      verify.mockResolvedValue({ type, data: { id: 'user_1' } });
-      register.mockResolvedValue({ id: 'customer-1' });
+  it('files the customer a user.created event stands for', async () => {
+    verify.mockResolvedValue({ type: 'user.created', data: { id: 'user_1' } });
+    register.mockResolvedValue({ id: 'customer-1' });
 
-      await expect(controller.receive(request)).resolves.toBeUndefined();
-      expect(verify).toHaveBeenCalledWith(request);
-      expect(register).toHaveBeenCalledWith('user_1');
-    },
-  );
+    await expect(controller.receive(request)).resolves.toBeUndefined();
+    expect(verify).toHaveBeenCalledWith(request);
+    expect(register).toHaveBeenCalledWith('user_1');
+  });
 
-  it.each(['user.deleted', 'session.created'])(
+  // Filing needs nothing Clerk could add later, so an update has nothing to file.
+  it.each(['user.updated', 'user.deleted', 'session.created'])(
     'accepts and ignores a %s event',
     async (type) => {
       verify.mockResolvedValue({ type, data: { id: 'user_1' } });
@@ -67,10 +63,6 @@ describe('ClerkWebhookController', () => {
   it.each([
     ['an incomplete Clerk identity', new ClerkIdentityIncompleteException()],
     ['an email another customer holds', new EmailAlreadyExistsException()],
-    [
-      'a phone the user has not given yet',
-      new CustomerPhoneRequiredException(),
-    ],
   ])('accepts an event it cannot file because of %s', async (_case, error) => {
     verify.mockResolvedValue({ type: 'user.created', data: { id: 'user_1' } });
     register.mockRejectedValue(error);
