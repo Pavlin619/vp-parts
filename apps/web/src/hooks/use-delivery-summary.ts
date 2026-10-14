@@ -32,9 +32,10 @@ interface DeliverySummaryState {
 /**
  * What the selected lines weigh and what delivering them to the chosen office or
  * address costs, both read from the API for the cart version on screen. The quote
- * is asked only once there is a destination and a weighed parcel.
+ * is asked only once there is a destination and a weighed parcel; a store pickup
+ * is never quoted.
  */
-export function useDeliverySummary(): DeliverySummaryState {
+export function useDeliverySummary(pickupReadyAt: string | null): DeliverySummaryState {
   const carrier = CHECKOUT_CARRIER;
   const method = useDeliveryMethod();
   const officeCode = useSelectedOfficeCode(carrier);
@@ -56,6 +57,7 @@ export function useDeliverySummary(): DeliverySummaryState {
     destination,
     parcelCheck,
     quote: isQuotable ? quoteQuery : null,
+    pickupReadyAt,
   });
 
   return { parcelCheck, delivery };
@@ -66,7 +68,7 @@ function destinationOf(
   officeCode: string | null,
   address: DeliveryAddressDto | null,
 ): DeliveryDestinationDto | null {
-  if (method === null) {
+  if (method === null || method === "store-pickup") {
     return null;
   }
 

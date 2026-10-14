@@ -18,7 +18,7 @@ describe('DeliveryMethodPanel', () => {
     jest.useRealTimers()
   })
 
-  it('offers only the two courier methods for a retail order', () => {
+  it('offers the two courier methods and a store pickup for a retail order', () => {
     render(
       <DeliveryMethodPanel
         method="courier-address"
@@ -29,12 +29,15 @@ describe('DeliveryMethodPanel', () => {
 
     const group = screen.getByRole('radiogroup', { name: 'Метод на доставка' })
     expect(group).toBeInTheDocument()
-    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
     expect(
       screen.getByRole('radio', { name: /до адрес/ }),
     ).toBeChecked()
     expect(
       screen.getByRole('radio', { name: /до офис/ }),
+    ).not.toBeChecked()
+    expect(
+      screen.getByRole('radio', { name: /Вземане от магазин/ }),
     ).not.toBeChecked()
   })
 
@@ -102,6 +105,23 @@ describe('DeliveryMethodPanel', () => {
     )
     expect(screen.getByTestId('address-picker')).toBeInTheDocument()
     expect(screen.queryByTestId('office-picker')).not.toBeInTheDocument()
+  })
+
+  it('shows our one store, free of a delivery fee, under a store pickup', () => {
+    render(
+      <DeliveryMethodPanel
+        method="store-pickup"
+        onMethodChange={jest.fn()}
+        promise={null}
+      />,
+    )
+
+    const slot = screen.getByTestId('delivery-provider-slot')
+    expect(slot).toHaveAttribute('data-method', 'store-pickup')
+    expect(slot).toHaveTextContent('Магазин Плевен')
+    expect(slot).toHaveTextContent(/без такса за доставка/i)
+    expect(screen.queryByTestId('office-picker')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('address-picker')).not.toBeInTheDocument()
   })
 
   it('prompts to order before the courier deadline', () => {

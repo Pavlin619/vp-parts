@@ -33,13 +33,13 @@ function quoteState(overrides: Partial<NonNullable<QuoteState>> = {}): QuoteStat
 describe('resolveDeliverySummary', () => {
   it('asks for a method before anything is priced', () => {
     expect(
-      resolveDeliverySummary({ method: null, destination: null, parcelCheck: READY, quote: null }),
+      resolveDeliverySummary({ method: null, destination: null, parcelCheck: READY, quote: null, pickupReadyAt: null }),
     ).toEqual({ kind: 'awaiting-method' })
   })
 
   it('asks for an address before anything is priced', () => {
     expect(
-      resolveDeliverySummary({ method: 'courier-address', destination: null, parcelCheck: READY, quote: null }),
+      resolveDeliverySummary({ method: 'courier-address', destination: null, parcelCheck: READY, quote: null, pickupReadyAt: null }),
     ).toEqual({ kind: 'awaiting-address' })
   })
 
@@ -50,6 +50,7 @@ describe('resolveDeliverySummary', () => {
         destination: ADDRESS,
         parcelCheck: READY,
         quote: quoteState({ data: { ...QUOTE, destination: ADDRESS } }),
+        pickupReadyAt: null,
       }),
     ).toEqual({ kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: '2026-09-30' })
   })
@@ -63,6 +64,7 @@ describe('resolveDeliverySummary', () => {
           destination: ADDRESS,
           parcelCheck: READY,
           quote: quoteState({ error: new ApiError(422, errorCode) }),
+          pickupReadyAt: null,
         }),
       ).toEqual({ kind: 'address-unusable' })
     },
@@ -70,7 +72,7 @@ describe('resolveDeliverySummary', () => {
 
   it('asks for an office before anything is priced', () => {
     expect(
-      resolveDeliverySummary({ method: 'courier-office', destination: null, parcelCheck: READY, quote: null }),
+      resolveDeliverySummary({ method: 'courier-office', destination: null, parcelCheck: READY, quote: null, pickupReadyAt: null }),
     ).toEqual({ kind: 'awaiting-office' })
   })
 
@@ -81,6 +83,7 @@ describe('resolveDeliverySummary', () => {
         destination: OFFICE,
         parcelCheck: { state: 'checking' },
         quote: null,
+        pickupReadyAt: null,
       }),
     ).toEqual({ kind: 'pending' })
   })
@@ -92,6 +95,7 @@ describe('resolveDeliverySummary', () => {
         destination: OFFICE,
         parcelCheck: { state: 'failed' },
         quote: null,
+        pickupReadyAt: null,
       }),
     ).toEqual({ kind: 'failed' })
   })
@@ -103,6 +107,7 @@ describe('resolveDeliverySummary', () => {
         destination: OFFICE,
         parcelCheck: READY,
         quote: quoteState({ isPending: true }),
+        pickupReadyAt: null,
       }),
     ).toEqual({ kind: 'pending' })
   })
@@ -114,6 +119,7 @@ describe('resolveDeliverySummary', () => {
         destination: OFFICE,
         parcelCheck: READY,
         quote: quoteState({ data: QUOTE }),
+        pickupReadyAt: null,
       }),
     ).toEqual({ kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: '2026-09-30' })
   })
@@ -127,6 +133,7 @@ describe('resolveDeliverySummary', () => {
           destination: OFFICE,
           parcelCheck: READY,
           quote: quoteState({ error: new ApiError(422, errorCode) }),
+          pickupReadyAt: null,
         }),
       ).toEqual({ kind: 'office-unusable' })
     },
@@ -139,8 +146,20 @@ describe('resolveDeliverySummary', () => {
         destination: OFFICE,
         parcelCheck: READY,
         quote: quoteState({ error: new ApiError(503, 'DELIVERY_UNAVAILABLE') }),
+        pickupReadyAt: null,
       }),
     ).toEqual({ kind: 'failed' })
+  })
+  it('frees a store pickup and carries the day it is ready', () => {
+    expect(
+      resolveDeliverySummary({
+        method: 'store-pickup',
+        destination: null,
+        parcelCheck: { state: 'failed' },
+        quote: null,
+        pickupReadyAt: '2026-07-02T06:00:00.000Z',
+      }),
+    ).toEqual({ kind: 'pickup', readyAt: '2026-07-02T06:00:00.000Z' })
   })
 })
 
@@ -149,6 +168,10 @@ describe('summaryTotal', () => {
     expect(
       summaryTotal(8400, { kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: null }),
     ).toBe(9114)
+  })
+
+  it('adds nothing for a store pickup', () => {
+    expect(summaryTotal(8400, { kind: 'pickup', readyAt: null })).toBe(8400)
   })
 
   it('leaves the goods alone while delivery has no price', () => {
