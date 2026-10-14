@@ -61,6 +61,17 @@ describe('ContactPanel', () => {
     expect(screen.getByRole('radio', { name: /Бърза поръчка/ })).toBeChecked()
   })
 
+  it('preselects nothing and asks for nothing until a mode is picked', () => {
+    render(<ContactPanel mode={null} onModeChange={jest.fn()} />)
+
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toBeChecked()
+    }
+    expect(screen.queryByTestId('clerk-sign-in')).not.toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Регистрация' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Име и фамилия')).not.toBeInTheDocument()
+  })
+
   it('reports the mode the customer picks', async () => {
     const onModeChange = jest.fn()
     render(<ContactPanel mode="quick" onModeChange={onModeChange} />)
@@ -113,6 +124,14 @@ describe('ContactPanel', () => {
     expect(screen.getByTestId('signed-in-contact')).toBeInTheDocument()
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Регистрация' })).not.toBeInTheDocument()
+  })
+
+  // A Google sign-in's profile completion lives here, so it must not wait on a mode.
+  it('shows the signed-in customer when no mode was picked', () => {
+    mockSession({ isLoaded: true, isSignedIn: true })
+    render(<ContactPanel mode={null} onModeChange={jest.fn()} />)
+
+    expect(screen.getByTestId('signed-in-contact')).toBeInTheDocument()
   })
 
   // Signed out, the panel offers a quick order, so the cart can still be ordered.

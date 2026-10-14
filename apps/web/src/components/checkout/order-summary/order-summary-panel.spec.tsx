@@ -92,6 +92,7 @@ describe('OrderSummaryPanel', () => {
   describe('delivery', () => {
     it.each([
       [{ kind: 'not-quoted' }, '—'],
+      [{ kind: 'awaiting-method' }, 'Изберете метод'],
       [{ kind: 'awaiting-office' }, 'Изберете офис'],
       [{ kind: 'office-unusable' }, 'Изберете друг офис'],
       [{ kind: 'awaiting-address' }, 'Въведете адрес'],

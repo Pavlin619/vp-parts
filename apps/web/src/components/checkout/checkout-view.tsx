@@ -30,7 +30,7 @@ export function CheckoutView() {
   const deliveryMethod = useDeliveryMethod();
   const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
   // Safe to read the URL here: the panel first renders after the cart hydrates.
-  const [contactMode, setContactMode] = useState<ContactMode>(() =>
+  const [contactMode, setContactMode] = useState<ContactMode | null>(() =>
     initialContactMode(typeof window === "undefined" ? "" : window.location.hash),
   );
   const { isSignedIn } = useAuth();

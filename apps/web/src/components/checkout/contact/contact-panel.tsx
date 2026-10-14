@@ -26,7 +26,7 @@ const CHECKOUT_SIGN_IN_APPEARANCE = {
 } as const;
 
 interface ContactPanelProps {
-  mode: ContactMode;
+  mode: ContactMode | null;
   onModeChange: (mode: ContactMode) => void;
 }
 
@@ -68,7 +68,7 @@ export function ContactPanel({ mode, onModeChange }: ContactPanelProps) {
             ))}
           </div>
 
-          <GuestContact mode={mode} />
+          {mode && <GuestContact mode={mode} />}
         </>
       )}
     </section>

@@ -86,6 +86,17 @@ describe('useDeliverySummary', () => {
     })
   })
 
+  it('does not ask for a quote before a method is chosen', async () => {
+    useCheckoutDelivery.setState({ method: null })
+
+    const { result } = renderHook(() => useDeliverySummary(), { wrapper })
+
+    await waitFor(() => expect(result.current.parcelCheck.state).toBe('ready'))
+
+    expect(result.current.delivery).toEqual({ kind: 'awaiting-method' })
+    expect(getQuote).not.toHaveBeenCalled()
+  })
+
   it('does not ask for a quote before an office is chosen', async () => {
     chooseOffice(null)
 

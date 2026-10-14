@@ -3,10 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { DeliveryAddressDto, ShippingMethod } from "@vp-parts-shop/shared";
-import {
-  DEFAULT_DELIVERY_METHOD,
-  type DeliveryMethod,
-} from "@/lib/checkout/delivery/delivery-methods";
+import type { DeliveryMethod } from "@/lib/checkout/delivery/delivery-methods";
 import { useIsHydrated } from "./use-is-hydrated";
 
 export interface SelectedOffice {
@@ -22,7 +19,8 @@ export interface SelectedAddress {
 }
 
 interface CheckoutDeliveryState {
-  method: DeliveryMethod;
+  /** Null until the customer picks one; checkout preselects nothing. */
+  method: DeliveryMethod | null;
   office: SelectedOffice | null;
   address: SelectedAddress | null;
 
@@ -35,7 +33,7 @@ interface CheckoutDeliveryState {
 }
 
 const INITIAL_DELIVERY = {
-  method: DEFAULT_DELIVERY_METHOD,
+  method: null,
   office: null,
   address: null,
 } satisfies Pick<CheckoutDeliveryState, "method" | "office" | "address">;
@@ -67,11 +65,11 @@ export const useCheckoutDelivery = create<CheckoutDeliveryState>()(
   ),
 );
 
-export function useDeliveryMethod(): DeliveryMethod {
+export function useDeliveryMethod(): DeliveryMethod | null {
   const isHydrated = useIsHydrated();
   const method = useCheckoutDelivery((state) => state.method);
 
-  return isHydrated ? method : DEFAULT_DELIVERY_METHOD;
+  return isHydrated ? method : null;
 }
 
 /** The remembered office's code, if it was chosen for this carrier. */

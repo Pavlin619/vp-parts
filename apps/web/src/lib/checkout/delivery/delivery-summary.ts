@@ -11,6 +11,7 @@ import type { ParcelCheck } from "./office-availability";
 /** What the order summary can say about delivery. */
 export type DeliverySummary =
   | { kind: "not-quoted" }
+  | { kind: "awaiting-method" }
   | { kind: "awaiting-office" }
   | { kind: "awaiting-address" }
   | { kind: "pending" }
@@ -27,7 +28,7 @@ export interface QuoteState {
 }
 
 interface DeliverySummaryInput {
-  method: DeliveryMethod;
+  method: DeliveryMethod | null;
   /** Where the chosen method delivers to; null until the customer has picked it. */
   destination: DeliveryDestinationDto | null;
   parcelCheck: ParcelCheck;
@@ -53,6 +54,10 @@ export function resolveDeliverySummary({
   parcelCheck,
   quote,
 }: DeliverySummaryInput): DeliverySummary {
+  if (method === null) {
+    return { kind: "awaiting-method" };
+  }
+
   if (destination === null) {
     return { kind: method === "courier-office" ? "awaiting-office" : "awaiting-address" };
   }

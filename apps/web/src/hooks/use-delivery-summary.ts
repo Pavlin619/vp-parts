@@ -62,10 +62,14 @@ export function useDeliverySummary(): DeliverySummaryState {
 }
 
 function destinationOf(
-  method: DeliveryMethod,
+  method: DeliveryMethod | null,
   officeCode: string | null,
   address: DeliveryAddressDto | null,
 ): DeliveryDestinationDto | null {
+  if (method === null) {
+    return null;
+  }
+
   if (method === "courier-office") {
     return officeCode ? { type: DeliveryDestinationType.OFFICE, officeCode } : null;
   }

@@ -22,14 +22,13 @@ export const CONTACT_MODES: readonly ContactModeOption[] = [
   { id: "quick", label: "Бърза поръчка", description: "Само име и телефон, без профил" },
 ];
 
-export const DEFAULT_CONTACT_MODE: ContactMode = "quick";
-
 /**
  * The sign-in tab when Clerk has come back to one of its hash routes — a Google
  * sign-in returns to `#/sso-callback`, which only its `<SignIn/>` can finish.
+ * Otherwise nothing is preselected: the visitor picks.
  */
-export function initialContactMode(hash: string): ContactMode {
-  return hash.startsWith("#/") ? "login" : DEFAULT_CONTACT_MODE;
+export function initialContactMode(hash: string): ContactMode | null {
+  return hash.startsWith("#/") ? "login" : null;
 }
 
 /** Where signing in or out from the contact panel lands, so the order is not left behind. */

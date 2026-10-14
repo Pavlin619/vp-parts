@@ -8,15 +8,16 @@ import {
 } from './use-checkout-delivery'
 
 beforeEach(() => {
-  useCheckoutDelivery.setState({ method: 'courier-address', office: null, address: null })
+  useCheckoutDelivery.getState().reset()
   window.localStorage.clear()
 })
 
 describe('useCheckoutDelivery', () => {
-  it('starts on delivery to an address with no office chosen', () => {
+  it('starts with no method, office or address chosen', () => {
     expect(useCheckoutDelivery.getState()).toMatchObject({
-      method: 'courier-address',
+      method: null,
       office: null,
+      address: null,
     })
   })
 
@@ -81,7 +82,7 @@ describe('reset', () => {
     useCheckoutDelivery.getState().reset()
 
     expect(useCheckoutDelivery.getState()).toMatchObject({
-      method: 'courier-address',
+      method: null,
       office: null,
       address: null,
     })
@@ -89,6 +90,12 @@ describe('reset', () => {
 })
 
 describe('useDeliveryMethod', () => {
+  it('reads no method before the customer picks one', () => {
+    const { result } = renderHook(() => useDeliveryMethod())
+
+    expect(result.current).toBeNull()
+  })
+
   it('reads the chosen method once hydrated', () => {
     useCheckoutDelivery.setState({ method: 'courier-office' })
 

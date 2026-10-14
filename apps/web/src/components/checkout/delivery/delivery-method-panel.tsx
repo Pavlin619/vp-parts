@@ -19,7 +19,7 @@ const METHOD_ICONS: Record<DeliveryMethod, ReactNode> = {
 };
 
 interface DeliveryMethodPanelProps {
-  method: DeliveryMethod;
+  method: DeliveryMethod | null;
   onMethodChange: (method: DeliveryMethod) => void;
   /** The courier deadline the order is racing; null when there is none. */
   promise: DeliveryPromise | null;
@@ -58,7 +58,7 @@ export function DeliveryMethodPanel({
         ))}
       </div>
 
-      <ProviderSlot method={method} />
+      {method && <ProviderSlot method={method} />}
     </section>
   );
 }

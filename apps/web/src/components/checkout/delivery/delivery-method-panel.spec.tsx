@@ -38,6 +38,15 @@ describe('DeliveryMethodPanel', () => {
     ).not.toBeChecked()
   })
 
+  it('preselects no method and mounts no picker until one is picked', () => {
+    render(<DeliveryMethodPanel method={null} onMethodChange={jest.fn()} promise={null} />)
+
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toBeChecked()
+    }
+    expect(screen.queryByTestId('delivery-provider-slot')).not.toBeInTheDocument()
+  })
+
   it('keeps its label id unique when rendered twice', () => {
     render(
       <>
