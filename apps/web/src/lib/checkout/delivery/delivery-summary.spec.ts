@@ -31,6 +31,12 @@ function quoteState(overrides: Partial<NonNullable<QuoteState>> = {}): QuoteStat
 }
 
 describe('resolveDeliverySummary', () => {
+  it('asks for a method before anything is priced', () => {
+    expect(
+      resolveDeliverySummary({ method: null, destination: null, parcelCheck: READY, quote: null }),
+    ).toEqual({ kind: 'awaiting-method' })
+  })
+
   it('asks for an address before anything is priced', () => {
     expect(
       resolveDeliverySummary({ method: 'courier-address', destination: null, parcelCheck: READY, quote: null }),

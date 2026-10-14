@@ -1,7 +1,6 @@
 import {
   contactNameError,
   contactPhoneError,
-  DEFAULT_CONTACT_MODE,
   initialContactMode,
 } from './contact-modes'
 
@@ -37,8 +36,8 @@ describe('contactPhoneError', () => {
 })
 
 describe('initialContactMode', () => {
-  it('starts a visitor on the default mode', () => {
-    expect(initialContactMode('')).toBe(DEFAULT_CONTACT_MODE)
+  it('leaves the choice to the visitor', () => {
+    expect(initialContactMode('')).toBeNull()
   })
 
   // Only the "Вход" tab mounts Clerk's <SignIn/>, which finishes the callback.
@@ -50,6 +49,6 @@ describe('initialContactMode', () => {
   )
 
   it('ignores an ordinary in-page anchor', () => {
-    expect(initialContactMode('#delivery')).toBe(DEFAULT_CONTACT_MODE)
+    expect(initialContactMode('#delivery')).toBeNull()
   })
 })

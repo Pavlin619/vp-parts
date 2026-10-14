@@ -26,8 +26,6 @@ export const B2C_DELIVERY_METHODS: readonly DeliveryMethodOption[] = [
   },
 ];
 
-export const DEFAULT_DELIVERY_METHOD: DeliveryMethod = "courier-address";
-
 /** The carrier checkout delivers with, to an office or an address; Econt is our only one. */
 export const CHECKOUT_CARRIER = ShippingMethod.ECONT;
 

@@ -163,7 +163,8 @@ Two things make the return from Google land on that step:
 - Clerk comes back to `/checkout#/sso-callback`, which only its `<SignIn/>` can
   finish, and that is mounted only on the "Вход" tab. Checkout opens on that tab
   whenever the URL holds one of Clerk's hash routes (`initialContactMode`);
-  otherwise the visitor stays signed out on "Бърза поръчка".
+  otherwise no tab is preselected. The completion step does not depend on the
+  tab: signed in, the panel shows it whatever was picked.
 
 ### The webhook endpoint
 

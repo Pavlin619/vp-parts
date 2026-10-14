@@ -14,6 +14,7 @@ const NOT_CALCULATED = "—";
 
 const DELIVERY_COPY: Record<Exclude<DeliverySummary["kind"], "pending" | "quoted">, string> = {
   "not-quoted": NOT_CALCULATED,
+  "awaiting-method": "Изберете метод",
   "awaiting-office": "Изберете офис",
   "awaiting-address": "Въведете адрес",
   "address-unusable": "Проверете адреса",

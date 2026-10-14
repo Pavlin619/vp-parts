@@ -127,7 +127,7 @@ describe('CheckoutView', () => {
       isSignedIn: false,
     } as ReturnType<typeof useAuth>)
     useCart.setState({ lines: [], lastWriteError: null })
-    useCheckoutDelivery.setState({ method: 'courier-address', office: null })
+    useCheckoutDelivery.getState().reset()
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
     getParcel.mockReset().mockResolvedValue({
@@ -190,7 +190,7 @@ describe('CheckoutView', () => {
     expect(screen.getByRole('heading', { name: 'Артикули · 2' })).toBeInTheDocument()
   })
 
-  it('starts on delivery to an address and lets the customer switch', async () => {
+  it('preselects no delivery method and lets the customer pick one', async () => {
     const user = userEvent.setup()
     useCart.setState({ lines: [line()] })
 
@@ -198,7 +198,8 @@ describe('CheckoutView', () => {
 
     const address = await screen.findByRole('radio', { name: /до адрес/ })
     const office = screen.getByRole('radio', { name: /до офис/ })
-    expect(address).toBeChecked()
+    expect(address).not.toBeChecked()
+    expect(office).not.toBeChecked()
 
     await user.click(office)
 
@@ -207,15 +208,19 @@ describe('CheckoutView', () => {
     expect(screen.getByTestId('office-picker')).toBeInTheDocument()
   })
 
-  it('starts on a quick order and switches the order button with the contact mode', async () => {
+  it('preselects no contact mode and switches the order button with the one picked', async () => {
     const user = userEvent.setup()
     useCart.setState({ lines: [line()] })
 
     renderView()
 
-    expect(
-      await screen.findByRole('radio', { name: /Бърза поръчка/ }),
-    ).toBeChecked()
+    const quick = await screen.findByRole('radio', { name: /Бърза поръчка/ })
+    expect(quick).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: /Вход/ })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: /Регистрация/ })).not.toBeChecked()
+
+    await user.click(quick)
+
     expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('radio', { name: /Вход/ }))
