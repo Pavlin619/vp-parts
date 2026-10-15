@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { MapPin, Truck } from "lucide-react";
+import { MapPin, Store, Truck } from "lucide-react";
 import { DeliveryCutoffPromise } from "@/components/delivery";
 import {
   B2C_DELIVERY_METHODS,
@@ -10,12 +10,14 @@ import {
 } from "@/lib/checkout/delivery/delivery-methods";
 import type { DeliveryPromise } from "@/lib/delivery/promise";
 import { DeliveryOptionCard } from "./delivery-option-card";
+import { StorePickupCard } from "./store-pickup-card";
 import { AddressPicker } from "./address";
 import { OfficePicker } from "./offices";
 
 const METHOD_ICONS: Record<DeliveryMethod, ReactNode> = {
   "courier-address": <Truck />,
   "courier-office": <MapPin />,
+  "store-pickup": <Store />,
 };
 
 interface DeliveryMethodPanelProps {
@@ -63,19 +65,22 @@ export function DeliveryMethodPanel({
   );
 }
 
-/** Where the courier's address form or office picker mounts for the chosen method. */
+/** Where the chosen method's picker, or the store a pickup is collected from, mounts. */
 function ProviderSlot({ method }: { method: DeliveryMethod }) {
-  if (method === "courier-office") {
-    return (
-      <div data-testid="delivery-provider-slot" data-method={method} className="mt-2.5">
-        <OfficePicker carrier={CHECKOUT_CARRIER} />
-      </div>
-    );
-  }
-
   return (
     <div data-testid="delivery-provider-slot" data-method={method} className="mt-2.5">
-      <AddressPicker carrier={CHECKOUT_CARRIER} />
+      <MethodDetail method={method} />
     </div>
   );
+}
+
+function MethodDetail({ method }: { method: DeliveryMethod }) {
+  switch (method) {
+    case "courier-address":
+      return <AddressPicker carrier={CHECKOUT_CARRIER} />;
+    case "courier-office":
+      return <OfficePicker carrier={CHECKOUT_CARRIER} />;
+    case "store-pickup":
+      return <StorePickupCard />;
+  }
 }

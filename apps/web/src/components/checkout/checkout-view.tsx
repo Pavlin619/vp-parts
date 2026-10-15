@@ -36,12 +36,15 @@ export function CheckoutView() {
   const { isSignedIn } = useAuth();
 
   const availability = useCartAvailability(lines);
-  const { parcelCheck, delivery } = useDeliverySummary();
-
   const rows = availability.rows.filter((row) => row.line.isSelected);
   const totals = cartTotals(rows);
-  // Both B2C methods go by courier, so they race the same deadline.
-  const promise = resolveOrderPromise(rows, "courier");
+  const promise = resolveOrderPromise(
+    rows,
+    deliveryMethod === "store-pickup" ? "pickup" : "courier",
+  );
+
+  const pickupReadyAt = promise?.isPickup ? promise.fulfilledAt : null;
+  const { parcelCheck, delivery } = useDeliverySummary(pickupReadyAt);
 
   return (
     <>

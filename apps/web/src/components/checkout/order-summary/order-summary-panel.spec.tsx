@@ -137,5 +137,30 @@ describe('OrderSummaryPanel', () => {
 
       expect(screen.getByText('Очаквана доставка').nextSibling).toHaveTextContent('—')
     })
+
+    describe('store pickup', () => {
+      afterEach(() => {
+        jest.useRealTimers()
+      })
+
+      it('costs nothing and says when the order is ready to collect', () => {
+        jest.useFakeTimers()
+        jest.setSystemTime(new Date('2026-07-01T08:00:00.000Z'))
+
+        renderPanel({ delivery: { kind: 'pickup', readyAt: '2026-07-02T06:00:00.000Z' } })
+
+        expect(screen.getByText('Цена на доставката').nextSibling).toHaveTextContent('Безплатна')
+        expect(screen.getByText('Готова за вземане').nextSibling).toHaveTextContent('утре')
+        expect(screen.queryByText('Очаквана доставка')).not.toBeInTheDocument()
+        expect(screen.getByText('84,00 €')).toBeInTheDocument()
+        expect(screen.queryByText('Без цената на доставката')).not.toBeInTheDocument()
+      })
+
+      it('shows a dash for the ready day when there is none to promise', () => {
+        renderPanel({ delivery: { kind: 'pickup', readyAt: null } })
+
+        expect(screen.getByText('Готова за вземане').nextSibling).toHaveTextContent('—')
+      })
+    })
   })
 })

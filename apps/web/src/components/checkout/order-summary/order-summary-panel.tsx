@@ -8,11 +8,14 @@ import {
   type DeliverySummary,
 } from "@/lib/checkout/delivery/delivery-summary";
 import type { ParcelCheck } from "@/lib/checkout/delivery/office-availability";
-import { formatShopDate } from "@/lib/delivery/format";
+import { formatDay, formatShopDate } from "@/lib/delivery/format";
 
 const NOT_CALCULATED = "—";
 
-const DELIVERY_COPY: Record<Exclude<DeliverySummary["kind"], "pending" | "quoted">, string> = {
+const DELIVERY_COPY: Record<
+  Exclude<DeliverySummary["kind"], "pending" | "pickup" | "quoted">,
+  string
+> = {
   "not-quoted": NOT_CALCULATED,
   "awaiting-method": "Изберете метод",
   "awaiting-office": "Изберете офис",
@@ -57,7 +60,10 @@ export function OrderSummaryPanel({
         />
         <SummaryRow label="ДДС" value={isPending ? null : formatPrice(totals.vatAmount)} />
         <SummaryRow label="Цена на доставката" value={deliveryText(delivery)} />
-        <SummaryRow label="Очаквана доставка" value={deliveryDateText(delivery)} />
+        <SummaryRow
+          label={delivery.kind === "pickup" ? "Готова за вземане" : "Очаквана доставка"}
+          value={deliveryDateText(delivery)}
+        />
 
         <div className="mt-2.5 flex items-baseline justify-between gap-4 border-t border-line pt-3.5">
           <dt className="text-sm font-semibold text-ink">Общо с ДДС</dt>
@@ -72,7 +78,7 @@ export function OrderSummaryPanel({
             )}
           </dd>
         </div>
-        {delivery.kind !== "quoted" && (
+        {!hasDeliveryPrice(delivery) && (
           <p className="mt-1 text-right text-[11.5px] text-ink-3">Без цената на доставката</p>
         )}
       </dl>
@@ -110,10 +116,16 @@ function weightText(parcelCheck: ParcelCheck): string | null {
   }
 }
 
+function hasDeliveryPrice(delivery: DeliverySummary): boolean {
+  return delivery.kind === "quoted" || delivery.kind === "pickup";
+}
+
 function deliveryText(delivery: DeliverySummary): string | null {
   switch (delivery.kind) {
     case "pending":
       return null;
+    case "pickup":
+      return "Безплатна";
     case "quoted":
       return formatPrice(delivery.priceIncVatCents);
     default:
@@ -125,6 +137,8 @@ function deliveryDateText(delivery: DeliverySummary): string | null {
   switch (delivery.kind) {
     case "pending":
       return null;
+    case "pickup":
+      return delivery.readyAt ? formatDay(delivery.readyAt) : NOT_CALCULATED;
     case "quoted":
       return delivery.expectedDeliveryDate
         ? formatShopDate(delivery.expectedDeliveryDate)

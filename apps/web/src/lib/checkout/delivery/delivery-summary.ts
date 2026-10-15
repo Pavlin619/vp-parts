@@ -18,6 +18,7 @@ export type DeliverySummary =
   | { kind: "office-unusable" }
   | { kind: "address-unusable" }
   | { kind: "failed" }
+  | { kind: "pickup"; readyAt: string | null }
   | { kind: "quoted"; priceIncVatCents: number; expectedDeliveryDate: string | null };
 
 /** The slice of a query the summary reads; null when no quote was asked for. */
@@ -33,6 +34,8 @@ interface DeliverySummaryInput {
   destination: DeliveryDestinationDto | null;
   parcelCheck: ParcelCheck;
   quote: QuoteState | null;
+  /** When a store pickup is ready to collect (ISO UTC); null when we cannot promise it. */
+  pickupReadyAt: string | null;
 }
 
 const OFFICE_UNUSABLE_CODES: readonly string[] = [
@@ -53,9 +56,14 @@ export function resolveDeliverySummary({
   destination,
   parcelCheck,
   quote,
+  pickupReadyAt,
 }: DeliverySummaryInput): DeliverySummary {
   if (method === null) {
     return { kind: "awaiting-method" };
+  }
+
+  if (method === "store-pickup") {
+    return { kind: "pickup", readyAt: pickupReadyAt };
   }
 
   if (destination === null) {

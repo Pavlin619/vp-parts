@@ -25,6 +25,12 @@ an empty parcel is never weighed or priced. Every selected part has a weight (me
 or estimated, see [below](#a-part-with-no-weight-of-its-own-is-estimated-from-its-equivalents)),
 so `/parcel` always answers a `weightGrams`.
 
+## Store pickup involves no carrier
+
+"Вземане от магазин", checkout's third B2C method, is collected from our one store
+(`apps/web/src/lib/delivery/store.ts`). It asks for no quote and costs nothing; the
+order summary dates it by the cart's **pickup** projection instead of a carrier's date.
+
 ## The office picker in the web checkout
 
 `apps/web/src/components/checkout/delivery/offices/office-picker.tsx` mounts under
