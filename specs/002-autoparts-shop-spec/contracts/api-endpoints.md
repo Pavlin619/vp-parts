@@ -967,7 +967,7 @@ Response `422 PRICE_CHANGED` or `422 ARTICLE_UNAVAILABLE` if anything has change
 
 **`POST /orders`** (Protected)
 
-Called after payment is confirmed (myPOS IPN has been processed). Creates the order record and publishes `OrderPlaced` to SQS.
+Called after payment is confirmed (dominaite's `payment.succeeded` webhook has been processed). Creates the order record and publishes `OrderPlaced` to SQS.
 
 Request body:
 ```json
@@ -975,7 +975,7 @@ Request body:
   "cartId": "uuid",
   "addressId": "uuid",
   "shippingMethod": "ECONT",
-  "paymentMethod": "MYPOS",
+  "paymentMethod": "CARD",
   "paymentReference": "pi_abc123",
   "vehicleTag": "CB1234AB",
   "jobReference": "Golf service Jul-2026"
@@ -1049,7 +1049,7 @@ Response `200`:
   "subtotalExVat": 6500,
   "vatAmount": 1300,
   "totalIncVat": 8400,
-  "paymentMethod": "MYPOS",
+  "paymentMethod": "CARD",
   "courierName": "Econt",
   "trackingReference": "1234567890",
   "vehicleTag": "CB1234AB",
@@ -1094,32 +1094,32 @@ Errors: `409 ORDER_CANNOT_BE_CANCELLED` if status is not `PROCESSING`.
 
 ## Payments Module
 
-### myPOS — Initiate Payment
+### Card — Initiate Payment
 
-**`POST /payments/mypos/initiate`** (Protected)
+**`POST /payments/card/initiate`** (Protected)
 
-NestJS calls the myPOS Checkout API server-side and returns the hosted payment URL to the frontend.
+NestJS opens a dominaite payment session server-side and returns what the frontend needs to show dominaite's payment form.
 
 Request body: `{ "cartId": "uuid", "confirmedTotal": 8400 }`
 
 Response `200`:
 ```json
 {
-  "checkoutUrl": "https://checkout.mypos.com/pay/session_abc123"
+  "checkoutUrl": "https://pay.example.com/session_abc123"
 }
 ```
 
-Frontend redirects the customer's browser to `checkoutUrl`. The myPOS hosted page handles card entry and 3DS authentication.
+`[VERIFY]` The response shape depends on whether we embed dominaite's form in checkout or redirect to it — settle it from their API docs. dominaite's form handles card entry and 3DS; card data never reaches our servers.
 
 ---
 
-### myPOS — IPN (Instant Payment Notification)
+### dominaite — Webhook
 
-**`POST /payments/mypos/ipn`** `[PUBLIC]`
+**`POST /payments/dominaite/webhook`** `[PUBLIC]`
 
-myPOS calls this endpoint server-to-server after payment completes (success or failure). NestJS verifies the HMAC-SHA256 signature using the merchant secret key. On success, triggers order creation and `OrderPlaced` SQS event. Returns `200` to myPOS.
+dominaite calls this endpoint server-to-server with `payment.succeeded`, `payment.failed` or `payment.refunded`. NestJS verifies the webhook signature `[VERIFY]` (scheme from dominaite's API docs). On `payment.succeeded`, triggers order creation and `OrderPlaced` SQS event. Returns `200` to dominaite.
 
-Note: The customer's browser is separately redirected to the success/cancel return URL configured at checkout initiation — the IPN and the browser redirect are independent flows.
+Note: The customer's browser is separately redirected to the success/cancel return URL configured at checkout initiation — the webhook and the browser return are independent flows.
 
 ---
 

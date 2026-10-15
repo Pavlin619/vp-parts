@@ -15,11 +15,6 @@ export const createOrderSchema = z.object({
   jobReference: z.string().max(200).optional(),
 });
 
-export const initiateMyPosSchema = z.object({
-  cartId: z.string().uuid(),
-  confirmedTotal: z.number().int().positive(),
-});
-
 export const confirmCodOrderSchema = z.object({
   cartId: z.string().uuid(),
   addressId: z.string().uuid(),
@@ -28,5 +23,4 @@ export const confirmCodOrderSchema = z.object({
 
 export type ConfirmCheckoutInput = z.infer<typeof confirmCheckoutSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
-export type InitiateMyPosInput = z.infer<typeof initiateMyPosSchema>;
 export type ConfirmCodOrderInput = z.infer<typeof confirmCodOrderSchema>;

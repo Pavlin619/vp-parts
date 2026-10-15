@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { PaymentMethod } from '@vp-parts-shop/shared'
 import type { CartTotals } from '@/lib/cart/cart-totals'
 import type { DeliverySummary } from '@/lib/checkout/delivery/delivery-summary'
 import type { ParcelCheck } from '@/lib/checkout/delivery/office-availability'
@@ -28,6 +29,7 @@ function renderPanel(
     parcelCheck?: ParcelCheck
     delivery?: DeliverySummary
     isQuickOrder?: boolean
+    paymentMethod?: PaymentMethod | null
   } = {},
 ) {
   return render(
@@ -37,6 +39,7 @@ function renderPanel(
       parcelCheck={props.parcelCheck ?? WEIGHED}
       delivery={props.delivery ?? { kind: 'awaiting-office' }}
       isQuickOrder={props.isQuickOrder ?? false}
+      paymentMethod={props.paymentMethod ?? null}
     />,
   )
 }
@@ -56,7 +59,7 @@ describe('OrderSummaryPanel', () => {
     expect(screen.queryByText('84,00 €')).not.toBeInTheDocument()
   })
 
-  it('offers a disabled placeholder button until payment methods exist', () => {
+  it('offers a disabled placeholder button until orders can be submitted', () => {
     renderPanel()
 
     expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeDisabled()
@@ -67,6 +70,30 @@ describe('OrderSummaryPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Поръчай сега/ })).not.toBeInTheDocument()
+  })
+
+  describe('payment', () => {
+    it('sends a card payment on to the payment page', () => {
+      renderPanel({ paymentMethod: PaymentMethod.CARD })
+
+      expect(screen.getByRole('button', { name: /Плати с карта/ })).toBeDisabled()
+      expect(screen.getByText(/пренасочени към защитена страница/)).toBeInTheDocument()
+    })
+
+    it('places a cash-on-delivery order outright', () => {
+      renderPanel({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+
+      expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
+      expect(screen.queryByText(/пренасочени/)).not.toBeInTheDocument()
+    })
+
+    // A quick order is paid on delivery, whatever was picked before switching to it.
+    it('asks to request a quick order even with card payment picked', () => {
+      renderPanel({ isQuickOrder: true, paymentMethod: PaymentMethod.CARD })
+
+      expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
+      expect(screen.queryByText(/пренасочени/)).not.toBeInTheDocument()
+    })
   })
 
   describe('weight', () => {

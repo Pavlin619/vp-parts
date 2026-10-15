@@ -8,6 +8,8 @@ interface DeliveryOptionCardProps {
   label: string;
   description: string;
   icon: ReactNode;
+  /** Shown at the card's far end, e.g. what the option costs. */
+  trailing?: ReactNode;
   isSelected: boolean;
   onSelect: () => void;
 }
@@ -22,6 +24,7 @@ export function DeliveryOptionCard({
   label,
   description,
   icon,
+  trailing,
   isSelected,
   onSelect,
 }: DeliveryOptionCardProps) {
@@ -66,6 +69,8 @@ export function DeliveryOptionCard({
         <span className="block text-[13.5px] font-semibold text-ink">{label}</span>
         <span className="mt-px block text-[11.5px] text-ink-3">{description}</span>
       </span>
+
+      {trailing}
     </label>
   );
 }

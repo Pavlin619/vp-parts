@@ -37,7 +37,7 @@ graph TB
     subgraph External
         TECDOC[TecDoc API]
         INTERCARS[Intercars API]
-        PAY["Stripe · myPOS"]
+        PAY["Stripe · dominaite"]
         SHIP["Econt · Speedy"]
         CLERK["Clerk\nauth · user management"]
     end
@@ -354,7 +354,7 @@ Pre-checkout: fresh non-cached direct DB read for the whole cart
   All good? → proceed to payment
         │
         ▼
-Payment processed (Stripe / myPOS)
+Payment processed (Stripe / dominaite)
         │
         ▼
 NestJS writes shop.orders (status: PROCESSING) in one transaction with:
@@ -513,7 +513,7 @@ src/
 │   └── tecdoc/     # TecDocClient, Redis cache service, DTOs
 ├── inventory/      # Direct read-only reads of public.autoparts + supplier_stock; best-offer selection
 ├── orders/         # Order state machine, checkout, SQS publisher, SSE streams
-├── payments/       # Stripe, myPOS, COD adapters
+├── payments/       # Stripe, dominaite, COD adapters
 ├── customers/      # Accounts, registration from Clerk identity, mechanic approval
 ├── auth/           # Clerk JWT guard, InternalGuard (shared-secret), @Public() decorator
 ├── events/         # SQS consumers (fulfillment-events), email worker

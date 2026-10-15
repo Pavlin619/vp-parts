@@ -6,6 +6,7 @@ import {
   articleIdentityKey,
   EMPTY_CART,
   DeliveryDestinationType,
+  PaymentMethod,
   ShippingMethod,
   type ArticleIdentityDto,
   type ArticlesAvailabilityDto,
@@ -14,6 +15,7 @@ import {
 import { useCart, type CartLine } from '@/hooks/use-cart'
 import { cartQueryOptions } from '@/lib/api/cart'
 import { useCheckoutDelivery } from '@/hooks/use-checkout-delivery'
+import { useCheckoutPayment } from '@/hooks/use-checkout-payment'
 import { CheckoutView } from './checkout-view'
 
 const getAvailability = jest.fn()
@@ -128,6 +130,7 @@ describe('CheckoutView', () => {
     } as ReturnType<typeof useAuth>)
     useCart.setState({ lines: [], lastWriteError: null })
     useCheckoutDelivery.getState().reset()
+    useCheckoutPayment.getState().reset()
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
     getParcel.mockReset().mockResolvedValue({
@@ -227,6 +230,33 @@ describe('CheckoutView', () => {
 
     expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+  })
+
+  it('preselects no payment method and remembers the one picked', async () => {
+    const user = userEvent.setup()
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+
+    const card = await screen.findByRole('radio', { name: /Плащане с карта/ })
+    expect(card).not.toBeChecked()
+
+    await user.click(card)
+
+    expect(card).toBeChecked()
+    expect(useCheckoutPayment.getState().method).toBe(PaymentMethod.CARD)
+    expect(screen.getByRole('button', { name: /Плати с карта/ })).toBeInTheDocument()
+  })
+
+  // The quick-order fields already say it is paid on delivery.
+  it('asks for no payment method on a quick order', async () => {
+    const user = userEvent.setup()
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+    await user.click(await screen.findByRole('radio', { name: /Бърза поръчка/ }))
+
+    expect(screen.queryByRole('radiogroup', { name: 'Метод на плащане' })).not.toBeInTheDocument()
   })
 
   // Clerk comes back from Google to `#/sso-callback`, which only the sign-in tab finishes.

@@ -67,10 +67,6 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
         SQS_FULFILLMENT_QUEUE_URL: Joi.string().uri().required(),
         SQS_EVENTS_QUEUE_URL: Joi.string().uri().required(),
 
-        MYPOS_STORE_ID: Joi.string().required(),
-        MYPOS_API_KEY: Joi.string().required(),
-        MYPOS_WALLET_NUMBER: Joi.string().required(),
-
         // Econt and parcel sizing: see DeliveryModule + docs/DELIVERY-PROVIDERS.md.
         ECONT_BASE_URL: Joi.string().uri().required(),
         ECONT_OFFICES_BASE_URL: Joi.string()

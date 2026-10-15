@@ -44,7 +44,7 @@ enum ShippingMethod {
 }
 
 enum PaymentMethod {
-  MYPOS
+  CARD
   CASH_ON_DELIVERY
 }
 

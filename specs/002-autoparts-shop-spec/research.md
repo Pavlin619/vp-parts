@@ -59,31 +59,30 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 ---
 
-## 3. myPOS Payment Integration
+## 3. Card Payment Integration — dominaite
 
-**Decision**: myPOS Checkout hosted payment page flow. The business already uses myPOS as the POS terminal provider in the physical shop, giving an established merchant relationship, proven reliability, and lower transaction fees compared to Stripe. myPOS natively supports all Bulgarian bank-issued cards (DSK, UniCredit Bulgaria, Postbank, etc.) with 3DS 2.0, replacing the need for a separate Bulgarian card processor.
+**Decision**: Card payments go through [dominaite](https://dominaite.com/bg/online-payments). Our server opens a payment session; the customer enters the card on dominaite's payment form, so card data never reaches our servers (dominaite processes it through PCI DSS-compliant providers). 3DS runs when the issuer requires it. Amounts are in EUR.
 
 **Integration flow**:
-1. Customer selects myPOS at checkout. NestJS makes a server-side REST call to the myPOS Checkout API with the order details (amount in integer cents, currency `EUR`, order reference, return URLs).
-2. myPOS returns a `checkoutUrl` — the hosted payment page for this payment session.
-3. NestJS returns `{ checkoutUrl }` to the frontend.
-4. Frontend redirects the customer's browser to `checkoutUrl`.
-5. Customer completes card entry and 3DS authentication on myPOS's hosted page.
-6. myPOS sends an IPN (Instant Payment Notification) via signed POST to `POST /payments/mypos/ipn` on NestJS. NestJS verifies the HMAC-SHA256 signature using the merchant secret key.
-7. On successful IPN verification, NestJS creates the order and publishes `OrderPlaced` to SQS. Returns `200` to myPOS.
-8. myPOS redirects the customer's browser to the success or failure return URL configured in step 1.
+1. Customer selects card payment at checkout. NestJS opens a dominaite payment session server-side with the order details (amount built from integer cents, currency `EUR`, order reference).
+2. The frontend shows dominaite's payment form for that session.
+3. Customer completes card entry and 3DS authentication on dominaite's form.
+4. dominaite sends a webhook — `payment.succeeded`, `payment.failed` or `payment.refunded` — to `POST /payments/dominaite/webhook`. NestJS verifies it.
+5. On `payment.succeeded`, NestJS creates the order and publishes `OrderPlaced` to SQS. Returns `200` to dominaite.
 
-**Key request parameters** (exact field names to be confirmed from myPOS Checkout API documentation during implementation): order amount (integer cents), currency (`EUR`), order reference, merchant ID, success URL, cancel URL, IPN URL, signature.
+**Open until we have dominaite's API docs** (requested via hey@dominaite.com):
+- `[VERIFY]` Embedded form or redirect — their page offers a form embedded in the site; it decides what `POST /payments/card/initiate` returns and whether checkout says the customer is redirected.
+- `[VERIFY]` How a webhook is signed and verified.
+- `[VERIFY]` Request field names, and whether the amount is sent in cents.
 
 **Rationale**:
-- Existing merchant account and POS relationship — no new commercial onboarding required
-- Lower per-transaction fee than Stripe — material cost saving at the expected order volume
-- Full support for Bulgarian bank-issued cards with 3DS 2.0 — the original reason for a dedicated Bulgarian processor still applies; myPOS fulfils this role with a cleaner modern REST API
+- Card data and 3DS stay on dominaite's form, off our servers
+- Card fees from 1.19% per transaction, no subscription (dominaite's published pricing)
 - Single card payment provider at launch reduces integration scope and operational complexity
 
 **Alternatives considered**:
-- Keeping Borica — rejected: myPOS covers the same Bulgarian card support with better developer experience (REST + webhook vs. MAC-signed HTML form POST) and lower fees; no reason to maintain Borica alongside myPOS
-- Stripe only — rejected: reliability problems with Bulgarian bank-issued cards from local banks; myPOS is better suited as the primary card processor for this market
+- Keeping Borica — rejected: MAC-signed HTML form POST is a worse developer experience than a REST API with webhooks
+- Stripe only — rejected: reliability problems with Bulgarian bank-issued cards from local banks
 
 ---
 
@@ -182,11 +181,11 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 **Display**: `formatPrice(cents: number)` in `@vp-parts-shop/shared` is the only permitted display formatter. It uses `Intl.NumberFormat({ style: 'currency', currency: 'EUR' })`. All component code calls this function — no inline arithmetic or string formatting.
 
 **Payment providers**:
-- myPOS Checkout: amount sent as integer cents; currency sent as `EUR`
+- dominaite: amount built from integer cents; currency sent as `EUR`
 
 **`PriceCalculator` domain service**: Single location in `apps/api/src/common/price-calculator.ts` for all VAT and total calculations. 100% unit test coverage with explicit rounding edge-case tests.
 
-**Rationale**: Floating-point arithmetic is unsuitable for money — `0.1 + 0.2 !== 0.3` in IEEE 754. Integer cents eliminate this class of bugs entirely. myPOS expects integer amounts, making this the natural representation for the full stack.
+**Rationale**: Floating-point arithmetic is unsuitable for money — `0.1 + 0.2 !== 0.3` in IEEE 754. Integer cents eliminate this class of bugs entirely. Integer cents are the natural representation for the full stack.
 
 **Alternatives considered**:
 - `Decimal` type (arbitrary precision) — rejected: adds a library dependency (`decimal.js`), more complex than integer arithmetic for a two-decimal-place currency, and both payment providers require integers anyway

@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Truck } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { DeliveryOptionCard } from './delivery-option-card'
 
-function renderCard(isSelected: boolean, onSelect = jest.fn()) {
+function renderCard(isSelected: boolean, onSelect = jest.fn(), trailing?: ReactNode) {
   render(
     <DeliveryOptionCard
       name="delivery-method"
@@ -11,6 +12,7 @@ function renderCard(isSelected: boolean, onSelect = jest.fn()) {
       label="Доставка с куриер до адрес"
       description="До посочен от вас адрес"
       icon={<Truck />}
+      trailing={trailing}
       isSelected={isSelected}
       onSelect={onSelect}
     />,
@@ -27,6 +29,12 @@ describe('DeliveryOptionCard', () => {
       screen.getByRole('radio', { name: /Доставка с куриер до адрес/ }),
     ).toBeChecked()
     expect(screen.getByText('До посочен от вас адрес')).toBeInTheDocument()
+  })
+
+  it('shows what it carries at its far end', () => {
+    renderCard(false, jest.fn(), <span>4,90 €</span>)
+
+    expect(screen.getByRole('radio', { name: /4,90 €/ })).toBeInTheDocument()
   })
 
   it('selects itself when clicked', async () => {
