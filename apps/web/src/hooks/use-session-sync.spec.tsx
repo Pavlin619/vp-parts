@@ -5,6 +5,7 @@ import { useAuth } from '@clerk/nextjs'
 import {
   CustomerRole,
   EMPTY_CART,
+  PaymentMethod,
   ShippingMethod,
   type CartAdoptResponseDto,
   type CartDto,
@@ -16,6 +17,7 @@ import { fileCustomer, getCustomerProfile } from '@/lib/api/customers'
 import { useAccountSetup, useAccountSetupStore } from './use-account-setup'
 import { useCart, type CartLine } from './use-cart'
 import { useCheckoutDelivery } from './use-checkout-delivery'
+import { useCheckoutPayment } from './use-checkout-payment'
 import { useSessionSync } from './use-session-sync'
 
 jest.mock('@clerk/nextjs', () => ({ useAuth: jest.fn() }))
@@ -118,6 +120,7 @@ beforeEach(() => {
   useCart.setState({ whenSettled })
   useCart.getState().reset()
   useCheckoutDelivery.getState().reset()
+  useCheckoutPayment.getState().reset()
   mockedGetProfile.mockResolvedValue(PROFILE)
   mockedFileCustomer.mockResolvedValue(PROFILE)
   mockedReadCartToken.mockReturnValue(null)
@@ -350,6 +353,7 @@ describe('useSessionSync', () => {
         ownerId: 'user_1',
       })
       useCheckoutDelivery.getState().selectOffice({ carrier: ShippingMethod.ECONT, code: '1127' })
+      useCheckoutPayment.getState().setMethod(PaymentMethod.CARD)
     })
 
     it('is cleared once signed out', async () => {
@@ -362,6 +366,7 @@ describe('useSessionSync', () => {
       await waitFor(() => expect(useCart.getState().lines).toEqual([]))
       expect(useCart.getState().ownerId).toBeNull()
       expect(useCheckoutDelivery.getState().office).toBeNull()
+      expect(useCheckoutPayment.getState().method).toBeNull()
       expect(queryClient.getQueryData(['customers', 'me'])).toBeUndefined()
     })
 

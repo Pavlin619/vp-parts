@@ -24,7 +24,7 @@ export enum ShippingMethod {
 }
 
 export enum PaymentMethod {
-  MYPOS = 'MYPOS',
+  CARD = 'CARD',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
 }
 

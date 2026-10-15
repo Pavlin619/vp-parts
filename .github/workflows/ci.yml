@@ -49,9 +49,6 @@ jobs:
       BACKOFFICE_BASE_URL: http://localhost:9999
       SQS_FULFILLMENT_QUEUE_URL: https://sqs.eu-central-1.amazonaws.com/000000000000/stub-fulfillment
       SQS_EVENTS_QUEUE_URL: https://sqs.eu-central-1.amazonaws.com/000000000000/stub-events
-      MYPOS_STORE_ID: stub
-      MYPOS_API_KEY: stub
-      MYPOS_WALLET_NUMBER: stub
       ECONT_USERNAME: stub
       ECONT_PASSWORD: stub
       ECONT_BASE_URL: https://stub.econt.invalid

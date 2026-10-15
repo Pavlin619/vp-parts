@@ -10,6 +10,7 @@ import { useCartLines } from "@/hooks/use-cart";
 import { useCartAvailability } from "@/hooks/use-cart-availability";
 import { useCartStatus } from "@/hooks/use-cart-status";
 import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-delivery";
+import { useCheckoutPayment, usePaymentMethod } from "@/hooks/use-checkout-payment";
 import { useDeliverySummary } from "@/hooks/use-delivery-summary";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
@@ -18,6 +19,7 @@ import { ContactPanel } from "./contact";
 import { DeliveryMethodPanel } from "./delivery";
 import { OrderItemsPanel } from "./order-items";
 import { OrderSummaryPanel } from "./order-summary";
+import { PaymentMethodPanel } from "./payment";
 
 /**
  * Checkout's second step: how the selected cart lines reach the customer.
@@ -29,11 +31,14 @@ export function CheckoutView() {
   const lines = useCartLines();
   const deliveryMethod = useDeliveryMethod();
   const setDeliveryMethod = useCheckoutDelivery((state) => state.setMethod);
+  const paymentMethod = usePaymentMethod();
+  const setPaymentMethod = useCheckoutPayment((state) => state.setMethod);
   // Safe to read the URL here: the panel first renders after the cart hydrates.
   const [contactMode, setContactMode] = useState<ContactMode | null>(() =>
     initialContactMode(typeof window === "undefined" ? "" : window.location.hash),
   );
   const { isSignedIn } = useAuth();
+  const isQuickOrder = isSignedIn === false && contactMode === "quick";
 
   const availability = useCartAvailability(lines);
   const rows = availability.rows.filter((row) => row.line.isSelected);
@@ -79,6 +84,9 @@ export function CheckoutView() {
                 onMethodChange={setDeliveryMethod}
                 promise={promise}
               />
+              {!isQuickOrder && (
+                <PaymentMethodPanel method={paymentMethod} onMethodChange={setPaymentMethod} />
+              )}
             </div>
 
             <aside className="flex flex-col gap-3 xl:sticky xl:top-24">
@@ -88,7 +96,8 @@ export function CheckoutView() {
                 isPending={availability.isPending}
                 parcelCheck={parcelCheck}
                 delivery={delivery}
-                isQuickOrder={isSignedIn === false && contactMode === "quick"}
+                isQuickOrder={isQuickOrder}
+                paymentMethod={paymentMethod}
               />
             </aside>
           </div>

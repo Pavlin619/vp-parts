@@ -1,4 +1,16 @@
 <!--
+## Sync Impact Report (v1.1.1)
+
+**Version change**: `1.1.0` → `1.1.1`
+
+**Version bump rationale**: PATCH — Principle IX names the card provider generically instead of myPOS; no rule changed.
+
+**Modified principles**: IX. Money Handling (wording only)
+
+**Deferred TODOs**: None
+
+---
+
 ## Sync Impact Report (v1.1.0)
 
 **Version change**: `1.0.0` → `1.1.0`
@@ -286,7 +298,7 @@ disconnected clients.
 
 **`formatPrice(cents: number)` in `@vp-parts-shop/shared` is the only permitted way to convert cents to a display string.** It uses `Intl.NumberFormat` with `currency: 'EUR'` and `style: 'currency'`. Price formatting is never done inline in components or services.
 
-**Payment providers receive amounts as integer cents.** Stripe's `amount` field and myPOS Checkout's amount parameter receive the integer cent value directly — never a decimal. This matches the providers' own integer-amount expectations.
+**Payment providers receive amounts as integer cents.** Stripe's `amount` field and the card provider's amount parameter receive the integer cent value directly — never a decimal. This matches the providers' own integer-amount expectations.
 
 **`PriceCalculator` is a domain service in `apps/api/src/common/`** with 100% unit test coverage. It is the only place VAT and total calculations are performed. It MUST have explicit tests for rounding edge cases — e.g. a price of 1 cent (rounds correctly), prices where VAT in decimal would be `.5` (round half up), multi-item orders where per-item rounding would differ from aggregate rounding.
 
@@ -332,4 +344,4 @@ on how this project is built.
 ownership, and technology decisions. This constitution MUST NOT contradict it. If a conflict is
 found, the constitution amendment MUST be made consistent with ARCHITECTURE.md.
 
-**Version**: 1.1.0 | **Ratified**: 2026-06-02 | **Last Amended**: 2026-06-05
+**Version**: 1.1.1 | **Ratified**: 2026-06-02 | **Last Amended**: 2026-10-14

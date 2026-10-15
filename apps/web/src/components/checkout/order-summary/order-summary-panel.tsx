@@ -1,5 +1,5 @@
-import { ArrowRight, Phone } from "lucide-react";
-import { formatPrice } from "@vp-parts-shop/shared";
+import { ArrowRight, Phone, ShieldCheck } from "lucide-react";
+import { formatPrice, PaymentMethod } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
 import type { CartTotals } from "@/lib/cart/cart-totals";
 import {
@@ -33,11 +33,12 @@ interface OrderSummaryPanelProps {
   delivery: DeliverySummary;
   /** A quick order is requested for a call-back rather than placed outright. */
   isQuickOrder: boolean;
+  paymentMethod: PaymentMethod | null;
 }
 
 /**
  * The order's money at a glance, under the item recap. The action stays
- * disabled until there is a payment method to submit.
+ * disabled until an order can be submitted.
  */
 export function OrderSummaryPanel({
   totals,
@@ -45,7 +46,10 @@ export function OrderSummaryPanel({
   parcelCheck,
   delivery,
   isQuickOrder,
+  paymentMethod,
 }: OrderSummaryPanelProps) {
+  const isCardPayment = !isQuickOrder && paymentMethod === PaymentMethod.CARD;
+
   return (
     <section className="rounded-[12px] border border-line bg-bg-card p-5">
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
@@ -96,11 +100,18 @@ export function OrderSummaryPanel({
           </>
         ) : (
           <>
-            Поръчай сега
+            {isCardPayment ? "Плати с карта" : "Поръчай сега"}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </>
         )}
       </Button>
+
+      {isCardPayment && (
+        <p className="mt-2.5 flex items-start gap-[7px] text-[11.5px] leading-[1.45] text-ink-3">
+          <ShieldCheck className="mt-px h-[13px] w-[13px] shrink-0 text-ink-4" aria-hidden="true" />
+          Ще бъдете пренасочени към защитена страница за плащане с карта.
+        </p>
+      )}
     </section>
   );
 }

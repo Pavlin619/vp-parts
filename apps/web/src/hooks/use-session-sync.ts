@@ -19,6 +19,7 @@ import {
 import { useAccountSetupStore } from "./use-account-setup";
 import { useCart } from "./use-cart";
 import { useCheckoutDelivery } from "./use-checkout-delivery";
+import { useCheckoutPayment } from "./use-checkout-payment";
 
 /**
  * Brings what this device holds into line with who is signed in.
@@ -133,6 +134,7 @@ async function loadAccountCart(
 function forgetSession(queryClient: QueryClient): void {
   useCart.getState().reset();
   useCheckoutDelivery.getState().reset();
+  useCheckoutPayment.getState().reset();
   queryClient.removeQueries({ queryKey: customerProfileQueryOptions.queryKey });
   // Reset rather than removed: the mounted cart read then fetches the guest's
   // answer, where a removed query would keep handing its observer the old cart.

@@ -8,7 +8,7 @@
 
 ## Summary
 
-Build a customer-facing automotive parts e-commerce shop as a TypeScript monorepo (Next.js frontend + NestJS API + shared package), integrating with an existing Spring Boot backoffice for all supplier pricing and fulfilment logic. The shop enables vehicle-first part discovery via TecDoc Pegasus 3.0, real-time availability-confirmed checkout via the backoffice internal REST API, myPOS/COD payments, and live order status updates via Server-Sent Events driven by SQS fulfilment events. Mechanic (B2B) trade accounts are approved via the backoffice and receive trade pricing everywhere in the shop.
+Build a customer-facing automotive parts e-commerce shop as a TypeScript monorepo (Next.js frontend + NestJS API + shared package), integrating with an existing Spring Boot backoffice for all supplier pricing and fulfilment logic. The shop enables vehicle-first part discovery via TecDoc Pegasus 3.0, real-time availability-confirmed checkout via the backoffice internal REST API, card/COD payments, and live order status updates via Server-Sent Events driven by SQS fulfilment events. Mechanic (B2B) trade accounts are approved via the backoffice and receive trade pricing everywhere in the shop.
 
 ---
 
@@ -63,7 +63,7 @@ Build a customer-facing automotive parts e-commerce shop as a TypeScript monorep
 | VI. Code Quality & TypeScript | Strict mode, no `any`, no `ts-ignore` without explanation. Named exports preferred. No dead code. Imports ordered: external → `@vp-parts-shop/shared` → internal. | ✅ PASS |
 | VII. Security by Default | Global `JwtGuard` (Clerk JWT via `@clerk/backend`); public endpoints use `@Public()`. Internal backoffice endpoints use `InternalGuard` (shared-secret bearer token, private-network only). All checkout confirmation calls are live (non-cached). Rate limiting via `@nestjs/throttler` on all public endpoints. CORS explicitly configured. Error responses return only `{ statusCode, errorCode }`. | ✅ PASS |
 | VIII. Performance & Caching | Redis TTLs from ARCHITECTURE.md enforced: vehicle tree 7d, article detail 24h, search 1h/5m empty, autocomplete 15m/5m empty. Price and availability are always read live; pre-checkout revalidates them. Redis is bounded with LFU eviction. No N+1 queries — Prisma `include`/`select` used. | ✅ PASS |
-| IX. Money Handling | All monetary DB fields are `Int` (EUR cents). `PriceCalculator` domain service is the single calculation point with 100% unit test coverage. `formatPrice(cents)` from `@vp-parts-shop/shared` is the only display formatter. myPOS receives integer cents. Rounding applied exactly once at VAT step. | ✅ PASS |
+| IX. Money Handling | All monetary DB fields are `Int` (EUR cents). `PriceCalculator` domain service is the single calculation point with 100% unit test coverage. `formatPrice(cents)` from `@vp-parts-shop/shared` is the only display formatter. dominaite amounts are built from integer cents. Rounding applied exactly once at VAT step. | ✅ PASS |
 
 **Result**: All 9 principles satisfied. No Complexity Tracking entries required.
 
@@ -164,9 +164,9 @@ apps/
         │   ├── checkout.service.ts    # Orchestrates validate → pay → place order
         │   ├── sse.service.ts         # SSE connection registry
         │   └── index.ts
-        ├── payments/                  # myPOS, COD adapters
-        │   ├── mypos/
-        │   │   └── mypos.adapter.ts
+        ├── payments/                  # dominaite, COD adapters
+        │   ├── dominaite/
+        │   │   └── dominaite.adapter.ts
         │   ├── cod/
         │   │   └── cod.adapter.ts
         │   └── index.ts

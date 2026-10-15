@@ -30,15 +30,6 @@ export interface CreateOrderResponseDto {
   status: string;
 }
 
-export interface MyPosInitiateRequestDto {
-  cartId: string;
-  confirmedTotal: number;
-}
-
-export interface MyPosInitiateResponseDto {
-  checkoutUrl: string;
-}
-
 export interface CodConfirmRequestDto {
   cartId: string;
   addressId: string;
