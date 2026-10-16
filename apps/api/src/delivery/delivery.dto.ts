@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsObject,
@@ -90,4 +91,7 @@ export class DeliveryQuoteBodyDto implements DeliveryQuoteRequestDto {
   destination!:
     | DeliveryOfficeDestinationBodyDto
     | DeliveryAddressDestinationBodyDto;
+
+  @IsBoolean()
+  isCashOnDelivery!: boolean;
 }

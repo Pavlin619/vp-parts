@@ -8,6 +8,7 @@ import {
   type DeliverySummary,
 } from "@/lib/checkout/delivery/delivery-summary";
 import type { ParcelCheck } from "@/lib/checkout/delivery/office-availability";
+import { isPaidOnDelivery } from "@/lib/checkout/payment/payment-methods";
 import { formatDay, formatShopDate } from "@/lib/delivery/format";
 
 const NOT_CALCULATED = "—";
@@ -49,6 +50,9 @@ export function OrderSummaryPanel({
   paymentMethod,
 }: OrderSummaryPanelProps) {
   const isCardPayment = !isQuickOrder && paymentMethod === PaymentMethod.CARD;
+  // A store pickup is paid at our counter, so no courier charges for collecting it.
+  const isCollectedByCourier =
+    isPaidOnDelivery(isQuickOrder, paymentMethod) && delivery.kind !== "pickup";
 
   return (
     <section className="rounded-[12px] border border-line bg-bg-card p-5">
@@ -64,6 +68,9 @@ export function OrderSummaryPanel({
         />
         <SummaryRow label="ДДС" value={isPending ? null : formatPrice(totals.vatAmount)} />
         <SummaryRow label="Цена на доставката" value={deliveryText(delivery)} />
+        {isCollectedByCourier && (
+          <SummaryRow label="Такса наложен платеж" value={cashOnDeliveryFeeText(delivery)} />
+        )}
         <SummaryRow
           label={delivery.kind === "pickup" ? "Готова за вземане" : "Очаквана доставка"}
           value={deliveryDateText(delivery)}
@@ -141,6 +148,19 @@ function deliveryText(delivery: DeliverySummary): string | null {
       return formatPrice(delivery.priceIncVatCents);
     default:
       return DELIVERY_COPY[delivery.kind];
+  }
+}
+
+function cashOnDeliveryFeeText(delivery: DeliverySummary): string | null {
+  switch (delivery.kind) {
+    case "pending":
+      return null;
+    case "quoted":
+      return delivery.cashOnDeliveryFeeIncVatCents === null
+        ? NOT_CALCULATED
+        : formatPrice(delivery.cashOnDeliveryFeeIncVatCents);
+    default:
+      return NOT_CALCULATED;
   }
 }
 

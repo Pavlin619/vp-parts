@@ -31,7 +31,7 @@
 
 ## Notes
 
-- COD threshold (FR-029) is flagged as "to be confirmed with the business owner"; placeholder of €200.00 (20 000 cents EUR) is assumed and documented. This is the only open business variable.
+- Cash on Delivery (FR-029) has no order-total limit; the business owner decided on 2026-10-15 that none is needed.
 - Guest checkout decision is explicitly justified in Assumptions section.
 - All 10 feature areas from the original brief are covered across 10 User Stories.
 - Validation pass 1: all items pass. Spec is ready for `/speckit-plan`.

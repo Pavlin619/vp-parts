@@ -132,12 +132,17 @@ export type DeliveryQuarterDto = DeliveryStreetDto;
 export interface DeliveryQuoteRequestDto {
   carrier: ShippingMethod;
   destination: DeliveryDestinationDto;
+  /** The courier collects the order's money at the door, and charges a fee for it. */
+  isCashOnDelivery: boolean;
 }
 
 export interface DeliveryQuoteDto {
   carrier: ShippingMethod;
   destination: DeliveryDestinationDto;
+  /** The delivery alone, without the cash-on-delivery fee. */
   priceIncVatCents: number;
+  /** Null unless the quote was asked for cash on delivery. */
+  cashOnDeliveryFeeIncVatCents: number | null;
   /** Shop-local `YYYY-MM-DD` the carrier expects to deliver on, when it gives one. */
   expectedDeliveryDate: string | null;
   parcel: ParcelEstimateDto;

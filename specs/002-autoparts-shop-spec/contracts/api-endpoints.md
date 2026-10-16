@@ -1127,13 +1127,11 @@ Note: The customer's browser is separately redirected to the success/cancel retu
 
 **`POST /payments/cod/confirm`** (Protected)
 
-Creates a COD order directly (no payment gateway). Only allowed when order total ≤ `COD_MAX_ORDER_TOTAL_CENTS` (configured threshold, default 20000 = €200.00).
+Creates a COD order directly (no payment gateway), whatever the order total.
 
 Request body: `{ "cartId": "uuid", "addressId": "uuid", "shippingMethod": "SPEEDY" }`
 
 Response `201`: `{ "orderId": "uuid", "orderReference": "VP-20260605-00001" }`
-
-Errors: `422 COD_THRESHOLD_EXCEEDED`
 
 ---
 
@@ -1258,7 +1256,6 @@ Returns runtime configuration values the frontend needs at checkout.
 Response `200`:
 ```json
 {
-  "codMaxOrderTotal": 20000,
   "vatRate": 0.20
 }
 ```
@@ -1305,6 +1302,5 @@ Response `200`: `{ "success": true }`
 | `QUANTITY_EXCEEDS_STOCK` | 422 | Requested quantity exceeds available stock |
 | `EMAIL_ALREADY_EXISTS` | 409 | Email is already registered |
 | `MECHANIC_APPLICATION_ALREADY_EXISTS` | 409 | Customer already has a pending/approved application |
-| `COD_THRESHOLD_EXCEEDED` | 422 | Order total too high for cash on delivery |
 | `INVENTORY_UNAVAILABLE` | 503 | Live availability read (direct DB) could not complete — checkout blocked |
 | `PAYMENT_FAILED` | 402 | Payment gateway declined or returned error |

@@ -4,16 +4,17 @@ import {
   DeliveryDestinationDto,
   DeliveryDestinationType,
 } from '@vp-parts-shop/shared';
-import type { CarrierQuote } from '../delivery-carrier';
+import type { CarrierQuote, Shipment } from '../delivery-carrier';
 import {
   DeliveryAddressRefusedException,
   DeliveryOfficeRefusedException,
   DeliveryUnavailableException,
 } from '../delivery.exceptions';
-import { Parcel, singleBoxOf } from '../parcel/parcel-estimate';
+import { singleBoxOf } from '../parcel/parcel-estimate';
 import { shopDateOf } from '../shop-date';
 import { econtAddressOf } from './econt-address';
 import {
+  cashOnDeliveryFeeOf,
   EcontCalculatedLabel,
   isCalculatedLabel,
   refusesReceiver,
@@ -23,6 +24,11 @@ import { EcontRefusedException, EcontTransport } from './econt.transport';
 const SHOP_CURRENCY = 'EUR';
 
 const SHIPMENT_TYPE = 'pack';
+
+/** Econt's `cdType` for money the courier takes from the receiver. */
+const COLLECT_FROM_RECEIVER = 'get';
+
+const CENTS_PER_EURO = 100;
 
 @Injectable()
 export class EcontQuotes {
@@ -42,12 +48,11 @@ export class EcontQuotes {
 
   async quote(
     destination: DeliveryDestinationDto,
-    parcel: Parcel,
-    sendDate: string | null,
+    shipment: Shipment,
   ): Promise<CarrierQuote> {
     const response = await this.calculate(
       destination,
-      this.labelFor(destination, parcel, sendDate),
+      this.labelFor(destination, shipment),
     );
     const calculated = this.calculatedLabelOf(response);
     const { label } = calculated;
@@ -61,8 +66,11 @@ export class EcontQuotes {
 
     this.warnAboutSurprises(destination, calculated);
 
+    const feeCents = this.cashOnDeliveryFeeCentsOf(calculated, shipment);
+
     return {
-      priceIncVatCents: Math.round(label.totalPrice * 100),
+      priceIncVatCents: centsOf(label.totalPrice) - (feeCents ?? 0),
+      cashOnDeliveryFeeIncVatCents: feeCents,
       expectedDeliveryDate:
         label.expectedDeliveryDate === null
           ? null
@@ -102,6 +110,26 @@ export class EcontQuotes {
     return response;
   }
 
+  private cashOnDeliveryFeeCentsOf(
+    calculated: EcontCalculatedLabel,
+    { cashOnDeliveryCents }: Shipment,
+  ): number | null {
+    if (cashOnDeliveryCents === null) {
+      return null;
+    }
+
+    const fee = cashOnDeliveryFeeOf(calculated);
+
+    if (fee === null) {
+      this.logger.error(
+        'Econt priced a parcel collecting cash without naming the fee',
+      );
+      throw new DeliveryUnavailableException();
+    }
+
+    return centsOf(fee);
+  }
+
   /** Econt reprices a heavy parcel as cargo on its own; see docs/DELIVERY-PROVIDERS.md. */
   private warnAboutSurprises(
     destination: DeliveryDestinationDto,
@@ -128,8 +156,7 @@ export class EcontQuotes {
 
   private labelFor(
     destination: DeliveryDestinationDto,
-    parcel: Parcel,
-    sendDate: string | null,
+    { parcel, sendDate, cashOnDeliveryCents }: Shipment,
   ) {
     const box = singleBoxOf(parcel);
 
@@ -146,8 +173,19 @@ export class EcontQuotes {
         shipmentDimensionsW: box.width,
         shipmentDimensionsH: box.height,
       }),
+      ...(cashOnDeliveryCents !== null && {
+        services: {
+          cdAmount: cashOnDeliveryCents / CENTS_PER_EURO,
+          cdType: COLLECT_FROM_RECEIVER,
+          cdCurrency: SHOP_CURRENCY,
+        },
+      }),
     };
   }
+}
+
+function centsOf(euros: number): number {
+  return Math.round(euros * CENTS_PER_EURO);
 }
 
 function receiverOf(destination: DeliveryDestinationDto): object {

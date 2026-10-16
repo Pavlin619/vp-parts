@@ -1,8 +1,7 @@
 # Delivery providers — Econt, and how a cart becomes a parcel
 
 What the courier APIs actually do, measured, and the rules `apps/api/src/delivery/`
-is built on. Office delivery only so far; delivery to an address, cash-on-delivery
-fees, label creation and Speedy are not built yet.
+is built on. Label creation and Speedy are not built yet.
 
 ## The endpoints
 
@@ -11,7 +10,7 @@ fees, label creation and Speedy are not built yet.
 | `GET /delivery/offices?carrier=ECONT` | Every Econt office and Econtomat, carrier-neutral (`DeliveryOfficeDto`) | Redis 24 h, in-process 1 h, `public, max-age=3600` |
 | `GET /delivery/places?carrier=ECONT` | The settlements a customer can collect a parcel for, each naming its serving office when it has none of its own (`DeliveryPlaceDto`) | Econt's list in Redis 24 h; matched to the offices in-process, 1 h; `public, max-age=3600` |
 | `GET /delivery/parcel?carrier=ECONT` | What the requester's **selected** cart lines weigh as one parcel, and whether that carrier's locker takes it | `no-store` |
-| `POST /delivery/quote` `{ carrier, destination }` | Econt's price for that parcel to the destination (`{ type: 'OFFICE', officeCode }` or `{ type: 'ADDRESS', address }`), the expected date, and the cart version priced | Redis 5 min by carrier, office or place, weight, box and send date; 20 requests/min per client |
+| `POST /delivery/quote` `{ carrier, destination, isCashOnDelivery }` | Econt's price for that parcel to the destination (`{ type: 'OFFICE', officeCode }` or `{ type: 'ADDRESS', address }`), the [cash-on-delivery fee](#cash-on-delivery-the-fee-is-a-share-of-the-amount-collected) when asked, the expected date, and the cart version priced | Redis 5 min by carrier, office or place, weight, box, send date and amount collected; 20 requests/min per client |
 | `GET /delivery/address-places?carrier=ECONT` | The places a courier delivers to at the door (`DeliveryPlaceDto`, never a serving office) | Same Econt list as `/places`; `public, max-age=3600` |
 | `GET /delivery/streets?carrier=ECONT&placeId=&q=` and `/quarters` | Up to 20 streets (quarters) of the place whose name holds every word of `q` (`DeliveryStreetDto`) | Econt's whole list per place in Redis 24 h, filtered on the server; `public, max-age=3600` |
 | `POST /delivery/address/validate` `{ carrier, address }` | `VALID`, `UNCERTAIN` (with the corrected address in `suggested`) or `INVALID` | Not cached; 20 requests/min per client |
@@ -118,6 +117,10 @@ delivery rows from the same `/parcel` read the picker uses (`useParcelCheck`) an
 - **The total adds the price only once it is quoted,** and says "Без цената на доставката"
   until then. Net and VAT rows describe the goods alone: the quote is VAT-inclusive
   (see the **[VERIFY]** above), so there is no delivery share to split out.
+- **Paying on delivery adds a "Такса наложен платеж" row** and the fee to the total. The
+  quote is asked again with `isCashOnDelivery` (part of its query key) once cash on
+  delivery or a quick order is chosen. A store pickup has no row: we take that money at
+  the counter.
 - **Delivery to an address is not priced** until that form exists; its row reads "—".
 - **The date is the carrier's `expectedDeliveryDate`,** shown as "Очаквана доставка".
 
@@ -268,6 +271,41 @@ picks the nearest town.
   that slips through stays `INTERNAL_ERROR`.
 - **[VERIFY] Whether `totalPrice` includes VAT.** We treat it as VAT-inclusive. The
   cents conversion in `econt-quotes.ts` is the one place to change if not.
+
+### Cash on delivery: the fee is a share of the amount collected
+
+`calculate` prices collecting cash at the door when the label carries
+`services: { cdAmount, cdType: "get", cdCurrency: "EUR" }`. The fee comes back as its
+own line in `services[]`, type `CD` ("Такса наложен платеж"), and is included in
+`totalPrice`. Demo, 2 kg from office 1127 to 9035, measured 2026-10-15:
+
+| `cdAmount` | Delivery (`C`) | Fee (`CD`) | `totalPrice` |
+|---|---|---|---|
+| none | €3.78 | — | €3.78 |
+| €3 | €3.78 | €0.05 | €3.83 |
+| €20 | €3.78 | €0.30 | €4.08 |
+| €100 | €3.78 | €1.52 | €5.30 |
+| €1,000 | €3.78 | €15.20 | €18.98 |
+
+- **On the demo it is 1.52% of the amount, with no minimum or cap seen.** The contract
+  rate will differ, so nothing in code holds it; the fee is always read from `calculate`.
+- **The delivery price does not change with it.** `EcontQuotes` answers the `CD` line
+  apart and takes it out of `totalPrice`. A quote that asked to collect and got no
+  `CD` line back is `DELIVERY_UNAVAILABLE`, never a fee of zero.
+- **We pay Econt (sender pays), and the customer pays us everything at the door:** the
+  parts, the delivery and this fee. So the amount collected includes the fee it is a
+  share of. `DeliveryService` asks twice: the fee on the parts alone, then the fee on
+  parts + delivery + that fee. On a linear tariff the second answer is within a cent of
+  the fee a label for that amount will charge.
+- **The amount is the order's, read on the server:** every selected line at its live
+  gross price. A line that is out of stock, short of its quantity or unpriced cannot be
+  ordered, so the quote refuses it as `422 ARTICLE_UNAVAILABLE` rather than collect for
+  less than an order would.
+- **Paying the receiver's way instead** (`paymentReceiverMethod`) leaves `cdAmount` at the
+  parts and has Econt collect its own price and fee on top (`receiverDueAmount: 5.30` for
+  €100 above). It was not chosen because delivery would then fall outside our total.
+- **[VERIFY]** the contract's `CD` tariff, and how Econt pays the collected money to us
+  (`cdPayOptions`), which label creation needs.
 
 ### Delivery to an address: what Econt answers
 

@@ -122,6 +122,7 @@ export const deliveryQuoteQueryOptions = (
       "quote",
       request?.carrier,
       request?.destination,
+      request?.isCashOnDelivery,
       cartId,
       cartVersion,
     ] as const,

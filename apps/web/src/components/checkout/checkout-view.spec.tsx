@@ -46,11 +46,19 @@ jest.mock('@/lib/api/delivery', () => ({
     enabled: cartId !== '',
   }),
   deliveryQuoteQueryOptions: (
-    request: { carrier: string; destination: unknown } | null,
+    request: { carrier: string; destination: unknown; isCashOnDelivery: boolean } | null,
     cartId: string,
     cartVersion: number,
   ) => ({
-    queryKey: ['delivery', 'quote', request?.carrier, request?.destination, cartId, cartVersion],
+    queryKey: [
+      'delivery',
+      'quote',
+      request?.carrier,
+      request?.destination,
+      request?.isCashOnDelivery,
+      cartId,
+      cartVersion,
+    ],
     queryFn: () => getQuote(request) as Promise<unknown>,
   }),
 }))
@@ -137,10 +145,13 @@ describe('CheckoutView', () => {
       weightGrams: 2300,
       isLockerEligible: true,
     })
-    getQuote.mockReset().mockResolvedValue({
-      priceIncVatCents: 714,
-      expectedDeliveryDate: '2026-09-30',
-    })
+    getQuote.mockReset().mockImplementation((request: { isCashOnDelivery: boolean }) =>
+      Promise.resolve({
+        priceIncVatCents: 714,
+        cashOnDeliveryFeeIncVatCents: request.isCashOnDelivery ? 152 : null,
+        expectedDeliveryDate: '2026-09-30',
+      }),
+    )
   })
 
   it('sends an empty cart back to the catalogue', async () => {
@@ -350,6 +361,26 @@ describe('CheckoutView', () => {
     expect(getQuote).toHaveBeenCalledWith({
       carrier: ShippingMethod.ECONT,
       destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
+      isCashOnDelivery: false,
     })
+  })
+
+  it('adds the courier fee for collecting the money once cash on delivery is picked', async () => {
+    const user = userEvent.setup()
+    const item = line()
+    useCart.setState({ lines: [item], cartId: 'cart-1', version: 2 })
+    useCheckoutDelivery.setState({
+      method: 'courier-office',
+      office: { carrier: ShippingMethod.ECONT, code: '1127' },
+    })
+    getAvailability.mockResolvedValue(availabilityFor(item))
+
+    renderView()
+    await user.click(await screen.findByRole('radio', { name: /Наложен платеж/ }))
+
+    const summary = (await screen.findByText('Обобщение на поръчката')).closest('section')!
+    expect(await within(summary).findByText('1,52 €')).toBeInTheDocument()
+    expect(within(summary).getByText('20,66 €')).toBeInTheDocument()
+    expect(getQuote).toHaveBeenLastCalledWith(expect.objectContaining({ isCashOnDelivery: true }))
   })
 })

@@ -35,7 +35,10 @@ interface DeliverySummaryState {
  * is asked only once there is a destination and a weighed parcel; a store pickup
  * is never quoted.
  */
-export function useDeliverySummary(pickupReadyAt: string | null): DeliverySummaryState {
+export function useDeliverySummary(
+  pickupReadyAt: string | null,
+  isCashOnDelivery: boolean,
+): DeliverySummaryState {
   const carrier = CHECKOUT_CARRIER;
   const method = useDeliveryMethod();
   const officeCode = useSelectedOfficeCode(carrier);
@@ -48,7 +51,11 @@ export function useDeliverySummary(pickupReadyAt: string | null): DeliverySummar
   const destination = destinationOf(method, officeCode, selectedAddress?.address ?? null);
   const isQuotable = destination !== null && parcelCheck.state === "ready";
   const quoteQuery = useQuery({
-    ...deliveryQuoteQueryOptions(destination && { carrier, destination }, cartId, cartVersion),
+    ...deliveryQuoteQueryOptions(
+      destination && { carrier, destination, isCashOnDelivery },
+      cartId,
+      cartVersion,
+    ),
     enabled: isQuotable && cartId !== "",
   });
 

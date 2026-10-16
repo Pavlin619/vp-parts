@@ -18,3 +18,8 @@ export const B2C_PAYMENT_METHODS: readonly PaymentMethodOption[] = [
     description: "В брой при получаване",
   },
 ];
+
+/** A quick order is always paid on delivery; the quick-order fields say so. */
+export function isPaidOnDelivery(isQuickOrder: boolean, method: PaymentMethod | null): boolean {
+  return isQuickOrder || method === PaymentMethod.CASH_ON_DELIVERY;
+}

@@ -19,7 +19,13 @@ export type DeliverySummary =
   | { kind: "address-unusable" }
   | { kind: "failed" }
   | { kind: "pickup"; readyAt: string | null }
-  | { kind: "quoted"; priceIncVatCents: number; expectedDeliveryDate: string | null };
+  | {
+      kind: "quoted";
+      priceIncVatCents: number;
+      /** Null unless the courier collects the money on delivery. */
+      cashOnDeliveryFeeIncVatCents: number | null;
+      expectedDeliveryDate: string | null;
+    };
 
 /** The slice of a query the summary reads; null when no quote was asked for. */
 export interface QuoteState {
@@ -77,11 +83,15 @@ export function resolveDeliverySummary({
   return summariseQuote(quote, destination.type);
 }
 
-/** Goods plus the delivery price, once there is one. */
+/** Goods plus the delivery price and any cash-on-delivery fee, once there is one. */
 export function summaryTotal(goodsIncVatCents: number, delivery: DeliverySummary): number {
-  return delivery.kind === "quoted"
-    ? goodsIncVatCents + delivery.priceIncVatCents
-    : goodsIncVatCents;
+  if (delivery.kind !== "quoted") {
+    return goodsIncVatCents;
+  }
+
+  return (
+    goodsIncVatCents + delivery.priceIncVatCents + (delivery.cashOnDeliveryFeeIncVatCents ?? 0)
+  );
 }
 
 /** "850 г" under a kilo, else kilograms with a decimal comma and no needless zeros. */
@@ -106,9 +116,9 @@ function summariseQuote(
   }
 
   if (quote.data) {
-    const { priceIncVatCents, expectedDeliveryDate } = quote.data;
+    const { priceIncVatCents, cashOnDeliveryFeeIncVatCents, expectedDeliveryDate } = quote.data;
 
-    return { kind: "quoted", priceIncVatCents, expectedDeliveryDate };
+    return { kind: "quoted", priceIncVatCents, cashOnDeliveryFeeIncVatCents, expectedDeliveryDate };
   }
 
   return { kind: summariseQuoteError(quote.error, destinationType) };

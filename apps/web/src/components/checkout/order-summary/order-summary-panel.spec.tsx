@@ -145,6 +145,7 @@ describe('OrderSummaryPanel', () => {
         delivery: {
           kind: 'quoted',
           priceIncVatCents: 714,
+          cashOnDeliveryFeeIncVatCents: null,
           expectedDeliveryDate: '2026-09-30',
         },
       })
@@ -159,7 +160,12 @@ describe('OrderSummaryPanel', () => {
 
     it('shows a dash for the date when the carrier gave none', () => {
       renderPanel({
-        delivery: { kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: null },
+        delivery: {
+          kind: 'quoted',
+          priceIncVatCents: 714,
+          cashOnDeliveryFeeIncVatCents: null,
+          expectedDeliveryDate: null,
+        },
       })
 
       expect(screen.getByText('Очаквана доставка').nextSibling).toHaveTextContent('—')
@@ -188,6 +194,60 @@ describe('OrderSummaryPanel', () => {
 
         expect(screen.getByText('Готова за вземане').nextSibling).toHaveTextContent('—')
       })
+    })
+  })
+
+  describe('cash-on-delivery fee', () => {
+    const QUOTED_WITH_FEE: DeliverySummary = {
+      kind: 'quoted',
+      priceIncVatCents: 714,
+      cashOnDeliveryFeeIncVatCents: 152,
+      expectedDeliveryDate: '2026-09-30',
+    }
+
+    it('shows the fee apart from the delivery and adds it to the total', () => {
+      renderPanel({ delivery: QUOTED_WITH_FEE, paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+
+      expect(screen.getByText('Такса наложен платеж').nextSibling).toHaveTextContent('1,52 €')
+      expect(screen.getByText('Цена на доставката').nextSibling).toHaveTextContent('7,14 €')
+      expect(screen.getByText('92,66 €')).toBeInTheDocument()
+    })
+
+    it('charges it on a quick order, which is paid on delivery', () => {
+      renderPanel({ delivery: QUOTED_WITH_FEE, isQuickOrder: true })
+
+      expect(screen.getByText('Такса наложен платеж').nextSibling).toHaveTextContent('1,52 €')
+    })
+
+    it('holds it back while delivery is being quoted', () => {
+      renderPanel({ delivery: { kind: 'pending' }, paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+
+      expect(screen.getByText('Такса наложен платеж').nextSibling).not.toHaveTextContent(/€|—/)
+    })
+
+    it('shows a dash while delivery has no price', () => {
+      renderPanel({
+        delivery: { kind: 'awaiting-office' },
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+      })
+
+      expect(screen.getByText('Такса наложен платеж').nextSibling).toHaveTextContent('—')
+    })
+
+    it('has no fee for a card payment', () => {
+      renderPanel({ delivery: QUOTED_WITH_FEE, paymentMethod: PaymentMethod.CARD })
+
+      expect(screen.queryByText('Такса наложен платеж')).not.toBeInTheDocument()
+    })
+
+    // Collected at the counter, not by a courier.
+    it('has no fee for a store pickup', () => {
+      renderPanel({
+        delivery: { kind: 'pickup', readyAt: null },
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+      })
+
+      expect(screen.queryByText('Такса наложен платеж')).not.toBeInTheDocument()
     })
   })
 })

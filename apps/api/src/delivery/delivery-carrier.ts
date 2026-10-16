@@ -13,8 +13,19 @@ import type { Parcel } from './parcel/parcel-estimate';
 
 export const DELIVERY_CARRIERS = 'DELIVERY_CARRIERS';
 
+export interface Shipment {
+  parcel: Parcel;
+  /** The shop-local day the parcel is handed to the courier; null lets the carrier assume today. */
+  sendDate: string | null;
+  /** What the courier collects from the customer at the door; null when it collects nothing. */
+  cashOnDeliveryCents: number | null;
+}
+
 export interface CarrierQuote {
+  /** The delivery alone, without the cash-on-delivery fee. */
   priceIncVatCents: number;
+  /** Null when the courier collects nothing. */
+  cashOnDeliveryFeeIncVatCents: number | null;
   expectedDeliveryDate: string | null;
 }
 
@@ -33,10 +44,8 @@ export interface DeliveryCarrier {
   validateAddress(
     address: DeliveryAddressDto,
   ): Promise<DeliveryAddressValidationDto>;
-  /** `sendDate` is the shop-local day we hand the parcel over; null lets the carrier assume today. */
   quote(
     destination: DeliveryDestinationDto,
-    parcel: Parcel,
-    sendDate: string | null,
+    shipment: Shipment,
   ): Promise<CarrierQuote>;
 }

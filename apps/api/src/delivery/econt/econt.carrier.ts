@@ -10,9 +10,12 @@ import {
   DeliveryStreetDto,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
-import type { CarrierQuote, DeliveryCarrier } from '../delivery-carrier';
+import type {
+  CarrierQuote,
+  DeliveryCarrier,
+  Shipment,
+} from '../delivery-carrier';
 import type { LockerLimits } from '../parcel/locker-fit';
-import type { Parcel } from '../parcel/parcel-estimate';
 import { EcontAddresses } from './econt-addresses';
 import { EcontOffices } from './econt-offices';
 import { EcontPlaces } from './econt-places';
@@ -65,10 +68,9 @@ export class EcontCarrier implements DeliveryCarrier {
 
   quote(
     destination: DeliveryDestinationDto,
-    parcel: Parcel,
-    sendDate: string | null,
+    shipment: Shipment,
   ): Promise<CarrierQuote> {
-    return this.quotes.quote(destination, parcel, sendDate);
+    return this.quotes.quote(destination, shipment);
   }
 }
 
