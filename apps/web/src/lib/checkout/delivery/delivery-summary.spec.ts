@@ -19,6 +19,7 @@ const QUOTE: DeliveryQuoteDto = {
   carrier: ShippingMethod.ECONT,
   destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
   priceIncVatCents: 714,
+  cashOnDeliveryFeeIncVatCents: null,
   expectedDeliveryDate: '2026-09-30',
   parcel: parcel(),
   cartVersion: 3,
@@ -52,7 +53,12 @@ describe('resolveDeliverySummary', () => {
         quote: quoteState({ data: { ...QUOTE, destination: ADDRESS } }),
         pickupReadyAt: null,
       }),
-    ).toEqual({ kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: '2026-09-30' })
+    ).toEqual({
+      kind: 'quoted',
+      priceIncVatCents: 714,
+      cashOnDeliveryFeeIncVatCents: null,
+      expectedDeliveryDate: '2026-09-30',
+    })
   })
 
   it.each(['DELIVERY_ADDRESS_REFUSED', 'DELIVERY_ADDRESS_NOT_SERVED'])(
@@ -121,7 +127,24 @@ describe('resolveDeliverySummary', () => {
         quote: quoteState({ data: QUOTE }),
         pickupReadyAt: null,
       }),
-    ).toEqual({ kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: '2026-09-30' })
+    ).toEqual({
+      kind: 'quoted',
+      priceIncVatCents: 714,
+      cashOnDeliveryFeeIncVatCents: null,
+      expectedDeliveryDate: '2026-09-30',
+    })
+  })
+
+  it('carries the fee for collecting the money on delivery', () => {
+    expect(
+      resolveDeliverySummary({
+        method: 'courier-office',
+        destination: OFFICE,
+        parcelCheck: READY,
+        quote: quoteState({ data: { ...QUOTE, cashOnDeliveryFeeIncVatCents: 152 } }),
+        pickupReadyAt: null,
+      }),
+    ).toMatchObject({ kind: 'quoted', cashOnDeliveryFeeIncVatCents: 152 })
   })
 
   it.each(['DELIVERY_OFFICE_REFUSED', 'DELIVERY_LOCKER_INELIGIBLE', 'DELIVERY_OFFICE_NOT_FOUND'])(
@@ -166,8 +189,24 @@ describe('resolveDeliverySummary', () => {
 describe('summaryTotal', () => {
   it('adds a quoted delivery to the goods', () => {
     expect(
-      summaryTotal(8400, { kind: 'quoted', priceIncVatCents: 714, expectedDeliveryDate: null }),
+      summaryTotal(8400, {
+        kind: 'quoted',
+        priceIncVatCents: 714,
+        cashOnDeliveryFeeIncVatCents: null,
+        expectedDeliveryDate: null,
+      }),
     ).toBe(9114)
+  })
+
+  it('adds the cash-on-delivery fee with the delivery', () => {
+    expect(
+      summaryTotal(8400, {
+        kind: 'quoted',
+        priceIncVatCents: 714,
+        cashOnDeliveryFeeIncVatCents: 152,
+        expectedDeliveryDate: null,
+      }),
+    ).toBe(9266)
   })
 
   it('adds nothing for a store pickup', () => {

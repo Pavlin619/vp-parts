@@ -449,7 +449,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: false,
+        })
         .expect(200);
 
       expect(response.body).toMatchObject({
@@ -469,7 +473,11 @@ describe('Delivery (e2e)', () => {
       await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: false,
+        })
         .expect(200);
 
       expect(econt.call).toHaveBeenCalledWith(
@@ -486,7 +494,11 @@ describe('Delivery (e2e)', () => {
       await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9010') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9010'),
+          isCashOnDelivery: false,
+        })
         .expect(200);
     });
 
@@ -496,7 +508,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: false,
+        })
         .expect(200);
 
       expect(response.body.parcel.weightGrams).toBe(6700);
@@ -508,7 +524,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9010') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9010'),
+          isCashOnDelivery: false,
+        })
         .expect(422);
 
       expect(response.body).toEqual({
@@ -523,7 +543,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9010') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9010'),
+          isCashOnDelivery: false,
+        })
         .expect(422);
 
       expect(response.body).toEqual({
@@ -538,7 +562,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('0000') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('0000'),
+          isCashOnDelivery: false,
+        })
         .expect(404);
 
       expect(response.body.errorCode).toBe(
@@ -558,7 +586,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: false,
+        })
         .expect(422);
 
       expect(response.body.errorCode).toBe(AppErrorCode.CART_EMPTY);
@@ -571,7 +603,11 @@ describe('Delivery (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/delivery/quote')
         .set(CART_TOKEN_HEADER, token)
-        .send({ carrier: ShippingMethod.ECONT, destination: officeTo('9035') })
+        .send({
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: false,
+        })
         .expect(200);
 
       expect(response.headers['x-ratelimit-limit']).toBe('20');
@@ -584,6 +620,83 @@ describe('Delivery (e2e)', () => {
         .expect(400);
     });
 
+    describe('cash on delivery', () => {
+      function pricedWithFee(feeEuros: number) {
+        return {
+          label: {
+            totalPrice: 4.13 + feeEuros,
+            currency: 'EUR',
+            expectedDeliveryDate: SIX_PM,
+            services: [
+              { type: 'C', price: 4.13, currency: 'EUR' },
+              { type: 'CD', price: feeEuros, currency: 'EUR' },
+            ],
+          },
+        };
+      }
+
+      it('adds the fee for collecting the money at the door', async () => {
+        const token = await openCart('FILTER', 'PAD');
+        await app.get<Redis>(REDIS_CLIENT).flushall();
+        econt.call.mockClear();
+        econt.call
+          .mockResolvedValueOnce(pricedWithFee(0.05))
+          .mockResolvedValueOnce(pricedWithFee(0.07));
+
+        const response = await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: officeTo('9035'),
+            isCashOnDelivery: true,
+          })
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          priceIncVatCents: 413,
+          cashOnDeliveryFeeIncVatCents: 7,
+        });
+        expect(econt.call).toHaveBeenLastCalledWith(
+          'Shipments/LabelService.createLabel',
+          expect.objectContaining({
+            label: expect.objectContaining({
+              services: { cdAmount: 4.42, cdType: 'get', cdCurrency: 'EUR' },
+            }),
+          }),
+        );
+      });
+
+      it('answers no fee when the customer pays otherwise', async () => {
+        const token = await openCart('FILTER');
+
+        const response = await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: officeTo('9035'),
+            isCashOnDelivery: false,
+          })
+          .expect(200);
+
+        expect(response.body.cashOnDeliveryFeeIncVatCents).toBeNull();
+      });
+
+      it('refuses a request that does not say how the customer pays', async () => {
+        const token = await openCart('FILTER');
+
+        await request(app.getHttpServer())
+          .post('/delivery/quote')
+          .set(CART_TOKEN_HEADER, token)
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: officeTo('9035'),
+          })
+          .expect(400);
+      });
+    });
+
     describe('to an address', () => {
       it('prices the cart to a place Econt delivers to', async () => {
         const token = await openCart('FILTER', 'PAD');
@@ -592,7 +705,11 @@ describe('Delivery (e2e)', () => {
         const response = await request(app.getHttpServer())
           .post('/delivery/quote')
           .set(CART_TOKEN_HEADER, token)
-          .send({ carrier: ShippingMethod.ECONT, destination: addressTo() })
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo(),
+            isCashOnDelivery: false,
+          })
           .expect(200);
 
         expect(response.body).toMatchObject({
@@ -624,7 +741,11 @@ describe('Delivery (e2e)', () => {
         const response = await request(app.getHttpServer())
           .post('/delivery/quote')
           .set(CART_TOKEN_HEADER, token)
-          .send({ carrier: ShippingMethod.ECONT, destination: addressTo() })
+          .send({
+            carrier: ShippingMethod.ECONT,
+            destination: addressTo(),
+            isCashOnDelivery: false,
+          })
           .expect(422);
 
         expect(response.body).toEqual({
@@ -642,6 +763,7 @@ describe('Delivery (e2e)', () => {
           .set(CART_TOKEN_HEADER, token)
           .send({
             carrier: ShippingMethod.ECONT,
+            isCashOnDelivery: false,
             destination: addressTo({ ...SOFIA_ADDRESS, placeId: '999999' }),
           })
           .expect(422);
@@ -660,6 +782,7 @@ describe('Delivery (e2e)', () => {
           .set(CART_TOKEN_HEADER, token)
           .send({
             carrier: ShippingMethod.ECONT,
+            isCashOnDelivery: false,
             destination: addressTo({ placeId: String(SOFIA_ID) }),
           })
           .expect(400);
@@ -673,6 +796,7 @@ describe('Delivery (e2e)', () => {
           .set(CART_TOKEN_HEADER, token)
           .send({
             carrier: ShippingMethod.ECONT,
+            isCashOnDelivery: false,
             destination: addressTo({
               placeId: String(SOFIA_ID),
               street: 'бул. Витоша',
@@ -689,6 +813,7 @@ describe('Delivery (e2e)', () => {
           .set(CART_TOKEN_HEADER, token)
           .send({
             carrier: ShippingMethod.ECONT,
+            isCashOnDelivery: false,
             destination: addressTo({
               placeId: String(SOFIA_ID),
               quarter: 'кв. Слатина',
@@ -706,6 +831,7 @@ describe('Delivery (e2e)', () => {
           .set(CART_TOKEN_HEADER, token)
           .send({
             carrier: ShippingMethod.ECONT,
+            isCashOnDelivery: false,
             destination: addressTo({
               placeId: String(SOFIA_ID),
               street: 'бул. Витоша',
@@ -724,6 +850,7 @@ describe('Delivery (e2e)', () => {
           .set(CART_TOKEN_HEADER, token)
           .send({
             carrier: ShippingMethod.ECONT,
+            isCashOnDelivery: false,
             destination: { type: 'HOME', officeCode: '9035' },
           })
           .expect(400);

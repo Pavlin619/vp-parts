@@ -40,9 +40,11 @@ describe('EcontCarrier', () => {
     validate: jest.fn().mockResolvedValue({ status: 'VALID', suggested: null }),
   };
   const quotes = {
-    quote: jest
-      .fn()
-      .mockResolvedValue({ priceIncVatCents: 413, expectedDeliveryDate: null }),
+    quote: jest.fn().mockResolvedValue({
+      priceIncVatCents: 413,
+      cashOnDeliveryFeeIncVatCents: 152,
+      expectedDeliveryDate: null,
+    }),
   };
   const carrier = new EcontCarrier(
     offices as unknown as EcontOffices,
@@ -106,16 +108,17 @@ describe('EcontCarrier', () => {
       officeCode: '9035',
     } as const;
 
-    await expect(
-      carrier.quote(destination, PARCEL, '2026-09-28'),
-    ).resolves.toEqual({
+    const shipment = {
+      parcel: PARCEL,
+      sendDate: '2026-09-28',
+      cashOnDeliveryCents: 10530,
+    };
+
+    await expect(carrier.quote(destination, shipment)).resolves.toEqual({
       priceIncVatCents: 413,
+      cashOnDeliveryFeeIncVatCents: 152,
       expectedDeliveryDate: null,
     });
-    expect(quotes.quote).toHaveBeenCalledWith(
-      destination,
-      PARCEL,
-      '2026-09-28',
-    );
+    expect(quotes.quote).toHaveBeenCalledWith(destination, shipment);
   });
 });

@@ -107,10 +107,6 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
         RESEND_API_KEY: Joi.string().required(),
         EMAIL_FROM: Joi.string().email().required(),
 
-        COD_MAX_ORDER_TOTAL_CENTS: Joi.number()
-          .integer()
-          .positive()
-          .default(20000),
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         // The web app's origin: CORS allows it, and a Clerk token must name it.
         CORS_ORIGIN: Joi.string().uri().default('http://localhost:3000'),

@@ -18,11 +18,17 @@ import {
 import type { CartRequester, CartShippingLine } from '../cart';
 import { CartEmptyException, CartService } from '../cart';
 import { InventoryService } from '../inventory';
+import type { AvailabilityByArticle } from '../inventory';
 import { RedisCache } from '../redis';
+import {
+  amountToCollectCents,
+  goodsTotalIncVatCents,
+} from './cash-on-delivery';
 import {
   CarrierQuote,
   DELIVERY_CARRIERS,
   DeliveryCarrier,
+  Shipment,
 } from './delivery-carrier';
 import {
   DeliveryAddressNotServedException,
@@ -35,12 +41,6 @@ import { parcelReadyDate } from './parcel/parcel-ready-date';
 
 /** Short because the expected delivery date moves at the courier's daily cut-off. */
 const QUOTE_TTL = 5 * 60;
-
-interface Shipment {
-  parcel: Parcel;
-  /** The shop-local day the parcel is handed to the courier; null when stock cannot say. */
-  sendDate: string | null;
-}
 
 interface CartParcel {
   cart: CartDto;
@@ -108,7 +108,7 @@ export class DeliveryService {
 
   async quote(
     requester: CartRequester,
-    { carrier, destination }: DeliveryQuoteRequestDto,
+    { carrier, destination, isCashOnDelivery }: DeliveryQuoteRequestDto,
   ): Promise<DeliveryQuoteDto> {
     const courier = this.carrierFor(carrier);
     const { cart, lines, estimate } = await this.parcelOf(requester);
@@ -116,18 +116,25 @@ export class DeliveryService {
 
     await this.checkDestination(courier, destination, parcelDto);
 
-    const sendDate = await this.readyDateOf(lines);
-    const { priceIncVatCents, expectedDeliveryDate } = await this.cachedQuote(
-      courier,
-      destination,
-      { parcel: estimate, sendDate },
-    );
+    const availability = await this.availabilityOf(lines);
+    const shipment: Shipment = {
+      parcel: estimate,
+      sendDate: parcelReadyDate(lines, availability),
+      cashOnDeliveryCents: null,
+    };
+    const { expectedDeliveryDate, ...price } = isCashOnDelivery
+      ? await this.cashOnDeliveryQuote(courier, destination, {
+          shipment,
+          goodsCents: goodsTotalIncVatCents(lines, availability),
+        })
+      : await this.cachedQuote(courier, destination, shipment);
 
     return {
       carrier,
       destination,
-      priceIncVatCents,
-      expectedDeliveryDate: sendDate === null ? null : expectedDeliveryDate,
+      ...price,
+      expectedDeliveryDate:
+        shipment.sendDate === null ? null : expectedDeliveryDate,
       parcel: parcelDto,
       cartVersion: cart.version,
     };
@@ -179,23 +186,41 @@ export class DeliveryService {
     };
   }
 
-  private async readyDateOf(lines: CartShippingLine[]): Promise<string | null> {
-    const availability = await this.inventory.getAvailability(
-      lines.map((line) => line.article),
-    );
+  private availabilityOf(
+    lines: CartShippingLine[],
+  ): Promise<AvailabilityByArticle> {
+    return this.inventory.getAvailability(lines.map((line) => line.article));
+  }
 
-    return parcelReadyDate(lines, availability);
+  /**
+   * The fee is a share of the amount collected, and that amount includes the
+   * fee, so the fee on the parts alone prices the amount the second ask uses.
+   */
+  private async cashOnDeliveryQuote(
+    courier: DeliveryCarrier,
+    destination: DeliveryDestinationDto,
+    { shipment, goodsCents }: { shipment: Shipment; goodsCents: number },
+  ): Promise<CarrierQuote> {
+    const onGoods = await this.cachedQuote(courier, destination, {
+      ...shipment,
+      cashOnDeliveryCents: goodsCents,
+    });
+
+    return this.cachedQuote(courier, destination, {
+      ...shipment,
+      cashOnDeliveryCents: amountToCollectCents(goodsCents, onGoods),
+    });
   }
 
   private cachedQuote(
     courier: DeliveryCarrier,
     destination: DeliveryDestinationDto,
-    { parcel, sendDate }: Shipment,
+    shipment: Shipment,
   ): Promise<CarrierQuote> {
     return this.cache.cached(
-      quoteCacheKey(courier.carrier, destination, { parcel, sendDate }),
+      quoteCacheKey(courier.carrier, destination, shipment),
       QUOTE_TTL,
-      () => courier.quote(destination, parcel, sendDate),
+      () => courier.quote(destination, shipment),
     );
   }
 
@@ -213,12 +238,13 @@ export class DeliveryService {
 function quoteCacheKey(
   carrier: ShippingMethod,
   destination: DeliveryDestinationDto,
-  { parcel, sendDate }: Shipment,
+  { parcel, sendDate, cashOnDeliveryCents }: Shipment,
 ): string {
   const box = singleBoxOf(parcel);
   const boxKey = box ? `${box.length}x${box.width}x${box.height}` : 'nobox';
+  const collectKey = cashOnDeliveryCents ?? 'none';
 
-  return `delivery:quote:${carrier}:${destinationKey(destination)}:${parcel.weightGrams}:${boxKey}:${sendDate ?? 'undated'}`;
+  return `delivery:quote:${carrier}:${destinationKey(destination)}:${parcel.weightGrams}:${boxKey}:${sendDate ?? 'undated'}:collect:${collectKey}`;
 }
 
 /** The price follows the place alone; the street never changes it. */

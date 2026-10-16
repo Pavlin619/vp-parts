@@ -4,6 +4,7 @@ export { AutopartsRepository } from './autoparts.repository';
 export { SupplierCatalogRepository } from './supplier-catalog.repository';
 export { SupplierStockRepository } from './supplier-stock.repository';
 export { DeliverySpeedResolver } from './delivery-speed.resolver';
+export { ArticleUnavailableException } from './article-unavailable.exception';
 export { InventoryUnavailableException } from './inventory-unavailable.exception';
 export type { AvailabilityByArticle } from './inventory.service';
 export type { OwnStockRow } from './autoparts.repository';

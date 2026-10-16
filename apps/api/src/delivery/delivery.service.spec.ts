@@ -15,7 +15,11 @@ import {
   CartShipping,
   CartShippingLine,
 } from '../cart';
-import { AvailabilityByArticle, InventoryService } from '../inventory';
+import {
+  ArticleUnavailableException,
+  AvailabilityByArticle,
+  InventoryService,
+} from '../inventory';
 import { RedisCache } from '../redis';
 import type { ResolvedShippingProfile } from '../cart';
 import { DELIVERY_CARRIERS } from './delivery-carrier';
@@ -162,6 +166,7 @@ function fakeCarrier(
       .mockResolvedValue(office(DeliveryOfficeType.OFFICE, carrier)),
     quote: jest.fn().mockResolvedValue({
       priceIncVatCents: 1061,
+      cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-25',
     }),
   };
@@ -324,17 +329,19 @@ describe('DeliveryService', () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
-      expect(econt.quote).toHaveBeenCalledWith(
-        officeTo('9035'),
-        expect.objectContaining({ weightGrams: 4047 }),
-        '2026-09-29',
-      );
+      expect(econt.quote).toHaveBeenCalledWith(officeTo('9035'), {
+        parcel: expect.objectContaining({ weightGrams: 4047 }),
+        sendDate: '2026-09-29',
+        cashOnDeliveryCents: null,
+      });
       expect(result).toEqual({
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
         priceIncVatCents: 1061,
+        cashOnDeliveryFeeIncVatCents: null,
         expectedDeliveryDate: '2026-09-25',
         parcel: {
           weightGrams: 4047,
@@ -348,13 +355,14 @@ describe('DeliveryService', () => {
       await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
       expect(getAvailability).toHaveBeenCalledWith([
         { brandId: '30', articleNumber: 'FILTER' },
         { brandId: '30', articleNumber: 'PAD' },
       ]);
-      expect(econt.quote.mock.calls[0][2]).toBe('2026-09-29');
+      expect(econt.quote.mock.calls[0][1].sendDate).toBe('2026-09-29');
     });
 
     it('prices, but promises no date, for a parcel the stock cannot complete', async () => {
@@ -363,17 +371,17 @@ describe('DeliveryService', () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
       expect(econt.quote).toHaveBeenCalledWith(
         officeTo('9035'),
-        expect.anything(),
-        null,
+        expect.objectContaining({ sendDate: null }),
       );
       expect(result.priceIncVatCents).toBe(1061);
       expect(result.expectedDeliveryDate).toBeNull();
       expect(cached).toHaveBeenCalledWith(
-        'delivery:quote:ECONT:office:9035:4047:nobox:undated',
+        'delivery:quote:ECONT:office:9035:4047:nobox:undated:collect:none',
         300,
         expect.any(Function),
       );
@@ -383,13 +391,13 @@ describe('DeliveryService', () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.SPEEDY,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
       expect(speedy.findOffice).toHaveBeenCalledWith('9035');
       expect(speedy.quote).toHaveBeenCalledWith(
         officeTo('9035'),
-        expect.anything(),
-        '2026-09-29',
+        expect.objectContaining({ sendDate: '2026-09-29' }),
       );
       expect(econt.findOffice).not.toHaveBeenCalled();
       expect(econt.quote).not.toHaveBeenCalled();
@@ -400,10 +408,11 @@ describe('DeliveryService', () => {
       await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
       expect(cached).toHaveBeenCalledWith(
-        'delivery:quote:ECONT:office:9035:4047:nobox:2026-09-29',
+        'delivery:quote:ECONT:office:9035:4047:nobox:2026-09-29:collect:none',
         300,
         expect.any(Function),
       );
@@ -415,10 +424,11 @@ describe('DeliveryService', () => {
       await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
       expect(cached).toHaveBeenCalledWith(
-        'delivery:quote:ECONT:office:9035:47:7.5x7.5x12:2026-09-28',
+        'delivery:quote:ECONT:office:9035:47:7.5x7.5x12:2026-09-28:collect:none',
         300,
         expect.any(Function),
       );
@@ -431,6 +441,7 @@ describe('DeliveryService', () => {
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
           destination: officeTo('9035'),
+          isCashOnDelivery: false,
         }),
       ).rejects.toBeInstanceOf(CartEmptyException);
       expect(econt.quote).not.toHaveBeenCalled();
@@ -443,6 +454,7 @@ describe('DeliveryService', () => {
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
           destination: officeTo('0000'),
+          isCashOnDelivery: false,
         }),
       ).rejects.toBeInstanceOf(DeliveryOfficeNotFoundException);
       expect(econt.quote).not.toHaveBeenCalled();
@@ -455,6 +467,7 @@ describe('DeliveryService', () => {
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
           destination: officeTo('9010'),
+          isCashOnDelivery: false,
         }),
       ).rejects.toBeInstanceOf(DeliveryLockerIneligibleException);
     });
@@ -466,12 +479,12 @@ describe('DeliveryService', () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9010'),
+        isCashOnDelivery: false,
       });
 
       expect(econt.quote).toHaveBeenCalledWith(
         officeTo('9010'),
-        expect.anything(),
-        '2026-09-28',
+        expect.objectContaining({ sendDate: '2026-09-28' }),
       );
       expect(result.parcel.isLockerEligible).toBe(true);
     });
@@ -484,6 +497,7 @@ describe('DeliveryService', () => {
         service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
           destination: officeTo('9010'),
+          isCashOnDelivery: false,
         }),
       ).rejects.toBeInstanceOf(DeliveryLockerIneligibleException);
       expect(econt.quote).not.toHaveBeenCalled();
@@ -495,9 +509,93 @@ describe('DeliveryService', () => {
       const result = await service.quote(REQUESTER, {
         carrier: ShippingMethod.ECONT,
         destination: officeTo('9035'),
+        isCashOnDelivery: false,
       });
 
       expect(result.parcel.weightGrams).toBe(47);
+    });
+
+    describe('cash on delivery', () => {
+      function quoteCollectingCash() {
+        return service.quote(REQUESTER, {
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: true,
+        });
+      }
+
+      beforeEach(() => {
+        econt.quote
+          .mockResolvedValueOnce({
+            priceIncVatCents: 1061,
+            cashOnDeliveryFeeIncVatCents: 5,
+            expectedDeliveryDate: '2026-09-25',
+          })
+          .mockResolvedValueOnce({
+            priceIncVatCents: 1061,
+            cashOnDeliveryFeeIncVatCents: 17,
+            expectedDeliveryDate: '2026-09-25',
+          });
+      });
+
+      it('asks the fee on the parts, then on everything the courier collects', async () => {
+        const goods = 12 + 2 * 12;
+
+        await quoteCollectingCash();
+
+        expect(econt.quote).toHaveBeenNthCalledWith(1, officeTo('9035'), {
+          parcel: expect.objectContaining({ weightGrams: 4047 }),
+          sendDate: '2026-09-29',
+          cashOnDeliveryCents: goods,
+        });
+        expect(econt.quote).toHaveBeenNthCalledWith(
+          2,
+          officeTo('9035'),
+          expect.objectContaining({ cashOnDeliveryCents: goods + 1061 + 5 }),
+        );
+      });
+
+      it('answers the delivery and the fee charged on the whole amount, apart', async () => {
+        const result = await quoteCollectingCash();
+
+        expect(result.priceIncVatCents).toBe(1061);
+        expect(result.cashOnDeliveryFeeIncVatCents).toBe(17);
+      });
+
+      it('caches each price by the amount collected', async () => {
+        await quoteCollectingCash();
+
+        expect(cached).toHaveBeenCalledWith(
+          'delivery:quote:ECONT:office:9035:4047:nobox:2026-09-29:collect:36',
+          300,
+          expect.any(Function),
+        );
+        expect(cached).toHaveBeenCalledWith(
+          'delivery:quote:ECONT:office:9035:4047:nobox:2026-09-29:collect:1102',
+          300,
+          expect.any(Function),
+        );
+      });
+
+      it('refuses a cart holding a part no order could be placed for', async () => {
+        availability.set('30:PAD', stocked(1, '2026-09-29T06:00:00Z'));
+
+        await expect(quoteCollectingCash()).rejects.toBeInstanceOf(
+          ArticleUnavailableException,
+        );
+        expect(econt.quote).not.toHaveBeenCalled();
+      });
+
+      it('asks once, collecting nothing, when the customer pays otherwise', async () => {
+        await service.quote(REQUESTER, {
+          carrier: ShippingMethod.ECONT,
+          destination: officeTo('9035'),
+          isCashOnDelivery: false,
+        });
+
+        expect(econt.quote).toHaveBeenCalledTimes(1);
+        expect(econt.quote.mock.calls[0][1].cashOnDeliveryCents).toBeNull();
+      });
     });
 
     describe('to an address', () => {
@@ -507,13 +605,14 @@ describe('DeliveryService', () => {
         const result = await service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
           destination,
+          isCashOnDelivery: false,
         });
 
-        expect(econt.quote).toHaveBeenCalledWith(
-          destination,
-          expect.objectContaining({ weightGrams: 4047 }),
-          '2026-09-29',
-        );
+        expect(econt.quote).toHaveBeenCalledWith(destination, {
+          parcel: expect.objectContaining({ weightGrams: 4047 }),
+          sendDate: '2026-09-29',
+          cashOnDeliveryCents: null,
+        });
         expect(econt.findOffice).not.toHaveBeenCalled();
         expect(result).toMatchObject({
           destination,
@@ -527,6 +626,7 @@ describe('DeliveryService', () => {
           service.quote(REQUESTER, {
             carrier: ShippingMethod.ECONT,
             destination: addressTo('999999'),
+            isCashOnDelivery: false,
           }),
         ).rejects.toBeInstanceOf(DeliveryAddressNotServedException);
         expect(econt.quote).not.toHaveBeenCalled();
@@ -536,10 +636,11 @@ describe('DeliveryService', () => {
         await service.quote(REQUESTER, {
           carrier: ShippingMethod.ECONT,
           destination: addressTo('27183'),
+          isCashOnDelivery: false,
         });
 
         expect(cached).toHaveBeenCalledWith(
-          'delivery:quote:ECONT:place:27183:4047:nobox:2026-09-29',
+          'delivery:quote:ECONT:place:27183:4047:nobox:2026-09-29:collect:none',
           300,
           expect.any(Function),
         );
@@ -552,6 +653,7 @@ describe('DeliveryService', () => {
           service.quote(REQUESTER, {
             carrier: ShippingMethod.ECONT,
             destination: addressTo('27183'),
+            isCashOnDelivery: false,
           }),
         ).rejects.toBeInstanceOf(CartEmptyException);
       });

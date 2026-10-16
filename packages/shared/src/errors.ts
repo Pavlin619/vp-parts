@@ -38,7 +38,6 @@ export enum AppErrorCode {
   /** The profile lacks a name or the phone an order needs: the UI asks for them. */
   CUSTOMER_DETAILS_REQUIRED = 'CUSTOMER_DETAILS_REQUIRED',
   MECHANIC_APPLICATION_ALREADY_EXISTS = 'MECHANIC_APPLICATION_ALREADY_EXISTS',
-  COD_THRESHOLD_EXCEEDED = 'COD_THRESHOLD_EXCEEDED',
   /** Price/availability could not be read. Retryable. */
   INVENTORY_UNAVAILABLE = 'INVENTORY_UNAVAILABLE',
   /** Catalogue data (TecDoc) could not be read. Retryable. */

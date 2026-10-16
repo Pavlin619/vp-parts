@@ -42,6 +42,5 @@ export interface CodConfirmResponseDto {
 }
 
 export interface CheckoutConfigDto {
-  codMaxOrderTotal: number;
   vatRate: number;
 }

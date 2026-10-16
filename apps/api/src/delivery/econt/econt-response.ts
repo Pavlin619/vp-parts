@@ -53,6 +53,7 @@ export interface EcontCalculatedLabel {
     currency: string;
     expectedDeliveryDate: number | null;
     shipmentType?: unknown;
+    services?: unknown;
   };
   delayedDeliveryWarning?: unknown;
 }
@@ -154,6 +155,33 @@ export function isCalculatedLabel(
     typeof currency === 'string' &&
     isNumberOrNull(expectedDeliveryDate)
   );
+}
+
+/** The line of a priced label that charges for collecting cash on delivery. */
+const CASH_ON_DELIVERY_SERVICE = 'CD';
+
+/** The euros a priced label charges for collecting cash; null when it names no such charge. */
+export function cashOnDeliveryFeeOf({
+  label,
+}: EcontCalculatedLabel): number | null {
+  if (!Array.isArray(label.services)) {
+    return null;
+  }
+
+  const fees = label.services
+    .filter(isFields)
+    .filter(({ type }) => type === CASH_ON_DELIVERY_SERVICE)
+    .map(({ price }) => price);
+
+  if (fees.length === 0 || !fees.every(isNonNegativeNumber)) {
+    return null;
+  }
+
+  return fees.reduce((sum, fee) => sum + fee, 0);
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 const INVALID_ADDRESS_TYPE = 'ExInvalidAddress';

@@ -26,7 +26,15 @@ jest.mock('@/lib/api/delivery', () => ({
     cartId: string,
     cartVersion: number,
   ) => ({
-    queryKey: ['delivery', 'quote', request?.carrier, request?.destination, cartId, cartVersion],
+    queryKey: [
+      'delivery',
+      'quote',
+      request?.carrier,
+      request?.destination,
+      request?.isCashOnDelivery,
+      cartId,
+      cartVersion,
+    ],
     queryFn: () => getQuote(request as DeliveryQuoteRequestDto),
     retry: false,
   }),
@@ -43,6 +51,7 @@ const QUOTE: DeliveryQuoteDto = {
   carrier: ShippingMethod.ECONT,
   destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
   priceIncVatCents: 714,
+  cashOnDeliveryFeeIncVatCents: null,
   expectedDeliveryDate: '2026-09-30',
   parcel: PARCEL,
   cartVersion: 4,
@@ -70,7 +79,7 @@ describe('useDeliverySummary', () => {
   })
 
   it('weighs the parcel and quotes it to the chosen office', async () => {
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.delivery.kind).toBe('quoted'))
 
@@ -78,18 +87,31 @@ describe('useDeliverySummary', () => {
     expect(result.current.delivery).toEqual({
       kind: 'quoted',
       priceIncVatCents: 714,
+      cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
     })
     expect(getQuote).toHaveBeenCalledWith({
       carrier: ShippingMethod.ECONT,
       destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
+      isCashOnDelivery: false,
     })
+  })
+
+  it('quotes the fee for collecting the money when the customer pays on delivery', async () => {
+    getQuote.mockResolvedValue({ ...QUOTE, cashOnDeliveryFeeIncVatCents: 152 })
+
+    const { result } = renderHook(() => useDeliverySummary(null, true), { wrapper })
+
+    await waitFor(() => expect(result.current.delivery.kind).toBe('quoted'))
+
+    expect(getQuote).toHaveBeenCalledWith(expect.objectContaining({ isCashOnDelivery: true }))
+    expect(result.current.delivery).toMatchObject({ cashOnDeliveryFeeIncVatCents: 152 })
   })
 
   it('does not ask for a quote before a method is chosen', async () => {
     useCheckoutDelivery.setState({ method: null })
 
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.parcelCheck.state).toBe('ready'))
 
@@ -100,7 +122,7 @@ describe('useDeliverySummary', () => {
   it('does not ask for a quote before an office is chosen', async () => {
     chooseOffice(null)
 
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.parcelCheck.state).toBe('ready'))
 
@@ -111,7 +133,7 @@ describe('useDeliverySummary', () => {
   it('does not ask for a quote before an address is accepted', async () => {
     useCheckoutDelivery.setState({ method: 'courier-address', address: null })
 
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.parcelCheck.state).toBe('ready'))
 
@@ -126,20 +148,21 @@ describe('useDeliverySummary', () => {
       address: { carrier: ShippingMethod.ECONT, address, label: 'бул. Витоша 1' },
     })
 
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.delivery.kind).toBe('quoted'))
 
     expect(getQuote).toHaveBeenCalledWith({
       carrier: ShippingMethod.ECONT,
       destination: { type: DeliveryDestinationType.ADDRESS, address },
+      isCashOnDelivery: false,
     })
   })
 
   it('asks for another office when the carrier refuses the chosen one', async () => {
     getQuote.mockRejectedValue(new ApiError(422, 'DELIVERY_OFFICE_REFUSED'))
 
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.delivery).toEqual({ kind: 'office-unusable' }))
   })
@@ -147,7 +170,7 @@ describe('useDeliverySummary', () => {
   it('fails when the parcel cannot be weighed, without quoting', async () => {
     getParcel.mockRejectedValue(new ApiError(503, 'DELIVERY_UNAVAILABLE'))
 
-    const { result } = renderHook(() => useDeliverySummary(null), { wrapper })
+    const { result } = renderHook(() => useDeliverySummary(null, false), { wrapper })
 
     await waitFor(() => expect(result.current.delivery).toEqual({ kind: 'failed' }))
 
@@ -157,7 +180,7 @@ describe('useDeliverySummary', () => {
   it('frees a store pickup without asking the carrier for a quote', async () => {
     useCheckoutDelivery.setState({ method: 'store-pickup' })
 
-    const { result } = renderHook(() => useDeliverySummary('2026-07-02T06:00:00.000Z'), {
+    const { result } = renderHook(() => useDeliverySummary('2026-07-02T06:00:00.000Z', false), {
       wrapper,
     })
 

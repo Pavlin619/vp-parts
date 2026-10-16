@@ -15,6 +15,7 @@ import { useDeliverySummary } from "@/hooks/use-delivery-summary";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
 import { initialContactMode, type ContactMode } from "@/lib/checkout/contact/contact-modes";
+import { isPaidOnDelivery } from "@/lib/checkout/payment/payment-methods";
 import { ContactPanel } from "./contact";
 import { DeliveryMethodPanel } from "./delivery";
 import { OrderItemsPanel } from "./order-items";
@@ -39,6 +40,7 @@ export function CheckoutView() {
   );
   const { isSignedIn } = useAuth();
   const isQuickOrder = isSignedIn === false && contactMode === "quick";
+  const isCashOnDelivery = isPaidOnDelivery(isQuickOrder, paymentMethod);
 
   const availability = useCartAvailability(lines);
   const rows = availability.rows.filter((row) => row.line.isSelected);
@@ -49,7 +51,7 @@ export function CheckoutView() {
   );
 
   const pickupReadyAt = promise?.isPickup ? promise.fulfilledAt : null;
-  const { parcelCheck, delivery } = useDeliverySummary(pickupReadyAt);
+  const { parcelCheck, delivery } = useDeliverySummary(pickupReadyAt, isCashOnDelivery);
 
   return (
     <>

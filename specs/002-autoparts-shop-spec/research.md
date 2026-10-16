@@ -156,13 +156,9 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 ---
 
-## 8. Cash on Delivery Threshold
+## 8. Cash on Delivery Has No Limit
 
-**Decision**: The COD threshold is stored as a configurable value in NestJS `ConfigModule` (`COD_MAX_ORDER_TOTAL_CENTS`). The spec's placeholder is €200.00 (20000 cents) pending confirmation from the business owner. The frontend receives the threshold via a public configuration endpoint so it can conditionally show the COD option before the user reaches the payment step.
-
-**Endpoint**: `GET /config/checkout` returns `{ codMaxOrderTotal: 20000, vatRate: 0.20 }` — public, no auth required. The `codMaxOrderTotal` value is integer cents.
-
-**Rationale**: The threshold must be changeable without a code deployment. A `ConfigModule`-backed environment variable satisfies this without a database table for a single scalar value.
+**Decision**: Cash on Delivery is offered for any order total. The business owner decided on 2026-10-15 that no cap is needed, so there is no threshold setting, no error code for exceeding one, and nothing about it in `GET /config/checkout`.
 
 ---
 

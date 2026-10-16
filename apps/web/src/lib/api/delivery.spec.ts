@@ -148,24 +148,25 @@ const OFFICE = { type: DeliveryDestinationType.OFFICE, officeCode: '1127' } as c
 describe('getDeliveryQuote', () => {
   // The server prices the cart it owns; the client names only the office.
   it('asks for the price of the cart this device owns to one office', () => {
-    getDeliveryQuote({ carrier: ShippingMethod.ECONT, destination: OFFICE })
+    getDeliveryQuote({ carrier: ShippingMethod.ECONT, destination: OFFICE, isCashOnDelivery: true })
 
     expect(mockCartFetch).toHaveBeenCalledWith('/delivery/quote', {
       method: 'POST',
-      body: { carrier: ShippingMethod.ECONT, destination: OFFICE },
+      body: { carrier: ShippingMethod.ECONT, destination: OFFICE, isCashOnDelivery: true },
     })
   })
 })
 
 describe('deliveryQuoteQueryOptions', () => {
-  const request = { carrier: ShippingMethod.ECONT, destination: OFFICE }
+  const request = { carrier: ShippingMethod.ECONT, destination: OFFICE, isCashOnDelivery: false }
 
-  it('keys the quote by carrier, office, cart and cart version', () => {
+  it('keys the quote by carrier, office, payment, cart and cart version', () => {
     expect(deliveryQuoteQueryOptions(request, 'cart-1', 7).queryKey).toEqual([
       'delivery',
       'quote',
       ShippingMethod.ECONT,
       OFFICE,
+      false,
       'cart-1',
       7,
     ])
