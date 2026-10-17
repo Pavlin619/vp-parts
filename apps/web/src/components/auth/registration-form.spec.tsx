@@ -34,8 +34,10 @@ const SUBMIT = 'Създай профил'
 
 interface FakeSignUp {
   status: string
+  unverifiedFields: string[]
   password: jest.Mock
   finalize: jest.Mock
+  verifications: { sendEmailCode: jest.Mock; verifyEmailCode: jest.Mock }
 }
 
 let signUp: FakeSignUp
@@ -79,11 +81,20 @@ beforeEach(() => {
   jest.clearAllMocks()
   signUp = {
     status: 'missing_requirements',
+    unverifiedFields: [],
     password: jest.fn().mockImplementation(async () => {
       signUp.status = 'complete'
       return { error: null }
     }),
     finalize: jest.fn().mockResolvedValue({ error: null }),
+    verifications: {
+      sendEmailCode: jest.fn().mockResolvedValue({ error: null }),
+      verifyEmailCode: jest.fn().mockImplementation(async () => {
+        signUp.status = 'complete'
+        signUp.unverifiedFields = []
+        return { error: null }
+      }),
+    },
   }
   jest.mocked(useSignUp).mockReturnValue({ signUp } as unknown as ReturnType<typeof useSignUp>)
   jest.mocked(useClerk).mockReturnValue({
@@ -230,8 +241,8 @@ describe('RegistrationForm', () => {
     )
   })
 
-  // E.g. email verification switched on in the Clerk dashboard: this form has no code step.
-  it('reports a sign-up Clerk left incomplete as a generic failure', async () => {
+  // E.g. a field required in the Clerk dashboard that this form does not ask for.
+  it('reports a sign-up Clerk left incomplete for anything but the email as a generic failure', async () => {
     const user = userEvent.setup()
     jest.spyOn(console, 'error').mockImplementation(() => {})
     signUp.password.mockResolvedValueOnce({ error: null })
@@ -245,5 +256,95 @@ describe('RegistrationForm', () => {
     )
     expect(signUp.finalize).not.toHaveBeenCalled()
     expect(onComplete).not.toHaveBeenCalled()
+  })
+
+  describe('when Clerk asks for the email to be verified', () => {
+    const CODE = 'Код от имейла'
+    const VERIFY = 'Потвърди'
+
+    beforeEach(() => {
+      signUp.password.mockImplementation(async () => {
+        signUp.unverifiedFields = ['email_address']
+        return { error: null }
+      })
+    })
+
+    async function reachCodeStep(user: ReturnType<typeof userEvent.setup>) {
+      await fillAccount(user)
+      await user.click(screen.getByRole('button', { name: SUBMIT }))
+      await screen.findByLabelText(CODE)
+    }
+
+    it('sends a code and asks for it in place of the form', async () => {
+      const user = userEvent.setup()
+      const { onComplete } = renderForm()
+
+      await reachCodeStep(user)
+
+      expect(signUp.verifications.sendEmailCode).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/ivan@example\.com/)).toBeInTheDocument()
+      expect(screen.queryByLabelText('Парола')).not.toBeInTheDocument()
+      expect(signUp.finalize).not.toHaveBeenCalled()
+      expect(onComplete).not.toHaveBeenCalled()
+    })
+
+    it('verifies the code, then activates the session and files the customer', async () => {
+      const user = userEvent.setup()
+      const { onComplete } = renderForm()
+
+      await reachCodeStep(user)
+      await user.type(screen.getByLabelText(CODE), '424242')
+      await user.click(screen.getByRole('button', { name: VERIFY }))
+
+      await waitFor(() => expect(onComplete).toHaveBeenCalled())
+      expect(signUp.verifications.verifyEmailCode).toHaveBeenCalledWith({ code: '424242' })
+      expect(signUp.finalize).toHaveBeenCalled()
+      expect(mockedFileCustomer).toHaveBeenCalledWith('fresh-jwt')
+    })
+
+    it('shows a wrong code in Bulgarian and does not activate the session', async () => {
+      const user = userEvent.setup()
+      signUp.verifications.verifyEmailCode.mockResolvedValueOnce({
+        error: clerkRefusal('form_code_incorrect', 'code'),
+      })
+      const { onComplete } = renderForm()
+
+      await reachCodeStep(user)
+      await user.type(screen.getByLabelText(CODE), '000000')
+      await user.click(screen.getByRole('button', { name: VERIFY }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Грешен код. Проверете имейла и опитайте отново.',
+      )
+      expect(signUp.finalize).not.toHaveBeenCalled()
+      expect(onComplete).not.toHaveBeenCalled()
+    })
+
+    it('goes back to the form with what was typed, to change the email', async () => {
+      const user = userEvent.setup()
+      renderForm()
+
+      await reachCodeStep(user)
+      await user.click(screen.getByRole('button', { name: 'Промени имейла' }))
+
+      expect(screen.getByLabelText('Имейл')).toHaveValue('ivan@example.com')
+      expect(screen.getByLabelText('Име')).toHaveValue('Иван')
+    })
+
+    it('stays on the form when the code cannot be sent', async () => {
+      const user = userEvent.setup()
+      signUp.verifications.sendEmailCode.mockResolvedValueOnce({
+        error: clerkRefusal('too_many_requests'),
+      })
+      renderForm()
+
+      await fillAccount(user)
+      await user.click(screen.getByRole('button', { name: SUBMIT }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Твърде много опити. Опитайте отново след малко.',
+      )
+      expect(screen.queryByLabelText(CODE)).not.toBeInTheDocument()
+    })
   })
 })

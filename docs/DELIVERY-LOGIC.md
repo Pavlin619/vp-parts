@@ -284,8 +284,8 @@ The frontend uses them in three layers (see also `docs/PRICING-AND-DELIVERY.md`)
    calls `router.refresh()` (re-runs the dynamic page server-side, preserving
    client state) on a timer set to the soonest upcoming `cutoffAt`, and on tab
    focus once the snapshot has aged past a TTL.
-3. **Pre-action re-validation (deferred to checkout, `TODO(checkout)`)** — before
-   a binding commitment (checkout confirm), `CheckoutService` calls the live,
+3. **Pre-action re-validation (when the order is placed, see `docs/ORDERS.md`)** —
+   before a binding commitment, `OrdersService` calls the live,
    fail-closed `InventoryService.getAvailability` **in-process** (a cart is
    naturally multi-item, so it takes the batch path; warehouses are always
    attached) and binds the returned date as the committed promise. Tracked as

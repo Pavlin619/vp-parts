@@ -230,9 +230,9 @@ The backoffice operator sees all incoming online orders, manages a fulfilment ta
 
 - What happens when a vehicle's model year spans a production range and the customer's exact year matches two overlapping variants? Show all applicable variants and allow the customer to select the most specific match; if uncertain, suggest contacting the store.
 - What happens when a part has no image? Show a standardised "no image available" placeholder that is clearly distinct from an actual product image.
-- What happens when a part's price changes between the cart being built and the final pre-payment check? Show the old price, the new price, and the difference; require the customer to explicitly confirm before proceeding.
-- What happens when a courier API is unavailable at checkout? Fall back to displaying standard flat-rate shipping estimates with a note that the exact cost will be confirmed; do not block checkout.
-- What happens when a customer's email verification link has expired? Show a clear message with a one-click option to re-send a fresh link.
+- What happens when a part's price changes between the checkout page loading and the order being placed? The order is refused (`PRICE_CHANGED`); checkout shows the old and the new total and the customer places the order again at the new one.
+- What happens when a courier API is unavailable at checkout? Checkout is blocked (`DELIVERY_UNAVAILABLE`) and the customer is invited to retry, or to pick store pickup. There is no flat-rate fallback: the amount collected on delivery must be exact, and the delivery price is frozen on the order.
+- What happens when a customer's email verification code has expired or is wrong? Registration verifies the email with a 6-digit code (no link); the code step says why it was refused and offers a new code after a short cooldown.
 - What happens when two sessions for the same logged-in customer both modify the cart simultaneously? The last-write wins and both sessions see the current server state on next load; no silent data loss.
 - What happens when a mechanic's trade account is suspended after they have items in their cart? At next cart load their prices revert to retail; they are notified by a banner that their trade account status has changed.
 - What happens when the backoffice availability API is unreachable during checkout? Checkout is blocked; the customer sees a generic "Unable to confirm availability" message and is invited to try again shortly — they are never charged in an uncertain state.
@@ -280,13 +280,13 @@ A cart line is identified by brand *and* article number throughout. An article n
 
 **Checkout**
 
-- **FR-025**: Checkout MUST be restricted to logged-in customers. Anonymous visitors attempting to proceed to checkout MUST be redirected to login/registration with their intended destination preserved.
+- **FR-025**: Placing an order MUST be restricted to signed-in customers whose email was verified at sign-up. Anonymous visitors sign in or register inside checkout without losing their cart. A guest "quick order" is planned separately and its tab is hidden until then (`docs/ORDERS.md` → Later).
 - **FR-026**: The checkout flow MUST collect, in order: delivery address, shipping method, payment method, and a final order review before payment.
 - **FR-027**: The delivery address form MUST validate Bulgarian address fields: city/town, postcode (4-digit Bulgarian format), street name, and street number. A house/apartment number field MUST be optional.
 - **FR-028**: Shipping methods MUST include at least Econt and Speedy courier delivery. Each option MUST show the calculated shipping cost and an estimated delivery window.
-- **FR-029**: Payment methods MUST include: card payment through dominaite (card entry on dominaite's payment form, 3DS when the issuer requires it), Cash on Delivery. Cash on Delivery is offered whatever the order total.
-- **FR-030**: Immediately before payment is initiated, the system MUST perform a real-time confirmation of every item's availability and current price against the live backoffice data. This check MUST NOT use any cached price data.
-- **FR-031**: If the pre-payment check reveals a price change, the customer MUST be shown the old price, the new price, and the difference for each affected item, and MUST explicitly confirm before payment proceeds.
+- **FR-029**: Payment methods MUST include Cash on Delivery, offered whatever the order total. Card payment through dominaite (card entry on dominaite's payment form, 3DS when the issuer requires it) comes later; until then it is shown disabled as "Очаквайте скоро".
+- **FR-030**: When the order is placed (and, for card payments later, before payment is initiated), the system MUST perform a real-time confirmation of every item's availability and current price against the live backoffice data. This check MUST NOT use any cached price data.
+- **FR-031**: If that check finds a total other than the one the customer was shown, the order MUST NOT be placed; the customer MUST be shown the old and the new total and MUST place the order again to accept it.
 - **FR-032**: If the pre-payment check reveals an item is out of stock, the customer MUST NOT be charged; the checkout flow MUST halt and prompt the customer to remove the affected item.
 - **FR-033**: If payment fails, the customer's cart, address, and all entered checkout data MUST be preserved so they can retry without re-entering information.
 - **FR-034**: On successful payment, the system MUST display an on-screen order confirmation with: order reference, item list, total charged, payment method, delivery address, and estimated delivery timeframe.

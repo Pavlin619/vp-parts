@@ -117,29 +117,32 @@ reason theirs is on the server.
 
 ## What happens when the customer buys
 
-*(Contract only. `CheckoutService` is the next piece of work; the schema here
-already enforces it.)*
+*(Contract only; the orders module is the next piece of work, and the schema
+here already enforces it. The whole request is in [ORDERS.md](./ORDERS.md).)*
 
 A cart becomes an order by **transition, never deletion**:
 
-1. `POST /checkout/confirm` reads the cart server-side **by id** — the client
-   submits neither lines nor prices — re-prices it live and fail-closed, and
-   returns the confirmed figures, the bound delivery promise, and the
-   `cartVersion` it priced.
-2. `POST /orders` carries that version back. If the cart has moved since, the
-   order is refused (`CART_STALE`) and the customer re-confirms. That is what
-   makes "the price you agreed to" enforceable rather than advisory.
-3. Order creation, in one transaction: re-read availability → copy **only the
-   selected lines** into `OrderItem` with `brandId`, `articleNumber` and the
-   confirmed price → create the `Order` and its first `OrderStatusHistory` →
-   set the cart to `ORDERED` and stamp `orderId`.
+1. The checkout page's live reads are the confirmation: availability and the
+   delivery quote are both read server-side from the cart, by id. There is no
+   separate confirm call.
+2. `POST /orders` names the cart and carries back the `cartVersion` the page
+   showed and the total it showed. A cart that has moved since is refused
+   (`CART_STALE`), and so is a total that no longer matches the live prices
+   (`PRICE_CHANGED`), because a price can move without the cart being edited.
+   Together they make "the price you agreed to" enforceable rather than advisory.
+3. Order creation, in one transaction with the cart row locked: check the cart is
+   still `ACTIVE` at that version → copy **only the selected lines** into
+   `OrderItem` with `brandId`, `articleNumber` and their price → create the
+   `Order`, its first `OrderStatusHistory` and its outbox event → set the cart to
+   `ORDERED` and stamp `orderId`.
 4. Unselected lines move to a fresh `ACTIVE` cart for the same owner. The cart
    page already lets a customer pick a subset; this is what that implies.
 5. The cart row is **never deleted**. It is the record of what was bought, and
-   `Order.cartId` is `UNIQUE`, so the database itself refuses a second order
-   for one cart — the cheapest possible idempotency key for a retried payment
-   webhook, which finds the cart `ORDERED` and returns the existing order.
-6. A failed payment leaves the cart `ACTIVE` and untouched.
+   it is the idempotency key: a retried `POST /orders` for a cart already
+   `ORDERED` by the same owner returns the existing order, two concurrent ones
+   serialise on the row lock, and `Order.cartId` being `UNIQUE` lets the database
+   itself refuse a second order for one cart. No idempotency header is needed.
+6. An order that is refused leaves the cart `ACTIVE` and untouched.
 
 ## No stock reservation, ever
 
@@ -151,7 +154,7 @@ decisive:
 - Reserving on add is the classic mistake regardless: abandoned carts eat the
   inventory of customers who would have bought. Amazon does not do it either.
 
-Safety comes from the fail-closed re-check at confirm plus the backoffice's own
+Safety comes from the fail-closed re-check when the order is placed plus the backoffice's own
 re-check after `OrderPlaced`.
 
 ## Load

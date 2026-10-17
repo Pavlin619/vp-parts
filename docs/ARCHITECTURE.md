@@ -208,7 +208,7 @@ Internal endpoints on the backoffice:
 
 Price and availability is **no longer** served by an internal endpoint — NestJS reads it directly from the shared database (see next section).
 
-Fulfillment is **not triggered via a synchronous endpoint**. After payment is confirmed, NestJS publishes `OrderPlaced` to SQS. The backoffice consumes that event and handles all fulfillment logic asynchronously. SQS durability guarantees the message is processed even if the backoffice is temporarily down.
+Fulfillment is **not triggered via a synchronous endpoint**. When an order is placed, NestJS writes `OrderPlaced` to an outbox in the order's own transaction, and a relay publishes it to SQS (see [ORDERS.md](./ORDERS.md)). The backoffice consumes that event and handles all fulfillment logic asynchronously. SQS durability guarantees the message is processed even if the backoffice is temporarily down.
 
 ### NestJS → Shared DB (direct, read-only)
 Price and availability are read **directly from the shared PostgreSQL database** over the private network — there is no internal price/availability REST hop. The `shop_app` role holds a **column-scoped, read-only `SELECT`** grant on two backoffice tables: `public.autoparts` (our own stock — the primary source, granted only the customer-safe columns, never cost/internal columns) and `public.supplier_stock` (the fallback source, including `buy_price` so the shop can pick the best supplier). These tables are not modelled in Prisma; the `inventory` repositories read them with parameterised `prisma.$queryRaw`. This keeps live availability a single in-network query with no extra service hop, and database permissions enforce that the shop can never see anything beyond the granted columns.
@@ -219,19 +219,13 @@ Events are the primary mechanism for decoupling checkout from fulfillment and fo
 
 **Queue 1: `shop-events`** (NestJS publishes → backoffice consumes)
 
-Published by NestJS after payment is confirmed. Backoffice is notified of new orders without being in the checkout critical path.
+Published by NestJS for every order placed: at once for cash on delivery, and once the payment is confirmed for a card. Backoffice is notified of new orders without being in the checkout critical path. Events go out through a transactional outbox, never straight after the commit, so a crash between the two cannot lose one.
 
 ```json
-{
-  "eventType": "OrderPlaced",
-  "orderId": "abc-123",
-  "customerId": "xyz-789",
-  "customerEmail": "customer@example.com",
-  "items": [{ "articleNumber": "WL6340", "quantity": 2, "unitPrice": 24.50 }],
-  "total": 49.00,
-  "createdAt": "2025-01-15T08:32:00Z"
-}
+{ "eventType": "OrderPlaced", "eventId": "…", "orderId": "…", "occurredAt": "2026-10-16T08:32:00Z" }
 ```
+
+The event is **thin**: the backoffice reads the order from `shop.orders` and `shop.order_items` with its existing `SELECT` grant, so no customer data sits in a queue or a DLQ. Delivery is at least once; the consumer deduplicates on `eventId`. Until the backoffice consumes it, an email to the office announces each order. Contract and rationale: [ORDERS.md](./ORDERS.md).
 
 **Queue 2: `fulfillment-events`** (backoffice publishes → NestJS consumes)
 
@@ -317,17 +311,18 @@ inventory out of the search/list path means a cached list never serves a stale
 delivery date, and a search never triggers a stock-DB read per TecDoc tier
 attempt — availability is read once, client-side, for the final result set.
 
-**At checkout confirmation** (before payment — always fresh, fails *closed*):
+**When the order is placed** (always fresh, fails *closed*):
 ```
-CheckoutService → inventory.getAvailability(cart article identities)
+OrdersService → inventory.getAvailability(selected cart lines)
   → in-process call, direct DB read, no Redis, every request (not an HTTP hop)
         │
-        ├── Price / availability unchanged → proceed to payment
-        ├── Something changed → show customer updated info, request re-confirmation
-        └── DB read fails → InventoryUnavailableException (checkout fails closed)
+        ├── Total equals the one the customer was shown → the order is written
+        ├── A line is unavailable → 422 ARTICLE_UNAVAILABLE
+        ├── The total moved → 409 PRICE_CHANGED; checkout shows the new total
+        └── DB read fails → InventoryUnavailableException (no order is written)
 ```
 
-Checkout re-validates through the same read (a cart is naturally multi-item, so it
+Placing an order re-validates through the same read (a cart is naturally multi-item, so it
 takes the batch path), inheriting the fail-closed policy — a DB blip aborts the
 order rather than selling stale stock. This ensures the customer is always charged
 based on live data.
@@ -341,50 +336,56 @@ The browse cache is a performance optimisation only, never used for financial de
 
 The cart itself is server-side from the first add (`docs/CART.md`), so every
 step below reads it from `shop.cart` by id — the browser never submits the
-lines or the prices it is to be charged.
+lines or the prices it is to be charged. The request, its refusals and the money
+are specified in [ORDERS.md](./ORDERS.md).
 
 ```
-Customer confirms cart (read server-side by id; cart.version pinned)
+Checkout page: live availability + delivery quote, read from the cart by id
         │
         ▼
-Pre-checkout: fresh non-cached direct DB read for the whole cart
-  inventory.getAvailability(cart tecdocNumbers) — reads autoparts + supplier_stock, no cache
-  Price or stock changed? → show customer updated info, request re-confirmation
-  DB read fails? → InventoryUnavailableException (fail closed)
-  All good? → proceed to payment
+POST /orders { cartId, cartVersion, expectedTotalCents, paymentMethod, delivery }
+  Profile complete?               no → 422 CUSTOMER_DETAILS_REQUIRED
+  Cart ORDERED already?           yes → return that order (replay)
+  Cart moved?                     yes → 409 CART_STALE
+  inventory.getAvailability       fresh, no cache; fails closed
+  DeliveryService.priceForOrder   same path as the quote; Econt down → 503, no order
+  Total ≠ expectedTotalCents?     yes → 409 PRICE_CHANGED
         │
         ▼
-Payment processed (Stripe / dominaite)
-        │
-        ▼
-NestJS writes shop.orders (status: PROCESSING) in one transaction with:
-  - the selected cart lines copied into order_items at the confirmed price
-  - cart.status → ORDERED, cart.orderId set (UNIQUE: one order per cart, which
-    is what makes a retried payment webhook idempotent)
+One transaction (cart row locked FOR UPDATE):
+  - shop.orders (status: PROCESSING) with the delivery quote frozen on it
+  - the selected cart lines copied into order_items at their price
+  - the first order_status_history row and the OrderPlaced outbox row
+  - cart.status → ORDERED, cart.orderId set (UNIQUE: one order per cart)
   - any unselected lines moved to a fresh ACTIVE cart
-Returns to customer: "Your order is being processed"
+Returns { orderId, orderReference } → confirmation page
         │
-        ├──► Publish OrderPlaced → SQS shop-events
-        │         ├── Spring Boot consumes → runs fulfillment logic
-        │         │         ├── Re-checks live availability in supplier_stock
-        │         │         ├── Intercars → API call → auto-order placed
-        │         │         └── Other supplier → creates fulfillment_tasks (PENDING_MANUAL)
-        │         │                            → appears in fulfillment dashboard
-        │         │                            → operator orders manually → marks done
-        │         │
-        │         └── NestJS email worker consumes → sends confirmation email
-        │
-        Backoffice publishes to SQS fulfillment-events as order progresses:
-                  │
-                  ├── OrderFulfilled → NestJS consumes → order: ITEMS_PREPARED
-                  │                    SSE push → customer sees update
-                  │
-                  ├── OrderShipped  → NestJS consumes → order: ON_THE_WAY
-                  │                    SSE push → customer sees tracking info
-                  │
-                  └── OrderDelivered → NestJS consumes → order: DELIVERED
-                                       SSE push → customer sees confirmation
+        ▼
+Outbox relay (FOR UPDATE SKIP LOCKED, retried with backoff)
+        ├── Confirmation email to the customer (Resend)
+        ├── Notification email to the office, until the backoffice consumes events
+        └── Publish OrderPlaced → SQS shop-events
+                  └── Spring Boot consumes → reads shop.orders → runs fulfillment logic
+                            ├── Re-checks live availability in supplier_stock
+                            ├── Intercars → API call → auto-order placed
+                            └── Other supplier → creates fulfillment_tasks (PENDING_MANUAL)
+                                               → appears in fulfillment dashboard
+                                               → operator orders manually → marks done
+
+Backoffice publishes to SQS fulfillment-events as order progresses:
+          │
+          ├── OrderFulfilled → NestJS consumes → order: ITEMS_PREPARED
+          │                    SSE push → customer sees update
+          │
+          ├── OrderShipped  → NestJS consumes → order: ON_THE_WAY
+          │                    SSE push → customer sees tracking info
+          │
+          └── OrderDelivered → NestJS consumes → order: DELIVERED
+                               SSE push → customer sees confirmation
 ```
+
+Cash on delivery creates the order directly. A card payment, later, creates it
+first as `PENDING_PAYMENT` and lets the provider's webhook confirm it.
 
 ---
 

@@ -1,0 +1,364 @@
+# Orders: placing one, and what happens after
+
+The authoritative design for turning a cart into an order. **Nothing here is
+built yet**: it is the contract the orders module, the checkout button and the
+outbox are written against. The cart side of the transition is in
+[CART.md](./CART.md), the delivery price in
+[DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md), and who a customer is in
+[AUTH.md](./AUTH.md).
+
+## What is in scope
+
+- **Signed-in customers only.** Their email is verified at sign-up (AUTH.md),
+  so an order's confirmation reaches the person who placed it. A guest "quick
+  order" is hidden until it has its own design (see [Later](#later)).
+- **Cash on delivery only.** Card is shown disabled, "Очаквайте скоро", with
+  no fee badge. [Card payments](#card-payments-later) below says what changes.
+- **Three ways to receive it:** an Econt office (or Econtomat), an address by
+  Econt, or pickup from our store.
+
+## The request
+
+```
+POST /orders                     JwtGuard · Cache-Control: no-store · 5/min per customer
+{
+  "cartId": "…",
+  "cartVersion": 7,
+  "expectedTotalCents": 15432,
+  "paymentMethod": "CASH_ON_DELIVERY",
+  "delivery":
+      { "method": "COURIER_OFFICE",  "carrier": "ECONT", "officeCode": "1127" }
+    | { "method": "COURIER_ADDRESS", "carrier": "ECONT", "address": { …DeliveryAddressDto } }
+    | { "method": "STORE_PICKUP" }
+}
+
+201 { "orderId": "…", "orderReference": "VP-000123" }     a new order
+200 { "orderId": "…", "orderReference": "VP-000123" }     the same cart again (replay)
+```
+
+The browser sends **no lines, weights or prices**. It sends which cart, which
+version of it the customer looked at, and the total it showed them. The server
+reads everything else itself, and refuses the order if what it reads is not what
+the customer saw.
+
+- **`cartVersion`** moves on every edit to the cart (CART.md). It catches an
+  edit made in another tab or on another device.
+- **`expectedTotalCents`** catches what the version cannot: a **live price that
+  moved with no edit to the cart**. Without it, "the price you agreed to" could
+  not be enforced. A price rise between the checkout page loading and the click
+  would order at a total the customer never saw.
+- **`cartId`** makes a retry safe (see [Idempotency](#idempotency-is-the-cart)).
+  Resolving "the customer's active cart" instead would, on a retry after
+  success, find the *new* cart holding the unselected lines.
+
+`paymentMethod` accepts only `CASH_ON_DELIVERY` for now; anything else is
+`400 VALIDATION_ERROR`. The checkout page's live reads (availability, the
+quote) already are the confirmation, so there is no separate
+`POST /checkout/confirm`.
+
+## What the server does
+
+All external reads (inventory, Econt) happen **before** the transaction, so no
+row lock is ever held across an HTTP call.
+
+1. **Who.** `CustomersService.requireCompleteProfile(clerkId)` returns the name,
+   phone and email to snapshot, or `422 CUSTOMER_DETAILS_REQUIRED`.
+2. **The cart.** Read by `cartId`; another owner's cart, or none, is
+   `404 NOT_FOUND`, never `403`.
+   - `ORDERED` → return its order, `200` (a replay).
+   - `MERGED`, or `version ≠ cartVersion` → `409 CART_STALE`.
+3. **The lines.** The selected lines (`CartService.getShippingLines`; none is
+   `422 CART_EMPTY`) and their live availability (`InventoryService.getAvailability`,
+   which fails closed with `503 INVENTORY_UNAVAILABLE`). A line out of stock,
+   short of its quantity or unpriced is `422 ARTICLE_UNAVAILABLE`, through the
+   same `goodsTotalIncVatCents` the cash-on-delivery quote uses.
+4. **The delivery.** `DeliveryService.priceForOrder(lines, availability, choice)`,
+   the one path `POST /delivery/quote` also takes: destination check, parcel
+   ready date, then the price and the cash-on-delivery fee. An address is also
+   validated with the carrier and `INVALID` is refused. Pickup costs nothing and
+   has no carrier. Econt down is `503 DELIVERY_UNAVAILABLE` and **no order is
+   written**: the amount collected at the door must be exact, so there is no
+   flat-rate fallback.
+5. **The money** ([below](#money)). `total ≠ expectedTotalCents` →
+   `409 PRICE_CHANGED`.
+6. **One transaction:**
+   - lock the cart (`SELECT … FOR UPDATE`) and check again that it is `ACTIVE`
+     at `cartVersion`. If it became `ORDERED` meanwhile, return that order;
+   - insert the `Order`, its `OrderItem`s, the first `OrderStatusHistory` row
+     (`PROCESSING`, `source: 'shop'`) and the `OrderPlaced` outbox row;
+   - set the cart `ORDERED` with its `orderId`;
+   - move the unselected lines to a fresh `ACTIVE` cart for the customer.
+7. `201 { orderId, orderReference }`.
+
+### Refusals and where the customer acts on them
+
+| Code | Status | Checkout does |
+|---|---|---|
+| `PRICE_CHANGED` | 409 | Refetches availability and the quote; says "цената е променена" with the old and new totals |
+| `CART_STALE` | 409 | Resyncs the cart |
+| `ARTICLE_UNAVAILABLE` | 422 | Shows the blocked-lines notice |
+| `CUSTOMER_DETAILS_REQUIRED` | 422 | Shows the completion step |
+| `DELIVERY_*` (office, address, locker) | 422 | Points at the delivery panel |
+| `INVENTORY_UNAVAILABLE`, `DELIVERY_UNAVAILABLE` | 503 | Offers a retry |
+| `RATE_LIMITED` | 429 | Asks to wait |
+
+## Idempotency is the cart
+
+A double click, a network retry, or two tabs submitting at once must end in
+**one** order. The cart's own id is the key, so no `Idempotency-Key` header is
+needed:
+
+- A request for a cart that is already `ORDERED` by this customer returns that
+  order. The client cannot tell a replay from the first success, and need not.
+- Two concurrent requests serialise on the cart's row lock. The second finds the
+  cart `ORDERED` once the first commits, and returns the same order.
+- `Order.cartId` and `Cart.orderId` are `UNIQUE`, so even a bug in the above
+  cannot write a second order for one cart.
+
+## Money
+
+Every amount is **EUR cents including VAT**. The shop sells at final prices:
+`gross_price` comes from the backoffice as is (ARCHITECTURE.md), and it is what
+the customer sees, what the total adds up and what Econt collects at the door.
+
+**The gross price is the fact; the net price and the VAT are derived from it.**
+That is the whole rule, and it has three parts.
+
+1. **The total is an exact sum, with no rounding at all.**
+   ```
+   lineTotal  = gross unit price × quantity
+   goods      = Σ lineTotal                         over the selected lines
+   total      = goods + deliveryPrice + cashOnDeliveryFee
+   ```
+   Every term is already in whole cents, so the total is exactly what the
+   customer was shown, line by line. It can never move by a cent.
+2. **VAT is worked out once, from the total, at the one rate** (20%), with
+   ordinary half-up rounding:
+   ```
+   vatAmount  = total − round(total / (1 + VAT_RATE))
+   netAmount  = total − vatAmount
+   ```
+   This is the only rounding in an order, and it moves only how the total splits
+   into net and VAT, never the total. Delivery and the fee are charged by us as
+   part of the same sale, so the one rate covers the whole total
+   (**[VERIFY]** with the accountant).
+3. **Nothing is ever summed from net prices.** A net unit price (`bestPriceExVat`,
+   for the trade customer's VAT toggle) is a display of one unit. Multiplying and
+   adding rounded net prices, or adding VAT onto them, is what produces a total a
+   cent off the gross one. That is why `common/price-calculator.ts`, which adds
+   VAT onto a net subtotal, is removed with the order model.
+
+For example, two parts to an Econt office, cash on delivery. Every price
+includes VAT:
+
+| What | Price | From |
+|---|---|---|
+| Part A, €12.99 × 2 | 25.98 | backoffice gross price |
+| Part B, €7.49 × 3 | 22.47 | backoffice gross price |
+| Delivery | 3.78 | Econt's quote |
+| Cash-on-delivery fee | 0.81 | Econt's quote |
+| **Total** | **53.04** | the sum: no rounding |
+| Net | 44.20 | round(5304 / 1.2) = round(4420.0) |
+| **VAT in it** | **8.84** | 53.04 − 44.20 |
+
+Delivery and the fee need nothing of their own: Econt's prices include VAT like
+the parts', we charge the customer that amount as part of the sale, and the one
+division over the total takes the VAT out of all of it (€0.63 of the €3.78).
+
+Dividing each part first instead gives 12.99 / 1.2 = 10.83 × 2 and
+7.49 / 1.2 = 6.24 × 3, net 40.38, plus 20% = **48.46** for parts shown at
+48.45. A cent off with two lines, and it grows with every line.
+
+### The server computes it; the web only shows it
+
+The figures come from **one pure function in the API**,
+`apps/api/src/common/order-money.ts` (`orderMoney`), spec'd first with the
+rounding edge cases. It sits in `common/` because both the delivery quote and the
+order call it. The web does **no money arithmetic**: every total and VAT figure it
+shows comes from one of these responses, all computed by `orderMoney` from the
+live prices:
+
+| Response | Shows | Used by |
+|---|---|---|
+| `GET /cart/totals` | Parts total, its net and its VAT, and the `cartVersion` priced | The cart page; checkout before a delivery is chosen, and with store pickup |
+| `POST /delivery/quote` | The same, plus the delivery price, the fee, the order total and the VAT in the whole total | The checkout summary once a courier delivery is quoted |
+| `POST /orders` | Stores them on the order | The confirmation page and email |
+
+The button sends back the `total` the summary showed as `expectedTotalCents`.
+The order recomputes it the same way and refuses any difference
+(`PRICE_CHANGED`), so what the customer saw and what the order holds come from
+the same function on the same prices.
+
+### How the large platforms do it, and why this matches
+
+- **Magento / Adobe Commerce** offers three methods: round each unit's tax, each
+  row's, or only the **total's**. Only the last rounds once.
+- **WooCommerce** has "Round tax at subtotal level, instead of rounding per
+  line" for prices entered including tax, because per-line rounding drifts.
+- **Shopify** rounds tax per line for EU stores. With tax-included prices the
+  total stays the gross sum, and the rounding shows up as cent differences in the
+  reported tax, which merchants reconcile by hand.
+- **EU and Bulgarian rules.** The CJEU (C-484/06, Koninklijke Ahold) left the
+  rounding level to each member state. Bulgaria's law does not fix it, and its
+  practice is VAT rounded to the cent and calculated **per invoice, by rate**.
+  Spain and Portugal derive the base from the inclusive total by dividing by
+  (1 + rate). Fiscal receipts under Н-18 also total VAT per tax group, not per
+  item.
+
+Rounding once, on the total, is the method that never drifts, and it is what a
+receipt or an invoice for the order would show anyway.
+
+### Later: discounts and invoices
+
+- **A discount** (the mechanic's trade price) is applied to each line's **gross**
+  unit price, in whole cents, before the sum. The total then stays an exact sum
+  of what the customer was shown. A percentage off the total spread back over the
+  lines would bring the rounding back.
+- **An invoice** (ЗДДС Art. 114, for a business that asks for one) shows a net
+  unit price per line and the tax base and VAT per rate. The base and the VAT are
+  the order's `netAmount` and `vatAmount`; the per-line net prices are
+  informative and may not add up to the base to the cent. **[VERIFY]** with the
+  accountant that this is acceptable on an invoice, or whether it should balance
+  per line instead.
+
+### The quote is binding
+
+The delivery price, the cash-on-delivery fee, the expected delivery date and the
+parcel weight are **frozen on the order**. If Econt charges something different
+when the waybill is made (a re-weighed parcel, a tariff change), the shop
+absorbs the difference; the customer pays at the door exactly what the
+confirmation says. The quote may come from the 5-minute quote cache, because
+that cached figure is what the customer was shown.
+
+## What an order stores
+
+- **Identity:** `orderReference` (`VP-000123`, from the Postgres sequence
+  `order_reference_seq`), `customerId`, `cartId`.
+- **Delivery:** `deliveryMethod` (`COURIER_OFFICE`, `COURIER_ADDRESS`,
+  `STORE_PICKUP`); `shippingMethod` (the carrier, `null` for pickup);
+  `deliverySnapshot` with the destination as the customer chose it: office code,
+  name and address, or the address lines and note; `expectedDeliveryDate`;
+  `parcelWeightGrams`.
+- **Money:** `goodsTotal`, `deliveryPrice`, `cashOnDeliveryFee`, `total`,
+  `vatAmount`, as `orderMoney` returns them.
+- **Who it is for:** `contactFirstName`, `contactLastName`, `contactPhone`,
+  `contactEmail`, copied from the profile, so a later profile edit never
+  rewrites an order. With the snapshot, a guest order later only needs
+  `customerId` to drop `NOT NULL`.
+- **`termsVersion`:** which terms the customer ordered under.
+- **Lines:** `OrderItem` with `brandId` *and* `articleNumber`, brand name,
+  description, `quantity`, `unitPrice` and `lineTotal`, both including VAT.
+
+The backoffice reads these tables with its existing `SELECT` grant
+(`infra/db/01-shop-provisioning.sql`), extended to every new or changed table.
+
+## After the commit: the outbox
+
+Publishing straight after the commit is a dual write: a crash between the two
+leaves an order nobody hears about. So the event is a row, `OutboxEvent`,
+written **in the order's transaction**, and a relay sends it on.
+
+- The relay runs on a `@nestjs/schedule` interval. It claims a batch with
+  `FOR UPDATE SKIP LOCKED`, so several API instances never send one event twice
+  at the same time.
+- Each event goes to its handlers. A failure is retried with backoff
+  (`attempts`, `availableAt`, `lastError`); after the last attempt it is logged
+  at `error` and left for a person.
+- Delivery is **at least once**. Every handler is idempotent on `eventId`.
+
+### `OrderPlaced`
+
+```json
+{ "eventType": "OrderPlaced", "eventId": "…", "orderId": "…", "occurredAt": "2026-10-16T08:32:00Z" }
+```
+
+A **thin** event: the consumer reads the order from `shop.orders` and
+`shop.order_items`. No name, phone, address or email sits in a queue, a DLQ or a
+log line, and the event can never disagree with the row.
+
+Its handlers:
+
+| Handler | Sends | Through |
+|---|---|---|
+| Customer confirmation | The reference, lines, totals with VAT, delivery and its expected date, "Платете X € при получаване", the seller's identity, and the withdrawal right with links to the terms and the model form | Resend |
+| Office notification | The order, to `ORDERS_NOTIFY_EMAIL`, so an office worker creates the Econt waybill | Resend |
+| Backoffice | `OrderPlaced` on SQS `shop-events` | `@aws-sdk/client-sqs` |
+
+Both emails carry an `Idempotency-Key` of `eventId:handler`, so a retried
+handler never sends twice. The office email is the channel **until the
+backoffice consumes `shop-events`**; it is kept or dropped then.
+
+### Email
+
+Resend, with `RESEND_API_KEY` and `EMAIL_FROM`. The free tier allows 3,000 a
+month and 100 a day; move to the paid plan before orders approach 100 a day. The
+sending domain needs Resend's SPF and DKIM records and a DMARC record.
+
+### SQS
+
+`shop-events` (we publish) and `fulfillment-events` (the backoffice publishes),
+each with a DLQ: redrive after 5 receives, 14-day retention, SSE-SQS. They are
+defined in `infra/aws/messaging.yml` (CloudFormation). The Lightsail container
+cannot assume a role, so it gets an IAM user allowed only `sqs:SendMessage` on
+`shop-events` and receive/delete/change-visibility on `fulfillment-events`, with
+its keys in the container's environment. The commands to deploy the stack and
+rotate the keys are added here with it.
+
+For the backoffice: deduplicate on `eventId`, then read the order from
+`shop.orders`/`shop.order_items`.
+
+## Reading an order
+
+`GET /orders/:orderId` answers only the owner; anyone else gets
+`404 ORDER_NOT_FOUND`, never `403`, so an id reveals nothing. `no-store`, like every order route. After
+placing, checkout clears its delivery and payment choices, resyncs the cart (the
+new one holds the unselected lines) and replaces the page with
+`/orders/[orderId]`: the reference, lines, totals with VAT, delivery and its
+date, and the amount to pay at the door.
+
+## The button
+
+- **Its words say that ordering means paying**: "Поръчка с задължение за
+  плащане" (or "Купи"), not "Поръчай сега". EU consumer law (CRD Art. 8(2), CJEU
+  C-249/21) does not bind the consumer otherwise. Under it, one line links the
+  terms, the withdrawal right and the privacy notice.
+- **Enabled only when** the profile is complete, a delivery method is chosen and
+  its quote has loaded (or it is pickup), cash on delivery is selected,
+  availability has loaded, and no line is blocked. While the request is pending
+  it is disabled.
+
+## Limits and logs
+
+- `POST /orders` is throttled at **5 a minute per customer**, tracked by
+  customer id. The throttler's storage is Redis, shared by every instance.
+- The logs name an order by its id only. No request body, name, phone, address
+  or email.
+
+## Legal (Bulgaria / EU): confirm with the accountant
+
+- **Cash on delivery collected by Econt** is a postal money transfer, outside
+  Наредба Н-18: no fiscal receipt and no NAP registration for it.
+- **The confirmation email is the durable medium** the contract has to be
+  confirmed on (CRD Art. 8(7), ЗЗП Art. 49).
+- **Pickup paid at the counter** goes through the store's own fiscal device.
+- Before launch the shop needs pages for its terms, its privacy notice, and the
+  14-day withdrawal right with its model form. They are the business's content.
+
+## Card payments, later
+
+- The order is created **first**, as `PENDING_PAYMENT`, and the payment
+  provider's webhook confirms it (`PROCESSING`, with `OrderPlaced` written
+  then). Creating it only after payment would leave a paid customer with no
+  order whenever the webhook's work fails. How a cart comes back after a failed
+  or abandoned payment is decided with that design.
+- Card payments bring the shop **into Н-18**: registration with NAP (Appendix 33)
+  and an electronic order document with a unique sale number (УНП) and the
+  payment id. The numbering is planned then.
+
+## Later
+
+- "My orders" (`GET /orders`), cancellation requests, live status over SSE and the
+  `fulfillment-events` consumer.
+- Remembering a customer's delivery addresses (T091c).
+- Guest quick order: `customerId` loses `NOT NULL`, plus limits by phone and IP,
+  a bot check, and an operator confirming by phone.

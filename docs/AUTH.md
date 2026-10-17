@@ -9,6 +9,7 @@ joined by `Customer.clerkId`, and only `CustomersService` knows that.
 ```
 Browser ── signUp.password (email, password, names,
                             unsafeMetadata { phoneNumber }) ──▶ Clerk
+Browser ── verifications.sendEmailCode / verifyEmailCode ──▶ Clerk
 Browser ── POST /customers/me (no body) ──▶ API                 ─┐
 Clerk   ── POST /webhooks/clerk  user.created ──▶ API           ─┤ either, or both
              API ── users.getUser(clerkId) ──▶ Clerk               │ email, names, metadata
@@ -98,9 +99,21 @@ It needs the Clerk instance set up to match (**Configure → User & authenticati
 email and password on, first and last name on **but not required**, Clerk's own
 phone field off. Required names would make Clerk stop a Google sign-up without a
 last name at `/sign-up/continue`, with no session; the form requires them
-itself, so its customers are still filed complete. **Email verification at sign-up must be off**: the form has no code
-step, so a sign-up Clerk leaves `missing_requirements` is shown as a generic
-failure and logged. Bot protection renders into `<div id="clerk-captcha">`.
+itself, so its customers are still filed complete. Bot protection renders into
+`<div id="clerk-captcha">`.
+
+**Every email is verified before the account exists.** An order's confirmation
+goes to that address, and a cash-on-delivery order placed under someone else's
+email would send them our mail. Clerk leaves the sign-up `missing_requirements`
+with `email_address` unverified; the form then sends a 6-digit code
+(`signUp.verifications.sendEmailCode`) and shows `EmailCodeStep` in place of
+the fields, with a resend after a cooldown and a way back to change the email.
+Once `verifyEmailCode` succeeds the sign-up is `complete` and `finalize()` runs
+as before. A sign-up left incomplete for anything else is shown as a generic
+failure and logged. The session goes live only at `finalize()`, so checkout's
+tab turns into the signed-in card at the same moment either way, and Clerk
+sends `user.created` only after the code. A Google sign-up comes back verified
+and never sees the code step.
 
 The filing call sends the fresh session's token explicitly
 (`fileCustomer(token)`): straight after `finalize()`, `SessionTokenBridge` may
@@ -249,10 +262,18 @@ with a user created in the Clerk dashboard or an email another customer holds.
 
 ## Clerk dashboard settings this relies on
 
-Email required and **not verified at sign-up**; password on; first and last name
-on but **not required** (see "The registration form"); SSO with Google on and
-Facebook off; phone, username, passkeys, Web3 and MFA off; bot sign-up
-protection on (with no verification it is the main guard against fake
-accounts). Webhook: `user.created` only. On the production instance, the shop's
-domain must be an allowed redirect origin so Google can return to
-`/sign-up/sso-callback` and the destination after it.
+Email required and **verified at sign-up with an email code**, not a link (the
+form has no link flow, and a link opened on another device would strand
+checkout); password on; first and last name on but **not required** (see "The
+registration form"); SSO with Google on and Facebook off; phone, username,
+passkeys, Web3 and MFA off; bot sign-up protection on. The "Verification code"
+email template is written in Bulgarian and keeps `{{otp_code}}`. Webhook:
+`user.created` only. On the production instance, the shop's domain must be an
+allowed redirect origin so Google can return to `/sign-up/sso-callback` and the
+destination after it, Clerk's email DNS records (**Configure → Domains**) must
+be verified so codes are not sent from Clerk's domain into spam, and test mode
+must be off.
+
+On the development instance, test mode lets an address with `+clerk_test`
+(`ivan+clerk_test@example.com`) sign up with the code `424242`, and no email is
+sent.
