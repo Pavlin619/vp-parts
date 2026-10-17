@@ -39,9 +39,9 @@ jest.mock('@/lib/api/catalog', () => ({
 const getParcel = jest.fn()
 const getQuote = jest.fn()
 
-jest.mock('@/lib/api/delivery', () => ({
+jest.mock('@/lib/api/checkout', () => ({
   parcelEstimateQueryOptions: (carrier: string, cartId: string, cartVersion: number) => ({
-    queryKey: ['delivery', 'parcel', carrier, cartId, cartVersion],
+    queryKey: ['checkout', 'parcel', carrier, cartId, cartVersion],
     queryFn: () => getParcel() as Promise<ParcelEstimateDto>,
     enabled: cartId !== '',
   }),
@@ -51,7 +51,7 @@ jest.mock('@/lib/api/delivery', () => ({
     cartVersion: number,
   ) => ({
     queryKey: [
-      'delivery',
+      'checkout',
       'quote',
       request?.carrier,
       request?.destination,
@@ -145,13 +145,25 @@ describe('CheckoutView', () => {
       weightGrams: 2300,
       isLockerEligible: true,
     })
-    getQuote.mockReset().mockImplementation((request: { isCashOnDelivery: boolean }) =>
-      Promise.resolve({
+    getQuote.mockReset().mockImplementation((request: { isCashOnDelivery: boolean }) => {
+      const fee = request.isCashOnDelivery ? 152 : 0
+      const total = 1200 + 714 + fee
+      const netAmount = Math.round(total / 1.2)
+
+      return Promise.resolve({
         priceIncVatCents: 714,
-        cashOnDeliveryFeeIncVatCents: request.isCashOnDelivery ? 152 : null,
+        cashOnDeliveryFeeIncVatCents: request.isCashOnDelivery ? fee : null,
         expectedDeliveryDate: '2026-09-30',
-      }),
-    )
+        money: {
+          goodsTotal: 1200,
+          deliveryPrice: 714,
+          cashOnDeliveryFee: fee,
+          total,
+          netAmount,
+          vatAmount: total - netAmount,
+        },
+      })
+    })
   })
 
   it('sends an empty cart back to the catalogue', async () => {

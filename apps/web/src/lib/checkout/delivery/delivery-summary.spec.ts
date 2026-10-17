@@ -1,7 +1,8 @@
 import { DeliveryDestinationType, ShippingMethod, type DeliveryQuoteDto, type ParcelEstimateDto } from '@vp-parts-shop/shared'
 import { ApiError } from '@/lib/api'
 import type { ParcelCheck } from './office-availability'
-import { formatWeight, resolveDeliverySummary, summaryTotal } from './delivery-summary'
+import type { CartTotals } from '@/lib/cart/cart-totals'
+import { formatWeight, resolveDeliverySummary, summaryMoney } from './delivery-summary'
 
 function parcel(overrides: Partial<ParcelEstimateDto> = {}): ParcelEstimateDto {
   return { weightGrams: 2300, isLockerEligible: true, ...overrides }
@@ -23,6 +24,7 @@ const QUOTE: DeliveryQuoteDto = {
   expectedDeliveryDate: '2026-09-30',
   parcel: parcel(),
   cartVersion: 3,
+  money: null,
 }
 
 type QuoteState = Parameters<typeof resolveDeliverySummary>[0]['quote']
@@ -58,6 +60,7 @@ describe('resolveDeliverySummary', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
+      money: null,
     })
   })
 
@@ -132,6 +135,7 @@ describe('resolveDeliverySummary', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
+      money: null,
     })
   })
 
@@ -186,36 +190,63 @@ describe('resolveDeliverySummary', () => {
   })
 })
 
-describe('summaryTotal', () => {
-  it('adds a quoted delivery to the goods', () => {
-    expect(
-      summaryTotal(8400, {
-        kind: 'quoted',
-        priceIncVatCents: 714,
-        cashOnDeliveryFeeIncVatCents: null,
-        expectedDeliveryDate: null,
-      }),
-    ).toBe(9114)
+describe('summaryMoney', () => {
+  const GOODS: CartTotals = {
+    itemCount: 3,
+    subtotalExVat: 7000,
+    vatAmount: 1400,
+    totalIncVat: 8400,
+    hasUnpricedLines: false,
+    hasBlockedLines: false,
+  }
+
+  const MONEY = {
+    goodsTotal: 8400,
+    deliveryPrice: 714,
+    cashOnDeliveryFee: 152,
+    total: 9266,
+    netAmount: 7722,
+    vatAmount: 1544,
+  }
+
+  function quoted(money: typeof MONEY | null) {
+    return {
+      kind: 'quoted' as const,
+      priceIncVatCents: 714,
+      cashOnDeliveryFeeIncVatCents: 152,
+      expectedDeliveryDate: null,
+      money,
+    }
+  }
+
+  it('shows the quote’s money, with the VAT on the delivery, once one is priced', () => {
+    expect(summaryMoney(GOODS, quoted(MONEY))).toEqual({
+      netAmount: 7722,
+      vatAmount: 1544,
+      total: 9266,
+      isDeliveryIncluded: true,
+    })
   })
 
-  it('adds the cash-on-delivery fee with the delivery', () => {
-    expect(
-      summaryTotal(8400, {
-        kind: 'quoted',
-        priceIncVatCents: 714,
-        cashOnDeliveryFeeIncVatCents: 152,
-        expectedDeliveryDate: null,
-      }),
-    ).toBe(9266)
+  it('shows the goods alone, without the delivery, while the quote carries no money', () => {
+    expect(summaryMoney(GOODS, quoted(null))).toEqual({
+      netAmount: 7000,
+      vatAmount: 1400,
+      total: 8400,
+      isDeliveryIncluded: false,
+    })
   })
 
-  it('adds nothing for a store pickup', () => {
-    expect(summaryTotal(8400, { kind: 'pickup', readyAt: null })).toBe(8400)
+  it('counts a store pickup, which costs nothing, as delivery included', () => {
+    expect(summaryMoney(GOODS, { kind: 'pickup', readyAt: null })).toMatchObject({
+      total: 8400,
+      isDeliveryIncluded: true,
+    })
   })
 
   it('leaves the goods alone while delivery has no price', () => {
-    expect(summaryTotal(8400, { kind: 'failed' })).toBe(8400)
-    expect(summaryTotal(8400, { kind: 'pending' })).toBe(8400)
+    expect(summaryMoney(GOODS, { kind: 'failed' }).isDeliveryIncluded).toBe(false)
+    expect(summaryMoney(GOODS, { kind: 'pending' }).total).toBe(8400)
   })
 })
 

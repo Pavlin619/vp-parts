@@ -3,8 +3,10 @@ import {
   DeliveryDestinationType,
   type DeliveryDestinationDto,
   type DeliveryQuoteDto,
+  type OrderMoneyDto,
 } from "@vp-parts-shop/shared";
 import { ApiError } from "@/lib/api";
+import type { CartTotals } from "@/lib/cart/cart-totals";
 import type { DeliveryMethod } from "./delivery-methods";
 import type { ParcelCheck } from "./office-availability";
 
@@ -25,7 +27,17 @@ export type DeliverySummary =
       /** Null unless the courier collects the money on delivery. */
       cashOnDeliveryFeeIncVatCents: number | null;
       expectedDeliveryDate: string | null;
+      /** The whole order's money with this delivery; null while a selected line cannot be ordered. */
+      money: OrderMoneyDto | null;
     };
+
+/** The money the summary shows. */
+export interface SummaryMoney {
+  netAmount: number;
+  vatAmount: number;
+  total: number;
+  isDeliveryIncluded: boolean;
+}
 
 /** The slice of a query the summary reads; null when no quote was asked for. */
 export interface QuoteState {
@@ -83,15 +95,23 @@ export function resolveDeliverySummary({
   return summariseQuote(quote, destination.type);
 }
 
-/** Goods plus the delivery price and any cash-on-delivery fee, once there is one. */
-export function summaryTotal(goodsIncVatCents: number, delivery: DeliverySummary): number {
-  if (delivery.kind !== "quoted") {
-    return goodsIncVatCents;
+/**
+ * The quote's money once a delivery is priced, else the goods alone. Never a
+ * sum made here: the order is charged the quote's total, VAT on delivery included.
+ */
+export function summaryMoney(goods: CartTotals, delivery: DeliverySummary): SummaryMoney {
+  if (delivery.kind === "quoted" && delivery.money) {
+    const { netAmount, vatAmount, total } = delivery.money;
+
+    return { netAmount, vatAmount, total, isDeliveryIncluded: true };
   }
 
-  return (
-    goodsIncVatCents + delivery.priceIncVatCents + (delivery.cashOnDeliveryFeeIncVatCents ?? 0)
-  );
+  return {
+    netAmount: goods.subtotalExVat,
+    vatAmount: goods.vatAmount,
+    total: goods.totalIncVat,
+    isDeliveryIncluded: delivery.kind === "pickup",
+  };
 }
 
 /** "850 г" under a kilo, else kilograms with a decimal comma and no needless zeros. */
@@ -116,9 +136,16 @@ function summariseQuote(
   }
 
   if (quote.data) {
-    const { priceIncVatCents, cashOnDeliveryFeeIncVatCents, expectedDeliveryDate } = quote.data;
+    const { priceIncVatCents, cashOnDeliveryFeeIncVatCents, expectedDeliveryDate, money } =
+      quote.data;
 
-    return { kind: "quoted", priceIncVatCents, cashOnDeliveryFeeIncVatCents, expectedDeliveryDate };
+    return {
+      kind: "quoted",
+      priceIncVatCents,
+      cashOnDeliveryFeeIncVatCents,
+      expectedDeliveryDate,
+      money,
+    };
   }
 
   return { kind: summariseQuoteError(quote.error, destinationType) };

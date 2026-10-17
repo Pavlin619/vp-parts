@@ -12,19 +12,22 @@ import { CustomersService } from '../customers';
 import { CartRequester } from './cart-requester';
 import { mergeCartLines } from './cart-merge';
 import {
+  CartForOrder,
   CartShippingLine,
   StoredCartLine,
   toCartDto,
+  toCartForOrder,
   toSelectedShippingLines,
   toStoredCartLines,
 } from './cart.mapper';
 import {
   CartFullException,
   CartItemNotFoundException,
-  CartMergeConflictException,
+  CartStaleException,
 } from './cart.exceptions';
 import {
   CartCapacityConflictError,
+  CartClosedError,
   CartItemNotFoundError,
   CartLineInput,
   CartLinePatch,
@@ -88,6 +91,16 @@ export class CartService {
       : { cart: EMPTY_CART, lines: [] };
   }
 
+  /** A customer's cart by its id, in any status; null when it is not theirs. */
+  async findOwnedCart(
+    customerId: string,
+    cartId: string,
+  ): Promise<CartForOrder | null> {
+    const cart = await this.carts.findById(cartId);
+
+    return cart?.customerId === customerId ? toCartForOrder(cart) : null;
+  }
+
   /**
    * The capacity limit is enforced by {@link CartRepository.addLine} itself,
    * inside the same transaction as the insert — a check made here first,
@@ -109,20 +122,11 @@ export class CartService {
       ? { cart: existing, mintedToken: null }
       : await this.createCart(owner);
 
-    try {
-      return {
-        cart: toCartDto(
-          await this.carts.addLine(cart.id, { ...line, shippingProfile }),
-        ),
-        mintedToken,
-      };
-    } catch (error) {
-      if (error instanceof CartCapacityConflictError) {
-        throw new CartFullException();
-      }
+    const updated = await this.carts
+      .addLine(cart.id, { ...line, shippingProfile })
+      .catch(throwAsHttpError);
 
-      throw error;
-    }
+    return { cart: toCartDto(updated), mintedToken };
   }
 
   async updateLine(
@@ -136,15 +140,11 @@ export class CartService {
       throw new CartItemNotFoundException();
     }
 
-    try {
-      return toCartDto(await this.carts.updateLine(cart.id, article, patch));
-    } catch (error) {
-      if (error instanceof CartItemNotFoundError) {
-        throw new CartItemNotFoundException();
-      }
-
-      throw error;
-    }
+    return toCartDto(
+      await this.carts
+        .updateLine(cart.id, article, patch)
+        .catch(throwAsHttpError),
+    );
   }
 
   /**
@@ -159,7 +159,9 @@ export class CartService {
     const cart = await this.findCart(await this.resolveOwner(requester));
 
     return cart
-      ? toCartDto(await this.carts.removeLine(cart.id, article))
+      ? toCartDto(
+          await this.carts.removeLine(cart.id, article).catch(throwAsHttpError),
+        )
       : EMPTY_CART;
   }
 
@@ -170,14 +172,20 @@ export class CartService {
     const cart = await this.findCart(await this.resolveOwner(requester));
 
     return cart
-      ? toCartDto(await this.carts.setAllSelected(cart.id, isSelected))
+      ? toCartDto(
+          await this.carts
+            .setAllSelected(cart.id, isSelected)
+            .catch(throwAsHttpError),
+        )
       : EMPTY_CART;
   }
 
   async clear(requester: CartRequester): Promise<CartDto> {
     const cart = await this.findCart(await this.resolveOwner(requester));
 
-    return cart ? toCartDto(await this.carts.clear(cart.id)) : EMPTY_CART;
+    return cart
+      ? toCartDto(await this.carts.clear(cart.id).catch(throwAsHttpError))
+      : EMPTY_CART;
   }
 
   /**
@@ -240,22 +248,16 @@ export class CartService {
       toStoredCartLines(guestCart),
     );
 
-    try {
-      const merged = await this.carts.mergeInto(
+    const merged = await this.carts
+      .mergeInto(
         accountCart.id,
         accountCart.version,
         guestCart.id,
         lines.map(toMergedLine),
-      );
+      )
+      .catch(throwAsHttpError);
 
-      return { cart: toCartDto(merged), droppedLines: dropped };
-    } catch (error) {
-      if (error instanceof CartVersionConflictError) {
-        throw new CartMergeConflictException();
-      }
-
-      throw error;
-    }
+    return { cart: toCartDto(merged), droppedLines: dropped };
   }
 
   /**
@@ -329,6 +331,25 @@ function holdsLine(cart: CartRecord, article: ArticleIdentityDto): boolean {
 
 function isEmptyPatch(patch: CartLinePatch): boolean {
   return patch.quantity === undefined && patch.isSelected === undefined;
+}
+
+function throwAsHttpError(error: unknown): never {
+  if (error instanceof CartCapacityConflictError) {
+    throw new CartFullException();
+  }
+
+  if (error instanceof CartItemNotFoundError) {
+    throw new CartItemNotFoundException();
+  }
+
+  if (
+    error instanceof CartClosedError ||
+    error instanceof CartVersionConflictError
+  ) {
+    throw new CartStaleException();
+  }
+
+  throw error;
 }
 
 function toMergedLine(line: StoredCartLine): MergedCartLine {

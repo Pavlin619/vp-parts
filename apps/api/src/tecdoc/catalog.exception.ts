@@ -1,5 +1,6 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '@vp-parts-shop/shared';
+import { AppHttpException } from '../common';
 
 /**
  * Thrown when catalogue data could not be read because TecDoc is unreachable,
@@ -8,15 +9,9 @@ import { AppErrorCode } from '@vp-parts-shop/shared';
  * the empty result as "no such part", which is what an unclassified failure
  * would have produced.
  */
-export class CatalogUnavailableException extends HttpException {
+export class CatalogUnavailableException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-        errorCode: AppErrorCode.CATALOG_UNAVAILABLE,
-      },
-      HttpStatus.SERVICE_UNAVAILABLE,
-    );
+    super(HttpStatus.SERVICE_UNAVAILABLE, AppErrorCode.CATALOG_UNAVAILABLE);
   }
 }
 
@@ -28,14 +23,8 @@ export class CatalogUnavailableException extends HttpException {
  * would leak how the integration is configured without helping anyone. The
  * actionable detail is logged instead.
  */
-export class CatalogRequestRejectedException extends HttpException {
+export class CatalogRequestRejectedException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-        errorCode: AppErrorCode.INTERNAL_ERROR,
-      },
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+    super(HttpStatus.INTERNAL_SERVER_ERROR, AppErrorCode.INTERNAL_ERROR);
   }
 }

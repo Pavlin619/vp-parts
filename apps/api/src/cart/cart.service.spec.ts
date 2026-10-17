@@ -5,6 +5,7 @@ import { CustomersService } from '../customers';
 import { CatalogUnavailableException } from '../tecdoc';
 import {
   CartCapacityConflictError,
+  CartClosedError,
   CartItemNotFoundError,
   CartRecord,
   CartRepository,
@@ -16,7 +17,7 @@ import { ShippingProfileResolver } from './shipping-profile/shipping-profile.res
 import {
   CartFullException,
   CartItemNotFoundException,
-  CartMergeConflictException,
+  CartStaleException,
 } from './cart.exceptions';
 
 const TOKEN = 'a'.repeat(43);
@@ -343,6 +344,68 @@ describe('CartService', () => {
     });
   });
 
+  describe('findOwnedCart', () => {
+    it('reads the customer’s cart by its id, with only the selected lines', async () => {
+      findById.mockResolvedValue(
+        cart({
+          token: null,
+          customerId: 'customer-1',
+          items: [
+            item({ quantity: 2 }),
+            item({ articleNumber: 'OC90', isSelected: false }),
+          ],
+        }),
+      );
+
+      const result = await service.findOwnedCart('customer-1', 'cart-1');
+
+      expect(findById).toHaveBeenCalledWith('cart-1');
+      expect(result).toEqual({
+        id: 'cart-1',
+        version: 3,
+        status: 'ACTIVE',
+        orderId: null,
+        lines: [
+          {
+            article: { brandId: '30', articleNumber: '0986479061' },
+            quantity: 2,
+            shippingProfile: SHIPPING_PROFILE,
+            brandName: 'BOSCH',
+            description: 'Спирачен диск',
+          },
+        ],
+      });
+    });
+
+    it('answers a cart already ordered from, so a retry can find its order', async () => {
+      findById.mockResolvedValue(
+        cart({ customerId: 'customer-1', status: 'ORDERED', orderId: 'o-1' }),
+      );
+
+      const result = await service.findOwnedCart('customer-1', 'cart-1');
+
+      expect(result).toMatchObject({ status: 'ORDERED', orderId: 'o-1' });
+    });
+
+    it('is null for another customer’s cart', async () => {
+      findById.mockResolvedValue(cart({ customerId: 'customer-2' }));
+
+      expect(await service.findOwnedCart('customer-1', 'cart-1')).toBeNull();
+    });
+
+    it('is null for a guest’s cart', async () => {
+      findById.mockResolvedValue(cart());
+
+      expect(await service.findOwnedCart('customer-1', 'cart-1')).toBeNull();
+    });
+
+    it('is null for no cart at all', async () => {
+      findById.mockResolvedValue(null);
+
+      expect(await service.findOwnedCart('customer-1', 'nope')).toBeNull();
+    });
+  });
+
   describe('getShippingLines', () => {
     it('answers the selected lines with the profile stored on each', async () => {
       findActiveByToken.mockResolvedValue(
@@ -532,6 +595,17 @@ describe('CartService', () => {
       expect(result.lines).toEqual([]);
     });
 
+    // The cart was ordered while this request waited on its lock: the client
+    // re-reads and finds the cart that carried on.
+    it('answers a cart ordered in the meantime as stale', async () => {
+      findActiveByToken.mockResolvedValue(cart());
+      clear.mockRejectedValue(new CartClosedError('cart-1'));
+
+      await expect(
+        service.clear({ clerkId: null, token: TOKEN }),
+      ).rejects.toBeInstanceOf(CartStaleException);
+    });
+
     it('clears a cart that does not exist without creating one', async () => {
       findActiveByToken.mockResolvedValue(null);
 
@@ -625,7 +699,7 @@ describe('CartService', () => {
 
       await expect(
         service.adopt({ clerkId: 'clerk-1', token: TOKEN }),
-      ).rejects.toBeInstanceOf(CartMergeConflictException);
+      ).rejects.toBeInstanceOf(CartStaleException);
     });
 
     it('reports the lines a full account cart had no room for', async () => {

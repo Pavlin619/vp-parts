@@ -1,8 +1,12 @@
 # Orders: placing one, and what happens after
 
-The authoritative design for turning a cart into an order. **Nothing here is
-built yet**: it is the contract the orders module, the checkout button and the
-outbox are written against. The cart side of the transition is in
+The authoritative design for turning a cart into an order. **Built:** `POST
+/orders`, `GET /orders/:orderId` (`apps/api/src/orders/`), and `GET
+/checkout/totals` and the quote's money (`apps/api/src/checkout/`). **Not yet:**
+the checkout button and confirmation page, the web reading `/checkout/totals`
+(the cart page, and checkout until a courier delivery is quoted, still sum the
+goods in the browser), the outbox and its emails, SQS, and the throttler's Redis
+storage. The cart side of the transition is in
 [CART.md](./CART.md), the delivery price in
 [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md), and who a customer is in
 [AUTH.md](./AUTH.md).
@@ -67,15 +71,19 @@ row lock is ever held across an HTTP call.
    `404 NOT_FOUND`, never `403`.
    - `ORDERED` → return its order, `200` (a replay).
    - `MERGED`, or `version ≠ cartVersion` → `409 CART_STALE`.
-3. **The lines.** The selected lines (`CartService.getShippingLines`; none is
-   `422 CART_EMPTY`) and their live availability (`InventoryService.getAvailability`,
-   which fails closed with `503 INVENTORY_UNAVAILABLE`). A line out of stock,
-   short of its quantity or unpriced is `422 ARTICLE_UNAVAILABLE`, through the
-   same `goodsTotalIncVatCents` the cash-on-delivery quote uses.
-4. **The delivery.** `DeliveryService.priceForOrder(lines, availability, choice)`,
-   the one path `POST /delivery/quote` also takes: destination check, parcel
-   ready date, then the price and the cash-on-delivery fee. An address is also
-   validated with the carrier and `INVALID` is refused. Pickup costs nothing and
+3. **The lines.** The cart's selected lines (none is `422 CART_EMPTY`), priced
+   by `CheckoutService.priceOrder` (`apps/api/src/checkout/`), the one path
+   `GET /checkout/totals` and `POST /checkout/quote` also take; the order is
+   only stricter. Their live availability (`InventoryService.getAvailability`)
+   fails closed with `503 INVENTORY_UNAVAILABLE`. A line out of stock, short of
+   its quantity or unpriced is `422 ARTICLE_UNAVAILABLE` (`priceLines`,
+   `inventory/orderable-price.ts`), where the totals leave it out and the quote
+   answers no money.
+4. **The delivery.** `DeliveryService.price`, which the quote calls too:
+   destination check, parcel ready date, then the price and the
+   cash-on-delivery fee. The order's price is binding, so an address is also
+   validated with the carrier, alongside the pricing rather than after it, and
+   `INVALID` is refused. Pickup costs nothing and
    has no carrier. Econt down is `503 DELIVERY_UNAVAILABLE` and **no order is
    written**: the amount collected at the door must be exact, so there is no
    flat-rate fallback.
@@ -85,9 +93,11 @@ row lock is ever held across an HTTP call.
    - lock the cart (`SELECT … FOR UPDATE`) and check again that it is `ACTIVE`
      at `cartVersion`. If it became `ORDERED` meanwhile, return that order;
    - insert the `Order`, its `OrderItem`s, the first `OrderStatusHistory` row
-     (`PROCESSING`, `source: 'shop'`) and the `OrderPlaced` outbox row;
-   - set the cart `ORDERED` with its `orderId`;
-   - move the unselected lines to a fresh `ACTIVE` cart for the customer.
+     (`PROCESSING`, `source: 'shop'`) and, once the outbox exists, the
+     `OrderPlaced` outbox row;
+   - set the cart `ORDERED` with its `orderId`, and raise its version;
+   - move the unselected lines, still unselected, to a fresh `ACTIVE` cart for
+     the customer. None is opened when every line was ordered.
 7. `201 { orderId, orderReference }`.
 
 ### Refusals and where the customer acts on them
@@ -114,6 +124,10 @@ needed:
   cart `ORDERED` once the first commits, and returns the same order.
 - `Order.cartId` and `Cart.orderId` are `UNIQUE`, so even a bug in the above
   cannot write a second order for one cart.
+- Every cart write (a line edit, a sign-in merge) takes the same row lock
+  before it touches a line, and refuses a cart that is no longer `ACTIVE` with
+  `CART_STALE`. An edit that raced the order therefore cannot change the
+  record of what was bought, and the two cannot deadlock.
 
 ## Money
 
@@ -172,16 +186,17 @@ Dividing each part first instead gives 12.99 / 1.2 = 10.83 × 2 and
 ### The server computes it; the web only shows it
 
 The figures come from **one pure function in the API**,
-`apps/api/src/common/order-money.ts` (`orderMoney`), spec'd first with the
-rounding edge cases. It sits in `common/` because both the delivery quote and the
-order call it. The web does **no money arithmetic**: every total and VAT figure it
+`apps/api/src/checkout/order-money.ts` (`orderMoney`), spec'd first with the
+rounding edge cases. Its one caller is `CheckoutService`, which prices the cart
+totals, the quote and the order, through `OrderMoneyCalculator`, which holds the
+one configured `VAT_RATE` so no caller can pass another. The web does **no money arithmetic**: every total and VAT figure it
 shows comes from one of these responses, all computed by `orderMoney` from the
 live prices:
 
 | Response | Shows | Used by |
 |---|---|---|
-| `GET /cart/totals` | Parts total, its net and its VAT, and the `cartVersion` priced | The cart page; checkout before a delivery is chosen, and with store pickup |
-| `POST /delivery/quote` | The same, plus the delivery price, the fee, the order total and the VAT in the whole total | The checkout summary once a courier delivery is quoted |
+| `GET /checkout/totals` | Parts total, its net and its VAT, and the `cartVersion` priced | The cart page; checkout before a delivery is chosen, and with store pickup |
+| `POST /checkout/quote` | `money`: the same, plus the delivery price, the fee, the order total and the VAT in the whole total. `null` while a selected line cannot be ordered | The checkout summary once a courier delivery is quoted |
 | `POST /orders` | Stores them on the order | The confirmation page and email |
 
 The button sends back the `total` the summary showed as `expectedTotalCents`.
@@ -246,7 +261,8 @@ that cached figure is what the customer was shown.
   `contactEmail`, copied from the profile, so a later profile edit never
   rewrites an order. With the snapshot, a guest order later only needs
   `customerId` to drop `NOT NULL`.
-- **`termsVersion`:** which terms the customer ordered under.
+- **`termsVersion`:** which terms the customer ordered under: `TERMS_VERSION`
+  in `orders.service.ts`, raised whenever the terms page changes.
 - **Lines:** `OrderItem` with `brandId` *and* `articleNumber`, brand name,
   description, `quantity`, `unitPrice` and `lineTotal`, both including VAT.
 
@@ -331,8 +347,13 @@ date, and the amount to pay at the door.
 
 ## Limits and logs
 
-- `POST /orders` is throttled at **5 a minute per customer**, tracked by
-  customer id. The throttler's storage is Redis, shared by every instance.
+- `POST /orders` is throttled at **5 a minute per customer** by
+  `PlaceOrderRateLimitGuard`, a route guard that runs after `JwtGuard` and
+  counts in the throttler's storage under the verified customer id. The global
+  `ThrottlerGuard` stays first and counts by address: it runs before any token
+  is verified, so a flood of bad tokens is refused before each costs a
+  verification, and nothing trusts an unverified token's subject. The
+  throttler's storage is to move to Redis, shared by every instance (P6).
 - The logs name an order by its id only. No request body, name, phone, address
   or email.
 

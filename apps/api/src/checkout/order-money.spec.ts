@@ -1,4 +1,4 @@
-import { orderMoney } from './order-money';
+import { goodsTotal, orderMoney } from './order-money';
 
 const VAT_RATE = 0.2;
 
@@ -140,5 +140,20 @@ describe('orderMoney', () => {
         expect(money.netAmount + money.vatAmount).toBe(money.total);
       }
     }
+  });
+});
+
+describe('goodsTotal', () => {
+  it('sums every line at its gross unit price', () => {
+    expect(
+      goodsTotal([
+        { unitPrice: 1250, quantity: 2 },
+        { unitPrice: 4800, quantity: 1 },
+      ]),
+    ).toBe(2 * 1250 + 4800);
+  });
+
+  it('is zero for no lines', () => {
+    expect(goodsTotal([])).toBe(0);
   });
 });

@@ -1,5 +1,6 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '@vp-parts-shop/shared';
+import { AppHttpException } from '../common';
 
 /**
  * Thrown when a price/availability read against the shared database cannot
@@ -13,14 +14,8 @@ import { AppErrorCode } from '@vp-parts-shop/shared';
  * distinguishable "try again" state (`AvailabilityLoadError` on the web side)
  * over whatever metadata it already has.
  */
-export class InventoryUnavailableException extends HttpException {
+export class InventoryUnavailableException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-        errorCode: AppErrorCode.INVENTORY_UNAVAILABLE,
-      },
-      HttpStatus.SERVICE_UNAVAILABLE,
-    );
+    super(HttpStatus.SERVICE_UNAVAILABLE, AppErrorCode.INVENTORY_UNAVAILABLE);
   }
 }

@@ -3,6 +3,7 @@ import { MAX_CART_LINES, MAX_CART_LINE_QUANTITY } from '@vp-parts-shop/shared';
 import { PrismaService } from '../prisma';
 import {
   CartCapacityConflictError,
+  CartClosedError,
   CartItemNotFoundError,
   CartRepository,
   CartVersionConflictError,
@@ -39,10 +40,10 @@ const MERGED_LINE = {
   addedAt: new Date('2026-09-01'),
 };
 
+const ACTIVE_CART = { status: 'ACTIVE', version: 3, orderId: null };
+
 describe('CartRepository', () => {
   const cartUpdate = jest.fn();
-  const cartUpdateMany = jest.fn();
-  const cartFindUniqueOrThrow = jest.fn();
   const cartFindFirst = jest.fn();
   const cartCreate = jest.fn();
   const cartDeleteMany = jest.fn();
@@ -53,11 +54,12 @@ describe('CartRepository', () => {
   const itemCount = jest.fn();
   const queryRaw = jest.fn();
 
+  const txCartCreate = jest.fn();
+
   const tx = {
     cart: {
+      create: txCartCreate,
       update: cartUpdate,
-      updateMany: cartUpdateMany,
-      findUniqueOrThrow: cartFindUniqueOrThrow,
     },
     cartItem: {
       upsert: itemUpsert,
@@ -90,11 +92,9 @@ describe('CartRepository', () => {
       run(tx),
     );
     cartUpdate.mockResolvedValue({ id: 'cart-1', items: [] });
-    cartUpdateMany.mockResolvedValue({ count: 1 });
-    cartFindUniqueOrThrow.mockResolvedValue({ id: 'target', items: [] });
     itemUpdateMany.mockResolvedValue({ count: 1 });
     itemCount.mockResolvedValue(0);
-    queryRaw.mockResolvedValue([]);
+    queryRaw.mockResolvedValue([ACTIVE_CART]);
 
     const moduleRef = await Test.createTestingModule({
       providers: [CartRepository, { provide: PrismaService, useValue: prisma }],
@@ -106,7 +106,7 @@ describe('CartRepository', () => {
   // The version is what checkout pins the price it quoted to, so contents that
   // moved without it moving would let an order commit a price never quoted.
   describe('every mutation, in one transaction', () => {
-    it.each([
+    const mutations: [string, () => Promise<unknown>][] = [
       ['addLine', () => repository.addLine('cart-1', LINE)],
       [
         'updateLine',
@@ -127,7 +127,9 @@ describe('CartRepository', () => {
       ],
       ['setAllSelected', () => repository.setAllSelected('cart-1', false)],
       ['clear', () => repository.clear('cart-1')],
-    ])('%s raises the version', async (_name, mutate) => {
+    ];
+
+    it.each(mutations)('%s raises the version', async (_name, mutate) => {
       await mutate();
 
       expect(transaction).toHaveBeenCalledTimes(1);
@@ -138,6 +140,41 @@ describe('CartRepository', () => {
         }),
       );
     });
+
+    // One lock order for every cart write: an order holds the cart row while
+    // it moves lines, so a write that touched lines first could deadlock it.
+    it.each(mutations)(
+      '%s locks the cart row before touching a line',
+      async (_name, mutate) => {
+        itemCount.mockResolvedValue(1);
+
+        await mutate();
+
+        const [sql, cartId] = queryRaw.mock.calls[0] as [string[], string];
+        expect(sql.join('?')).toContain('FOR UPDATE');
+        expect(cartId).toBe('cart-1');
+        expect(queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+          cartUpdate.mock.invocationCallOrder[0],
+        );
+      },
+    );
+
+    // A write that waited on an order's lock must not edit the cart that is
+    // now the record of what was bought.
+    it.each(mutations)(
+      '%s refuses a cart that is no longer active',
+      async (_name, mutate) => {
+        queryRaw.mockResolvedValue([
+          { status: 'ORDERED', version: 4, orderId: 'order-1' },
+        ]);
+
+        await expect(mutate()).rejects.toThrow(CartClosedError);
+        expect(itemUpsert).not.toHaveBeenCalled();
+        expect(itemUpdateMany).not.toHaveBeenCalled();
+        expect(itemDeleteMany).not.toHaveBeenCalled();
+        expect(cartUpdate).not.toHaveBeenCalled();
+      },
+    );
 
     it('pushes the expiry out by the guest TTL', async () => {
       const before = Date.now();
@@ -221,6 +258,9 @@ describe('CartRepository', () => {
     expect(itemCount).toHaveBeenCalledWith({
       where: { cartId: 'cart-1', brandId: '30', articleNumber: '0986479061' },
     });
+    expect(queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      itemCount.mock.invocationCallOrder[0],
+    );
   });
 
   it('refuses a new line once the locked cart already holds the maximum', async () => {
@@ -300,28 +340,36 @@ describe('CartRepository', () => {
       expect(data[0]).not.toHaveProperty('shippingProfile');
     });
 
-    it('commits the target cart only if it is still at the version the merge was computed against', async () => {
+    it('locks the target cart before touching a line, and raises its version', async () => {
       await repository.mergeInto('target', 3, 'source', [MERGED_LINE]);
 
-      expect(cartUpdateMany).toHaveBeenCalledWith({
-        where: { id: 'target', version: 3 },
-        data: expect.objectContaining({ version: { increment: 1 } }),
-      });
-      expect(cartFindUniqueOrThrow).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'target' } }),
+      const [, cartId] = queryRaw.mock.calls[0] as [string[], string];
+      expect(cartId).toBe('target');
+      expect(queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        itemDeleteMany.mock.invocationCallOrder[0],
+      );
+      expect(cartUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'target' },
+          data: expect.objectContaining({ version: { increment: 1 } }),
+        }),
       );
     });
 
-    // Another tab or device wrote to the target cart between the merge being
-    // read and this commit — the whole transaction must roll back rather than
-    // overwrite a change the merge never saw.
-    it('throws instead of committing when the target cart has moved on', async () => {
-      cartUpdateMany.mockResolvedValue({ count: 0 });
+    // Another tab or device wrote to the target cart, or ordered it, between
+    // the merge being read and this commit — refused before any line is
+    // touched rather than overwrite a change the merge never saw.
+    it.each([
+      ['has moved on', { ...ACTIVE_CART, version: 4 }],
+      ['was ordered', { status: 'ORDERED', version: 3, orderId: 'order-1' }],
+    ])('refuses when the target cart %s', async (_name, target) => {
+      queryRaw.mockResolvedValue([target]);
 
       await expect(
         repository.mergeInto('target', 3, 'source', [MERGED_LINE]),
       ).rejects.toThrow(CartVersionConflictError);
-      expect(cartFindUniqueOrThrow).not.toHaveBeenCalled();
+      expect(itemDeleteMany).not.toHaveBeenCalled();
+      expect(cartUpdate).not.toHaveBeenCalled();
     });
   });
 
@@ -338,6 +386,78 @@ describe('CartRepository', () => {
         orderId: null,
         expiresAt: { lt: now },
       },
+    });
+  });
+
+  describe('lockCart', () => {
+    const client = tx as unknown as Parameters<CartRepository['lockCart']>[0];
+
+    it('locks the cart row and reads where it stands', async () => {
+      await expect(repository.lockCart(client, 'cart-1')).resolves.toEqual(
+        ACTIVE_CART,
+      );
+      const [sql, cartId] = queryRaw.mock.calls[0] as [string[], string];
+      expect(sql.join('?')).toContain('FOR UPDATE');
+      expect(cartId).toBe('cart-1');
+    });
+
+    it('is null when there is no such cart', async () => {
+      queryRaw.mockResolvedValue([]);
+
+      await expect(repository.lockCart(client, 'cart-1')).resolves.toBeNull();
+    });
+  });
+
+  describe('closeForOrder', () => {
+    const client = tx as unknown as Parameters<
+      CartRepository['closeForOrder']
+    >[0];
+    const closure = {
+      cartId: 'cart-1',
+      orderId: 'order-1',
+      customerId: 'customer-1',
+    };
+
+    // The version moves too, so a merge computed against the cart before the
+    // order is refused rather than rewrite the record of what was bought.
+    it('retires the cart as ordered, stamped with its order, at a new version', async () => {
+      await repository.closeForOrder(client, closure);
+
+      expect(cartUpdate).toHaveBeenCalledWith({
+        where: { id: 'cart-1' },
+        data: {
+          status: 'ORDERED',
+          orderId: 'order-1',
+          version: { increment: 1 },
+        },
+      });
+    });
+
+    it('opens no new cart when every line was ordered', async () => {
+      itemCount.mockResolvedValue(0);
+
+      await repository.closeForOrder(client, closure);
+
+      expect(txCartCreate).not.toHaveBeenCalled();
+      expect(itemUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it('carries the unselected lines into a fresh cart, after retiring the old one', async () => {
+      itemCount.mockResolvedValue(2);
+      txCartCreate.mockResolvedValue({ id: 'cart-2' });
+
+      await repository.closeForOrder(client, closure);
+
+      expect(txCartCreate).toHaveBeenCalledWith({
+        data: { customerId: 'customer-1', expiresAt: expect.any(Date) },
+      });
+      expect(itemUpdateMany).toHaveBeenCalledWith({
+        where: { cartId: 'cart-1', isSelected: false },
+        data: { cartId: 'cart-2' },
+      });
+      expect(cartUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+        txCartCreate.mock.invocationCallOrder[0],
+      );
     });
   });
 });

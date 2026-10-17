@@ -6,6 +6,12 @@ export { SupplierStockRepository } from './supplier-stock.repository';
 export { DeliverySpeedResolver } from './delivery-speed.resolver';
 export { ArticleUnavailableException } from './article-unavailable.exception';
 export { InventoryUnavailableException } from './inventory-unavailable.exception';
+export {
+  orderableUnitPrice,
+  priceLines,
+  requirePricedLines,
+} from './orderable-price';
+export type { OrderableLine, PricedLine } from './orderable-price';
 export type { AvailabilityByArticle } from './inventory.service';
 export type { OwnStockRow } from './autoparts.repository';
 export type { SupplierStockRow } from './supplier-stock.repository';

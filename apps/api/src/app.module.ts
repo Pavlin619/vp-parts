@@ -7,14 +7,16 @@ import {
   ThrottlerModuleOptions,
 } from '@nestjs/throttler';
 import * as Joi from 'joi';
-import { AuthModule } from './auth';
+import { AuthModule, JwtGuard } from './auth';
 import { ClientIpOptions, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
 import { CartModule } from './cart';
 import { CatalogModule } from './catalog';
+import { CheckoutModule } from './checkout';
 import { CustomersModule } from './customers';
 import { DeliveryModule } from './delivery';
 import { InventoryModule } from './inventory';
+import { OrdersModule } from './orders';
 import { SearchModule } from './search';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -172,17 +174,25 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
     PrismaModule,
     CartModule,
     CatalogModule,
+    CheckoutModule,
     CustomersModule,
     DeliveryModule,
     InventoryModule,
+    OrdersModule,
     SearchModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // Global guards run in the order given: the rate limit first, so a flood
+    // of bad tokens is refused before each one costs a verification.
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtGuard,
     },
   ],
 })

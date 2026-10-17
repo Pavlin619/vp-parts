@@ -1,6 +1,4 @@
 import { Module } from '@nestjs/common';
-import { CartModule } from '../cart';
-import { InventoryModule } from '../inventory';
 import { RedisModule } from '../redis';
 import { DELIVERY_CARRIERS } from './delivery-carrier';
 import { DeliveryController } from './delivery.controller';
@@ -12,9 +10,9 @@ import { EcontQuotes } from './econt/econt-quotes';
 import { EcontCarrier } from './econt/econt.carrier';
 import { EcontTransport } from './econt/econt.transport';
 
-/** Courier offices, parcel estimates and delivery quotes. See docs/DELIVERY-PROVIDERS.md. */
+/** Couriers: their offices and places, and what a parcel costs to send. See docs/DELIVERY-PROVIDERS.md. */
 @Module({
-  imports: [CartModule, InventoryModule, RedisModule],
+  imports: [RedisModule],
   controllers: [DeliveryController],
   providers: [
     DeliveryService,
@@ -30,5 +28,6 @@ import { EcontTransport } from './econt/econt.transport';
       inject: [EcontCarrier],
     },
   ],
+  exports: [DeliveryService],
 })
 export class DeliveryModule {}

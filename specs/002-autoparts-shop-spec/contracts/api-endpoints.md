@@ -932,12 +932,12 @@ reported so the customer can be told rather than left to notice.
 
 ### Cart totals
 
-**`GET /cart/totals`** (guest token or session · `Cache-Control: no-store`)
+**`GET /checkout/totals`** (guest token or session · `Cache-Control: no-store`)
 
 The money for the requester's **selected, orderable** lines at their live gross
 prices, computed by `orderMoney` (`docs/ORDERS.md` → "Money"). The web shows these
 figures as they come and computes none of its own. Checkout's courier summary comes
-from `POST /delivery/quote`, which answers the same fields plus delivery and fee.
+from `POST /checkout/quote`, which answers the same fields plus delivery and fee.
 
 Response `200`:
 ```json
@@ -1000,7 +1000,7 @@ Errors:
 - `422 CART_EMPTY` — no line is selected
 - `422 ARTICLE_UNAVAILABLE` — a selected line is out of stock, short or unpriced
 - `422 CUSTOMER_DETAILS_REQUIRED` — the profile lacks a name or phone (T091d)
-- `422 DELIVERY_*` — the office, address or locker is refused, as by `POST /delivery/quote`
+- `422 DELIVERY_*` — the office, address or locker is refused, as by `POST /checkout/quote`
 - `503 INVENTORY_UNAVAILABLE` / `503 DELIVERY_UNAVAILABLE` — retryable; no order was written
 - `429 RATE_LIMITED`
 

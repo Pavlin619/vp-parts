@@ -32,6 +32,19 @@ export interface MergedCartLine extends CartLineInput {
   addedAt: Date;
 }
 
+/** Where a cart stands, read under its row lock. */
+export interface LockedCart {
+  status: CartStatus;
+  version: number;
+  orderId: string | null;
+}
+
+export interface CartOrderClosure {
+  cartId: string;
+  orderId: string;
+  customerId: string;
+}
+
 /** How long a guest's cart survives its last touch. */
 export const GUEST_CART_TTL_DAYS = 30;
 
@@ -39,6 +52,13 @@ export const GUEST_CART_TTL_DAYS = 30;
 export class CartVersionConflictError extends Error {
   constructor(cartId: string) {
     super(`Cart ${cartId} moved before the merge could commit.`);
+  }
+}
+
+/** Thrown by a cart write that finds the cart already ordered or merged away. */
+export class CartClosedError extends Error {
+  constructor(cartId: string) {
+    super(`Cart ${cartId} is no longer active.`);
   }
 }
 
@@ -67,6 +87,10 @@ const withItems = {
  * out, in the same transaction as the line it changed — a cart whose contents
  * moved without its version moving would let checkout commit a price it never
  * quoted.
+ *
+ * Every write locks the cart's row before it touches a line. One lock order
+ * keeps a line edit and an order of the same cart from deadlocking, and makes
+ * the edit wait for the order and then see the cart is closed.
  */
 @Injectable()
 export class CartRepository {
@@ -113,11 +137,10 @@ export class CartRepository {
    * topping up is still a part they first wanted at yesterday's price. The
    * shipping profile is catalogue data, so the latest read replaces it.
    *
-   * The cart row is locked before the line count is read: two concurrent adds
-   * of two *different* new articles would otherwise both read the same
+   * The line count is read under the cart's row lock: two concurrent adds of
+   * two *different* new articles would otherwise both read the same
    * under-the-limit count and both insert, since neither touches a row the
-   * other holds a lock on. Locking the cart itself first forces the second
-   * add to wait and then see the first one's line.
+   * other holds a lock on.
    */
   async addLine(cartId: string, line: CartLineInput): Promise<CartRecord> {
     const { brandId, articleNumber, quantity, shippingProfile, ...catalog } =
@@ -126,7 +149,6 @@ export class CartRepository {
     const shippingColumns = toShippingColumns(shippingProfile);
 
     return this.mutate(cartId, async (tx) => {
-      await this.lockCart(tx, cartId);
       await this.assertRoomForLine(tx, identity);
 
       await tx.cartItem.upsert({
@@ -231,12 +253,11 @@ export class CartRepository {
    * already decided in full by {@link mergeCartLines}, and rewriting the set is
    * the only way the result cannot depend on the order the writes landed in.
    *
-   * `targetVersion` is the version the merge was computed against. The final
-   * write is conditional on it: a write to the target cart that lands between
-   * the read and this commit — from another tab or device signed into the same
-   * account — would otherwise be silently overwritten by a merge that never
-   * saw it. {@link CartVersionConflictError} rolls the whole transaction back
-   * rather than let that happen.
+   * `targetVersion` is the version the merge was computed against, checked
+   * under the target's row lock before any line is touched: a write that
+   * landed between the read and this commit — another tab, or an order of
+   * that cart — would otherwise be silently overwritten by a merge that never
+   * saw it.
    */
   async mergeInto(
     targetCartId: string,
@@ -245,6 +266,15 @@ export class CartRepository {
     lines: MergedCartLine[],
   ): Promise<CartRecord> {
     return this.prisma.$transaction(async (tx) => {
+      const target = await this.lockCart(tx, targetCartId);
+
+      if (
+        target?.status !== CartStatus.ACTIVE ||
+        target.version !== targetVersion
+      ) {
+        throw new CartVersionConflictError(targetCartId);
+      }
+
       await tx.cartItem.deleteMany({ where: { cartId: targetCartId } });
       await tx.cartItem.createMany({
         data: lines.map(({ shippingProfile, ...line }) => ({
@@ -263,17 +293,9 @@ export class CartRepository {
         },
       });
 
-      const { count } = await tx.cart.updateMany({
-        where: { id: targetCartId, version: targetVersion },
-        data: { version: { increment: 1 }, expiresAt: guestExpiry() },
-      });
-
-      if (count === 0) {
-        throw new CartVersionConflictError(targetCartId);
-      }
-
-      return tx.cart.findUniqueOrThrow({
+      return tx.cart.update({
         where: { id: targetCartId },
+        data: { version: { increment: 1 }, expiresAt: guestExpiry() },
         include: withItems,
       });
     });
@@ -302,11 +324,67 @@ export class CartRepository {
     return count;
   }
 
+  /**
+   * Locks the cart's row for the rest of `tx` and reads where it stands then:
+   * a concurrent write to the same cart waits here, and sees the first one's
+   * commit. Null when there is no such cart.
+   */
+  async lockCart(
+    tx: Prisma.TransactionClient,
+    cartId: string,
+  ): Promise<LockedCart | null> {
+    const [locked] = await tx.$queryRaw<LockedCart[]>`
+      SELECT status, version, "orderId" FROM "Cart" WHERE id = ${cartId} FOR UPDATE`;
+
+    return locked ?? null;
+  }
+
+  /**
+   * Retires an ordered cart as the record of what was bought, and carries the
+   * lines left unselected into a fresh active cart, as they were. Retired
+   * first: a customer may hold only one active cart. The version moves too, so
+   * a merge computed against the cart before the order is refused.
+   */
+  async closeForOrder(
+    tx: Prisma.TransactionClient,
+    { cartId, orderId, customerId }: CartOrderClosure,
+  ): Promise<void> {
+    await tx.cart.update({
+      where: { id: cartId },
+      data: {
+        status: CartStatus.ORDERED,
+        orderId,
+        version: { increment: 1 },
+      },
+    });
+
+    const unselected = { cartId, isSelected: false };
+
+    if ((await tx.cartItem.count({ where: unselected })) === 0) {
+      return;
+    }
+
+    const next = await tx.cart.create({
+      data: { customerId, expiresAt: guestExpiry() },
+    });
+
+    await tx.cartItem.updateMany({
+      where: unselected,
+      data: { cartId: next.id },
+    });
+  }
+
   private mutate(
     cartId: string,
     change: (tx: Prisma.TransactionClient) => Promise<unknown>,
   ): Promise<CartRecord> {
     return this.prisma.$transaction(async (tx) => {
+      const cart = await this.lockCart(tx, cartId);
+
+      if (cart?.status !== CartStatus.ACTIVE) {
+        throw new CartClosedError(cartId);
+      }
+
       await change(tx);
 
       return tx.cart.update({
@@ -315,14 +393,6 @@ export class CartRepository {
         include: withItems,
       });
     });
-  }
-
-  /** Blocks until any other transaction holding this cart's row lock commits. */
-  private async lockCart(
-    tx: Prisma.TransactionClient,
-    cartId: string,
-  ): Promise<void> {
-    await tx.$queryRaw`SELECT id FROM "Cart" WHERE id = ${cartId} FOR UPDATE`;
   }
 
   /**

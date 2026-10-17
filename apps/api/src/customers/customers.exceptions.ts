@@ -1,33 +1,22 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '@vp-parts-shop/shared';
+import { AppHttpException } from '../common';
 
 /**
  * Thrown for someone Clerk has signed in who has no customer row yet: neither
  * the browser's filing call nor the webhook has landed. The browser answers by
  * filing them.
  */
-export class CustomerProfileIncompleteException extends HttpException {
+export class CustomerProfileIncompleteException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.NOT_FOUND,
-        errorCode: AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE,
-      },
-      HttpStatus.NOT_FOUND,
-    );
+    super(HttpStatus.NOT_FOUND, AppErrorCode.CUSTOMER_PROFILE_INCOMPLETE);
   }
 }
 
 /** Thrown when the email Clerk holds already belongs to another customer. */
-export class EmailAlreadyExistsException extends HttpException {
+export class EmailAlreadyExistsException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.CONFLICT,
-        errorCode: AppErrorCode.EMAIL_ALREADY_EXISTS,
-      },
-      HttpStatus.CONFLICT,
-    );
+    super(HttpStatus.CONFLICT, AppErrorCode.EMAIL_ALREADY_EXISTS);
   }
 }
 
@@ -35,14 +24,11 @@ export class EmailAlreadyExistsException extends HttpException {
  * Thrown for a customer whose profile lacks a name or the phone that ordering
  * needs — someone who signed in with Google and has not completed it yet.
  */
-export class CustomerDetailsRequiredException extends HttpException {
+export class CustomerDetailsRequiredException extends AppHttpException {
   constructor() {
     super(
-      {
-        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-        errorCode: AppErrorCode.CUSTOMER_DETAILS_REQUIRED,
-      },
       HttpStatus.UNPROCESSABLE_ENTITY,
+      AppErrorCode.CUSTOMER_DETAILS_REQUIRED,
     );
   }
 }
@@ -51,14 +37,8 @@ export class CustomerDetailsRequiredException extends HttpException {
  * Thrown when Clerk holds no email for the user — one created in the dashboard
  * without it. Retrying cannot fix that.
  */
-export class ClerkIdentityIncompleteException extends HttpException {
+export class ClerkIdentityIncompleteException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-        errorCode: AppErrorCode.VALIDATION_ERROR,
-      },
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
+    super(HttpStatus.UNPROCESSABLE_ENTITY, AppErrorCode.VALIDATION_ERROR);
   }
 }
