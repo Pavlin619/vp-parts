@@ -20,6 +20,7 @@ const ORDER: NewOrder = {
       articleNumber: 'DISC',
       brandName: 'BOSCH',
       description: 'Диск',
+      thumbnailUrl: null,
       quantity: 2,
       unitPrice: 1299,
       lineTotal: 2598,
@@ -28,7 +29,15 @@ const ORDER: NewOrder = {
   delivery: {
     method: DeliveryMethod.COURIER_OFFICE,
     carrier: ShippingMethod.ECONT,
-    destination: { office: { code: '1127', name: 'София', address: 'ул. 1' } },
+    destination: {
+      office: {
+        code: '1127',
+        name: 'София',
+        address: 'ул. 1',
+        weekdayHours: null,
+        saturdayHours: null,
+      },
+    },
     deliveryPrice: 378,
     cashOnDeliveryFee: 81,
     expectedDeliveryDate: '2026-10-17',

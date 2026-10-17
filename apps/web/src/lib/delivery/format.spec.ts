@@ -1,5 +1,11 @@
 import type { DeliveryProjectionDto } from "@vp-parts-shop/shared";
-import { formatClock, formatDay, formatDeliveryLabel, formatShopDate } from "./format";
+import {
+  formatClock,
+  formatDay,
+  formatDeliveryLabel,
+  formatShopDate,
+  formatShopDateTime,
+} from "./format";
 
 // 2026-06-25 is a Thursday. 07:12Z == 10:12 in Sofia (UTC+3, summer time).
 const NOW = new Date("2026-06-25T07:12:00.000Z");
@@ -55,5 +61,11 @@ describe("formatShopDate", () => {
   // A shop-local date has no instant, so no timezone may move it to another day.
   it("names the weekday and day of a YYYY-MM-DD date", () => {
     expect(formatShopDate("2026-09-30")).toBe("ср, 30 септември");
+  });
+});
+
+describe("formatShopDateTime", () => {
+  it("dates and times an instant in the shop's timezone", () => {
+    expect(formatShopDateTime("2026-10-16T21:32:00.000Z")).toBe("17 октомври 2026 г. в 00:32");
   });
 });

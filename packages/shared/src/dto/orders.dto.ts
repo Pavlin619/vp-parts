@@ -4,7 +4,7 @@ import {
   PaymentMethod,
   ShippingMethod,
 } from '../enums';
-import type { DeliveryAddressDto } from './delivery.dto';
+import type { DeliveryAddressDto, DeliveryOfficeHoursDto } from './delivery.dto';
 import type { ArticleIdentityDto } from './inventory.dto';
 
 /**
@@ -69,6 +69,7 @@ export interface OrderListResponseDto {
 export interface OrderItemDto extends ArticleIdentityDto {
   brandName: string;
   description: string;
+  thumbnailUrl: string | null;
   quantity: number;
   unitPrice: number;
   lineTotal: number;
@@ -83,6 +84,8 @@ export interface OrderOfficeDto {
   code: string;
   name: string;
   address: string;
+  weekdayHours: DeliveryOfficeHoursDto | null;
+  saturdayHours: DeliveryOfficeHoursDto | null;
 }
 
 /** The address as the customer gave it, named as well as located. */

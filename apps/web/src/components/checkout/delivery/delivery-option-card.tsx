@@ -11,6 +11,8 @@ interface DeliveryOptionCardProps {
   /** Shown at the card's far end, e.g. what the option costs. */
   trailing?: ReactNode;
   isSelected: boolean;
+  /** Shown but not choosable, e.g. a payment method that is still to come. */
+  isDisabled?: boolean;
   onSelect: () => void;
 }
 
@@ -26,6 +28,7 @@ export function DeliveryOptionCard({
   icon,
   trailing,
   isSelected,
+  isDisabled = false,
   onSelect,
 }: DeliveryOptionCardProps) {
   return (
@@ -34,6 +37,7 @@ export function DeliveryOptionCard({
         "flex w-full cursor-pointer items-center gap-3 rounded-[10px] border border-line bg-bg-card px-3 py-[11px] transition-colors hover:border-ink-3",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent",
         isSelected && "border-ink bg-canvas shadow-[0_0_0_1px_var(--ink)] hover:border-ink",
+        isDisabled && "cursor-not-allowed opacity-60 hover:border-line",
       )}
     >
       <input
@@ -41,6 +45,7 @@ export function DeliveryOptionCard({
         name={name}
         value={value}
         checked={isSelected}
+        disabled={isDisabled}
         onChange={onSelect}
         className="sr-only"
       />

@@ -372,6 +372,7 @@ describe('CartService', () => {
             shippingProfile: SHIPPING_PROFILE,
             brandName: 'BOSCH',
             description: 'Спирачен диск',
+            thumbnailUrl: null,
           },
         ],
       });

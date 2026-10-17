@@ -60,7 +60,6 @@ function row(overrides: Partial<CartRowModel> = {}): CartRowModel {
     availability: detail(),
     unitPriceExVat: 1000,
     unitPriceIncVat: 1200,
-    lineTotalExVat: 1000 * item.quantity,
     lineTotalIncVat: 1200 * item.quantity,
     issue: null,
     availableQuantity: 4,
@@ -121,7 +120,6 @@ describe('CartRow', () => {
     renderRow(
       row({
         line: line({ quantity: 4 }),
-        lineTotalExVat: 4000,
         lineTotalIncVat: 4800,
       }),
     )
@@ -182,7 +180,6 @@ describe('CartRow', () => {
         availability: undefined,
         unitPriceExVat: null,
         unitPriceIncVat: null,
-        lineTotalExVat: null,
         lineTotalIncVat: null,
       }),
     )
@@ -198,7 +195,6 @@ describe('CartRow', () => {
         availability: null,
         unitPriceExVat: null,
         unitPriceIncVat: null,
-        lineTotalExVat: null,
         lineTotalIncVat: null,
       }),
     )

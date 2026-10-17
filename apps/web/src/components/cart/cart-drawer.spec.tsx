@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   articleIdentityKey,
@@ -13,6 +13,7 @@ import { useCart, type CartLineArticle } from '@/hooks/use-cart'
 import { CartDrawer } from './cart-drawer'
 
 const getAvailability = jest.fn()
+const getTotals = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
   availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
@@ -29,6 +30,17 @@ jest.mock('@/lib/api/catalog', () => ({
     queryFn: () => getAvailability(articles) as Promise<ArticlesAvailabilityDto>,
   }),
 }))
+
+jest.mock('@/lib/api/checkout', () => ({
+  checkoutTotalsQueryOptions: (cartId: string, cartVersion: number) => ({
+    ...jest.requireActual('@/lib/api/checkout').checkoutTotalsQueryOptions(cartId, cartVersion),
+    queryFn: () => getTotals(),
+  }),
+}))
+
+function totalsOf(total: number) {
+  return { cartVersion: 1, goodsTotal: total, netAmount: 0, vatAmount: 0, total }
+}
 
 // The cart writes through to the server; these cases are about what the
 // drawer shows for a cart already in the mirror, not about that request. Each
@@ -95,6 +107,7 @@ describe('CartDrawer', () => {
     useCartDrawer.setState({ isOpen: false })
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
+    getTotals.mockReset().mockResolvedValue(totalsOf(2400))
 
     cart.addCartLine.mockImplementation(() => Promise.resolve(echoedCart()))
     cart.updateCartLine.mockImplementation(() => Promise.resolve(echoedCart()))
@@ -133,13 +146,15 @@ describe('CartDrawer', () => {
     expect(screen.getByText('Маслен филтър')).toBeInTheDocument()
   })
 
-  it('totals the selected lines', async () => {
+  // The API prices the selected lines; the drawer adds nothing up itself.
+  it('shows the total the API priced for the selected lines', async () => {
     useCart.getState().addLine(article(), 1)
     useCart.getState().addLine(article({ articleNumber: 'OC90' }), 1)
     getAvailability.mockResolvedValue({
       ...priced(article(), 1200, 1000),
       ...priced(article({ articleNumber: 'OC90' }), 2400, 2000),
     })
+    getTotals.mockResolvedValue(totalsOf(3600))
     useCartDrawer.setState({ isOpen: true })
 
     renderDrawer()
@@ -149,21 +164,31 @@ describe('CartDrawer', () => {
     )
   })
 
-  it('leaves a deselected line out of the total', async () => {
+  it('shows a dash when the total could not be read', async () => {
     useCart.getState().addLine(article(), 1)
-    useCart.getState().addLine(article({ articleNumber: 'OC90' }), 1)
-    useCart.getState().toggleLineSelected({ brandId: '268', articleNumber: 'OC90' })
-    getAvailability.mockResolvedValue({
-      ...priced(article(), 1200, 1000),
-      ...priced(article({ articleNumber: 'OC90' }), 2400, 2000),
-    })
+    getAvailability.mockResolvedValue(priced(article(), 1200, 1000))
+    getTotals.mockRejectedValue(new Error('offline'))
     useCartDrawer.setState({ isOpen: true })
 
     renderDrawer()
 
-    expect(await screen.findByTestId('cart-drawer-total')).toHaveTextContent(
-      '12,00 €',
-    )
+    expect(await screen.findByTestId('cart-drawer-total')).toHaveTextContent('—')
+  })
+
+  // A quantity click is a new cart version; the last total stands, dimmed, until it is priced.
+  it('keeps the last total, marked busy, while the next one is read', async () => {
+    useCart.getState().addLine(article(), 1)
+    getAvailability.mockResolvedValue(priced(article(), 1200, 1000))
+    useCartDrawer.setState({ isOpen: true })
+
+    renderDrawer()
+    expect(await screen.findByTestId('cart-drawer-total')).toHaveTextContent('24,00 €')
+
+    getTotals.mockReturnValue(new Promise(() => {}))
+    act(() => useCart.setState({ version: useCart.getState().version + 1 }))
+
+    expect(await screen.findByTestId('cart-drawer-total')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByTestId('cart-drawer-total')).toHaveTextContent('24,00 €')
   })
 
   // The prices of the products and nothing else — delivery is the checkout's.

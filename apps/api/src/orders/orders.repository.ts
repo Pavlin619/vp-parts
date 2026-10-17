@@ -15,6 +15,7 @@ export interface NewOrderItem {
   articleNumber: string;
   brandName: string;
   description: string;
+  thumbnailUrl: string | null;
   quantity: number;
   unitPrice: number;
   lineTotal: number;

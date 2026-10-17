@@ -63,7 +63,15 @@ function stocked(
 const OFFICE_DELIVERY: DeliveryPrice = {
   method: DeliveryMethod.COURIER_OFFICE,
   carrier: ShippingMethod.ECONT,
-  destination: { office: { code: '1127', name: 'София', address: 'ул. 1' } },
+  destination: {
+    office: {
+      code: '1127',
+      name: 'София',
+      address: 'ул. 1',
+      weekdayHours: null,
+      saturdayHours: null,
+    },
+  },
   deliveryPrice: 378,
   cashOnDeliveryFee: 81,
   expectedDeliveryDate: '2026-10-17',

@@ -49,13 +49,22 @@ function cartLine(articleNumber: string, quantity: number) {
     shippingProfile: SHIPPING_PROFILE,
     brandName: 'BOSCH',
     description: `Част ${articleNumber}`,
+    thumbnailUrl: `https://images.example/${articleNumber}.jpg`,
   };
 }
 
 const OFFICE_DELIVERY: DeliveryPrice = {
   method: DeliveryMethod.COURIER_OFFICE,
   carrier: ShippingMethod.ECONT,
-  destination: { office: { code: '1127', name: 'София', address: 'ул. 1' } },
+  destination: {
+    office: {
+      code: '1127',
+      name: 'София',
+      address: 'ул. 1',
+      weekdayHours: null,
+      saturdayHours: null,
+    },
+  },
   deliveryPrice: 378,
   cashOnDeliveryFee: 81,
   expectedDeliveryDate: '2026-10-17',
@@ -172,6 +181,7 @@ describe('OrdersService', () => {
             articleNumber: 'DISC',
             brandName: 'BOSCH',
             description: 'Част DISC',
+            thumbnailUrl: 'https://images.example/DISC.jpg',
             quantity: 2,
             unitPrice: 1299,
             lineTotal: 2598,
@@ -181,6 +191,7 @@ describe('OrdersService', () => {
             articleNumber: 'PAD',
             brandName: 'BOSCH',
             description: 'Част PAD',
+            thumbnailUrl: 'https://images.example/PAD.jpg',
             quantity: 3,
             unitPrice: 749,
             lineTotal: 2247,

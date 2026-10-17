@@ -1,7 +1,12 @@
-import { DeliveryDestinationType, ShippingMethod, type DeliveryQuoteDto, type ParcelEstimateDto } from '@vp-parts-shop/shared'
+import {
+  DeliveryDestinationType,
+  ShippingMethod,
+  type CartTotalsDto,
+  type DeliveryQuoteDto,
+  type ParcelEstimateDto,
+} from '@vp-parts-shop/shared'
 import { ApiError } from '@/lib/api'
 import type { ParcelCheck } from './office-availability'
-import type { CartTotals } from '@/lib/cart/cart-totals'
 import { formatWeight, resolveDeliverySummary, summaryMoney } from './delivery-summary'
 
 function parcel(overrides: Partial<ParcelEstimateDto> = {}): ParcelEstimateDto {
@@ -60,6 +65,7 @@ describe('resolveDeliverySummary', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
+      cartVersion: 3,
       money: null,
     })
   })
@@ -135,6 +141,7 @@ describe('resolveDeliverySummary', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
+      cartVersion: 3,
       money: null,
     })
   })
@@ -191,13 +198,12 @@ describe('resolveDeliverySummary', () => {
 })
 
 describe('summaryMoney', () => {
-  const GOODS: CartTotals = {
-    itemCount: 3,
-    subtotalExVat: 7000,
+  const GOODS: CartTotalsDto = {
+    cartVersion: 3,
+    goodsTotal: 8400,
+    netAmount: 7000,
     vatAmount: 1400,
-    totalIncVat: 8400,
-    hasUnpricedLines: false,
-    hasBlockedLines: false,
+    total: 8400,
   }
 
   const MONEY = {
@@ -215,12 +221,15 @@ describe('summaryMoney', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: 152,
       expectedDeliveryDate: null,
+      cartVersion: 3,
       money,
     }
   }
 
   it('shows the quote’s money, with the VAT on the delivery, once one is priced', () => {
     expect(summaryMoney(GOODS, quoted(MONEY))).toEqual({
+      cartVersion: 3,
+      goodsTotal: 8400,
       netAmount: 7722,
       vatAmount: 1544,
       total: 9266,
@@ -228,8 +237,15 @@ describe('summaryMoney', () => {
     })
   })
 
+  // A quote landing before the totals is enough: it carries the whole order's money.
+  it('shows the quote’s money before the goods totals are read', () => {
+    expect(summaryMoney(undefined, quoted(MONEY))?.total).toBe(9266)
+  })
+
   it('shows the goods alone, without the delivery, while the quote carries no money', () => {
     expect(summaryMoney(GOODS, quoted(null))).toEqual({
+      cartVersion: 3,
+      goodsTotal: 8400,
       netAmount: 7000,
       vatAmount: 1400,
       total: 8400,
@@ -245,8 +261,13 @@ describe('summaryMoney', () => {
   })
 
   it('leaves the goods alone while delivery has no price', () => {
-    expect(summaryMoney(GOODS, { kind: 'failed' }).isDeliveryIncluded).toBe(false)
-    expect(summaryMoney(GOODS, { kind: 'pending' }).total).toBe(8400)
+    expect(summaryMoney(GOODS, { kind: 'failed' })?.isDeliveryIncluded).toBe(false)
+    expect(summaryMoney(GOODS, { kind: 'pending' })?.total).toBe(8400)
+  })
+
+  it('has nothing to show until the goods totals are read', () => {
+    expect(summaryMoney(undefined, { kind: 'pickup', readyAt: null })).toBeNull()
+    expect(summaryMoney(undefined, quoted(null))).toBeNull()
   })
 })
 

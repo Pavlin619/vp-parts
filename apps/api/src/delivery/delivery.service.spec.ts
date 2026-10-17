@@ -103,8 +103,8 @@ function office(
     latitude: 43.2,
     longitude: 27.9,
     type,
-    weekdayHours: null,
-    saturdayHours: null,
+    weekdayHours: { opensAt: '09:00', closesAt: '18:00' },
+    saturdayHours: { opensAt: '10:00', closesAt: '14:00' },
   };
 }
 
@@ -325,7 +325,13 @@ describe('DeliveryService', () => {
         method: DeliveryMethod.COURIER_OFFICE,
         carrier: ShippingMethod.ECONT,
         destination: {
-          office: { code: '9035', name: 'Варна', address: 'Варна' },
+          office: {
+            code: '9035',
+            name: 'Варна',
+            address: 'Варна',
+            weekdayHours: { opensAt: '09:00', closesAt: '18:00' },
+            saturdayHours: { opensAt: '10:00', closesAt: '14:00' },
+          },
         },
         deliveryPrice: 1061,
         cashOnDeliveryFee: 0,

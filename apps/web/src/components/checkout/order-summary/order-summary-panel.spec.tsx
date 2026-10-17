@@ -1,20 +1,21 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { PaymentMethod } from '@vp-parts-shop/shared'
-import type { CartTotals } from '@/lib/cart/cart-totals'
-import type { DeliverySummary } from '@/lib/checkout/delivery/delivery-summary'
+import type { PlaceOrder } from '@/hooks/use-place-order'
+import {
+  summaryMoney,
+  type DeliverySummary,
+  type SummaryMoney,
+} from '@/lib/checkout/delivery/delivery-summary'
 import type { ParcelCheck } from '@/lib/checkout/delivery/office-availability'
 import { OrderSummaryPanel } from './order-summary-panel'
 
-function totals(overrides: Partial<CartTotals> = {}): CartTotals {
-  return {
-    itemCount: 3,
-    subtotalExVat: 7000,
-    vatAmount: 1400,
-    totalIncVat: 8400,
-    hasUnpricedLines: false,
-    hasBlockedLines: false,
-    ...overrides,
-  }
+const GOODS = {
+  cartVersion: 3,
+  goodsTotal: 8400,
+  netAmount: 7000,
+  vatAmount: 1400,
+  total: 8400,
 }
 
 const WEIGHED: ParcelCheck = {
@@ -22,77 +23,166 @@ const WEIGHED: ParcelCheck = {
   parcel: { weightGrams: 2300, isLockerEligible: true },
 }
 
+function order(overrides: Partial<PlaceOrder> = {}): PlaceOrder {
+  return {
+    canPlace: false,
+    isPlacing: false,
+    isPlaced: false,
+    failure: null,
+    place: jest.fn(),
+    ...overrides,
+  }
+}
+
 function renderPanel(
   props: {
-    totals?: CartTotals
-    isPending?: boolean
+    money?: SummaryMoney | null
+    isMoneyFailed?: boolean
     parcelCheck?: ParcelCheck
     delivery?: DeliverySummary
     isQuickOrder?: boolean
     paymentMethod?: PaymentMethod | null
+    order?: PlaceOrder
   } = {},
 ) {
+  const delivery = props.delivery ?? { kind: 'awaiting-office' }
+
   return render(
     <OrderSummaryPanel
-      totals={props.totals ?? totals()}
-      isPending={props.isPending ?? false}
+      money={props.money === undefined ? summaryMoney(GOODS, delivery) : props.money}
+      isMoneyFailed={props.isMoneyFailed ?? false}
       parcelCheck={props.parcelCheck ?? WEIGHED}
-      delivery={props.delivery ?? { kind: 'awaiting-office' }}
+      delivery={delivery}
       isQuickOrder={props.isQuickOrder ?? false}
       paymentMethod={props.paymentMethod ?? null}
+      order={props.order ?? order()}
     />,
   )
 }
 
 describe('OrderSummaryPanel', () => {
-  it('breaks the goods into net, VAT and gross', () => {
+  it('shows the parts, the total and the VAT in it, as the API priced them', () => {
     renderPanel()
 
-    expect(screen.getByText('70,00 €')).toBeInTheDocument()
-    expect(screen.getByText('14,00 €')).toBeInTheDocument()
-    expect(screen.getByText('84,00 €')).toBeInTheDocument()
+    expect(screen.getByText('Продукти').nextSibling).toHaveTextContent('84,00 €')
+    expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('84,00 €')
+    expect(screen.getByText('в т.ч. ДДС').nextSibling).toHaveTextContent('14,00 €')
+    expect(screen.getByText('Сума без ДДС').nextSibling).toHaveTextContent('70,00 €')
   })
 
-  it('holds the money figures back while the prices are being read', () => {
-    renderPanel({ isPending: true })
+  it('holds the money figures back while they are being read', () => {
+    renderPanel({ money: null })
 
     expect(screen.queryByText('84,00 €')).not.toBeInTheDocument()
+    expect(screen.getByText('Продукти').nextSibling).not.toHaveTextContent(/€|—/)
   })
 
-  it('offers a disabled placeholder button until orders can be submitted', () => {
-    renderPanel()
+  it('shows dashes when the money could not be read', () => {
+    renderPanel({ money: null, isMoneyFailed: true })
 
-    expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeDisabled()
+    expect(screen.getByText('Продукти').nextSibling).toHaveTextContent('—')
+    expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('—')
   })
 
-  it('asks to request the order when it is a quick order', () => {
-    renderPanel({ isQuickOrder: true })
+  describe('the order button', () => {
+    // CRD Art. 8(2): the words must say that ordering means paying.
+    it('says that ordering means paying', () => {
+      renderPanel({ order: order({ canPlace: true }) })
 
-    expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Поръчай сега/ })).not.toBeInTheDocument()
-  })
-
-  describe('payment', () => {
-    it('sends a card payment on to the payment page', () => {
-      renderPanel({ paymentMethod: PaymentMethod.CARD })
-
-      expect(screen.getByRole('button', { name: /Плати с карта/ })).toBeDisabled()
-      expect(screen.getByText(/пренасочени към защитена страница/)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Купи сега' }),
+      ).toBeEnabled()
+      expect(screen.queryByRole('button', { name: /Поръчай сега/ })).not.toBeInTheDocument()
     })
 
-    it('places a cash-on-delivery order outright', () => {
-      renderPanel({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+    it('stays disabled until an order can be placed', () => {
+      renderPanel()
 
-      expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
-      expect(screen.queryByText(/пренасочени/)).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Купи сега' }),
+      ).toBeDisabled()
     })
 
-    // A quick order is paid on delivery, whatever was picked before switching to it.
-    it('asks to request a quick order even with card payment picked', () => {
-      renderPanel({ isQuickOrder: true, paymentMethod: PaymentMethod.CARD })
+    it('places the order when clicked', async () => {
+      const place = jest.fn()
+      renderPanel({ order: order({ canPlace: true, place }) })
 
-      expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
-      expect(screen.queryByText(/пренасочени/)).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Купи сега' }))
+
+      expect(place).toHaveBeenCalledTimes(1)
+    })
+
+    it('is busy and disabled while the order is being placed', () => {
+      renderPanel({ order: order({ isPlacing: true }) })
+
+      const button = screen.getByRole('button', { name: 'Купи сега' })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('aria-busy', 'true')
+    })
+
+    it('links the terms, the withdrawal right and the privacy notice under it', () => {
+      renderPanel()
+
+      expect(screen.getByRole('link', { name: 'Общите условия' })).toHaveAttribute('href', '/terms')
+      expect(screen.getByRole('link', { name: 'правото на отказ' })).toHaveAttribute(
+        'href',
+        '/withdrawal',
+      )
+      expect(
+        screen.getByRole('link', { name: 'политиката за поверителност' }),
+      ).toHaveAttribute('href', '/privacy')
+    })
+
+    it('asks to request the order when it is a quick order', () => {
+      renderPanel({ isQuickOrder: true })
+
+      expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeDisabled()
+      expect(
+        screen.queryByRole('button', { name: 'Купи сега' }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('a refused order', () => {
+    it('says the price changed, from the total shown to the one read since', () => {
+      renderPanel({
+        money: { ...GOODS, total: 8700, isDeliveryIncluded: true },
+        order: order({ failure: { kind: 'price-changed', shownTotal: 8400 } }),
+      })
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Цената на поръчката е променена от 84,00 € на 87,00 €.',
+      )
+    })
+
+    it('says the price changed before the new total has been read', () => {
+      renderPanel({
+        money: null,
+        order: order({ failure: { kind: 'price-changed', shownTotal: 8400 } }),
+      })
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Цената на поръчката е променена.')
+    })
+
+    it('sends the customer to the cart when a line can no longer be ordered', () => {
+      renderPanel({ order: order({ failure: { kind: 'unavailable' } }) })
+
+      expect(screen.getByRole('link', { name: 'Прегледайте кошницата' })).toHaveAttribute(
+        'href',
+        '/cart',
+      )
+    })
+
+    it.each([
+      ['cart-stale', /Кошницата беше променена/],
+      ['details-required', /данните за контакт/],
+      ['delivery', /друг офис или адрес/],
+      ['rate-limited', /Изчакайте минута/],
+      ['retry', /временен проблем/],
+    ] as const)('explains %s', (kind, text) => {
+      renderPanel({ order: order({ failure: { kind } }) })
+
+      expect(screen.getByRole('alert')).toHaveTextContent(text)
     })
   })
 
@@ -129,7 +219,7 @@ describe('OrderSummaryPanel', () => {
       renderPanel({ delivery })
 
       expect(screen.getByText('Цена на доставката').nextSibling).toHaveTextContent(text)
-      expect(screen.getByText('84,00 €')).toBeInTheDocument()
+      expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('84,00 €')
       expect(screen.getByText('Без цената на доставката')).toBeInTheDocument()
     })
 
@@ -147,6 +237,7 @@ describe('OrderSummaryPanel', () => {
           priceIncVatCents: 714,
           cashOnDeliveryFeeIncVatCents: null,
           expectedDeliveryDate: '2026-09-30',
+          cartVersion: 3,
           money: {
             goodsTotal: 8400,
             deliveryPrice: 714,
@@ -163,7 +254,7 @@ describe('OrderSummaryPanel', () => {
         'ср, 30 септември',
       )
       expect(screen.getByText('Сума без ДДС').nextSibling).toHaveTextContent('75,95 €')
-      expect(screen.getByText('ДДС').nextSibling).toHaveTextContent('15,19 €')
+      expect(screen.getByText('в т.ч. ДДС').nextSibling).toHaveTextContent('15,19 €')
       expect(screen.getByText('91,14 €')).toBeInTheDocument()
       expect(screen.queryByText('Без цената на доставката')).not.toBeInTheDocument()
     })
@@ -175,11 +266,12 @@ describe('OrderSummaryPanel', () => {
           priceIncVatCents: 714,
           cashOnDeliveryFeeIncVatCents: null,
           expectedDeliveryDate: '2026-09-30',
+          cartVersion: 3,
           money: null,
         },
       })
 
-      expect(screen.getByText('84,00 €')).toBeInTheDocument()
+      expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('84,00 €')
       expect(screen.getByText('Без цената на доставката')).toBeInTheDocument()
     })
 
@@ -190,6 +282,7 @@ describe('OrderSummaryPanel', () => {
           priceIncVatCents: 714,
           cashOnDeliveryFeeIncVatCents: null,
           expectedDeliveryDate: null,
+          cartVersion: 3,
           money: null,
         },
       })
@@ -211,7 +304,7 @@ describe('OrderSummaryPanel', () => {
         expect(screen.getByText('Цена на доставката').nextSibling).toHaveTextContent('Безплатна')
         expect(screen.getByText('Готова за вземане').nextSibling).toHaveTextContent('утре')
         expect(screen.queryByText('Очаквана доставка')).not.toBeInTheDocument()
-        expect(screen.getByText('84,00 €')).toBeInTheDocument()
+        expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('84,00 €')
         expect(screen.queryByText('Без цената на доставката')).not.toBeInTheDocument()
       })
 
@@ -229,6 +322,7 @@ describe('OrderSummaryPanel', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: 152,
       expectedDeliveryDate: '2026-09-30',
+      cartVersion: 3,
       money: {
         goodsTotal: 8400,
         deliveryPrice: 714,
@@ -268,7 +362,7 @@ describe('OrderSummaryPanel', () => {
       expect(screen.getByText('Такса наложен платеж').nextSibling).toHaveTextContent('—')
     })
 
-    it('has no fee for a card payment', () => {
+    it('has no fee when cash on delivery is not chosen', () => {
       renderPanel({ delivery: QUOTED_WITH_FEE, paymentMethod: PaymentMethod.CARD })
 
       expect(screen.queryByText('Такса наложен платеж')).not.toBeInTheDocument()
