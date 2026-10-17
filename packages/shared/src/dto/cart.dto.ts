@@ -1,4 +1,5 @@
 import { ArticleIdentityDto, AVAILABILITY_MAX_ARTICLES } from './inventory.dto';
+import type { OrderMoneyDto } from './orders.dto';
 
 /**
  * One line of a cart, as the server holds it.
@@ -44,6 +45,14 @@ export interface CartDto {
 
 /** An empty cart, which is what a visitor who has never added anything has. */
 export const EMPTY_CART: CartDto = { id: '', version: 0, lines: [] };
+
+/** The selected, orderable lines' money at live prices, and the cart version it priced. */
+export interface CartTotalsDto extends Pick<
+  OrderMoneyDto,
+  'goodsTotal' | 'netAmount' | 'vatAmount' | 'total'
+> {
+  cartVersion: number;
+}
 
 export interface CartAdoptResponseDto {
   cart: CartDto;

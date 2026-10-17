@@ -43,6 +43,12 @@ enum ShippingMethod {
   SPEEDY
 }
 
+enum DeliveryMethod {
+  COURIER_OFFICE
+  COURIER_ADDRESS
+  STORE_PICKUP
+}
+
 enum PaymentMethod {
   CARD
   CASH_ON_DELIVERY
@@ -201,29 +207,45 @@ model ProductTypeParcelProfile {
   computedAt       DateTime
 }
 
+/// Every amount is EUR cents including VAT, frozen when the order is placed:
+/// the customer pays exactly these figures — see docs/ORDERS.md.
 model Order {
-  id                String         @id @default(uuid())
-  orderReference    String         @unique
-  customerId        String
+  id                   String          @id @default(uuid())
+  /// `VP-000123`, numbered from the `order_reference_seq` sequence.
+  orderReference       String          @unique
+  customerId           String
   /// The cart this order was placed from. Unique, so the database itself
   /// refuses a second order for one cart — that is the idempotency key a
-  /// retried payment webhook is checked against.
-  cartId            String?        @unique
-  deliverySnapshot  Json
-  status            OrderStatus    @default(PROCESSING)
-  shippingMethod    ShippingMethod
-  shippingCost      Int
-  subtotal          Int
-  vatAmount         Int
-  total             Int
-  paymentMethod     PaymentMethod
-  paymentReference  String?
-  courierName       String?
-  trackingReference String?
-  vehicleTag        String?
-  jobReference      String?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  /// retried order request is checked against.
+  cartId               String?         @unique
+  status               OrderStatus     @default(PROCESSING)
+  deliveryMethod       DeliveryMethod
+  /// The carrier. Null for store pickup.
+  shippingMethod       ShippingMethod?
+  /// The destination as the customer chose it: the office, or the address.
+  deliverySnapshot     Json
+  expectedDeliveryDate DateTime?       @db.Date
+  parcelWeightGrams    Int?
+  goodsTotal           Int
+  deliveryPrice        Int
+  cashOnDeliveryFee    Int
+  total                Int
+  vatAmount            Int
+  paymentMethod        PaymentMethod
+  paymentReference     String?
+  /// Copied from the profile, so a later profile edit never rewrites an order.
+  contactFirstName     String
+  contactLastName      String
+  contactPhone         String
+  contactEmail         String
+  /// Which terms the customer ordered under.
+  termsVersion         String
+  courierName          String?
+  trackingReference    String?
+  vehicleTag           String?
+  jobReference         String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
   customer       Customer             @relation(fields: [customerId], references: [id])
   items          OrderItem[]
@@ -249,6 +271,7 @@ model OrderItem {
   brandName     String
   description   String
   quantity      Int
+  /// Gross, including VAT. `lineTotal` is `unitPrice × quantity`, never rounded.
   unitPrice     Int
   lineTotal     Int
 

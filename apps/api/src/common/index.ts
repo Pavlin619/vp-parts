@@ -1,4 +1,3 @@
-export { CommonModule } from './common.module';
 export {
   UNKNOWN_CLIENT_IP,
   resolveClientIp,
@@ -14,4 +13,8 @@ export {
 export { ExpiringMemo } from './expiring-memo';
 export { GlobalExceptionFilter } from './exception.filter';
 export { LoggingInterceptor } from './logging.interceptor';
-export { PriceCalculator } from './price-calculator';
+export {
+  orderMoney,
+  type OrderMoneyInput,
+  type OrderMoneyLine,
+} from './order-money';

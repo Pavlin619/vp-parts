@@ -23,6 +23,11 @@
 --        -v shop_db_password="$SHOP_DB_PASSWORD" \
 --        -f infra/db/01-shop-provisioning.sql
 --
+-- To let the backoffice read the shop's orders, also pass its runtime role, and re-run
+-- the script after the shop's Prisma migrations have created the order tables:
+--
+--        -v backoffice_db_user="$BACKOFFICE_DB_USER" \
+--
 -- For production, supply a strong SHOP_DB_PASSWORD from your secret manager (it must
 -- match the shop's DATABASE_URL). Idempotent: safe to re-run.
 
@@ -91,3 +96,14 @@ SELECT format(
   'ON public.supplier_product_catalog TO %I',
   :'shop_db_user')
 WHERE to_regclass('public.supplier_product_catalog') IS NOT NULL\gexec
+
+-- 4. The backoffice reads placed orders from the shop's schema (docs/ORDERS.md):
+--    read-only, and only the order tables. Every column is granted, because the
+--    order rows are the record the office works the parcel from.
+\if :{?backoffice_db_user}
+SELECT format('GRANT USAGE ON SCHEMA shop TO %I', :'backoffice_db_user')\gexec
+
+SELECT format('GRANT SELECT ON shop.%I TO %I', order_table, :'backoffice_db_user')
+FROM unnest(ARRAY['Order', 'OrderItem', 'OrderStatusHistory']) AS order_table
+WHERE to_regclass(format('shop.%I', order_table)) IS NOT NULL\gexec
+\endif
