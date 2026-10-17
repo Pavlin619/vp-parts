@@ -240,7 +240,8 @@ that cached figure is what the customer was shown.
   name and address, or the address lines and note; `expectedDeliveryDate`;
   `parcelWeightGrams`.
 - **Money:** `goodsTotal`, `deliveryPrice`, `cashOnDeliveryFee`, `total`,
-  `vatAmount`, as `orderMoney` returns them.
+  `vatAmount`, as `orderMoney` returns them. The net is `total − vatAmount` and
+  is not stored.
 - **Who it is for:** `contactFirstName`, `contactLastName`, `contactPhone`,
   `contactEmail`, copied from the profile, so a later profile edit never
   rewrites an order. With the snapshot, a guest order later only needs
@@ -249,8 +250,9 @@ that cached figure is what the customer was shown.
 - **Lines:** `OrderItem` with `brandId` *and* `articleNumber`, brand name,
   description, `quantity`, `unitPrice` and `lineTotal`, both including VAT.
 
-The backoffice reads these tables with its existing `SELECT` grant
-(`infra/db/01-shop-provisioning.sql`), extended to every new or changed table.
+The backoffice reads `Order`, `OrderItem` and `OrderStatusHistory` with a
+`SELECT` grant from `infra/db/01-shop-provisioning.sql`, given when the script
+is run with `backoffice_db_user` after the shop's migrations.
 
 ## After the commit: the outbox
 

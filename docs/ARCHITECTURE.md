@@ -225,7 +225,7 @@ Published by NestJS for every order placed: at once for cash on delivery, and on
 { "eventType": "OrderPlaced", "eventId": "…", "orderId": "…", "occurredAt": "2026-10-16T08:32:00Z" }
 ```
 
-The event is **thin**: the backoffice reads the order from `shop.orders` and `shop.order_items` with its existing `SELECT` grant, so no customer data sits in a queue or a DLQ. Delivery is at least once; the consumer deduplicates on `eventId`. Until the backoffice consumes it, an email to the office announces each order. Contract and rationale: [ORDERS.md](./ORDERS.md).
+The event is **thin**: the backoffice reads the order from `shop."Order"` and `shop."OrderItem"` with its `SELECT` grant, so no customer data sits in a queue or a DLQ. Delivery is at least once; the consumer deduplicates on `eventId`. Until the backoffice consumes it, an email to the office announces each order. Contract and rationale: [ORDERS.md](./ORDERS.md).
 
 **Queue 2: `fulfillment-events`** (backoffice publishes → NestJS consumes)
 

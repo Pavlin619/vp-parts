@@ -1065,6 +1065,7 @@ Response `200` (`OrderDetailDto`); every amount is EUR cents including VAT:
   "deliveryPrice": 378,
   "cashOnDeliveryFee": 52,
   "total": 3430,
+  "netAmount": 2858,
   "vatAmount": 572,
   "contact": { "firstName": "Иван", "lastName": "Петров", "phoneNumber": "+359888123456", "email": "ivan@example.com" },
   "statusHistory": [{ "status": "PROCESSING", "occurredAt": "2026-10-16T10:00:00Z" }]
@@ -1247,23 +1248,6 @@ Response `200`:
   "method": "ECONT",
   "costIncVat": 6.00,
   "estimatedDeliveryDays": 1
-}
-```
-
----
-
-## Configuration Module
-
-### Checkout Config
-
-**`GET /config/checkout`** `[PUBLIC]`
-
-Returns runtime configuration values the frontend needs at checkout.
-
-Response `200`:
-```json
-{
-  "vatRate": 0.20
 }
 ```
 

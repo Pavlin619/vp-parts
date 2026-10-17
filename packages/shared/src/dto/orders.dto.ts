@@ -1,4 +1,56 @@
-import { OrderStatus, ShippingMethod, PaymentMethod } from '../enums';
+import {
+  DeliveryMethod,
+  OrderStatus,
+  PaymentMethod,
+  ShippingMethod,
+} from '../enums';
+import type { DeliveryAddressDto } from './delivery.dto';
+import type { ArticleIdentityDto } from './inventory.dto';
+
+/**
+ * An order's money, every amount in EUR cents including VAT. The total is an
+ * exact sum; only its split into net and VAT is rounded — see docs/ORDERS.md → "Money".
+ */
+export interface OrderMoneyDto {
+  goodsTotal: number;
+  deliveryPrice: number;
+  cashOnDeliveryFee: number;
+  total: number;
+  netAmount: number;
+  vatAmount: number;
+}
+
+export type PlaceOrderDeliveryDto =
+  | {
+      method: DeliveryMethod.COURIER_OFFICE;
+      carrier: ShippingMethod;
+      officeCode: string;
+    }
+  | {
+      method: DeliveryMethod.COURIER_ADDRESS;
+      carrier: ShippingMethod;
+      address: DeliveryAddressDto;
+    }
+  | { method: DeliveryMethod.STORE_PICKUP };
+
+/**
+ * No lines, weights or prices: the server reads those itself and refuses the
+ * order when they are not what the customer was shown.
+ */
+export interface PlaceOrderRequestDto {
+  cartId: string;
+  /** The cart version the checkout page priced. */
+  cartVersion: number;
+  /** The total the checkout summary showed. */
+  expectedTotalCents: number;
+  paymentMethod: PaymentMethod.CASH_ON_DELIVERY;
+  delivery: PlaceOrderDeliveryDto;
+}
+
+export interface PlaceOrderResponseDto {
+  orderId: string;
+  orderReference: string;
+}
 
 export interface OrderListItemDto {
   orderId: string;
@@ -14,13 +66,12 @@ export interface OrderListResponseDto {
   orders: OrderListItemDto[];
 }
 
-export interface OrderItemDto {
-  articleNumber: string;
+export interface OrderItemDto extends ArticleIdentityDto {
   brandName: string;
   description: string;
   quantity: number;
-  unitPriceIncVat: number;
-  lineTotalIncVat: number;
+  unitPrice: number;
+  lineTotal: number;
 }
 
 export interface OrderStatusHistoryEntryDto {
@@ -28,33 +79,52 @@ export interface OrderStatusHistoryEntryDto {
   occurredAt: string;
 }
 
-export interface DeliveryAddressSnapshotDto {
-  fullName: string;
-  city: string;
-  postcode: string;
-  street: string;
-  streetNumber: string;
-  apartment?: string;
-  phoneNumber: string;
+export interface OrderOfficeDto {
+  code: string;
+  name: string;
+  address: string;
 }
 
-export interface OrderDetailDto {
+/** The address as the customer gave it, named as well as located. */
+export interface OrderAddressDto extends DeliveryAddressDto {
+  city: string;
+  postCode: string;
+}
+
+export type OrderDeliveryDto =
+  | {
+      method: DeliveryMethod.COURIER_OFFICE;
+      carrier: ShippingMethod;
+      office: OrderOfficeDto;
+      expectedDeliveryDate: string | null;
+    }
+  | {
+      method: DeliveryMethod.COURIER_ADDRESS;
+      carrier: ShippingMethod;
+      address: OrderAddressDto;
+      expectedDeliveryDate: string | null;
+    }
+  | {
+      method: DeliveryMethod.STORE_PICKUP;
+      expectedDeliveryDate: string | null;
+    };
+
+export interface OrderContactDto {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email: string;
+}
+
+export interface OrderDetailDto extends OrderMoneyDto {
   orderId: string;
   orderReference: string;
   status: OrderStatus;
   createdAt: string;
   items: OrderItemDto[];
-  deliveryAddress: DeliveryAddressSnapshotDto;
-  shippingMethod: ShippingMethod;
-  shippingCostIncVat: number;
-  subtotalExVat: number;
-  vatAmount: number;
-  totalIncVat: number;
+  delivery: OrderDeliveryDto;
   paymentMethod: PaymentMethod;
-  courierName: string | null;
-  trackingReference: string | null;
-  vehicleTag: string | null;
-  jobReference: string | null;
+  contact: OrderContactDto;
   statusHistory: OrderStatusHistoryEntryDto[];
 }
 

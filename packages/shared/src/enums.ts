@@ -23,6 +23,12 @@ export enum ShippingMethod {
   SPEEDY = 'SPEEDY',
 }
 
+export enum DeliveryMethod {
+  COURIER_OFFICE = 'COURIER_OFFICE',
+  COURIER_ADDRESS = 'COURIER_ADDRESS',
+  STORE_PICKUP = 'STORE_PICKUP',
+}
+
 export enum PaymentMethod {
   CARD = 'CARD',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',

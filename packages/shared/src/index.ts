@@ -9,7 +9,6 @@ export * from './utils';
 export * from './types/value-objects';
 
 export * from './schemas/cart.schema';
-export * from './schemas/checkout.schema';
 export * from './schemas/customers.schema';
 
 export * from './dto/common.dto';
@@ -23,7 +22,6 @@ export * from './dto/search/search-sort';
 export * from './dto/search/search.dto';
 export * from './dto/inventory.dto';
 export * from './dto/cart.dto';
-export * from './dto/checkout.dto';
 export * from './dto/delivery.dto';
 export * from './dto/orders.dto';
 export * from './dto/customers.dto';
