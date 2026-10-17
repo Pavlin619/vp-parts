@@ -354,7 +354,7 @@ type VehicleId = string & { readonly _brand: 'VehicleId' };
 
 ---
 
-## Order money: `orderMoney` in `apps/api/src/common/order-money.ts`
+## Order money: `orderMoney` in `apps/api/src/checkout/order-money.ts`
 
 The only place in the codebase where order totals and VAT amounts are computed,
 used to price and store an order and to answer the cart totals and the delivery

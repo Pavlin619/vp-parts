@@ -13,7 +13,7 @@ import {
   useSelectedAddress,
   useSelectedOfficeCode,
 } from "@/hooks/use-checkout-delivery";
-import { deliveryQuoteQueryOptions } from "@/lib/api/delivery";
+import { deliveryQuoteQueryOptions } from "@/lib/api/checkout";
 import {
   CHECKOUT_CARRIER,
   type DeliveryMethod,

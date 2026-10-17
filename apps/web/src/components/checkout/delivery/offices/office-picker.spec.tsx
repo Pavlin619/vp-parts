@@ -25,8 +25,11 @@ jest.mock('@/lib/api/delivery', () => ({
     queryKey: ['delivery', 'places', carrier],
     queryFn: () => getPlaces(carrier),
   }),
+}))
+
+jest.mock('@/lib/api/checkout', () => ({
   parcelEstimateQueryOptions: (carrier: ShippingMethod, cartId: string, cartVersion: number) => ({
-    queryKey: ['delivery', 'parcel', carrier, cartId, cartVersion],
+    queryKey: ['checkout', 'parcel', carrier, cartId, cartVersion],
     queryFn: () => getParcel(carrier, cartId, cartVersion),
   }),
 }))

@@ -1,4 +1,5 @@
 import { ShippingMethod } from '../enums';
+import type { OrderMoneyDto } from './orders.dto';
 
 export enum DeliveryOfficeType {
   OFFICE = 'OFFICE',
@@ -148,4 +149,9 @@ export interface DeliveryQuoteDto {
   parcel: ParcelEstimateDto;
   /** The cart version this quote priced; an order for a different version must re-quote. */
   cartVersion: number;
+  /**
+   * The whole order's money with this delivery: what the summary shows and
+   * the order button sends back. Null while a selected line cannot be ordered.
+   */
+  money: OrderMoneyDto | null;
 }

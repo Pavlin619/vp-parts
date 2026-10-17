@@ -140,13 +140,21 @@ describe('OrderSummaryPanel', () => {
       expect(screen.getByText('Очаквана доставка').nextSibling).not.toHaveTextContent(/—/)
     })
 
-    it('shows the quoted price and date and adds it to the total', () => {
+    it('shows the quoted price and date, and the quote’s money with the VAT on delivery', () => {
       renderPanel({
         delivery: {
           kind: 'quoted',
           priceIncVatCents: 714,
           cashOnDeliveryFeeIncVatCents: null,
           expectedDeliveryDate: '2026-09-30',
+          money: {
+            goodsTotal: 8400,
+            deliveryPrice: 714,
+            cashOnDeliveryFee: 0,
+            total: 9114,
+            netAmount: 7595,
+            vatAmount: 1519,
+          },
         },
       })
 
@@ -154,8 +162,25 @@ describe('OrderSummaryPanel', () => {
       expect(screen.getByText('Очаквана доставка').nextSibling).toHaveTextContent(
         'ср, 30 септември',
       )
+      expect(screen.getByText('Сума без ДДС').nextSibling).toHaveTextContent('75,95 €')
+      expect(screen.getByText('ДДС').nextSibling).toHaveTextContent('15,19 €')
       expect(screen.getByText('91,14 €')).toBeInTheDocument()
       expect(screen.queryByText('Без цената на доставката')).not.toBeInTheDocument()
+    })
+
+    it('leaves the total to the goods while the quote carries no money', () => {
+      renderPanel({
+        delivery: {
+          kind: 'quoted',
+          priceIncVatCents: 714,
+          cashOnDeliveryFeeIncVatCents: null,
+          expectedDeliveryDate: '2026-09-30',
+          money: null,
+        },
+      })
+
+      expect(screen.getByText('84,00 €')).toBeInTheDocument()
+      expect(screen.getByText('Без цената на доставката')).toBeInTheDocument()
     })
 
     it('shows a dash for the date when the carrier gave none', () => {
@@ -165,6 +190,7 @@ describe('OrderSummaryPanel', () => {
           priceIncVatCents: 714,
           cashOnDeliveryFeeIncVatCents: null,
           expectedDeliveryDate: null,
+          money: null,
         },
       })
 
@@ -203,6 +229,14 @@ describe('OrderSummaryPanel', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: 152,
       expectedDeliveryDate: '2026-09-30',
+      money: {
+        goodsTotal: 8400,
+        deliveryPrice: 714,
+        cashOnDeliveryFee: 152,
+        total: 9266,
+        netAmount: 7722,
+        vatAmount: 1544,
+      },
     }
 
     it('shows the fee apart from the delivery and adds it to the total', () => {

@@ -179,7 +179,7 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 **Payment providers**:
 - dominaite: amount built from integer cents; currency sent as `EUR`
 
-**`orderMoney` in `apps/api/src/common/order-money.ts`**: Single pure function for order totals and VAT; the web shows the figures the API returns. Prices include VAT, so VAT is worked out of the total (`docs/ORDERS.md` → "Money"). 100% unit test coverage with explicit rounding edge-case tests.
+**`orderMoney` in `apps/api/src/checkout/order-money.ts`**: Single pure function for order totals and VAT; the web shows the figures the API returns. Prices include VAT, so VAT is worked out of the total (`docs/ORDERS.md` → "Money"). 100% unit test coverage with explicit rounding edge-case tests.
 
 **Rationale**: Floating-point arithmetic is unsuitable for money — `0.1 + 0.2 !== 0.3` in IEEE 754. Integer cents eliminate this class of bugs entirely. Integer cents are the natural representation for the full stack.
 

@@ -3,6 +3,7 @@ import {
   CartDto,
   CartLineDto,
 } from '@vp-parts-shop/shared';
+import type { CartStatus } from '../generated/prisma';
 import { ResolvedShippingProfile, fromShippingColumns } from './cart-shipping';
 import { CartRecord } from './cart.repository';
 
@@ -18,6 +19,21 @@ export interface CartShippingLine {
   article: ArticleIdentityDto;
   quantity: number;
   shippingProfile: ResolvedShippingProfile;
+}
+
+/** A selected line as an order copies it, named as the customer saw it. */
+export interface CartOrderLine extends CartShippingLine {
+  brandName: string;
+  description: string;
+}
+
+/** A cart as an order reads it: where it stands, and what is selected. */
+export interface CartForOrder {
+  id: string;
+  version: number;
+  status: CartStatus;
+  orderId: string | null;
+  lines: CartOrderLine[];
 }
 
 /**
@@ -43,13 +59,31 @@ export function toStoredCartLines(cart: CartRecord): StoredCartLine[] {
 }
 
 export function toSelectedShippingLines(cart: CartRecord): CartShippingLine[] {
-  return cart.items
-    .filter((item) => item.isSelected)
-    .map((item) => ({
-      article: { brandId: item.brandId, articleNumber: item.articleNumber },
-      quantity: item.quantity,
-      shippingProfile: fromShippingColumns(item),
-    }));
+  return cart.items.filter((item) => item.isSelected).map(toShippingLine);
+}
+
+export function toCartForOrder(cart: CartRecord): CartForOrder {
+  return {
+    id: cart.id,
+    version: cart.version,
+    status: cart.status,
+    orderId: cart.orderId,
+    lines: cart.items
+      .filter((item) => item.isSelected)
+      .map((item) => ({
+        ...toShippingLine(item),
+        brandName: item.brandName,
+        description: item.description,
+      })),
+  };
+}
+
+function toShippingLine(item: CartItemRecord): CartShippingLine {
+  return {
+    article: { brandId: item.brandId, articleNumber: item.articleNumber },
+    quantity: item.quantity,
+    shippingProfile: fromShippingColumns(item),
+  };
 }
 
 function toCartLineDto(item: CartItemRecord): CartLineDto {

@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsObject,
@@ -10,11 +9,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import {
-  DeliveryDestinationType,
-  DeliveryQuoteRequestDto,
-  ShippingMethod,
-} from '@vp-parts-shop/shared';
+import { DeliveryDestinationType, ShippingMethod } from '@vp-parts-shop/shared';
 import {
   DeliveryAddressBodyDto,
   PLACE_ID_PATTERN,
@@ -64,34 +59,4 @@ export class DeliveryAddressDestinationBodyDto {
   @ValidateNested()
   @Type(() => DeliveryAddressBodyDto)
   address!: DeliveryAddressBodyDto;
-}
-
-export class DeliveryQuoteBodyDto implements DeliveryQuoteRequestDto {
-  @IsIn(SUPPORTED_CARRIERS)
-  carrier!: ShippingMethod;
-
-  @IsObject()
-  @ValidateNested()
-  @Type(() => Object, {
-    keepDiscriminatorProperty: true,
-    discriminator: {
-      property: 'type',
-      subTypes: [
-        {
-          value: DeliveryOfficeDestinationBodyDto,
-          name: DeliveryDestinationType.OFFICE,
-        },
-        {
-          value: DeliveryAddressDestinationBodyDto,
-          name: DeliveryDestinationType.ADDRESS,
-        },
-      ],
-    },
-  })
-  destination!:
-    | DeliveryOfficeDestinationBodyDto
-    | DeliveryAddressDestinationBodyDto;
-
-  @IsBoolean()
-  isCashOnDelivery!: boolean;
 }

@@ -16,9 +16,9 @@ import { useDeliverySummary } from './use-delivery-summary'
 const getParcel = jest.fn<Promise<ParcelEstimateDto>, []>()
 const getQuote = jest.fn<Promise<DeliveryQuoteDto>, [DeliveryQuoteRequestDto]>()
 
-jest.mock('@/lib/api/delivery', () => ({
+jest.mock('@/lib/api/checkout', () => ({
   parcelEstimateQueryOptions: (carrier: string, cartId: string, cartVersion: number) => ({
-    queryKey: ['delivery', 'parcel', carrier, cartId, cartVersion],
+    queryKey: ['checkout', 'parcel', carrier, cartId, cartVersion],
     queryFn: () => getParcel(),
   }),
   deliveryQuoteQueryOptions: (
@@ -27,7 +27,7 @@ jest.mock('@/lib/api/delivery', () => ({
     cartVersion: number,
   ) => ({
     queryKey: [
-      'delivery',
+      'checkout',
       'quote',
       request?.carrier,
       request?.destination,
@@ -55,6 +55,7 @@ const QUOTE: DeliveryQuoteDto = {
   expectedDeliveryDate: '2026-09-30',
   parcel: PARCEL,
   cartVersion: 4,
+  money: null,
 }
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -89,6 +90,7 @@ describe('useDeliverySummary', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
+      money: null,
     })
     expect(getQuote).toHaveBeenCalledWith({
       carrier: ShippingMethod.ECONT,

@@ -1,77 +1,53 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '@vp-parts-shop/shared';
+import { AppHttpException } from '../common';
 
-function errorBody(statusCode: HttpStatus, errorCode: AppErrorCode) {
-  return { statusCode, errorCode };
+export class DeliveryOfficeNotFoundException extends AppHttpException {
+  constructor() {
+    super(HttpStatus.NOT_FOUND, AppErrorCode.DELIVERY_OFFICE_NOT_FOUND);
+  }
 }
 
-export class DeliveryOfficeNotFoundException extends HttpException {
+export class DeliveryOfficeRefusedException extends AppHttpException {
   constructor() {
     super(
-      errorBody(HttpStatus.NOT_FOUND, AppErrorCode.DELIVERY_OFFICE_NOT_FOUND),
-      HttpStatus.NOT_FOUND,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      AppErrorCode.DELIVERY_OFFICE_REFUSED,
     );
   }
 }
 
-export class DeliveryOfficeRefusedException extends HttpException {
+export class DeliveryAddressRefusedException extends AppHttpException {
   constructor() {
     super(
-      errorBody(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        AppErrorCode.DELIVERY_OFFICE_REFUSED,
-      ),
       HttpStatus.UNPROCESSABLE_ENTITY,
+      AppErrorCode.DELIVERY_ADDRESS_REFUSED,
     );
   }
 }
 
-export class DeliveryAddressRefusedException extends HttpException {
+export class DeliveryAddressNotServedException extends AppHttpException {
   constructor() {
     super(
-      errorBody(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        AppErrorCode.DELIVERY_ADDRESS_REFUSED,
-      ),
       HttpStatus.UNPROCESSABLE_ENTITY,
+      AppErrorCode.DELIVERY_ADDRESS_NOT_SERVED,
     );
   }
 }
 
-export class DeliveryAddressNotServedException extends HttpException {
+export class DeliveryLockerIneligibleException extends AppHttpException {
   constructor() {
     super(
-      errorBody(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        AppErrorCode.DELIVERY_ADDRESS_NOT_SERVED,
-      ),
       HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-  }
-}
-
-export class DeliveryLockerIneligibleException extends HttpException {
-  constructor() {
-    super(
-      errorBody(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        AppErrorCode.DELIVERY_LOCKER_INELIGIBLE,
-      ),
-      HttpStatus.UNPROCESSABLE_ENTITY,
+      AppErrorCode.DELIVERY_LOCKER_INELIGIBLE,
     );
   }
 }
 
 /** The courier could not be reached or failed on its side. Retryable. */
-export class DeliveryUnavailableException extends HttpException {
+export class DeliveryUnavailableException extends AppHttpException {
   constructor() {
-    super(
-      errorBody(
-        HttpStatus.SERVICE_UNAVAILABLE,
-        AppErrorCode.DELIVERY_UNAVAILABLE,
-      ),
-      HttpStatus.SERVICE_UNAVAILABLE,
-    );
+    super(HttpStatus.SERVICE_UNAVAILABLE, AppErrorCode.DELIVERY_UNAVAILABLE);
   }
 }
 
@@ -79,11 +55,8 @@ export class DeliveryUnavailableException extends HttpException {
  * The courier refused the request itself: our credentials or a request we built.
  * Nothing the customer can fix, so it surfaces as a bare INTERNAL_ERROR.
  */
-export class DeliveryRequestRejectedException extends HttpException {
+export class DeliveryRequestRejectedException extends AppHttpException {
   constructor() {
-    super(
-      errorBody(HttpStatus.INTERNAL_SERVER_ERROR, AppErrorCode.INTERNAL_ERROR),
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
+    super(HttpStatus.INTERNAL_SERVER_ERROR, AppErrorCode.INTERNAL_ERROR);
   }
 }

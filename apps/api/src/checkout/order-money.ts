@@ -20,20 +20,24 @@ export function orderMoney(
   { lines, deliveryPrice, cashOnDeliveryFee }: OrderMoneyInput,
   vatRate: number,
 ): OrderMoneyDto {
-  const goodsTotal = lines.reduce(
-    (sum, { unitPrice, quantity }) => sum + unitPrice * quantity,
-    0,
-  );
-  const total = goodsTotal + deliveryPrice + cashOnDeliveryFee;
+  const goods = goodsTotal(lines);
+  const total = goods + deliveryPrice + cashOnDeliveryFee;
 
   const netAmount = Math.round(total / (1 + vatRate));
 
   return {
-    goodsTotal,
+    goodsTotal: goods,
     deliveryPrice,
     cashOnDeliveryFee,
     total,
     netAmount,
     vatAmount: total - netAmount,
   };
+}
+
+export function goodsTotal(lines: OrderMoneyLine[]): number {
+  return lines.reduce(
+    (sum, { unitPrice, quantity }) => sum + unitPrice * quantity,
+    0,
+  );
 }

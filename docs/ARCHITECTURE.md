@@ -347,8 +347,8 @@ POST /orders { cartId, cartVersion, expectedTotalCents, paymentMethod, delivery 
   Profile complete?               no → 422 CUSTOMER_DETAILS_REQUIRED
   Cart ORDERED already?           yes → return that order (replay)
   Cart moved?                     yes → 409 CART_STALE
-  inventory.getAvailability       fresh, no cache; fails closed
-  DeliveryService.priceForOrder   same path as the quote; Econt down → 503, no order
+  CheckoutService.priceOrder      the quote's path, stricter: fresh stock, fails closed;
+                                  every line orderable; Econt down → 503, no order
   Total ≠ expectedTotalCents?     yes → 409 PRICE_CHANGED
         │
         ▼
@@ -513,7 +513,10 @@ src/
 ├── catalog/        # TecDoc integration, vehicle search, parts browsing
 │   └── tecdoc/     # TecDocClient, Redis cache service, DTOs
 ├── inventory/      # Direct read-only reads of public.autoparts + supplier_stock; best-offer selection
-├── orders/         # Order state machine, checkout, SQS publisher, SSE streams
+├── cart/           # Server-side cart: lines, selection, merge at sign-in
+├── checkout/       # Prices the cart with a delivery: totals, quote, an order's price
+├── delivery/       # Couriers: offices, places, addresses, parcel pricing
+├── orders/         # Order state machine, placing an order, SQS publisher, SSE streams
 ├── payments/       # Stripe, dominaite, COD adapters
 ├── customers/      # Accounts, registration from Clerk identity, mechanic approval
 ├── auth/           # Clerk JWT guard, InternalGuard (shared-secret), @Public() decorator

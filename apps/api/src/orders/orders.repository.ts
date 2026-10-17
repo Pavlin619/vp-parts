@@ -1,0 +1,172 @@
+import { Injectable } from '@nestjs/common';
+import type { OrderMoneyDto } from '@vp-parts-shop/shared';
+import { CartRepository } from '../cart';
+import type { DeliveryPrice } from '../delivery';
+import {
+  CartStatus,
+  OrderStatus,
+  PaymentMethod,
+  Prisma,
+} from '../generated/prisma';
+import { PrismaService } from '../prisma';
+
+export interface NewOrderItem {
+  brandId: string;
+  articleNumber: string;
+  brandName: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface OrderContact {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+}
+
+/** Everything an order freezes, read and checked before the transaction opens. */
+export interface NewOrder {
+  cartId: string;
+  /** The version every check before the transaction was made against. */
+  cartVersion: number;
+  customerId: string;
+  contact: OrderContact;
+  items: NewOrderItem[];
+  delivery: DeliveryPrice;
+  money: OrderMoneyDto;
+  paymentMethod: PaymentMethod;
+  termsVersion: string;
+}
+
+export interface OrderReference {
+  id: string;
+  orderReference: string;
+}
+
+export type OrderPlacement =
+  | { kind: 'placed'; order: OrderReference }
+  /** The cart was ordered from already, by this request's twin. */
+  | { kind: 'replayed'; order: OrderReference }
+  /** The cart moved after the checks were made. */
+  | { kind: 'stale' };
+
+const withDetail = {
+  items: true,
+  statusHistory: { orderBy: { occurredAt: 'asc' } },
+} satisfies Prisma.OrderInclude;
+
+export type OrderRecord = Prisma.OrderGetPayload<{
+  include: typeof withDetail;
+}>;
+
+const referenceOnly = {
+  id: true,
+  orderReference: true,
+} satisfies Prisma.OrderSelect;
+
+@Injectable()
+export class OrdersRepository {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly carts: CartRepository,
+  ) {}
+
+  /**
+   * Writes the order and retires its cart in one transaction, holding the
+   * cart's row lock throughout, so two requests for one cart end in one order.
+   */
+  place(order: NewOrder): Promise<OrderPlacement> {
+    return this.prisma.$transaction(async (tx) => {
+      const cart = await this.carts.lockCart(tx, order.cartId);
+
+      if (cart?.orderId) {
+        return {
+          kind: 'replayed',
+          order: await tx.order.findUniqueOrThrow({
+            where: { id: cart.orderId },
+            select: referenceOnly,
+          }),
+        };
+      }
+
+      if (
+        cart?.status !== CartStatus.ACTIVE ||
+        cart.version !== order.cartVersion
+      ) {
+        return { kind: 'stale' };
+      }
+
+      const placed = await tx.order.create({
+        data: toOrderData(order, await nextOrderReference(tx)),
+        select: referenceOnly,
+      });
+
+      await this.carts.closeForOrder(tx, {
+        cartId: order.cartId,
+        orderId: placed.id,
+        customerId: order.customerId,
+      });
+
+      return { kind: 'placed', order: placed };
+    });
+  }
+
+  findReference(orderId: string): Promise<OrderReference | null> {
+    return this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: referenceOnly,
+    });
+  }
+
+  findOwned(orderId: string, customerId: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findFirst({
+      where: { id: orderId, customerId },
+      include: withDetail,
+    });
+  }
+}
+
+async function nextOrderReference(
+  tx: Prisma.TransactionClient,
+): Promise<string> {
+  const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
+    SELECT nextval('order_reference_seq') AS value`;
+
+  return `VP-${value.toString().padStart(6, '0')}`;
+}
+
+function toOrderData(
+  { delivery, money, contact, items, ...order }: NewOrder,
+  orderReference: string,
+): Prisma.OrderUncheckedCreateInput {
+  return {
+    orderReference,
+    customerId: order.customerId,
+    cartId: order.cartId,
+    deliveryMethod: delivery.method,
+    shippingMethod: delivery.carrier,
+    deliverySnapshot: (delivery.destination ?? {}) as Prisma.InputJsonObject,
+    expectedDeliveryDate: delivery.expectedDeliveryDate
+      ? new Date(delivery.expectedDeliveryDate)
+      : null,
+    parcelWeightGrams: delivery.parcelWeightGrams,
+    goodsTotal: money.goodsTotal,
+    deliveryPrice: money.deliveryPrice,
+    cashOnDeliveryFee: money.cashOnDeliveryFee,
+    total: money.total,
+    vatAmount: money.vatAmount,
+    paymentMethod: order.paymentMethod,
+    contactFirstName: contact.firstName,
+    contactLastName: contact.lastName,
+    contactPhone: contact.phone,
+    contactEmail: contact.email,
+    termsVersion: order.termsVersion,
+    items: { create: items },
+    statusHistory: {
+      create: { status: OrderStatus.PROCESSING, source: 'shop' },
+    },
+  };
+}

@@ -25,6 +25,6 @@ import { ShippingProfileResolver } from './shipping-profile/shipping-profile.res
     ShippingProfileResolver,
     ProductTypeParcelProfileRepository,
   ],
-  exports: [CartService],
+  exports: [CartService, CartRepository],
 })
 export class CartModule {}

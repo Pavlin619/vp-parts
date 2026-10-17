@@ -1,5 +1,6 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '@vp-parts-shop/shared';
+import { AppHttpException } from '../common';
 
 /**
  * Thrown when a cart already holding `MAX_CART_LINES` distinct parts is asked
@@ -10,25 +11,16 @@ import { AppErrorCode } from '@vp-parts-shop/shared';
  * too. Raising the quantity of a part already in the cart is always allowed:
  * it costs the batch nothing.
  */
-export class CartFullException extends HttpException {
+export class CartFullException extends AppHttpException {
   constructor() {
-    super(
-      { statusCode: HttpStatus.CONFLICT, errorCode: AppErrorCode.CART_FULL },
-      HttpStatus.CONFLICT,
-    );
+    super(HttpStatus.CONFLICT, AppErrorCode.CART_FULL);
   }
 }
 
 /** Thrown when an action needs selected cart lines and the cart has none. */
-export class CartEmptyException extends HttpException {
+export class CartEmptyException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-        errorCode: AppErrorCode.CART_EMPTY,
-      },
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
+    super(HttpStatus.UNPROCESSABLE_ENTITY, AppErrorCode.CART_EMPTY);
   }
 }
 
@@ -37,29 +29,19 @@ export class CartEmptyException extends HttpException {
  * acting on a cart another tab has already changed. The client answers by
  * re-reading the cart.
  */
-export class CartItemNotFoundException extends HttpException {
+export class CartItemNotFoundException extends AppHttpException {
   constructor() {
-    super(
-      {
-        statusCode: HttpStatus.NOT_FOUND,
-        errorCode: AppErrorCode.CART_ITEM_NOT_FOUND,
-      },
-      HttpStatus.NOT_FOUND,
-    );
+    super(HttpStatus.NOT_FOUND, AppErrorCode.CART_ITEM_NOT_FOUND);
   }
 }
 
 /**
- * Thrown when adopting a guest cart finds the account cart changed between
- * the merge being computed and committed — another tab or device, signed into
- * the same account, wrote to it in between. The client answers by re-reading
- * the cart and retrying the adopt.
+ * Thrown when a request acted on a cart that moved after it was read: edited
+ * from another tab or device, ordered, or merged away. The client answers by
+ * re-reading the cart and retrying.
  */
-export class CartMergeConflictException extends HttpException {
+export class CartStaleException extends AppHttpException {
   constructor() {
-    super(
-      { statusCode: HttpStatus.CONFLICT, errorCode: AppErrorCode.CART_STALE },
-      HttpStatus.CONFLICT,
-    );
+    super(HttpStatus.CONFLICT, AppErrorCode.CART_STALE);
   }
 }

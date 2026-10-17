@@ -117,8 +117,7 @@ reason theirs is on the server.
 
 ## What happens when the customer buys
 
-*(Contract only; the orders module is the next piece of work, and the schema
-here already enforces it. The whole request is in [ORDERS.md](./ORDERS.md).)*
+*(Built in `apps/api/src/orders/`. The whole request is in [ORDERS.md](./ORDERS.md).)*
 
 A cart becomes an order by **transition, never deletion**:
 
@@ -135,8 +134,9 @@ A cart becomes an order by **transition, never deletion**:
    `OrderItem` with `brandId`, `articleNumber` and their price → create the
    `Order`, its first `OrderStatusHistory` and its outbox event → set the cart to
    `ORDERED` and stamp `orderId`.
-4. Unselected lines move to a fresh `ACTIVE` cart for the same owner. The cart
-   page already lets a customer pick a subset; this is what that implies.
+4. Unselected lines move, still unselected, to a fresh `ACTIVE` cart for the
+   same owner. The cart page already lets a customer pick a subset; this is what
+   that implies.
 5. The cart row is **never deleted**. It is the record of what was bought, and
    it is the idempotency key: a retried `POST /orders` for a cart already
    `ORDERED` by the same owner returns the existing order, two concurrent ones

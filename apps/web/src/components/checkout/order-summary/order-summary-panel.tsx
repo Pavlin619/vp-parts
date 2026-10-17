@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { CartTotals } from "@/lib/cart/cart-totals";
 import {
   formatWeight,
-  summaryTotal,
+  summaryMoney,
   type DeliverySummary,
 } from "@/lib/checkout/delivery/delivery-summary";
 import type { ParcelCheck } from "@/lib/checkout/delivery/office-availability";
@@ -53,6 +53,7 @@ export function OrderSummaryPanel({
   // A store pickup is paid at our counter, so no courier charges for collecting it.
   const isCollectedByCourier =
     isPaidOnDelivery(isQuickOrder, paymentMethod) && delivery.kind !== "pickup";
+  const money = summaryMoney(totals, delivery);
 
   return (
     <section className="rounded-[12px] border border-line bg-bg-card p-5">
@@ -64,9 +65,9 @@ export function OrderSummaryPanel({
         <SummaryRow label="Общо тегло" value={weightText(parcelCheck)} />
         <SummaryRow
           label="Сума без ДДС"
-          value={isPending ? null : formatPrice(totals.subtotalExVat)}
+          value={isPending ? null : formatPrice(money.netAmount)}
         />
-        <SummaryRow label="ДДС" value={isPending ? null : formatPrice(totals.vatAmount)} />
+        <SummaryRow label="ДДС" value={isPending ? null : formatPrice(money.vatAmount)} />
         <SummaryRow label="Цена на доставката" value={deliveryText(delivery)} />
         {isCollectedByCourier && (
           <SummaryRow label="Такса наложен платеж" value={cashOnDeliveryFeeText(delivery)} />
@@ -85,11 +86,11 @@ export function OrderSummaryPanel({
                 aria-hidden="true"
               />
             ) : (
-              formatPrice(summaryTotal(totals.totalIncVat, delivery))
+              formatPrice(money.total)
             )}
           </dd>
         </div>
-        {!hasDeliveryPrice(delivery) && (
+        {!money.isDeliveryIncluded && (
           <p className="mt-1 text-right text-[11.5px] text-ink-3">Без цената на доставката</p>
         )}
       </dl>
@@ -132,10 +133,6 @@ function weightText(parcelCheck: ParcelCheck): string | null {
     case "ready":
       return formatWeight(parcelCheck.parcel.weightGrams);
   }
-}
-
-function hasDeliveryPrice(delivery: DeliverySummary): boolean {
-  return delivery.kind === "quoted" || delivery.kind === "pickup";
 }
 
 function deliveryText(delivery: DeliverySummary): string | null {

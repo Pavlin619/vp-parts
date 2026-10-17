@@ -9,13 +9,15 @@ is built on. Label creation and Speedy are not built yet.
 |---|---|---|
 | `GET /delivery/offices?carrier=ECONT` | Every Econt office and Econtomat, carrier-neutral (`DeliveryOfficeDto`) | Redis 24 h, in-process 1 h, `public, max-age=3600` |
 | `GET /delivery/places?carrier=ECONT` | The settlements a customer can collect a parcel for, each naming its serving office when it has none of its own (`DeliveryPlaceDto`) | Econt's list in Redis 24 h; matched to the offices in-process, 1 h; `public, max-age=3600` |
-| `GET /delivery/parcel?carrier=ECONT` | What the requester's **selected** cart lines weigh as one parcel, and whether that carrier's locker takes it | `no-store` |
-| `POST /delivery/quote` `{ carrier, destination, isCashOnDelivery }` | Econt's price for that parcel to the destination (`{ type: 'OFFICE', officeCode }` or `{ type: 'ADDRESS', address }`), the [cash-on-delivery fee](#cash-on-delivery-the-fee-is-a-share-of-the-amount-collected) when asked, the expected date, the cart version priced, and the order's money (parts, delivery, fee, total and the VAT in it, from `orderMoney`; see [ORDERS.md](./ORDERS.md#money)) | Redis 5 min by carrier, office or place, weight, box, send date and amount collected; 20 requests/min per client |
+| `GET /checkout/parcel?carrier=ECONT` | What the requester's **selected** cart lines weigh as one parcel, and whether that carrier's locker takes it | `no-store` |
+| `POST /checkout/quote` `{ carrier, destination, isCashOnDelivery }` | Econt's price for that parcel to the destination (`{ type: 'OFFICE', officeCode }` or `{ type: 'ADDRESS', address }`), the [cash-on-delivery fee](#cash-on-delivery-the-fee-is-a-share-of-the-amount-collected) when asked, the expected date, the cart version priced, and the order's money (parts, delivery, fee, total and the VAT in it, from `orderMoney`, or `null` while a selected line cannot be ordered; see [ORDERS.md](./ORDERS.md#money)) | Redis 5 min by carrier, office or place, weight, box, send date and amount collected; 20 requests/min per client |
 | `GET /delivery/address-places?carrier=ECONT` | The places a courier delivers to at the door (`DeliveryPlaceDto`, never a serving office) | Same Econt list as `/places`; `public, max-age=3600` |
 | `GET /delivery/streets?carrier=ECONT&placeId=&q=` and `/quarters` | Up to 20 streets (quarters) of the place whose name holds every word of `q` (`DeliveryStreetDto`) | Econt's whole list per place in Redis 24 h, filtered on the server; `public, max-age=3600` |
 | `POST /delivery/address/validate` `{ carrier, address }` | `VALID`, `UNCERTAIN` (with the corrected address in `suggested`) or `INVALID` | Not cached; 20 requests/min per client |
 
-The quote reads the cart on the server. The client sends only the destination, never
+`/parcel` and `/quote` are the checkout module's (`apps/api/src/checkout/`), because
+they price the requester's cart; the delivery module prices a parcel it is handed and
+never reads a cart. The quote reads the cart on the server. The client sends only the destination, never
 lines, weights or prices. Placing the order prices the delivery again through the same
 path, refuses a cart whose version or total moved, and freezes the price, the fee and
 the expected date on the order: what Econt charges at the waybill beyond that is the
@@ -36,7 +38,7 @@ order summary dates it by the cart's **pickup** projection instead of a carrier'
 
 `apps/web/src/components/checkout/delivery/offices/office-picker.tsx` mounts under
 "Доставка с куриер до офис". It reads `/delivery/offices`, `/delivery/places` and
-`/delivery/parcel`. The quote is read beside it, for the order summary (below).
+`/checkout/parcel`. The quote is read beside it, for the order summary (below).
 
 - **A place comes first, then its offices.** A region dropdown and a settlement search
   sit above the office search. The settlement search covers the whole country, or one

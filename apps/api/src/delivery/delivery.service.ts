@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  CartDto,
   DeliveryAddressDto,
   DeliveryAddressValidationDto,
+  DeliveryAddressValidationStatus,
   DeliveryDestinationDto,
   DeliveryDestinationType,
   DeliveryQuarterDto,
@@ -10,20 +10,17 @@ import {
   DeliveryOfficeDto,
   DeliveryOfficeType,
   DeliveryPlaceDto,
-  DeliveryQuoteDto,
-  DeliveryQuoteRequestDto,
+  DeliveryMethod,
+  OrderAddressDto,
+  OrderOfficeDto,
   ParcelEstimateDto,
+  PlaceOrderDeliveryDto,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
-import type { CartRequester, CartShippingLine } from '../cart';
-import { CartEmptyException, CartService } from '../cart';
-import { InventoryService } from '../inventory';
+import type { CartShippingLine } from '../cart';
 import type { AvailabilityByArticle } from '../inventory';
 import { RedisCache } from '../redis';
-import {
-  amountToCollectCents,
-  goodsTotalIncVatCents,
-} from './cash-on-delivery';
+import { amountToCollectCents } from './cash-on-delivery';
 import {
   CarrierQuote,
   DELIVERY_CARRIERS,
@@ -32,6 +29,7 @@ import {
 } from './delivery-carrier';
 import {
   DeliveryAddressNotServedException,
+  DeliveryAddressRefusedException,
   DeliveryLockerIneligibleException,
   DeliveryOfficeNotFoundException,
 } from './delivery.exceptions';
@@ -42,19 +40,71 @@ import { parcelReadyDate } from './parcel/parcel-ready-date';
 /** Short because the expected delivery date moves at the courier's daily cut-off. */
 const QUOTE_TTL = 5 * 60;
 
-interface CartParcel {
-  cart: CartDto;
+/** The selected lines and what the stock says of each. */
+export interface StockedLines {
   lines: CartShippingLine[];
-  estimate: Parcel;
+  availability: AvailabilityByArticle;
 }
+
+/** Where the order goes, as the customer chose it, named as well as located. */
+export type OrderDestination =
+  | { office: OrderOfficeDto }
+  | { address: OrderAddressDto }
+  | null;
+
+/** A priced delivery: the figures a quote shows and an order freezes. */
+export interface DeliveryPrice {
+  method: DeliveryMethod;
+  /** Null for store pickup. */
+  carrier: ShippingMethod | null;
+  destination: OrderDestination;
+  deliveryPrice: number;
+  /** Zero when the courier collects nothing. */
+  cashOnDeliveryFee: number;
+  expectedDeliveryDate: string | null;
+  parcelWeightGrams: number | null;
+}
+
+export interface DeliveryTerms {
+  /** What the courier collects for the parts; null when it collects nothing. */
+  goodsToCollectCents: number | null;
+  /** An order's delivery: a waybill must be possible, so an address is also checked with the carrier. */
+  isBinding: boolean;
+}
+
+/** What the destination check found, which an order snapshots. */
+type CheckedDestination =
+  | { type: DeliveryDestinationType.OFFICE; office: DeliveryOfficeDto }
+  | {
+      type: DeliveryDestinationType.ADDRESS;
+      address: DeliveryAddressDto;
+      place: DeliveryPlaceDto;
+    };
+
+/** The parcel the lines make, the destination it was checked against, and its price. */
+interface QuotedParcel {
+  parcel: ParcelEstimateDto;
+  checked: CheckedDestination;
+  quote: CarrierQuote;
+}
+
+interface ShipmentToQuote {
+  estimate: Parcel;
+  stocked: StockedLines;
+  /** What the courier collects for the parts; null when it collects nothing. */
+  goodsToCollectCents: number | null;
+}
+
+type CourierDelivery = Exclude<
+  PlaceOrderDeliveryDto,
+  { method: DeliveryMethod.STORE_PICKUP }
+>;
 
 @Injectable()
 export class DeliveryService {
   private readonly carriers: ReadonlyMap<ShippingMethod, DeliveryCarrier>;
 
   constructor(
-    private readonly cart: CartService,
-    private readonly inventory: InventoryService,
     @Inject(DELIVERY_CARRIERS) carriers: DeliveryCarrier[],
     private readonly cache: RedisCache,
   ) {
@@ -96,57 +146,117 @@ export class DeliveryService {
     return this.carrierFor(carrier).validateAddress(address);
   }
 
-  async estimateParcel(
-    requester: CartRequester,
+  estimateParcel(
+    lines: CartShippingLine[],
     carrier: ShippingMethod,
-  ): Promise<ParcelEstimateDto> {
-    const courier = this.carrierFor(carrier);
-    const { estimate } = await this.parcelOf(requester);
-
-    return toParcelEstimateDto(estimate, courier);
+  ): ParcelEstimateDto {
+    return toParcelEstimateDto(estimateParcel(lines), this.carrierFor(carrier));
   }
 
-  async quote(
-    requester: CartRequester,
-    { carrier, destination, isCashOnDelivery }: DeliveryQuoteRequestDto,
-  ): Promise<DeliveryQuoteDto> {
-    const courier = this.carrierFor(carrier);
-    const { cart, lines, estimate } = await this.parcelOf(requester);
-    const parcelDto = toParcelEstimateDto(estimate, courier);
+  /**
+   * The one path every delivery figure takes, so an order charges what its
+   * quote showed: destination check, parcel, then the carrier's price.
+   */
+  async price(
+    stocked: StockedLines,
+    delivery: PlaceOrderDeliveryDto,
+    { goodsToCollectCents, isBinding }: DeliveryTerms,
+  ): Promise<DeliveryPrice> {
+    if (delivery.method === DeliveryMethod.STORE_PICKUP) {
+      return storePickupOf(stocked);
+    }
 
-    await this.checkDestination(courier, destination, parcelDto);
-
-    const availability = await this.availabilityOf(lines);
-    const shipment: Shipment = {
-      parcel: estimate,
-      sendDate: parcelReadyDate(lines, availability),
-      cashOnDeliveryCents: null,
-    };
-    const { expectedDeliveryDate, ...price } = isCashOnDelivery
-      ? await this.cashOnDeliveryQuote(courier, destination, {
-          shipment,
-          goodsCents: goodsTotalIncVatCents(lines, availability),
-        })
-      : await this.cachedQuote(courier, destination, shipment);
+    const courier = this.carrierFor(delivery.carrier);
+    const [{ quote, parcel, checked }] = await Promise.all([
+      this.checkAndQuote(courier, toDestination(delivery), {
+        stocked,
+        goodsToCollectCents,
+      }),
+      isBinding ? this.requireDeliverableAddress(courier, delivery) : null,
+    ]);
 
     return {
-      carrier,
-      destination,
-      ...price,
-      expectedDeliveryDate:
-        shipment.sendDate === null ? null : expectedDeliveryDate,
-      parcel: parcelDto,
-      cartVersion: cart.version,
+      method: delivery.method,
+      carrier: delivery.carrier,
+      destination: toOrderDestination(checked),
+      deliveryPrice: quote.priceIncVatCents,
+      cashOnDeliveryFee: quote.cashOnDeliveryFeeIncVatCents ?? 0,
+      expectedDeliveryDate: quote.expectedDeliveryDate,
+      parcelWeightGrams: parcel.weightGrams,
     };
+  }
+
+  private async checkAndQuote(
+    courier: DeliveryCarrier,
+    destination: DeliveryDestinationDto,
+    shipment: Omit<ShipmentToQuote, 'estimate'>,
+  ): Promise<QuotedParcel> {
+    const estimate = estimateParcel(shipment.stocked.lines);
+    const parcel = toParcelEstimateDto(estimate, courier);
+    const checked = await this.checkDestination(courier, destination, parcel);
+    const quote = await this.quoteShipment(courier, destination, {
+      ...shipment,
+      estimate,
+    });
+
+    return { parcel, checked, quote };
+  }
+
+  private async quoteShipment(
+    courier: DeliveryCarrier,
+    destination: DeliveryDestinationDto,
+    { estimate, stocked, goodsToCollectCents }: ShipmentToQuote,
+  ): Promise<CarrierQuote> {
+    const shipment: Shipment = {
+      parcel: estimate,
+      sendDate: parcelReadyDate(stocked.lines, stocked.availability),
+      cashOnDeliveryCents: null,
+    };
+    const quote =
+      goodsToCollectCents === null
+        ? await this.cachedQuote(courier, destination, shipment)
+        : await this.cashOnDeliveryQuote(courier, destination, {
+            shipment,
+            goodsCents: goodsToCollectCents,
+          });
+
+    return {
+      ...quote,
+      expectedDeliveryDate:
+        shipment.sendDate === null ? null : quote.expectedDeliveryDate,
+    };
+  }
+
+  /** A waybill cannot be made for an address the carrier refuses. */
+  private async requireDeliverableAddress(
+    courier: DeliveryCarrier,
+    delivery: CourierDelivery,
+  ): Promise<void> {
+    if (delivery.method !== DeliveryMethod.COURIER_ADDRESS) {
+      return;
+    }
+
+    const { status } = await courier.validateAddress(delivery.address);
+
+    if (status === DeliveryAddressValidationStatus.INVALID) {
+      throw new DeliveryAddressRefusedException();
+    }
   }
 
   private async checkDestination(
     courier: DeliveryCarrier,
     destination: DeliveryDestinationDto,
     parcel: ParcelEstimateDto,
-  ): Promise<void> {
+  ): Promise<CheckedDestination> {
     if (destination.type === DeliveryDestinationType.ADDRESS) {
-      return this.checkAddressPlace(courier, destination.address.placeId);
+      return {
+        type: DeliveryDestinationType.ADDRESS,
+        address: destination.address,
+        place: await this.findAddressPlace(
+          courier,
+          destination.address.placeId,
+        ),
+      };
     }
 
     const office = await courier.findOffice(destination.officeCode);
@@ -158,38 +268,23 @@ export class DeliveryService {
     if (office.type === DeliveryOfficeType.LOCKER && !parcel.isLockerEligible) {
       throw new DeliveryLockerIneligibleException();
     }
+
+    return { type: DeliveryDestinationType.OFFICE, office };
   }
 
   /** The carrier prices an unknown place id instead of refusing it, so only our list guards it. */
-  private async checkAddressPlace(
+  private async findAddressPlace(
     courier: DeliveryCarrier,
     placeId: string,
-  ): Promise<void> {
+  ): Promise<DeliveryPlaceDto> {
     const places = await courier.listAddressPlaces();
+    const place = places.find(({ id }) => id === placeId);
 
-    if (!places.some(({ id }) => id === placeId)) {
+    if (!place) {
       throw new DeliveryAddressNotServedException();
     }
-  }
 
-  private async parcelOf(requester: CartRequester): Promise<CartParcel> {
-    const { cart, lines } = await this.cart.getShippingLines(requester);
-
-    if (lines.length === 0) {
-      throw new CartEmptyException();
-    }
-
-    return {
-      cart,
-      lines,
-      estimate: estimateParcel(lines),
-    };
-  }
-
-  private availabilityOf(
-    lines: CartShippingLine[],
-  ): Promise<AvailabilityByArticle> {
-    return this.inventory.getAvailability(lines.map((line) => line.article));
+    return place;
   }
 
   /**
@@ -252,6 +347,39 @@ function destinationKey(destination: DeliveryDestinationDto): string {
   return destination.type === DeliveryDestinationType.ADDRESS
     ? `place:${destination.address.placeId}`
     : `office:${destination.officeCode}`;
+}
+
+function toDestination(delivery: CourierDelivery): DeliveryDestinationDto {
+  return delivery.method === DeliveryMethod.COURIER_ADDRESS
+    ? { type: DeliveryDestinationType.ADDRESS, address: delivery.address }
+    : { type: DeliveryDestinationType.OFFICE, officeCode: delivery.officeCode };
+}
+
+function toOrderDestination(checked: CheckedDestination): OrderDestination {
+  if (checked.type === DeliveryDestinationType.OFFICE) {
+    const { code, name, address } = checked.office;
+
+    return { office: { code, name, address } };
+  }
+
+  const { address, place } = checked;
+
+  return {
+    address: { ...address, city: place.name, postCode: place.postCode },
+  };
+}
+
+/** Collected at our counter: no carrier, no parcel, and the day every part is in. */
+function storePickupOf({ lines, availability }: StockedLines): DeliveryPrice {
+  return {
+    method: DeliveryMethod.STORE_PICKUP,
+    carrier: null,
+    destination: null,
+    deliveryPrice: 0,
+    cashOnDeliveryFee: 0,
+    expectedDeliveryDate: parcelReadyDate(lines, availability),
+    parcelWeightGrams: null,
+  };
 }
 
 function toParcelEstimateDto(
