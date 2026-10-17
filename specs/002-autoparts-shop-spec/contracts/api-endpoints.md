@@ -813,10 +813,9 @@ than a silently wrong "unavailable" or a list of false "out of stock" rows. (An
 article that genuinely has no stock still resolves to `available: false`; only a read
 *failure* throws.)
 
-The **binding pre-checkout re-validation** uses the same fail-closed read
+The **binding re-validation when an order is placed** uses the same fail-closed read
 (`InventoryService.getAvailability(cart articles)`), called **in-process** by
-`CheckoutService` during the confirm step so a DB error aborts the order rather than
-selling stale stock. It is not exposed over HTTP: NestJS services read the shared DB
+`OrdersService` so a DB error aborts the order rather than selling stale stock. It is not exposed over HTTP: NestJS services read the shared DB
 directly, with no internal REST hop.
 
 ---
@@ -931,6 +930,22 @@ reported so the customer can be told rather than left to notice.
 
 `401` when Clerk authenticated someone we hold no `Customer` row for.
 
+### Cart totals
+
+**`GET /cart/totals`** (guest token or session · `Cache-Control: no-store`)
+
+The money for the requester's **selected, orderable** lines at their live gross
+prices, computed by `orderMoney` (`docs/ORDERS.md` → "Money"). The web shows these
+figures as they come and computes none of its own. Checkout's courier summary comes
+from `POST /delivery/quote`, which answers the same fields plus delivery and fee.
+
+Response `200`:
+```json
+{ "cartVersion": 7, "goodsTotal": 4845, "netAmount": 4038, "vatAmount": 807, "total": 4845 }
+```
+
+Errors: `503 INVENTORY_UNAVAILABLE` (fails closed, like every live price read).
+
 ### Saved carts (mechanic feature — not yet built)
 
 `POST /cart/save` and `GET /cart/saved` are deferred. The schema carries no
@@ -938,61 +953,56 @@ reported so the customer can be told rather than left to notice.
 
 ## Checkout & Orders Module
 
-### Pre-Payment Confirmation
+The full design (the transaction, idempotency, the money, the outbox) is
+`docs/ORDERS.md`. There is no separate confirmation call: the checkout page's
+live availability read and delivery quote are the confirmation, and the order
+request carries back what they showed.
 
-**`POST /orders/checkout/confirm`** (Protected)
+### Place Order
 
-Final live-price check immediately before payment is initiated. MUST be called immediately before creating a payment intent. Uses the exact same live backoffice call as `/cart/validate` but is a separate endpoint to make the call site explicit and auditable.
+**`POST /orders`** (Protected · `Cache-Control: no-store` · 5 requests/min per customer)
 
-Request body: `{ "cartId": "uuid" }`
+Places the order for the signed-in customer's cart. Cash on delivery only for now;
+card payments come later (`docs/ORDERS.md` → "Card payments, later").
 
-Response `200`:
-```json
-{
-  "confirmed": true,
-  "confirmedItems": [
-    { "articleNumber": "WL6340", "confirmedPriceExVat": 1250, "quantity": 2 }
-  ],
-  "subtotalExVat": 2500,
-  "vatAmount": 500,
-  "totalIncVat": 3000
-}
-```
-
-Response `422 PRICE_CHANGED` or `422 ARTICLE_UNAVAILABLE` if anything has changed since the last cart validate.
-
----
-
-### Create Order (Post-Payment)
-
-**`POST /orders`** (Protected)
-
-Called after payment is confirmed (dominaite's `payment.succeeded` webhook has been processed). Creates the order record and publishes `OrderPlaced` to SQS.
-
-Request body:
+Request body (`PlaceOrderRequestDto`):
 ```json
 {
   "cartId": "uuid",
-  "addressId": "uuid",
-  "shippingMethod": "ECONT",
-  "paymentMethod": "CARD",
-  "paymentReference": "pi_abc123",
-  "vehicleTag": "CB1234AB",
-  "jobReference": "Golf service Jul-2026"
+  "cartVersion": 7,
+  "expectedTotalCents": 15432,
+  "paymentMethod": "CASH_ON_DELIVERY",
+  "delivery": { "method": "COURIER_OFFICE", "carrier": "ECONT", "officeCode": "1127" }
 }
 ```
 
-Response `201`:
+`delivery` is one of:
+- `{ "method": "COURIER_OFFICE", "carrier": "ECONT", "officeCode": "1127" }`
+- `{ "method": "COURIER_ADDRESS", "carrier": "ECONT", "address": { ...DeliveryAddressDto } }`
+- `{ "method": "STORE_PICKUP" }`
+
+The server reads the selected lines, live availability and the delivery price
+itself; the client sends no lines, weights or prices.
+
+Response `201` (`PlaceOrderResponseDto`):
 ```json
-{
-  "orderId": "uuid",
-  "orderReference": "VP-20260605-00001",
-  "status": "PROCESSING"
-}
+{ "orderId": "uuid", "orderReference": "VP-000123" }
 ```
 
-Errors: `422 CUSTOMER_DETAILS_REQUIRED` — the signed-in customer's profile lacks a
-name or phone (task T091d).
+Response `200`, same body: the cart was already ordered by this customer (a retry
+or a double submit). One cart never produces two orders.
+
+Errors:
+- `400 VALIDATION_ERROR` — malformed body, or a payment method other than `CASH_ON_DELIVERY`
+- `404 NOT_FOUND` — no such cart, or another customer's
+- `409 CART_STALE` — the cart moved since `cartVersion`, or was merged
+- `409 PRICE_CHANGED` — the live total differs from `expectedTotalCents`
+- `422 CART_EMPTY` — no line is selected
+- `422 ARTICLE_UNAVAILABLE` — a selected line is out of stock, short or unpriced
+- `422 CUSTOMER_DETAILS_REQUIRED` — the profile lacks a name or phone (T091d)
+- `422 DELIVERY_*` — the office, address or locker is refused, as by `POST /delivery/quote`
+- `503 INVENTORY_UNAVAILABLE` / `503 DELIVERY_UNAVAILABLE` — retryable; no order was written
+- `429 RATE_LIMITED`
 
 ---
 
@@ -1024,44 +1034,45 @@ Response `200`:
 
 ### Order Detail
 
-**`GET /orders/:orderId`** (Protected)
+**`GET /orders/:orderId`** (Protected · `Cache-Control: no-store`)
 
-Response `200`:
+Response `200` (`OrderDetailDto`); every amount is EUR cents including VAT:
 ```json
 {
   "orderId": "uuid",
-  "orderReference": "VP-20260605-00001",
-  "status": "ON_THE_WAY",
-  "createdAt": "2026-06-05T10:00:00Z",
+  "orderReference": "VP-000123",
+  "status": "PROCESSING",
+  "createdAt": "2026-10-16T10:00:00Z",
   "items": [
     {
+      "brandId": "4",
       "articleNumber": "WL6340",
       "brandName": "WIX",
       "description": "Oil Filter",
       "quantity": 2,
-      "unitPriceIncVat": 1500,
-      "lineTotalIncVat": 3000
+      "unitPrice": 1500,
+      "lineTotal": 3000
     }
   ],
-  "deliveryAddress": { "fullName": "Ivan Petrov", "city": "Sofia", "..." : "..." },
-  "shippingMethod": "ECONT",
-  "shippingCostIncVat": 600,
-  "subtotalExVat": 6500,
-  "vatAmount": 1300,
-  "totalIncVat": 8400,
-  "paymentMethod": "CARD",
-  "courierName": "Econt",
-  "trackingReference": "1234567890",
-  "vehicleTag": "CB1234AB",
-  "jobReference": "Golf service Jul-2026",
-  "statusHistory": [
-    { "status": "PROCESSING", "occurredAt": "2026-06-05T10:00:00Z" },
-    { "status": "ON_THE_WAY", "occurredAt": "2026-06-06T09:15:00Z" }
-  ]
+  "delivery": {
+    "method": "COURIER_OFFICE",
+    "carrier": "ECONT",
+    "office": { "code": "1127", "name": "София, Изток", "address": "..." },
+    "expectedDeliveryDate": "2026-10-18"
+  },
+  "paymentMethod": "CASH_ON_DELIVERY",
+  "goodsTotal": 3000,
+  "deliveryPrice": 378,
+  "cashOnDeliveryFee": 52,
+  "total": 3430,
+  "vatAmount": 572,
+  "contact": { "firstName": "Иван", "lastName": "Петров", "phoneNumber": "+359888123456", "email": "ivan@example.com" },
+  "statusHistory": [{ "status": "PROCESSING", "occurredAt": "2026-10-16T10:00:00Z" }]
 }
 ```
 
-Errors: `404 ORDER_NOT_FOUND` if the order doesn't belong to the requesting customer.
+Errors: `404 ORDER_NOT_FOUND` if the order doesn't exist or belongs to another
+customer — never `403`.
 
 ---
 
@@ -1117,21 +1128,17 @@ Response `200`:
 
 **`POST /payments/dominaite/webhook`** `[PUBLIC]`
 
-dominaite calls this endpoint server-to-server with `payment.succeeded`, `payment.failed` or `payment.refunded`. NestJS verifies the webhook signature `[VERIFY]` (scheme from dominaite's API docs). On `payment.succeeded`, triggers order creation and `OrderPlaced` SQS event. Returns `200` to dominaite.
+dominaite calls this endpoint server-to-server with `payment.succeeded`, `payment.failed` or `payment.refunded`. NestJS verifies the webhook signature `[VERIFY]` (scheme from dominaite's API docs). On `payment.succeeded`, confirms the order that was created as `PENDING_PAYMENT` and writes `OrderPlaced` to the outbox (`docs/ORDERS.md` → "Card payments, later"). Returns `200` to dominaite.
 
 Note: The customer's browser is separately redirected to the success/cancel return URL configured at checkout initiation — the webhook and the browser return are independent flows.
 
 ---
 
-### COD — Confirm Order
+### Cash on delivery
 
-**`POST /payments/cod/confirm`** (Protected)
-
-Creates a COD order directly (no payment gateway), whatever the order total.
-
-Request body: `{ "cartId": "uuid", "addressId": "uuid", "shippingMethod": "SPEEDY" }`
-
-Response `201`: `{ "orderId": "uuid", "orderReference": "VP-20260605-00001" }`
+There is no separate endpoint: a cash-on-delivery order is placed directly by
+`POST /orders` with `"paymentMethod": "CASH_ON_DELIVERY"`, whatever the order
+total. The delivery price and the cash-on-delivery fee are frozen on the order.
 
 ---
 
@@ -1294,8 +1301,12 @@ Response `200`: `{ "success": true }`
 | `UNAUTHORIZED` | 401 | Missing or invalid JWT |
 | `FORBIDDEN` | 403 | Authenticated but insufficient role |
 | `ARTICLE_NOT_FOUND` | 404 | Article number not in TecDoc catalogue |
-| `ARTICLE_UNAVAILABLE` | 422 | Article has no stock at checkout |
-| `PRICE_CHANGED` | 422 | Price changed since cart was built |
+| `ARTICLE_UNAVAILABLE` | 422 | A line is out of stock, short of its quantity or unpriced |
+| `PRICE_CHANGED` | 409 | The live total differs from the one the customer was shown |
+| `CART_STALE` | 409 | The cart moved since the version the customer was shown |
+| `CART_EMPTY` | 422 | No cart line is selected |
+| `CUSTOMER_DETAILS_REQUIRED` | 422 | The profile lacks a name or phone an order needs |
+| `DELIVERY_UNAVAILABLE` | 503 | The courier's API could not be reached — no order is written |
 | `ORDER_NOT_FOUND` | 404 | Order doesn't exist or belongs to another customer |
 | `ORDER_CANNOT_BE_CANCELLED` | 409 | Order is past the cancellation window |
 | `CART_ITEM_NOT_FOUND` | 404 | Item not in cart |

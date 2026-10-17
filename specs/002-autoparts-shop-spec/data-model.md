@@ -345,34 +345,22 @@ type VehicleId = string & { readonly _brand: 'VehicleId' };
 
 ---
 
-## `PriceCalculator` Domain Service
+## Order money: `orderMoney` in `apps/api/src/common/order-money.ts`
 
-Location: `apps/api/src/common/price-calculator.ts`
+The only place in the codebase where order totals and VAT amounts are computed,
+used to price and store an order and to answer the cart totals and the delivery
+quote, whose figures the web shows as they come. A pure function; every amount is EUR cents **including VAT**, because the shop's
+prices are the backoffice's gross prices.
 
-The only place in the codebase where order totals and VAT amounts are computed.
-
-```typescript
-class PriceCalculator {
-  // Returns exact integer: unitPrice * quantity (no rounding)
-  lineTotal(unitPriceCents: number, quantity: number): number
-
-  // Returns exact integer sum of all line totals (no rounding)
-  subtotal(lines: Array<{ unitPriceCents: number; quantity: number }>): number
-
-  // Rounding applied exactly once: Math.round(subtotal * 0.20)
-  vatAmount(subtotalCents: number, vatRate: number): number
-
-  // Exact integer sum: subtotal + vatAmount + shippingCents
-  orderTotal(subtotalCents: number, vatAmountCents: number, shippingCents: number): number
-}
+```
+goods      = Σ (gross unit price × quantity)        exact
+total      = goods + deliveryPrice + cashOnDeliveryFee   exact
+vatAmount  = total − Math.round(total / (1 + VAT_RATE))  the one rounding
 ```
 
-**100% unit test coverage is mandatory** (Constitution IX). Required test cases include:
-- `lineTotal(1, 1)` → `1` (1 cent, no rounding)
-- `vatAmount(1000, 0.20)` → `200` (exact, no rounding needed)
-- `vatAmount(999, 0.20)` → `200` (Math.round(199.8) = 200 — round half up)
-- `vatAmount(995, 0.20)` → `199` (Math.round(199.0) = 199)
-- Multi-item orders where per-line vs aggregate rounding would diverge
+**100% unit test coverage is mandatory** (Constitution IX), including a 1-cent
+total, totals whose VAT lands on `.5`, and multi-line orders where per-line rounding
+would diverge from rounding the total. Rationale in `docs/ORDERS.md` → "Money".
 
 ---
 

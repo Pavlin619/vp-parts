@@ -1,5 +1,10 @@
 import { ClerkAPIResponseError } from '@clerk/nextjs/errors'
-import { describeSignUpError, SIGN_UP_FAILED_MESSAGE } from './clerk-errors'
+import {
+  describeEmailCodeError,
+  describeSignUpError,
+  EMAIL_CODE_FAILED_MESSAGE,
+  SIGN_UP_FAILED_MESSAGE,
+} from './clerk-errors'
 
 function apiError(code: string, paramName?: string): ClerkAPIResponseError {
   return new ClerkAPIResponseError('Clerk refused the sign-up', {
@@ -66,5 +71,24 @@ describe('describeSignUpError', () => {
       field: null,
       message: SIGN_UP_FAILED_MESSAGE,
     })
+  })
+})
+
+describe('describeEmailCodeError', () => {
+  it.each([
+    ['form_code_incorrect', 'Грешен код. Проверете имейла и опитайте отново.'],
+    ['verification_expired', 'Кодът е изтекъл. Изпратете нов.'],
+    ['verification_failed', 'Твърде много грешни опити. Изпратете нов код.'],
+    ['too_many_requests', 'Твърде много опити. Опитайте отново след малко.'],
+  ])('puts %s into Bulgarian', (code, message) => {
+    expect(describeEmailCodeError(apiError(code))).toBe(message)
+  })
+
+  it('falls back to a generic message for a code it does not know', () => {
+    expect(describeEmailCodeError(apiError('something_new'))).toBe(EMAIL_CODE_FAILED_MESSAGE)
+  })
+
+  it('falls back to a generic message for an error that is not Clerk’s', () => {
+    expect(describeEmailCodeError(new Error('offline'))).toBe(EMAIL_CODE_FAILED_MESSAGE)
   })
 })

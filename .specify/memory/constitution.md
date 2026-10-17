@@ -1,4 +1,23 @@
 <!--
+## Sync Impact Report (v2.0.0)
+
+**Version change**: `1.1.1` → `2.0.0`
+
+**Version bump rationale**: MAJOR — Principle IX redefines two rules to match the order design in
+`docs/ORDERS.md` and `docs/ARCHITECTURE.md`: prices are VAT-inclusive and VAT is worked out of the
+total rather than added onto an ex-VAT subtotal; and an order may carry back the total the customer
+was shown, which the backend only compares and never charges. `PriceCalculator` is replaced by the
+pure `orderMoney` in `apps/api/src/common/order-money.ts`; the frontend shows the totals and VAT the API returns and computes none.
+
+**Modified principles**: IX. Money Handling
+
+**Templates checked**: `.specify/templates/*` — no changes required. `specs/002-autoparts-shop-spec/plan.md`
+Constitution Check row IX updated.
+
+**Deferred TODOs**: None
+
+---
+
 ## Sync Impact Report (v1.1.1)
 
 **Version change**: `1.1.0` → `1.1.1`
@@ -292,15 +311,15 @@ disconnected clients.
 
 **All monetary values are stored, computed, and transmitted as integer cents (EUR).** 1 EUR = 100 cents. `1299` represents €12.99. Never use floats or decimal strings in computation contexts — these are forbidden at every layer.
 
-**NestJS is the sole authority on price calculations.** The frontend displays what the backend returns. The frontend MUST NOT send a calculated total to the backend — totals are always computed server-side and returned in the response.
+**NestJS is the sole authority on price calculations.** Prices come from the backend, and the figures an order stores are computed server-side. The frontend MUST NOT send a figure the backend charges. An order request MAY carry back the total the customer was shown (`expectedTotalCents`); the backend only compares it with its own and refuses the order on any difference (`docs/ORDERS.md`). Every total, net and VAT figure the frontend shows comes from a backend response; the frontend does no money arithmetic of its own.
 
-**Rounding happens exactly once per order calculation — at the VAT step — using round-half-up.** Line totals (`unitPrice × quantity`) and subtotals are always exact integer multiplication — no rounding is applied. A single `Math.round(subtotal * 0.20)` produces the VAT amount. The grand total is the sum of exact integers.
+**Prices include VAT; the gross price is the fact and the net price and VAT are derived from it.** Line totals (`gross unit price × quantity`) and the order total (goods + delivery + cash-on-delivery fee) are exact integer sums — no rounding is applied, so the total is always exactly what the customer was shown. Rounding happens exactly once per order, round-half-up, when the VAT is worked out of the total: `total − Math.round(total / (1 + VAT_RATE))`. VAT is never added onto a net figure, and net prices are never multiplied or summed into a total.
 
 **`formatPrice(cents: number)` in `@vp-parts-shop/shared` is the only permitted way to convert cents to a display string.** It uses `Intl.NumberFormat` with `currency: 'EUR'` and `style: 'currency'`. Price formatting is never done inline in components or services.
 
 **Payment providers receive amounts as integer cents.** Stripe's `amount` field and the card provider's amount parameter receive the integer cent value directly — never a decimal. This matches the providers' own integer-amount expectations.
 
-**`PriceCalculator` is a domain service in `apps/api/src/common/`** with 100% unit test coverage. It is the only place VAT and total calculations are performed. It MUST have explicit tests for rounding edge cases — e.g. a price of 1 cent (rounds correctly), prices where VAT in decimal would be `.5` (round half up), multi-item orders where per-item rounding would differ from aggregate rounding.
+**`apps/api/src/common/order-money.ts` holds the pure `orderMoney` function**, with 100% unit test coverage. It is the only place order totals and VAT are calculated. It MUST have explicit tests for rounding edge cases — e.g. a total of 1 cent, totals whose VAT in decimal would be `.5` (round half up), multi-line orders where per-line rounding would differ from rounding the total.
 
 ## Definition of Done
 
@@ -344,4 +363,4 @@ on how this project is built.
 ownership, and technology decisions. This constitution MUST NOT contradict it. If a conflict is
 found, the constitution amendment MUST be made consistent with ARCHITECTURE.md.
 
-**Version**: 1.1.1 | **Ratified**: 2026-06-02 | **Last Amended**: 2026-10-14
+**Version**: 2.0.0 | **Ratified**: 2026-06-02 | **Last Amended**: 2026-10-16

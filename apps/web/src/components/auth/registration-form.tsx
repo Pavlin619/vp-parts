@@ -9,7 +9,9 @@ import { PRIMARY_ACTION_CLASS } from "@/components/checkout/delivery/address/add
 import { TextField } from "@/components/common/text-field";
 import { customerProfileQueryOptions, fileCustomer } from "@/lib/api/customers";
 import {
+  describeEmailCodeError,
   describeSignUpError,
+  EMAIL_CODE_FAILED_MESSAGE,
   SIGN_UP_FAILED_MESSAGE,
   type RegistrationField,
   type SignUpErrorMessage,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/auth/registration-values";
 import { focusFirstInvalidField } from "@/lib/focus-first-invalid-field";
 import { cn } from "@/lib/utils";
+import { EmailCodeStep } from "./email-code-step";
 import { GoogleSignUpButton } from "./google-sign-up-button";
 import { PhoneField } from "./phone-field";
 
@@ -34,11 +37,15 @@ interface RegistrationFormProps {
   className?: string;
 }
 
+type SignUp = ReturnType<typeof useSignUp>["signUp"];
+
 interface SignUpDependencies {
-  signUp: ReturnType<typeof useSignUp>["signUp"];
+  signUp: SignUp;
   clerk: ReturnType<typeof useClerk>;
   queryClient: QueryClient;
 }
+
+type SignUpStart = SignUpErrorMessage | "needs-email-code" | "complete";
 
 /**
  * Our own sign-up: Clerk's `<SignUp/>` cannot take the phone the API files the
@@ -60,6 +67,8 @@ export function RegistrationForm({
   const [submitAttempts, setSubmitAttempts] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [failure, setFailure] = useState<SignUpErrorMessage | null>(null);
+  const [isAwaitingEmailCode, setIsAwaitingEmailCode] = useState(false);
+  const dependencies = { signUp, clerk, queryClient };
 
   const validation = validateRegistration(values);
   const fieldErrors = validation.success ? {} : validation.errors;
@@ -96,7 +105,15 @@ export function RegistrationForm({
     setIsSubmitting(true);
     setFailure(null);
     onSignUpStart?.();
-    const refusal = await signUpCustomer({ signUp, clerk, queryClient }, registration);
+    const start = await startSignUp(signUp, registration);
+
+    if (start === "needs-email-code") {
+      setIsSubmitting(false);
+      setIsAwaitingEmailCode(true);
+      return;
+    }
+
+    const refusal = start === "complete" ? await finishSignUp(dependencies) : start;
     setIsSubmitting(false);
 
     if (refusal) {
@@ -106,6 +123,25 @@ export function RegistrationForm({
 
     onComplete?.();
   };
+
+  const verifyCode = async (code: string) => {
+    const refusal = await verifyEmailCode(dependencies, code);
+    if (!refusal) onComplete?.();
+
+    return refusal;
+  };
+
+  if (isAwaitingEmailCode) {
+    return (
+      <EmailCodeStep
+        email={signUp.emailAddress ?? values.email}
+        onVerify={verifyCode}
+        onResend={() => sendEmailCode(signUp)}
+        onChangeEmail={() => setIsAwaitingEmailCode(false)}
+        className={className}
+      />
+    );
+  }
 
   return (
     <form
@@ -156,11 +192,11 @@ function OrDivider() {
   );
 }
 
-/** Signs up with Clerk and files the customer; returns what went wrong, or null. */
-async function signUpCustomer(
-  { signUp, clerk, queryClient }: SignUpDependencies,
+/** Asks Clerk for the account; sends the email code when Clerk wants it verified first. */
+async function startSignUp(
+  signUp: SignUp,
   { email, password, firstName, lastName, phoneNumber }: RegisterCustomerInput,
-): Promise<SignUpErrorMessage | null> {
+): Promise<SignUpStart> {
   const unsafeMetadata: RegistrationMetadata = { phoneNumber };
   const { error } = await signUp.password({
     emailAddress: email,
@@ -174,11 +210,60 @@ async function signUpCustomer(
     return describeSignUpError(error);
   }
 
-  if (signUp.status !== "complete") {
-    console.error("Clerk left the sign-up incomplete", signUp.status);
-    return { field: null, message: SIGN_UP_FAILED_MESSAGE };
+  if (signUp.status === "complete") {
+    return "complete";
   }
 
+  if (isAwaitingEmailVerification(signUp)) {
+    const message = await sendEmailCode(signUp);
+    return message ? { field: null, message } : "needs-email-code";
+  }
+
+  console.error("Clerk left the sign-up incomplete", signUp.status, signUp.missingFields);
+  return { field: null, message: SIGN_UP_FAILED_MESSAGE };
+}
+
+function isAwaitingEmailVerification(signUp: SignUp): boolean {
+  return (
+    signUp.status === "missing_requirements" && signUp.unverifiedFields.includes("email_address")
+  );
+}
+
+/** Resolves to the message to show, or null once the code is on its way. */
+async function sendEmailCode(signUp: SignUp): Promise<string | null> {
+  const { error } = await signUp.verifications.sendEmailCode();
+
+  return error ? describeEmailCodeError(error) : null;
+}
+
+/** Resolves to the message to show, or null once the account is signed in and filed. */
+async function verifyEmailCode(
+  dependencies: SignUpDependencies,
+  code: string,
+): Promise<string | null> {
+  const { signUp } = dependencies;
+  const { error } = await signUp.verifications.verifyEmailCode({ code });
+
+  if (error) {
+    return describeEmailCodeError(error);
+  }
+
+  if (signUp.status !== "complete") {
+    console.error("Clerk left the verified sign-up incomplete", signUp.status, signUp.missingFields);
+    return EMAIL_CODE_FAILED_MESSAGE;
+  }
+
+  const refusal = await finishSignUp(dependencies);
+
+  return refusal?.message ?? null;
+}
+
+/** Activates the session and files the customer; returns what went wrong, or null. */
+async function finishSignUp({
+  signUp,
+  clerk,
+  queryClient,
+}: SignUpDependencies): Promise<SignUpErrorMessage | null> {
   const finalized = await signUp.finalize();
 
   if (finalized.error) {

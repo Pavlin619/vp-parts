@@ -10,6 +10,10 @@ export interface SignUpErrorMessage {
 
 export const SIGN_UP_FAILED_MESSAGE = "Регистрацията не успя. Опитайте отново.";
 
+export const EMAIL_CODE_FAILED_MESSAGE = "Потвърждението не успя. Опитайте отново.";
+
+const TOO_MANY_REQUESTS = "Твърде много опити. Опитайте отново след малко.";
+
 const CAPTCHA_FAILED: SignUpErrorMessage = {
   field: null,
   message: "Проверката срещу ботове не мина. Презаредете страницата и опитайте отново.",
@@ -35,10 +39,14 @@ const MESSAGES_BY_CODE: Record<string, SignUpErrorMessage> = {
   captcha_invalid: CAPTCHA_FAILED,
   captcha_unavailable: CAPTCHA_FAILED,
   captcha_missing_token: CAPTCHA_FAILED,
-  too_many_requests: {
-    field: null,
-    message: "Твърде много опити. Опитайте отново след малко.",
-  },
+  too_many_requests: { field: null, message: TOO_MANY_REQUESTS },
+};
+
+const EMAIL_CODE_MESSAGES_BY_CODE: Record<string, string> = {
+  form_code_incorrect: "Грешен код. Проверете имейла и опитайте отново.",
+  verification_expired: "Кодът е изтекъл. Изпратете нов.",
+  verification_failed: "Твърде много грешни опити. Изпратете нов код.",
+  too_many_requests: TOO_MANY_REQUESTS,
 };
 
 const INVALID_FORMAT_BY_PARAM: Record<string, SignUpErrorMessage> = {
@@ -63,4 +71,13 @@ export function describeSignUpError(error: unknown): SignUpErrorMessage {
   }
 
   return MESSAGES_BY_CODE[first?.code ?? ""] ?? GENERIC;
+}
+
+/** Clerk's refusal of an email code, or of sending one, in Bulgarian. */
+export function describeEmailCodeError(error: unknown): string {
+  if (!isClerkAPIResponseError(error)) {
+    return EMAIL_CODE_FAILED_MESSAGE;
+  }
+
+  return EMAIL_CODE_MESSAGES_BY_CODE[error.errors[0]?.code ?? ""] ?? EMAIL_CODE_FAILED_MESSAGE;
 }
