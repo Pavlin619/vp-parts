@@ -25,6 +25,7 @@ export interface CartShippingLine {
 export interface CartOrderLine extends CartShippingLine {
   brandName: string;
   description: string;
+  thumbnailUrl: string | null;
 }
 
 /** A cart as an order reads it: where it stands, and what is selected. */
@@ -74,6 +75,7 @@ export function toCartForOrder(cart: CartRecord): CartForOrder {
         ...toShippingLine(item),
         brandName: item.brandName,
         description: item.description,
+        thumbnailUrl: item.thumbnailUrl,
       })),
   };
 }

@@ -270,6 +270,7 @@ model OrderItem {
   articleNumber String
   brandName     String
   description   String
+  thumbnailUrl  String?
   quantity      Int
   /// Gross, including VAT. `lineTotal` is `unitPrice × quantity`, never rounded.
   unitPrice     Int

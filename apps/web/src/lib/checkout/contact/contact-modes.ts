@@ -12,7 +12,10 @@ export interface ContactModeOption {
   description: string;
 }
 
-export const CONTACT_MODES: readonly ContactModeOption[] = [
+/** A guest quick order waits on its own design — docs/ORDERS.md → "Later". */
+export const IS_QUICK_ORDER_OFFERED = false;
+
+const ALL_CONTACT_MODES: readonly ContactModeOption[] = [
   { id: "login", label: "Вход", description: "Имам профил във VP Parts" },
   {
     id: "register",
@@ -21,6 +24,10 @@ export const CONTACT_MODES: readonly ContactModeOption[] = [
   },
   { id: "quick", label: "Бърза поръчка", description: "Само име и телефон, без профил" },
 ];
+
+export const CONTACT_MODES: readonly ContactModeOption[] = ALL_CONTACT_MODES.filter(
+  (mode) => IS_QUICK_ORDER_OFFERED || mode.id !== "quick",
+);
 
 /**
  * The sign-in tab when Clerk has come back to one of its hash routes — a Google

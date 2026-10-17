@@ -1,12 +1,13 @@
 # Orders: placing one, and what happens after
 
 The authoritative design for turning a cart into an order. **Built:** `POST
-/orders`, `GET /orders/:orderId` (`apps/api/src/orders/`), and `GET
-/checkout/totals` and the quote's money (`apps/api/src/checkout/`). **Not yet:**
-the checkout button and confirmation page, the web reading `/checkout/totals`
-(the cart page, and checkout until a courier delivery is quoted, still sum the
-goods in the browser), the outbox and its emails, SQS, and the throttler's Redis
-storage. The cart side of the transition is in
+/orders`, `GET /orders/:orderId` (`apps/api/src/orders/`), `GET
+/checkout/totals` and the quote's money (`apps/api/src/checkout/`), and in the
+web the order button (`use-place-order.ts`), the cart and checkout summaries
+reading the API's money, and the confirmation page `/orders/[orderId]`
+(`components/orders/`). **Not yet:** the outbox and its emails, SQS, the
+throttler's Redis storage, and the terms, withdrawal and privacy pages the
+button links to (`lib/legal/legal-pages.ts`). The cart side of the transition is in
 [CART.md](./CART.md), the delivery price in
 [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md), and who a customer is in
 [AUTH.md](./AUTH.md).
@@ -336,14 +337,32 @@ date, and the amount to pay at the door.
 
 ## The button
 
-- **Its words say that ordering means paying**: "Поръчка с задължение за
-  плащане" (or "Купи"), not "Поръчай сега". EU consumer law (CRD Art. 8(2), CJEU
-  C-249/21) does not bind the consumer otherwise. Under it, one line links the
-  terms, the withdrawal right and the privacy notice.
+- **Its words say that ordering means paying**: "Купи сега". ЗЗП чл. 49, ал. 2
+  (CRD Art. 8(2)) asks for "поръчка със задължение за плащане" or an equally
+  unambiguous wording; "buy" is one, as German courts accept "Jetzt kaufen".
+  The common "Завърши поръчка" / "Изпрати поръчка" is not: the CJEU (C-249/21)
+  and the Dutch Supreme Court (2024) rejected "complete booking" and "complete
+  order", and the consumer is then not bound. Nor is a payment method on the
+  button ("Плати с наложен платеж"), which reads as choosing how to pay. Under
+  it, one line links the terms, the withdrawal right and the privacy notice.
 - **Enabled only when** the profile is complete, a delivery method is chosen and
   its quote has loaded (or it is pickup), cash on delivery is selected,
-  availability has loaded, and no line is blocked. While the request is pending
-  it is disabled.
+  availability has loaded, and no line is blocked or unpriced. While the request
+  is pending it is disabled, and once it succeeds checkout shows "Поръчката е
+  приета" until the confirmation page replaces it.
+- **It sends what the summary shows.** `cartVersion` and `expectedTotalCents`
+  come from the response the summary's total came from: the quote's for a
+  courier, `GET /checkout/totals`' for a pickup. While an edit is re-priced the
+  summaries keep the last figures, dimmed, so the button also waits until that
+  response's `cartVersion` is the one the browser holds. `placeOrderRequestOf`
+  (`lib/checkout/place-order.ts`) builds nothing while the total on screen
+  leaves the delivery out.
+- **A refusal re-reads what it names** (`use-place-order.ts`): a changed price
+  re-reads availability and the quote and says the old and the new total; a
+  stale cart resyncs it; a delivery refusal re-asks the quote, so the delivery
+  panel names the problem, and its notice goes once another office or address
+  is chosen; an outage changes nothing and the button stays enabled for a
+  retry. Every other notice stands until the next attempt.
 
 ## Limits and logs
 

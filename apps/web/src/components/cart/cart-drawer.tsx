@@ -10,8 +10,10 @@ import { AvailabilityLoadError } from "@/components/catalog/availability-load-er
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useCart, useCartItemCount, useCartLines } from "@/hooks/use-cart";
 import { useCartDrawer } from "@/hooks/use-cart-drawer";
+import { useCheckoutTotals } from "@/hooks/use-checkout-totals";
 import { availabilityQueryOptions } from "@/lib/api/catalog";
 import { buildCartRows, cartTotals } from "@/lib/cart/cart-totals";
+import { cn } from "@/lib/utils";
 import { CartEmpty } from "./cart-empty";
 import { CartDrawerRow } from "./cart-drawer-row";
 import { CartMergeNotice } from "./cart-merge-notice";
@@ -75,6 +77,7 @@ function CartDrawerContent({ onClose }: { onClose: () => void }) {
   // The total answers "what am I about to order", so it counts the selected
   // lines only — the heading counts everything the cart holds.
   const totals = cartTotals(rows.filter((row) => row.line.isSelected));
+  const goods = useCheckoutTotals();
   const isPending = lines.length > 0 && data === undefined && !isError;
 
   // Every link in the drawer — the empty state's way to the catalogue, a row's
@@ -145,18 +148,22 @@ function CartDrawerContent({ onClose }: { onClose: () => void }) {
         <footer className="border-t border-line px-5 py-4">
           <div className="flex items-baseline justify-between gap-4">
             <span className="text-sm font-semibold text-ink">Общо с ДДС</span>
-            {isPending ? (
+            {goods.totals || goods.isError ? (
+              <span
+                data-testid="cart-drawer-total"
+                aria-busy={goods.isRecalculating}
+                className={cn(
+                  "font-display text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-ink transition-opacity",
+                  goods.isRecalculating && "opacity-60",
+                )}
+              >
+                {goods.totals ? formatPrice(goods.totals.total) : "—"}
+              </span>
+            ) : (
               <span
                 className="block h-[26px] w-[104px] animate-pulse rounded bg-bg-sunken"
                 aria-hidden="true"
               />
-            ) : (
-              <span
-                data-testid="cart-drawer-total"
-                className="font-display text-[22px] font-semibold tracking-[-0.02em] tabular-nums text-ink"
-              >
-                {formatPrice(totals.totalIncVat)}
-              </span>
             )}
           </div>
 

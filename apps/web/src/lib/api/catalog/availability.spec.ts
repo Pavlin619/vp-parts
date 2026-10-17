@@ -1,4 +1,5 @@
 import {
+  AVAILABILITY_QUERY_KEY,
   availabilityQueryOptions,
   getArticlesAvailability,
 } from './availability'
@@ -39,6 +40,13 @@ describe('getArticlesAvailability', () => {
 describe('availabilityQueryOptions', () => {
   const wixFilter = { brandId: '268', articleNumber: 'WL6340' }
   const mannFilter = { brandId: '72', articleNumber: 'OC115' }
+
+  // A refused order re-reads every availability set by this prefix.
+  it('keys every set under one shared prefix', () => {
+    expect(availabilityQueryOptions([wixFilter]).queryKey.slice(0, 2)).toEqual([
+      ...AVAILABILITY_QUERY_KEY,
+    ])
+  })
 
   it('keys by the sorted, comma-joined articles so order never forks the cache', () => {
     expect(availabilityQueryOptions([wixFilter, mannFilter]).queryKey).toEqual([

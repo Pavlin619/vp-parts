@@ -53,7 +53,6 @@ function row(overrides: Partial<CartRowModel> = {}): CartRowModel {
     availability: detail([warehouse()]),
     unitPriceExVat: 1000,
     unitPriceIncVat: 1200,
-    lineTotalExVat: 1000,
     lineTotalIncVat: 1200,
     issue: null,
     priceChange: null,

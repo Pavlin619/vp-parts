@@ -16,6 +16,11 @@ export class ApiError extends Error {
   }
 }
 
+/** A 4xx answers the same on a retry; only an outage is worth asking again. */
+export function isRefusal(error: unknown): boolean {
+  return error instanceof ApiError && error.statusCode < 500;
+}
+
 interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   token?: string;
   /**

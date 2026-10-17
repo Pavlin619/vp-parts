@@ -11,21 +11,27 @@ import { useCartAvailability } from "@/hooks/use-cart-availability";
 import { useCartStatus } from "@/hooks/use-cart-status";
 import { useCheckoutDelivery, useDeliveryMethod } from "@/hooks/use-checkout-delivery";
 import { useCheckoutPayment, usePaymentMethod } from "@/hooks/use-checkout-payment";
+import { useCheckoutTotals } from "@/hooks/use-checkout-totals";
 import { useDeliverySummary } from "@/hooks/use-delivery-summary";
+import { usePlaceOrder } from "@/hooks/use-place-order";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import { cartTotals } from "@/lib/cart/cart-totals";
 import { initialContactMode, type ContactMode } from "@/lib/checkout/contact/contact-modes";
+import { summaryMoney } from "@/lib/checkout/delivery/delivery-summary";
 import { isPaidOnDelivery } from "@/lib/checkout/payment/payment-methods";
 import { ContactPanel } from "./contact";
 import { DeliveryMethodPanel } from "./delivery";
 import { OrderItemsPanel } from "./order-items";
+import { OrderPlacedNotice } from "./order-placed-notice";
 import { OrderSummaryPanel } from "./order-summary";
 import { PaymentMethodPanel } from "./payment";
 
 /**
- * Checkout's second step: how the selected cart lines reach the customer.
+ * Checkout's second step: how the selected cart lines reach the customer, and
+ * placing the order.
  *
- * Every figure is read live, through the same read as the cart page.
+ * Every figure is read live: the lines through the same read as the cart page,
+ * the money from the API's totals or its delivery quote.
  */
 export function CheckoutView() {
   const status = useCartStatus();
@@ -52,6 +58,20 @@ export function CheckoutView() {
 
   const pickupReadyAt = promise?.isPickup ? promise.fulfilledAt : null;
   const { parcelCheck, delivery } = useDeliverySummary(pickupReadyAt, isCashOnDelivery);
+  const goods = useCheckoutTotals();
+  const money = summaryMoney(goods.totals, delivery);
+
+  const areLinesOrderable =
+    availability.hasPrices &&
+    !availability.isError &&
+    !totals.hasBlockedLines &&
+    !totals.hasUnpricedLines;
+  const order = usePlaceOrder({ money, areLinesOrderable });
+
+  // The cart is already the next one; the confirmation page is on its way.
+  if (order.isPlaced) {
+    return <OrderPlacedNotice />;
+  }
 
   return (
     <>
@@ -94,12 +114,13 @@ export function CheckoutView() {
             <aside className="flex flex-col gap-3 xl:sticky xl:top-24">
               <OrderItemsPanel rows={rows} itemCount={totals.itemCount} />
               <OrderSummaryPanel
-                totals={totals}
-                isPending={availability.isPending}
+                money={money}
+                isMoneyFailed={goods.isError}
                 parcelCheck={parcelCheck}
                 delivery={delivery}
                 isQuickOrder={isQuickOrder}
                 paymentMethod={paymentMethod}
+                order={order}
               />
             </aside>
           </div>

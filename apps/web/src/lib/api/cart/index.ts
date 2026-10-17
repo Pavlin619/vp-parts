@@ -16,10 +16,11 @@ export { clearCartToken, readCartToken } from "./cart-token";
 export const cartQueryOptions = queryOptions({
   queryKey: ["cart"] as const,
   queryFn: getCart,
-  // A cart must reflect the last thing the customer clicked, including on
-  // another device — but every mutation already writes the server's answer
-  // straight into this cache, so a refetch is only ever a reconciliation.
   staleTime: 30_000,
+  // Writes answer into the mirror, never into this cache, so an answer equal to
+  // the cached one can still be news to the mirror: it needs a new reference
+  // for `useCartSync` to adopt it.
+  structuralSharing: false,
 });
 
 export async function getCart(): Promise<CartDto> {

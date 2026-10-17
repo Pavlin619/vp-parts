@@ -74,3 +74,15 @@ export function formatShopDate(date: string): string {
     month: "long",
   }).format(new Date(`${date}T00:00:00Z`));
 }
+
+export function formatShopDateTime(instant: string): string {
+  return new Intl.DateTimeFormat("bg-BG", {
+    timeZone: SHOP_TIME_ZONE,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(instant));
+}

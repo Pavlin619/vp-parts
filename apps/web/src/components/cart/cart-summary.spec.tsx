@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import type { CartTotalsDto } from '@vp-parts-shop/shared'
 import type { CartTotals } from '@/lib/cart/cart-totals'
 import type { DeliveryPromise } from '@/lib/delivery/promise'
 import { CartSummary } from './cart-summary'
@@ -6,34 +7,69 @@ import { CartSummary } from './cart-summary'
 function totals(overrides: Partial<CartTotals> = {}): CartTotals {
   return {
     itemCount: 3,
-    subtotalExVat: 7000,
-    vatAmount: 1400,
-    totalIncVat: 8400,
     hasUnpricedLines: false,
     hasBlockedLines: false,
     ...overrides,
   }
 }
 
-describe('CartSummary', () => {
-  it('breaks the total into net, VAT and gross', () => {
-    render(<CartSummary totals={totals()} isPending={false} hasPrices promise={null} />)
+const MONEY: CartTotalsDto = {
+  cartVersion: 3,
+  goodsTotal: 8400,
+  netAmount: 7000,
+  vatAmount: 1400,
+  total: 8400,
+}
 
-    expect(screen.getByText('70,00 €')).toBeInTheDocument()
-    expect(screen.getByText('14,00 €')).toBeInTheDocument()
-    expect(screen.getByText('84,00 €')).toBeInTheDocument()
+type SummaryProps = Parameters<typeof CartSummary>[0]
+
+function renderSummary(props: Partial<SummaryProps> = {}) {
+  return render(
+    <CartSummary
+      totals={totals()}
+      money={MONEY}
+      isMoneyFailed={false}
+      isMoneyRecalculating={false}
+      isPending={false}
+      hasPrices
+      promise={null}
+      {...props}
+    />,
+  )
+}
+
+describe('CartSummary', () => {
+  it('shows the net, the VAT and the total as the API priced them', () => {
+    renderSummary()
+
+    expect(screen.getByText('Сума без ДДС').nextSibling).toHaveTextContent('70,00 €')
+    expect(screen.getByText('ДДС').nextSibling).toHaveTextContent('14,00 €')
+    expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('84,00 €')
     expect(screen.getByText('3')).toBeInTheDocument()
   })
 
+  it('holds the money back while it is being read', () => {
+    renderSummary({ money: undefined })
+
+    expect(screen.queryByText(/€/)).not.toBeInTheDocument()
+  })
+
+  // A quantity click is a new cart version; the last figures stand, dimmed, until it is priced.
+  it('marks the money as recalculating while the next version is read', () => {
+    renderSummary({ isMoneyRecalculating: true })
+
+    expect(screen.getByText('Общо с ДДС').closest('dl')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('84,00 €')
+  })
+
+  it('shows dashes when the money could not be read', () => {
+    renderSummary({ money: undefined, isMoneyFailed: true })
+
+    expect(screen.getByText('Общо с ДДС').nextSibling).toHaveTextContent('—')
+  })
+
   it('warns when the figures cover only part of the cart', () => {
-    render(
-      <CartSummary
-        totals={totals({ hasUnpricedLines: true })}
-        isPending={false}
-        hasPrices
-        promise={null}
-      />,
-    )
+    renderSummary({ totals: totals({ hasUnpricedLines: true }) })
 
     expect(
       screen.getByText('Сумата не включва артикулите без актуална цена.'),
@@ -41,31 +77,16 @@ describe('CartSummary', () => {
   })
 
   it('holds the warning back while the prices are still being read', () => {
-    render(
-      <CartSummary
-        totals={totals({ hasUnpricedLines: true })}
-        isPending
-        hasPrices={false}
-        promise={null}
-      />,
-    )
+    renderSummary({ totals: totals({ hasUnpricedLines: true }), isPending: true, hasPrices: false })
 
     expect(screen.queryByText(/без актуална цена/)).not.toBeInTheDocument()
-    expect(screen.queryByText('84,00 €')).not.toBeInTheDocument()
   })
 
   // A part we cannot ship is quoted at our own catalogue price, so it reaches
   // the summary priced. Saying the total leaves it out is the only honest way
   // to show a figure at all.
   it('says the total leaves out the lines that cannot be ordered', () => {
-    render(
-      <CartSummary
-        totals={totals({ hasBlockedLines: true })}
-        isPending={false}
-        hasPrices
-        promise={null}
-      />,
-    )
+    renderSummary({ totals: totals({ hasBlockedLines: true }) })
 
     expect(
       screen.getByText('Сумата не включва артикулите с недостатъчна наличност.'),
@@ -73,14 +94,7 @@ describe('CartSummary', () => {
   })
 
   it('holds the blocked warning back while the read is in flight', () => {
-    render(
-      <CartSummary
-        totals={totals({ hasBlockedLines: true })}
-        isPending
-        hasPrices={false}
-        promise={null}
-      />,
-    )
+    renderSummary({ totals: totals({ hasBlockedLines: true }), isPending: true, hasPrices: false })
 
     expect(
       screen.queryByText(/недостатъчна наличност/),
@@ -88,7 +102,7 @@ describe('CartSummary', () => {
   })
 
   it('leads on to delivery and payment', () => {
-    render(<CartSummary totals={totals()} isPending={false} hasPrices promise={null} />)
+    renderSummary()
 
     expect(
       screen.getByRole('link', { name: /Към доставка и плащане/ }),
@@ -96,7 +110,7 @@ describe('CartSummary', () => {
   })
 
   it('keeps the next step unreachable while the prices are being read', () => {
-    render(<CartSummary totals={totals()} isPending hasPrices={false} promise={null} />)
+    renderSummary({ isPending: true, hasPrices: false })
 
     expect(
       screen.getByRole('button', { name: /Към доставка и плащане/ }),
@@ -104,9 +118,7 @@ describe('CartSummary', () => {
   })
 
   it('keeps the next step unreachable when the prices could not be read', () => {
-    render(
-      <CartSummary totals={totals()} isPending={false} hasPrices={false} promise={null} />,
-    )
+    renderSummary({ hasPrices: false })
 
     expect(
       screen.getByRole('button', { name: /Към доставка и плащане/ }),
@@ -114,14 +126,7 @@ describe('CartSummary', () => {
   })
 
   it('keeps the next step unreachable with nothing selected', () => {
-    render(
-      <CartSummary
-        totals={totals({ itemCount: 0 })}
-        isPending={false}
-        hasPrices
-        promise={null}
-      />,
-    )
+    renderSummary({ totals: totals({ itemCount: 0 }) })
 
     expect(
       screen.getByRole('button', { name: /Към доставка и плащане/ }),
@@ -129,14 +134,7 @@ describe('CartSummary', () => {
   })
 
   it('keeps the next step unreachable while a line cannot be ordered', () => {
-    render(
-      <CartSummary
-        totals={totals({ hasBlockedLines: true })}
-        isPending={false}
-        hasPrices
-        promise={null}
-      />,
-    )
+    renderSummary({ totals: totals({ hasBlockedLines: true }) })
 
     expect(
       screen.getByRole('button', { name: /Към доставка и плащане/ }),
@@ -157,9 +155,7 @@ describe('CartSummary', () => {
       isPickup: true,
     }
 
-    render(
-      <CartSummary totals={totals()} isPending={false} hasPrices promise={promise} />,
-    )
+    renderSummary({ promise })
 
     const panel = screen.getByTestId('delivery-cutoff-promise')
     expect(panel).toHaveTextContent('Готова за вземане днес?')
@@ -170,7 +166,7 @@ describe('CartSummary', () => {
   })
 
   it('shows no deadline when the basket has none to promise', () => {
-    render(<CartSummary totals={totals()} isPending={false} hasPrices promise={null} />)
+    renderSummary()
 
     expect(
       screen.queryByTestId('delivery-cutoff-promise'),

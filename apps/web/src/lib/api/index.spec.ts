@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from './index'
+import { apiFetch, ApiError, isRefusal } from './index'
 import { getSessionToken } from './session-token'
 
 jest.mock('./session-token')
@@ -132,5 +132,13 @@ describe('apiFetch', () => {
 
       expect(mockedGetSessionToken).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('isRefusal', () => {
+  it('reads a 4xx as a refusal and a 5xx or a network failure as an outage', () => {
+    expect(isRefusal(new ApiError(422, 'ARTICLE_UNAVAILABLE'))).toBe(true)
+    expect(isRefusal(new ApiError(503, 'INVENTORY_UNAVAILABLE'))).toBe(false)
+    expect(isRefusal(new TypeError('Failed to fetch'))).toBe(false)
   })
 })

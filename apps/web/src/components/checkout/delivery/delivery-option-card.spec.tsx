@@ -45,4 +45,26 @@ describe('DeliveryOptionCard', () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
+
+  it('can be shown without being choosable', async () => {
+    const user = userEvent.setup()
+    const onSelect = jest.fn()
+    render(
+      <DeliveryOptionCard
+        name="payment-method"
+        value="CARD"
+        label="Плащане с карта"
+        description="Visa, Mastercard"
+        icon={<Truck />}
+        isSelected={false}
+        isDisabled
+        onSelect={onSelect}
+      />,
+    )
+
+    await user.click(screen.getByText('Плащане с карта'))
+
+    expect(screen.getByRole('radio', { name: /Плащане с карта/ })).toBeDisabled()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
 })

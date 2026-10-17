@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAuth } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
 import {
+  AppErrorCode,
   articleIdentityKey,
+  CustomerRole,
   EMPTY_CART,
   DeliveryDestinationType,
+  DeliveryMethod,
   PaymentMethod,
   ShippingMethod,
   type ArticleIdentityDto,
@@ -13,7 +17,10 @@ import {
   type ParcelEstimateDto,
 } from '@vp-parts-shop/shared'
 import { useCart, type CartLine } from '@/hooks/use-cart'
+import { ApiError } from '@/lib/api'
 import { cartQueryOptions } from '@/lib/api/cart'
+import { customerProfileQueryOptions } from '@/lib/api/customers'
+import { placeOrder } from '@/lib/api/orders'
 import { useCheckoutDelivery } from '@/hooks/use-checkout-delivery'
 import { useCheckoutPayment } from '@/hooks/use-checkout-payment'
 import { CheckoutView } from './checkout-view'
@@ -21,6 +28,8 @@ import { CheckoutView } from './checkout-view'
 const getAvailability = jest.fn()
 
 jest.mock('@/lib/api/catalog', () => ({
+  AVAILABILITY_QUERY_KEY: jest.requireActual('@/lib/api/catalog/availability')
+    .AVAILABILITY_QUERY_KEY,
   availabilityQueryOptions: (articles: ArticleIdentityDto[]) => ({
     queryKey: [
       'catalog',
@@ -38,8 +47,16 @@ jest.mock('@/lib/api/catalog', () => ({
 
 const getParcel = jest.fn()
 const getQuote = jest.fn()
+const getTotals = jest.fn()
 
 jest.mock('@/lib/api/checkout', () => ({
+  CHECKOUT_QUERY_KEY: jest.requireActual('@/lib/api/checkout').CHECKOUT_QUERY_KEY,
+  DELIVERY_QUOTE_QUERY_KEY: jest.requireActual('@/lib/api/checkout').DELIVERY_QUOTE_QUERY_KEY,
+  checkoutTotalsQueryOptions: (cartId: string, cartVersion: number) => ({
+    queryKey: ['checkout', 'totals', cartId, cartVersion],
+    queryFn: () => getTotals() as Promise<unknown>,
+    enabled: cartId !== '',
+  }),
   parcelEstimateQueryOptions: (carrier: string, cartId: string, cartVersion: number) => ({
     queryKey: ['checkout', 'parcel', carrier, cartId, cartVersion],
     queryFn: () => getParcel() as Promise<ParcelEstimateDto>,
@@ -67,6 +84,17 @@ jest.mock('@/lib/api/cart', () => ({
   ...jest.createMockFromModule<object>('@/lib/api/cart'),
   cartQueryOptions: jest.requireActual('@/lib/api/cart').cartQueryOptions,
 }))
+
+jest.mock('@/lib/api/orders', () => ({ placeOrder: jest.fn() }))
+
+jest.mock('@/lib/api/customers', () => ({
+  customerProfileQueryOptions: {
+    queryKey: ['customers', 'me'],
+    queryFn: () => new Promise(() => {}),
+  },
+}))
+
+jest.mock('next/navigation', () => ({ useRouter: jest.fn() }))
 
 jest.mock('@clerk/nextjs', () => ({
   useAuth: jest.fn(),
@@ -116,12 +144,27 @@ function availabilityFor(
   }
 }
 
-function renderView() {
+const PROFILE = {
+  id: 'customer-1',
+  email: 'ivan@example.bg',
+  firstName: 'Иван',
+  lastName: 'Петров',
+  phoneNumber: '+359888123456',
+  role: CustomerRole.CUSTOMER,
+  createdAt: '2026-10-01T10:00:00.000Z',
+}
+
+const replace = jest.fn()
+
+function renderView({ profile }: { profile?: typeof PROFILE } = {}) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   // Stands in for the read `CartSync` makes at the root, so an empty mirror is believed.
   queryClient.setQueryData(cartQueryOptions.queryKey, EMPTY_CART)
+  if (profile) {
+    queryClient.setQueryData(customerProfileQueryOptions.queryKey, profile)
+  }
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -141,6 +184,16 @@ describe('CheckoutView', () => {
     useCheckoutPayment.getState().reset()
     getAvailability.mockReset()
     getAvailability.mockResolvedValue({})
+    getTotals.mockReset().mockResolvedValue({
+      cartVersion: 2,
+      goodsTotal: 1200,
+      netAmount: 1000,
+      vatAmount: 200,
+      total: 1200,
+    })
+    replace.mockReset()
+    jest.mocked(useRouter).mockReturnValue({ replace } as unknown as ReturnType<typeof useRouter>)
+    jest.mocked(placeOrder).mockReset()
     getParcel.mockReset().mockResolvedValue({
       weightGrams: 2300,
       isLockerEligible: true,
@@ -151,6 +204,7 @@ describe('CheckoutView', () => {
       const netAmount = Math.round(total / 1.2)
 
       return Promise.resolve({
+        cartVersion: 2,
         priceIncVatCents: 714,
         cashOnDeliveryFeeIncVatCents: request.isCashOnDelivery ? fee : null,
         expectedDeliveryDate: '2026-09-30',
@@ -234,24 +288,14 @@ describe('CheckoutView', () => {
     expect(screen.getByTestId('office-picker')).toBeInTheDocument()
   })
 
-  it('preselects no contact mode and switches the order button with the one picked', async () => {
-    const user = userEvent.setup()
+  it('preselects no contact mode, and offers no quick order yet', async () => {
     useCart.setState({ lines: [line()] })
 
     renderView()
 
-    const quick = await screen.findByRole('radio', { name: /Бърза поръчка/ })
-    expect(quick).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: /Вход/ })).not.toBeChecked()
+    expect(await screen.findByRole('radio', { name: /Вход/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /Регистрация/ })).not.toBeChecked()
-
-    await user.click(quick)
-
-    expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('radio', { name: /Вход/ }))
-
-    expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /Бърза поръчка/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
   })
 
@@ -261,25 +305,14 @@ describe('CheckoutView', () => {
 
     renderView()
 
-    const card = await screen.findByRole('radio', { name: /Плащане с карта/ })
-    expect(card).not.toBeChecked()
+    const cashOnDelivery = await screen.findByRole('radio', { name: /Наложен платеж/ })
+    expect(cashOnDelivery).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: /Плащане с карта/ })).toBeDisabled()
 
-    await user.click(card)
+    await user.click(cashOnDelivery)
 
-    expect(card).toBeChecked()
-    expect(useCheckoutPayment.getState().method).toBe(PaymentMethod.CARD)
-    expect(screen.getByRole('button', { name: /Плати с карта/ })).toBeInTheDocument()
-  })
-
-  // The quick-order fields already say it is paid on delivery.
-  it('asks for no payment method on a quick order', async () => {
-    const user = userEvent.setup()
-    useCart.setState({ lines: [line()] })
-
-    renderView()
-    await user.click(await screen.findByRole('radio', { name: /Бърза поръчка/ }))
-
-    expect(screen.queryByRole('radiogroup', { name: 'Метод на плащане' })).not.toBeInTheDocument()
+    expect(cashOnDelivery).toBeChecked()
+    expect(useCheckoutPayment.getState().method).toBe(PaymentMethod.CASH_ON_DELIVERY)
   })
 
   // Clerk comes back from Google to `#/sso-callback`, which only the sign-in tab finishes.
@@ -306,20 +339,9 @@ describe('CheckoutView', () => {
     renderView()
 
     expect(await screen.findByTestId('signed-in-contact')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
-  })
-
-  it('does not offer a quick order before the session is known', async () => {
-    jest.mocked(useAuth).mockReturnValue({
-      isLoaded: false,
-      isSignedIn: undefined,
-    } as unknown as ReturnType<typeof useAuth>)
-    useCart.setState({ lines: [line()] })
-
-    renderView()
-
-    expect(await screen.findByRole('button', { name: /Поръчай сега/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Купи сега' }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
   })
 
@@ -369,7 +391,7 @@ describe('CheckoutView', () => {
     const summary = (await screen.findByText('Обобщение на поръчката')).closest('section')!
     expect(await within(summary).findByText('2,3 кг')).toBeInTheDocument()
     expect(await within(summary).findByText('7,14 €')).toBeInTheDocument()
-    expect(within(summary).getByText('19,14 €')).toBeInTheDocument()
+    expect(await within(summary).findByText('19,14 €')).toBeInTheDocument()
     expect(getQuote).toHaveBeenCalledWith({
       carrier: ShippingMethod.ECONT,
       destination: { type: DeliveryDestinationType.OFFICE, officeCode: '1127' },
@@ -394,5 +416,109 @@ describe('CheckoutView', () => {
     expect(await within(summary).findByText('1,52 €')).toBeInTheDocument()
     expect(within(summary).getByText('20,66 €')).toBeInTheDocument()
     expect(getQuote).toHaveBeenLastCalledWith(expect.objectContaining({ isCashOnDelivery: true }))
+  })
+
+  describe('placing the order', () => {
+    const ORDERED_TO_OFFICE = {
+      cartId: 'cart-1',
+      cartVersion: 2,
+      expectedTotalCents: 2066,
+      paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+      delivery: {
+        method: DeliveryMethod.COURIER_OFFICE,
+        carrier: ShippingMethod.ECONT,
+        officeCode: '1127',
+      },
+    }
+
+    function readyToOrder() {
+      jest.mocked(useAuth).mockReturnValue({
+        isLoaded: true,
+        isSignedIn: true,
+      } as ReturnType<typeof useAuth>)
+      const item = line()
+      useCart.setState({ lines: [item], cartId: 'cart-1', version: 2 })
+      useCheckoutDelivery.setState({
+        method: 'courier-office',
+        office: { carrier: ShippingMethod.ECONT, code: '1127' },
+      })
+      useCheckoutPayment.setState({ method: PaymentMethod.CASH_ON_DELIVERY })
+      getAvailability.mockResolvedValue(availabilityFor(item))
+    }
+
+    async function orderButton() {
+      const button = screen.getByRole('button', { name: 'Купи сега' })
+      await waitFor(() => expect(button).toBeEnabled())
+
+      return button
+    }
+
+    it('places it at the quoted total, to the chosen office, paid on delivery', async () => {
+      const user = userEvent.setup()
+      readyToOrder()
+      jest.mocked(placeOrder).mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-000123' })
+
+      renderView({ profile: PROFILE })
+      await user.click(await orderButton())
+
+      expect(jest.mocked(placeOrder).mock.calls[0][0]).toEqual(ORDERED_TO_OFFICE)
+      expect(await screen.findByRole('status')).toHaveTextContent('Потвърждаваме я…')
+      expect(replace).toHaveBeenCalledWith('/orders/order-1')
+      expect(useCheckoutDelivery.getState().method).toBeNull()
+    })
+
+    it('places a store pickup at the goods total', async () => {
+      const user = userEvent.setup()
+      readyToOrder()
+      useCheckoutDelivery.setState({ method: 'store-pickup' })
+      jest.mocked(placeOrder).mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-000123' })
+
+      renderView({ profile: PROFILE })
+      await user.click(await orderButton())
+
+      expect(jest.mocked(placeOrder).mock.calls[0][0]).toMatchObject({
+        expectedTotalCents: 1200,
+        delivery: { method: DeliveryMethod.STORE_PICKUP },
+      })
+    })
+
+    it('cannot be placed until the profile has a phone', async () => {
+      readyToOrder()
+
+      renderView({ profile: { ...PROFILE, phoneNumber: null as unknown as string } })
+
+      const summary = (await screen.findByText('Обобщение на поръчката')).closest('section')!
+      expect(await within(summary).findByText('20,66 €')).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Купи сега' }),
+      ).toBeDisabled()
+    })
+
+    it('cannot be placed while a selected line is out of stock', async () => {
+      readyToOrder()
+      getAvailability.mockResolvedValue(availabilityFor(line(), false))
+
+      renderView({ profile: PROFILE })
+
+      expect(await screen.findByText(/не могат да бъдат поръчани/)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Купи сега' }),
+      ).toBeDisabled()
+    })
+
+    it('says the price changed and re-quotes when the server refuses the total', async () => {
+      const user = userEvent.setup()
+      readyToOrder()
+      jest
+        .mocked(placeOrder)
+        .mockRejectedValue(new ApiError(409, AppErrorCode.PRICE_CHANGED))
+
+      renderView({ profile: PROFILE })
+      await user.click(await orderButton())
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Цената на поръчката е променена/)
+      await waitFor(() => expect(getQuote).toHaveBeenCalledTimes(2))
+      expect(replace).not.toHaveBeenCalled()
+    })
   })
 })

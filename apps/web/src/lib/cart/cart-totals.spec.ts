@@ -71,7 +71,6 @@ describe('buildCartRows', () => {
 
     expect(row.unitPriceIncVat).toBe(1200)
     expect(row.lineTotalIncVat).toBe(3600)
-    expect(row.lineTotalExVat).toBe(3000)
   })
 
   it('carries the pending state through so rows can skeleton', () => {
@@ -97,7 +96,7 @@ describe('buildCartRows', () => {
     expect(rows[0].unitPriceIncVat).toBeNull()
   })
 
-  it('treats a half-priced line as unpriced, so VAT stays the difference', () => {
+  it('treats a half-priced line as unpriced', () => {
     const item = line()
 
     const [row] = buildCartRows(
@@ -206,7 +205,8 @@ describe('buildCartRows — what the live read contradicts', () => {
 })
 
 describe('cartTotals', () => {
-  it('sums the lines and derives VAT as the difference', () => {
+  // The money is the server's (GET /checkout/totals); the browser only counts and flags.
+  it('counts the pieces and finds nothing to flag in a cart that can be ordered', () => {
     const filter = line({ quantity: 2 })
     const pads = line({ articleNumber: 'BP1234', quantity: 1 })
 
@@ -220,16 +220,11 @@ describe('cartTotals', () => {
       ),
     )
 
-    expect(totals.itemCount).toBe(3)
-    expect(totals.subtotalExVat).toBe(7000)
-    expect(totals.totalIncVat).toBe(8400)
-    expect(totals.vatAmount).toBe(1400)
-    expect(totals.hasUnpricedLines).toBe(false)
-    expect(totals.hasBlockedLines).toBe(false)
+    expect(totals).toEqual({ itemCount: 3, hasUnpricedLines: false, hasBlockedLines: false })
   })
 
   // The count is what "N артикула" says, so it covers lines we cannot price.
-  it('counts unpriced lines but leaves them out of the money', () => {
+  it('counts an unpriced line and flags it', () => {
     const priced = line({ quantity: 2 })
     const unpriced = line({ articleNumber: 'BP1234', quantity: 5 })
 
@@ -244,14 +239,12 @@ describe('cartTotals', () => {
     )
 
     expect(totals.itemCount).toBe(7)
-    expect(totals.totalIncVat).toBe(2400)
     expect(totals.hasUnpricedLines).toBe(true)
   })
 
   // The API quotes our own catalogue price for a part it has no stock for, so
-  // a part we cannot ship arrives priced. Charging for it is the one thing the
-  // summary must not do.
-  it('leaves an unavailable line out of the money however well priced it is', () => {
+  // a part we cannot ship arrives priced — and is blocked, not merely unpriced.
+  it('flags an unavailable line as blocked however well priced it is', () => {
     const shippable = line({ quantity: 2 })
     const gone = line({ articleNumber: 'BP1234', quantity: 3 })
 
@@ -265,12 +258,11 @@ describe('cartTotals', () => {
       ),
     )
 
-    expect(totals.totalIncVat).toBe(2400)
-    expect(totals.subtotalExVat).toBe(2000)
     expect(totals.hasBlockedLines).toBe(true)
+    expect(totals.hasUnpricedLines).toBe(false)
   })
 
-  it('leaves a line deeper than its stock out of the money', () => {
+  it('flags a line deeper than its stock as blocked', () => {
     const short = line({ quantity: 5 })
 
     const totals = cartTotals(
@@ -282,17 +274,13 @@ describe('cartTotals', () => {
       ),
     )
 
-    expect(totals.totalIncVat).toBe(0)
     expect(totals.itemCount).toBe(5)
     expect(totals.hasBlockedLines).toBe(true)
   })
 
-  it('reports zeroes for an empty cart', () => {
+  it('reports nothing for an empty cart', () => {
     expect(cartTotals([])).toEqual({
       itemCount: 0,
-      subtotalExVat: 0,
-      vatAmount: 0,
-      totalIncVat: 0,
       hasUnpricedLines: false,
       hasBlockedLines: false,
     })

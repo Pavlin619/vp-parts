@@ -31,7 +31,6 @@ function row(overrides: Partial<CartRowModel> = {}): CartRowModel {
     },
     unitPriceExVat: 1000,
     unitPriceIncVat: 1200,
-    lineTotalExVat: 1000,
     lineTotalIncVat: 1200,
     issue: null,
     availableQuantity: null,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Info } from "lucide-react";
-import { formatCount, formatPrice } from "@vp-parts-shop/shared";
+import { formatCount, formatPrice, type CartTotalsDto } from "@vp-parts-shop/shared";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DeliveryCutoffPromise } from "@/components/delivery";
 import type { CartTotals } from "@/lib/cart/cart-totals";
@@ -16,8 +16,16 @@ import { cn } from "@/lib/utils";
 const METHOD_NOTE =
   "Изберете метод на доставка на следващата стъпка — с куриер добавя 1 работен ден.";
 
+const NOT_CALCULATED = "—";
+
 interface CartSummaryProps {
   totals: CartTotals;
+  /** The selected lines' money as the API priced it; undefined until read. */
+  money: CartTotalsDto | undefined;
+  /** The money could not be read, so a figure is a dash rather than a skeleton. */
+  isMoneyFailed: boolean;
+  /** The money shown is an earlier cart version's while the current one is read. */
+  isMoneyRecalculating: boolean;
   /** True while the availability read is in flight — the figures are not final. */
   isPending: boolean;
   /** Whether live figures have been read at all — false when the read failed outright. */
@@ -32,15 +40,25 @@ interface CartSummaryProps {
  * where a trade customer checks the net figure and every customer checks what
  * will actually be charged, and those are two different numbers.
  *
- * VAT is shown without its rate. The rate is the backoffice's to set and
- * reaches us as an amount, so printing "20%" here would be a second claim to
- * keep true.
+ * Every figure is the API's (`GET /checkout/totals`); the browser adds nothing
+ * up, so the cart, checkout and the order agree to the cent. VAT is shown
+ * without its rate, which is the API's to apply.
  */
-export function CartSummary({ totals, isPending, hasPrices, promise }: CartSummaryProps) {
+export function CartSummary({
+  totals,
+  money,
+  isMoneyFailed,
+  isMoneyRecalculating,
+  isPending,
+  hasPrices,
+  promise,
+}: CartSummaryProps) {
   // Without a live read no line has known stock, so none reads as blocked —
   // and blocked lines carry no money and no stock to draw on. Either way there
   // is nothing yet to carry into checkout.
   const canProceed = hasPrices && !totals.hasBlockedLines && totals.itemCount > 0;
+  const moneyText = (amount: number | undefined) =>
+    amount !== undefined ? formatPrice(amount) : isMoneyFailed ? NOT_CALCULATED : null;
 
   return (
     <div className="rounded-[12px] border border-line bg-bg-card p-5">
@@ -48,27 +66,22 @@ export function CartSummary({ totals, isPending, hasPrices, promise }: CartSumma
         Обобщение
       </h2>
 
-      <dl>
+      <dl
+        aria-busy={isMoneyRecalculating}
+        className={cn("transition-opacity", isMoneyRecalculating && "opacity-60")}
+      >
         <SummaryRow label="Избрани продукти" value={formatCount(totals.itemCount)} />
-        <SummaryRow
-          label="Сума без ДДС"
-          value={isPending ? null : formatPrice(totals.subtotalExVat)}
-        />
-        <SummaryRow
-          label="ДДС"
-          value={isPending ? null : formatPrice(totals.vatAmount)}
-        />
+        <SummaryRow label="Сума без ДДС" value={moneyText(money?.netAmount)} />
+        <SummaryRow label="ДДС" value={moneyText(money?.vatAmount)} />
 
         <div className="mt-2.5 flex items-baseline justify-between gap-4 border-t border-line pt-3.5">
           <dt className="text-sm font-semibold text-ink">Общо с ДДС</dt>
           <dd className="font-display text-[26px] font-semibold tracking-[-0.02em] tabular-nums text-ink">
-            {isPending ? (
+            {moneyText(money?.total) ?? (
               <span
                 className="block h-[30px] w-[116px] animate-pulse rounded bg-bg-sunken"
                 aria-hidden="true"
               />
-            ) : (
-              formatPrice(totals.totalIncVat)
             )}
           </dd>
         </div>

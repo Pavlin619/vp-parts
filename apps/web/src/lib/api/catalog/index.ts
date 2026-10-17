@@ -1,6 +1,10 @@
 export { getArticleCatalogDetail } from "./articles";
 export { autocompleteQueryOptions, getAutocomplete } from "./autocomplete";
-export { availabilityQueryOptions, getArticlesAvailability } from "./availability";
+export {
+  AVAILABILITY_QUERY_KEY,
+  availabilityQueryOptions,
+  getArticlesAvailability,
+} from "./availability";
 export {
   categoriesQueryOptions,
   getCatalogCategories,

@@ -4,6 +4,8 @@ export interface PaymentMethodOption {
   id: PaymentMethod;
   label: string;
   description: string;
+  /** False for a method shown as coming soon; card waits on its contract (docs/ORDERS.md). */
+  isAvailable: boolean;
 }
 
 export const B2C_PAYMENT_METHODS: readonly PaymentMethodOption[] = [
@@ -11,11 +13,13 @@ export const B2C_PAYMENT_METHODS: readonly PaymentMethodOption[] = [
     id: PaymentMethod.CARD,
     label: "Плащане с карта",
     description: "Visa, Mastercard · сигурно плащане",
+    isAvailable: false,
   },
   {
     id: PaymentMethod.CASH_ON_DELIVERY,
     label: "Наложен платеж",
     description: "В брой при получаване",
+    isAvailable: true,
   },
 ];
 

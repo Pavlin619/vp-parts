@@ -1,8 +1,15 @@
 import {
+  CONTACT_MODES,
   contactNameError,
   contactPhoneError,
   initialContactMode,
 } from './contact-modes'
+
+describe('CONTACT_MODES', () => {
+  it('offers sign-in and registration, and no quick order until it has its own design', () => {
+    expect(CONTACT_MODES.map((mode) => mode.id)).toEqual(['login', 'register'])
+  })
+})
 
 describe('contactNameError', () => {
   it('asks for a name shorter than three characters once trimmed', () => {

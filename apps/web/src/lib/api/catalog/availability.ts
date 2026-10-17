@@ -36,6 +36,9 @@ export function getArticlesAvailability(
   );
 }
 
+/** The prefix every availability set is keyed under. */
+export const AVAILABILITY_QUERY_KEY = ["catalog", "availability"] as const;
+
 /**
  * Live price/availability for one or many articles, fetched client-side. Serves
  * every surface — the buy box (a single article), search, and substitutes — so
@@ -47,8 +50,7 @@ export function getArticlesAvailability(
 export const availabilityQueryOptions = (articles: ArticleIdentityDto[]) =>
   queryOptions({
     queryKey: [
-      "catalog",
-      "availability",
+      ...AVAILABILITY_QUERY_KEY,
       articles
         .map((article) =>
           articleIdentityKey(article.brandId, article.articleNumber),
