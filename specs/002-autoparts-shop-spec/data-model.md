@@ -172,12 +172,12 @@ A placed order. Cash on delivery creates it directly (`docs/ORDERS.md`). Status 
 | Field | Type | Constraints | Notes |
 |---|---|---|---|
 | `id` | UUID | PK | Internal ID |
-| `orderReference` | String | UNIQUE NOT NULL | `VP-000123`, numbered from the `order_reference_seq` sequence |
+| `orderReference` | String | UNIQUE NOT NULL | `VP-ORD-000123`, numbered from the `order_reference_seq` sequence |
 | `customerId` | UUID | FK → Customer, NOT NULL | Drops `NOT NULL` when guest orders arrive |
 | `cartId` | UUID | FK → Cart, UNIQUE, NULL | The cart it was placed from; one cart never produces two orders |
 | `status` | OrderStatus enum | NOT NULL, default PROCESSING | See state machine below |
 | `deliveryMethod` | DeliveryMethod enum | NOT NULL | `COURIER_OFFICE`, `COURIER_ADDRESS`, `STORE_PICKUP` |
-| `shippingMethod` | ShippingMethod enum | NULL | The carrier; null for store pickup |
+| `carrier` | ShippingMethod enum | NULL | Chosen at checkout; null for store pickup |
 | `deliverySnapshot` | JSON | NOT NULL | The destination as chosen (immutable), shape below |
 | `expectedDeliveryDate` | Date | NULL | As quoted |
 | `parcelWeightGrams` | Int | NULL | As quoted; null for store pickup |
@@ -190,7 +190,6 @@ A placed order. Cash on delivery creates it directly (`docs/ORDERS.md`). Status 
 | `paymentReference` | String | NULL | The card payment's reference, later |
 | `contactFirstName`, `contactLastName`, `contactPhone`, `contactEmail` | String | NOT NULL | Copied from the profile at order time |
 | `termsVersion` | String | NOT NULL | The terms the customer ordered under |
-| `courierName` | String | NULL | Set on `OrderShipped` event |
 | `trackingReference` | String | NULL | Set on `OrderShipped` event |
 | `vehicleTag` | String | NULL | Mechanic: vehicle registration for this job |
 | `jobReference` | String | NULL | Mechanic: free-text job reference |

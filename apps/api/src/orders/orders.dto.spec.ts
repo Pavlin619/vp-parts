@@ -3,6 +3,7 @@ import { DeliveryMethod } from '@vp-parts-shop/shared';
 import {
   CourierAddressDeliveryBodyDto,
   CourierOfficeDeliveryBodyDto,
+  OrderReferenceParamsDto,
   PlaceOrderBodyDto,
   StorePickupDeliveryBodyDto,
 } from './orders.dto';
@@ -83,5 +84,33 @@ describe('PlaceOrderBodyDto', () => {
     ['the lines themselves', { lines: [{ articleNumber: 'X', price: 1 }] }],
   ])('refuses %s', async (_case, change) => {
     await expect(transform({ ...BODY, ...change })).rejects.toThrow();
+  });
+});
+
+describe('OrderReferenceParamsDto', () => {
+  const pipe = new ValidationPipe({ transform: true });
+
+  const transform = (orderReference: string) =>
+    pipe.transform(
+      { orderReference },
+      { type: 'param', metatype: OrderReferenceParamsDto },
+    );
+
+  it.each(['VP-ORD-000123', 'VP-ORD-1000000'])(
+    'accepts %s',
+    async (reference) => {
+      await expect(transform(reference)).resolves.toEqual({
+        orderReference: reference,
+      });
+    },
+  );
+
+  it.each([
+    ['the order id', '7b0c2f4e-35a4-4f43-8f4c-6d1b1d3c2a10'],
+    ['a reference without the order prefix', 'VP-000123'],
+    ['a reference cut short', 'VP-ORD-123'],
+    ['a lower-case reference', 'vp-ord-000123'],
+  ])('refuses %s', async (_case, reference) => {
+    await expect(transform(reference)).rejects.toThrow();
   });
 });

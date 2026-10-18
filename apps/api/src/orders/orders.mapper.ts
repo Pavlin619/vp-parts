@@ -91,9 +91,9 @@ function toOrderDeliveryDto(order: OrderRecord): OrderDeliveryDto {
 }
 
 function carrierOf(order: OrderRecord): ShippingMethod {
-  if (!order.shippingMethod) {
+  if (!order.carrier) {
     throw new Error(`Order ${order.id} goes by courier but names none`);
   }
 
-  return ShippingMethod[order.shippingMethod];
+  return ShippingMethod[order.carrier];
 }

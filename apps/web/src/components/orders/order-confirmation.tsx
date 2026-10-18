@@ -22,8 +22,8 @@ const NOT_FOUND_CODES: readonly string[] = [
 ];
 
 /** The order as placed: what checkout lands on, and the link the customer keeps. */
-export function OrderConfirmation({ orderId }: { orderId: string }) {
-  const { data, error, isPending, refetch } = useQuery(orderQueryOptions(orderId));
+export function OrderConfirmation({ orderReference }: { orderReference: string }) {
+  const { data, error, isPending, refetch } = useQuery(orderQueryOptions(orderReference));
 
   if (isPending) {
     return <OrderConfirmationSkeleton />;

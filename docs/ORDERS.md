@@ -1,10 +1,10 @@
 # Orders: placing one, and what happens after
 
 The authoritative design for turning a cart into an order. **Built:** `POST
-/orders`, `GET /orders/:orderId` (`apps/api/src/orders/`), `GET
+/orders`, `GET /orders/:orderReference` (`apps/api/src/orders/`), `GET
 /checkout/totals` and the quote's money (`apps/api/src/checkout/`), and in the
 web the order button (`use-place-order.ts`), the cart and checkout summaries
-reading the API's money, and the confirmation page `/orders/[orderId]`
+reading the API's money, and the confirmation page `/orders/[orderReference]`
 (`components/orders/`). **Not yet:** the outbox and its emails, SQS, the
 throttler's Redis storage, and the terms, withdrawal and privacy pages the
 button links to (`lib/legal/legal-pages.ts`). The cart side of the transition is in
@@ -37,8 +37,8 @@ POST /orders                     JwtGuard · Cache-Control: no-store · 5/min pe
     | { "method": "STORE_PICKUP" }
 }
 
-201 { "orderId": "…", "orderReference": "VP-000123" }     a new order
-200 { "orderId": "…", "orderReference": "VP-000123" }     the same cart again (replay)
+201 { "orderId": "…", "orderReference": "VP-ORD-000123" }     a new order
+200 { "orderId": "…", "orderReference": "VP-ORD-000123" }     the same cart again (replay)
 ```
 
 The browser sends **no lines, weights or prices**. It sends which cart, which
@@ -248,10 +248,12 @@ that cached figure is what the customer was shown.
 
 ## What an order stores
 
-- **Identity:** `orderReference` (`VP-000123`, from the Postgres sequence
-  `order_reference_seq`), `customerId`, `cartId`.
+- **Identity:** `orderReference` (`VP-ORD-000123`, from the Postgres sequence
+  `order_reference_seq`), `customerId`, `cartId`. A rolled-back order still
+  spends its number, so references can skip one; that is fine for an order
+  number, and the gapless invoice number is the backoffice's.
 - **Delivery:** `deliveryMethod` (`COURIER_OFFICE`, `COURIER_ADDRESS`,
-  `STORE_PICKUP`); `shippingMethod` (the carrier, `null` for pickup);
+  `STORE_PICKUP`); `carrier` (`null` for pickup);
   `deliverySnapshot` with the destination as the customer chose it: office code,
   name and address, or the address lines and note; `expectedDeliveryDate`;
   `parcelWeightGrams`.
@@ -328,11 +330,13 @@ For the backoffice: deduplicate on `eventId`, then read the order from
 
 ## Reading an order
 
-`GET /orders/:orderId` answers only the owner; anyone else gets
-`404 ORDER_NOT_FOUND`, never `403`, so an id reveals nothing. `no-store`, like every order route. After
+`GET /orders/:orderReference` answers only the owner; anyone else gets
+`404 ORDER_NOT_FOUND`, never `403`, so a guessed reference reveals nothing. The
+URL carries the reference rather than the id because the customer reads it out
+to support; the sequence it comes from is already on the confirmation page. `no-store`, like every order route. After
 placing, checkout clears its delivery and payment choices, resyncs the cart (the
 new one holds the unselected lines) and replaces the page with
-`/orders/[orderId]`: the reference, lines, totals with VAT, delivery and its
+`/orders/[orderReference]`: the reference, lines, totals with VAT, delivery and its
 date, and the amount to pay at the door.
 
 ## The button

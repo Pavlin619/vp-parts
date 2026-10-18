@@ -122,9 +122,12 @@ export class OrdersRepository {
     });
   }
 
-  findOwned(orderId: string, customerId: string): Promise<OrderRecord | null> {
+  findOwned(
+    orderReference: string,
+    customerId: string,
+  ): Promise<OrderRecord | null> {
     return this.prisma.order.findFirst({
-      where: { id: orderId, customerId },
+      where: { orderReference, customerId },
       include: withDetail,
     });
   }
@@ -136,7 +139,7 @@ async function nextOrderReference(
   const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
     SELECT nextval('order_reference_seq') AS value`;
 
-  return `VP-${value.toString().padStart(6, '0')}`;
+  return `VP-ORD-${value.toString().padStart(6, '0')}`;
 }
 
 function toOrderData(
@@ -148,7 +151,7 @@ function toOrderData(
     customerId: order.customerId,
     cartId: order.cartId,
     deliveryMethod: delivery.method,
-    shippingMethod: delivery.carrier,
+    carrier: delivery.carrier,
     deliverySnapshot: (delivery.destination ?? {}) as Prisma.InputJsonObject,
     expectedDeliveryDate: delivery.expectedDeliveryDate
       ? new Date(delivery.expectedDeliveryDate)

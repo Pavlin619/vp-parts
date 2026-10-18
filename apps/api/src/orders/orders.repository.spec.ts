@@ -55,7 +55,7 @@ const ORDER: NewOrder = {
   termsVersion: '2026-10-17',
 };
 
-const REFERENCE = { id: 'order-1', orderReference: 'VP-000042' };
+const REFERENCE = { id: 'order-1', orderReference: 'VP-ORD-000042' };
 
 describe('OrdersRepository', () => {
   let repository: OrdersRepository;
@@ -106,11 +106,11 @@ describe('OrdersRepository', () => {
 
       expect(orderCreate).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          orderReference: 'VP-000042',
+          orderReference: 'VP-ORD-000042',
           customerId: 'customer-1',
           cartId: 'cart-1',
           deliveryMethod: 'COURIER_OFFICE',
-          shippingMethod: 'ECONT',
+          carrier: 'ECONT',
           deliverySnapshot: ORDER.delivery.destination,
           expectedDeliveryDate: new Date('2026-10-17'),
           parcelWeightGrams: 4000,
@@ -164,7 +164,7 @@ describe('OrdersRepository', () => {
       expect(orderCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            shippingMethod: null,
+            carrier: null,
             deliverySnapshot: {},
             expectedDeliveryDate: null,
           }),
@@ -204,12 +204,12 @@ describe('OrdersRepository', () => {
     );
   });
 
-  it('reads an order only together with its owner', async () => {
-    await repository.findOwned('order-1', 'customer-1');
+  it('reads an order by its reference, only together with its owner', async () => {
+    await repository.findOwned('VP-ORD-000042', 'customer-1');
 
     expect(prisma.order.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'order-1', customerId: 'customer-1' },
+        where: { orderReference: 'VP-ORD-000042', customerId: 'customer-1' },
       }),
     );
   });

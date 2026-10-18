@@ -8,16 +8,16 @@ export const metadata: Metadata = {
 };
 
 interface OrderPageProps {
-  params: Promise<{ orderId: string }>;
+  params: Promise<{ orderReference: string }>;
 }
 
 /** Read in the browser with the customer's session; the API answers only its owner. */
 export default async function OrderPage({ params }: OrderPageProps) {
-  const { orderId } = await params;
+  const { orderReference } = await params;
 
   return (
     <div className="page-container py-8">
-      <OrderConfirmation orderId={decodeRouteParam(orderId)} />
+      <OrderConfirmation orderReference={decodeRouteParam(orderReference)} />
     </div>
   );
 }

@@ -14,7 +14,7 @@ describe('OrderConfirmationHero', () => {
   it('names the order and when it was placed, in the shop timezone', () => {
     render(<OrderConfirmationHero order={orderDetail()} />)
 
-    expect(screen.getByText('VP-000123')).toBeInTheDocument()
+    expect(screen.getByText('VP-ORD-000123')).toBeInTheDocument()
     expect(screen.getByText('16 октомври 2026 г. в 11:32')).toBeInTheDocument()
   })
 

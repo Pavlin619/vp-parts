@@ -135,7 +135,7 @@ describe('OrdersService', () => {
     );
     place.mockResolvedValue({
       kind: 'placed',
-      order: { id: 'order-1', orderReference: 'VP-000123' },
+      order: { id: 'order-1', orderReference: 'VP-ORD-000123' },
     });
 
     const moduleRef = await Test.createTestingModule({
@@ -162,7 +162,7 @@ describe('OrdersService', () => {
       const result = await service.placeOrder(CLERK_ID, request());
 
       expect(result).toEqual({
-        order: { orderId: 'order-1', orderReference: 'VP-000123' },
+        order: { orderId: 'order-1', orderReference: 'VP-ORD-000123' },
         isReplay: false,
       });
       expect(place).toHaveBeenCalledWith({
@@ -234,13 +234,13 @@ describe('OrdersService', () => {
       cart = { ...cart, status: 'ORDERED', orderId: 'order-1', version: 8 };
       findReference.mockResolvedValue({
         id: 'order-1',
-        orderReference: 'VP-000123',
+        orderReference: 'VP-ORD-000123',
       });
 
       const result = await service.placeOrder(CLERK_ID, request());
 
       expect(result).toEqual({
-        order: { orderId: 'order-1', orderReference: 'VP-000123' },
+        order: { orderId: 'order-1', orderReference: 'VP-ORD-000123' },
         isReplay: true,
       });
       expect(priceOrder).not.toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe('OrdersService', () => {
     it('answers the twin request’s order when the cart was ordered meanwhile', async () => {
       place.mockResolvedValue({
         kind: 'replayed',
-        order: { id: 'order-1', orderReference: 'VP-000123' },
+        order: { id: 'order-1', orderReference: 'VP-ORD-000123' },
       });
 
       const result = await service.placeOrder(CLERK_ID, request());
@@ -307,7 +307,7 @@ describe('OrdersService', () => {
       findByClerkId.mockResolvedValue(null);
 
       await expect(
-        service.getOrder(CLERK_ID, 'order-1'),
+        service.getOrder(CLERK_ID, 'VP-ORD-000123'),
       ).rejects.toBeInstanceOf(OrderNotFoundException);
       expect(findOwned).not.toHaveBeenCalled();
     });
@@ -317,9 +317,9 @@ describe('OrdersService', () => {
       findOwned.mockResolvedValue(null);
 
       await expect(
-        service.getOrder(CLERK_ID, 'order-1'),
+        service.getOrder(CLERK_ID, 'VP-ORD-000123'),
       ).rejects.toBeInstanceOf(OrderNotFoundException);
-      expect(findOwned).toHaveBeenCalledWith('order-1', 'customer-1');
+      expect(findOwned).toHaveBeenCalledWith('VP-ORD-000123', 'customer-1');
     });
   });
 });

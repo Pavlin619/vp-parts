@@ -9,7 +9,7 @@ import {
 export function orderDetail(overrides: Partial<OrderDetailDto> = {}): OrderDetailDto {
   return {
     orderId: 'order-1',
-    orderReference: 'VP-000123',
+    orderReference: 'VP-ORD-000123',
     status: OrderStatus.PROCESSING,
     createdAt: '2026-10-16T08:32:00.000Z',
     items: [

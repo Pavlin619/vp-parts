@@ -96,8 +96,8 @@ export function usePlaceOrder({ money, areLinesOrderable }: PlaceOrderOptions): 
 
   const mutation = useMutation({
     mutationFn: placeOrder,
-    onSuccess: ({ orderId }) => {
-      router.replace(`/orders/${orderId}`);
+    onSuccess: ({ orderReference }) => {
+      router.replace(`/orders/${orderReference}`);
       forgetCheckout(queryClient);
     },
     onError: (error, sent) => {

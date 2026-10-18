@@ -16,7 +16,7 @@ import type {
 } from '@vp-parts-shop/shared';
 import { CurrentUser } from '../auth';
 import type { AuthenticatedUser } from '../auth';
-import { OrderIdParamsDto, PlaceOrderBodyDto } from './orders.dto';
+import { OrderReferenceParamsDto, PlaceOrderBodyDto } from './orders.dto';
 import { OrdersService } from './orders.service';
 import { PlaceOrderRateLimitGuard } from './place-order-rate-limit.guard';
 
@@ -45,12 +45,12 @@ export class OrdersController {
     return order;
   }
 
-  @Get(':orderId')
+  @Get(':orderReference')
   @Header('Cache-Control', 'no-store')
   getOrder(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() { orderId }: OrderIdParamsDto,
+    @Param() { orderReference }: OrderReferenceParamsDto,
   ): Promise<OrderDetailDto> {
-    return this.orders.getOrder(user.clerkId, orderId);
+    return this.orders.getOrder(user.clerkId, orderReference);
   }
 }

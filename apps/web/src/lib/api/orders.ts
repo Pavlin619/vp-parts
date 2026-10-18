@@ -13,14 +13,14 @@ export function placeOrder(request: PlaceOrderRequestDto): Promise<PlaceOrderRes
   return apiFetch("/orders", { method: "POST", body: request, withSession: true });
 }
 
-export function getOrder(orderId: string): Promise<OrderDetailDto> {
-  return apiFetch(`/orders/${encodeURIComponent(orderId)}`, { withSession: true });
+export function getOrder(orderReference: string): Promise<OrderDetailDto> {
+  return apiFetch(`/orders/${encodeURIComponent(orderReference)}`, { withSession: true });
 }
 
-export const orderQueryOptions = (orderId: string) =>
+export const orderQueryOptions = (orderReference: string) =>
   queryOptions({
-    queryKey: ["orders", "order", orderId] as const,
-    queryFn: () => getOrder(orderId),
+    queryKey: ["orders", "order", orderReference] as const,
+    queryFn: () => getOrder(orderReference),
     retry: (failureCount: number, error: Error) =>
       !isRefusal(error) && failureCount < MAX_ORDER_OUTAGE_RETRIES,
   });

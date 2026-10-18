@@ -456,14 +456,14 @@ describe('CheckoutView', () => {
     it('places it at the quoted total, to the chosen office, paid on delivery', async () => {
       const user = userEvent.setup()
       readyToOrder()
-      jest.mocked(placeOrder).mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-000123' })
+      jest.mocked(placeOrder).mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-ORD-000123' })
 
       renderView({ profile: PROFILE })
       await user.click(await orderButton())
 
       expect(jest.mocked(placeOrder).mock.calls[0][0]).toEqual(ORDERED_TO_OFFICE)
       expect(await screen.findByRole('status')).toHaveTextContent('Потвърждаваме я…')
-      expect(replace).toHaveBeenCalledWith('/orders/order-1')
+      expect(replace).toHaveBeenCalledWith('/orders/VP-ORD-000123')
       expect(useCheckoutDelivery.getState().method).toBeNull()
     })
 
@@ -471,7 +471,7 @@ describe('CheckoutView', () => {
       const user = userEvent.setup()
       readyToOrder()
       useCheckoutDelivery.setState({ method: 'store-pickup' })
-      jest.mocked(placeOrder).mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-000123' })
+      jest.mocked(placeOrder).mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-ORD-000123' })
 
       renderView({ profile: PROFILE })
       await user.click(await orderButton())

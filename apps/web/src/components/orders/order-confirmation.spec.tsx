@@ -19,7 +19,7 @@ function renderConfirmation() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <OrderConfirmation orderId="order-1" />
+      <OrderConfirmation orderReference="VP-ORD-000123" />
     </QueryClientProvider>,
   )
 }
@@ -40,8 +40,8 @@ describe('OrderConfirmation', () => {
   it('reads the order it was opened for', async () => {
     renderConfirmation()
 
-    await screen.findByText('VP-000123')
-    expect(mockApiFetch).toHaveBeenCalledWith('/orders/order-1')
+    await screen.findByText('VP-ORD-000123')
+    expect(mockApiFetch).toHaveBeenCalledWith('/orders/VP-ORD-000123')
   })
 
   it('names the order by its reference', async () => {
@@ -50,13 +50,13 @@ describe('OrderConfirmation', () => {
     expect(
       await screen.findByRole('heading', { name: 'Благодарим, Иван! Поръчката е приета.' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('VP-000123')).toBeInTheDocument()
+    expect(screen.getByText('VP-ORD-000123')).toBeInTheDocument()
   })
 
   it('marks confirmation as the checkout step reached', async () => {
     renderConfirmation()
 
-    await screen.findByText('VP-000123')
+    await screen.findByText('VP-ORD-000123')
     expect(screen.getByText('Потвърждение')).toHaveAttribute('aria-current', 'step')
   })
 
@@ -104,6 +104,6 @@ describe('OrderConfirmation', () => {
     renderConfirmation()
     await user.click(await screen.findByRole('button', { name: 'Опитай отново' }))
 
-    expect(await screen.findByText('VP-000123')).toBeInTheDocument()
+    expect(await screen.findByText('VP-ORD-000123')).toBeInTheDocument()
   })
 })

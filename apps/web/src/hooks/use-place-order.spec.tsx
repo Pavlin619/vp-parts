@@ -76,7 +76,7 @@ describe('usePlaceOrder', () => {
     jest.mocked(useAuth).mockReturnValue({ isSignedIn: true } as ReturnType<typeof useAuth>)
     jest.mocked(useRouter).mockReturnValue({ replace } as unknown as ReturnType<typeof useRouter>)
     replace.mockReset()
-    mockPlaceOrder.mockReset().mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-000123' })
+    mockPlaceOrder.mockReset().mockResolvedValue({ orderId: 'order-1', orderReference: 'VP-ORD-000123' })
     useCart.setState({ cartId: 'cart-1', version: 7 })
     useCheckoutDelivery.setState({
       method: 'courier-office',
@@ -153,7 +153,7 @@ describe('usePlaceOrder', () => {
 
       act(() => result.current.place())
 
-      await waitFor(() => expect(replace).toHaveBeenCalledWith('/orders/order-1'))
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/orders/VP-ORD-000123'))
       expect(result.current.isPlaced).toBe(true)
       expect(useCheckoutDelivery.getState().method).toBeNull()
       expect(useCheckoutPayment.getState().method).toBeNull()
