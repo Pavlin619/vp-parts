@@ -986,7 +986,7 @@ itself; the client sends no lines, weights or prices.
 
 Response `201` (`PlaceOrderResponseDto`):
 ```json
-{ "orderId": "uuid", "orderReference": "VP-000123" }
+{ "orderId": "uuid", "orderReference": "VP-ORD-000123" }
 ```
 
 Response `200`, same body: the cart was already ordered by this customer (a retry
@@ -1020,7 +1020,7 @@ Response `200`:
   "orders": [
     {
       "orderId": "uuid",
-      "orderReference": "VP-20260605-00001",
+      "orderReference": "VP-ORD-000001",
       "createdAt": "2026-06-05T10:00:00Z",
       "itemCount": 3,
       "totalIncVat": 8500,
@@ -1034,13 +1034,13 @@ Response `200`:
 
 ### Order Detail
 
-**`GET /orders/:orderId`** (Protected · `Cache-Control: no-store`)
+**`GET /orders/:orderReference`** (Protected · `Cache-Control: no-store`)
 
 Response `200` (`OrderDetailDto`); every amount is EUR cents including VAT:
 ```json
 {
   "orderId": "uuid",
-  "orderReference": "VP-000123",
+  "orderReference": "VP-ORD-000123",
   "status": "PROCESSING",
   "createdAt": "2026-10-16T10:00:00Z",
   "items": [
@@ -1079,7 +1079,7 @@ customer — never `403`.
 
 ### Order Status SSE Stream
 
-**`GET /orders/:orderId/status`** (Protected)
+**`GET /orders/:orderReference/status`** (Protected)
 
 Server-Sent Events stream. Emits a message whenever the order status changes.
 
@@ -1094,7 +1094,7 @@ The stream is held open until the order reaches a terminal state (`DELIVERED`, `
 
 ### Cancel Order Request
 
-**`POST /orders/:orderId/cancel`** (Protected)
+**`POST /orders/:orderReference/cancel`** (Protected)
 
 Only available for orders in `PROCESSING` status.
 

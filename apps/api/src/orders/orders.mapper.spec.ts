@@ -7,12 +7,12 @@ const CREATED_AT = new Date('2026-10-16T08:32:00.000Z');
 function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return {
     id: 'order-1',
-    orderReference: 'VP-000123',
+    orderReference: 'VP-ORD-000123',
     customerId: 'customer-1',
     cartId: 'cart-1',
     status: 'PROCESSING',
     deliveryMethod: 'COURIER_OFFICE',
-    shippingMethod: 'ECONT',
+    carrier: 'ECONT',
     deliverySnapshot: {
       office: {
         code: '1127',
@@ -36,7 +36,6 @@ function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
     contactPhone: '+359888123456',
     contactEmail: 'ivan@example.com',
     termsVersion: '2026-10-17',
-    courierName: null,
     trackingReference: null,
     vehicleTag: null,
     jobReference: null,
@@ -75,7 +74,7 @@ describe('toOrderDetailDto', () => {
 
     expect(dto).toMatchObject({
       orderId: 'order-1',
-      orderReference: 'VP-000123',
+      orderReference: 'VP-ORD-000123',
       status: 'PROCESSING',
       createdAt: '2026-10-16T08:32:00.000Z',
       goodsTotal: 4845,
@@ -152,7 +151,7 @@ describe('toOrderDetailDto', () => {
     const dto = toOrderDetailDto(
       order({
         deliveryMethod: 'STORE_PICKUP',
-        shippingMethod: null,
+        carrier: null,
         deliverySnapshot: {},
         expectedDeliveryDate: null,
       }),
@@ -165,9 +164,7 @@ describe('toOrderDetailDto', () => {
   });
 
   it('fails loudly for a courier order missing what it was sent with', () => {
-    expect(() => toOrderDetailDto(order({ shippingMethod: null }))).toThrow(
-      'order-1',
-    );
+    expect(() => toOrderDetailDto(order({ carrier: null }))).toThrow('order-1');
     expect(() => toOrderDetailDto(order({ deliverySnapshot: {} }))).toThrow(
       'order-1',
     );

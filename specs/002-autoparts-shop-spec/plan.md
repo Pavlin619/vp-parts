@@ -115,7 +115,7 @@ apps/
 │       │       │   └── page.tsx       # Checkout flow (Client Component)
 │       │       ├── orders/
 │       │       │   ├── page.tsx       # Order history (Server Component)
-│       │       │   └── [orderId]/
+│       │       │   └── [orderReference]/
 │       │       │       └── page.tsx   # Order detail (Client Component + SSE)
 │       │       └── account/
 │       │           └── page.tsx       # Account settings (Client Component)

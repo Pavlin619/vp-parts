@@ -44,9 +44,9 @@ describe('placeOrder', () => {
 
 describe('getOrder', () => {
   it('reads the order as the signed-in customer', () => {
-    getOrder('order-1')
+    getOrder('VP-ORD-000123')
 
-    expect(mockApiFetch).toHaveBeenCalledWith('/orders/order-1', { withSession: true })
+    expect(mockApiFetch).toHaveBeenCalledWith('/orders/VP-ORD-000123', { withSession: true })
   })
 
   it('escapes the id into the path', () => {
@@ -58,18 +58,18 @@ describe('getOrder', () => {
 
 describe('orderQueryOptions', () => {
   it('keys the order by its id', () => {
-    expect(orderQueryOptions('order-1').queryKey).toEqual(['orders', 'order', 'order-1'])
+    expect(orderQueryOptions('VP-ORD-000123').queryKey).toEqual(['orders', 'order', 'VP-ORD-000123'])
   })
 
   it('queryFn reads the order', () => {
-    orderQueryOptions('order-1').queryFn?.({} as never)
+    orderQueryOptions('VP-ORD-000123').queryFn?.({} as never)
 
-    expect(mockApiFetch).toHaveBeenCalledWith('/orders/order-1', { withSession: true })
+    expect(mockApiFetch).toHaveBeenCalledWith('/orders/VP-ORD-000123', { withSession: true })
   })
 
   // Someone else's order, or a bad id, answers the same on a retry.
   it('does not retry a refusal, but retries an outage twice', () => {
-    const retryIf = orderQueryOptions('order-1').retry as (count: number, error: Error) => boolean
+    const retryIf = orderQueryOptions('VP-ORD-000123').retry as (count: number, error: Error) => boolean
 
     expect(retryIf(0, new ApiError(404, 'ORDER_NOT_FOUND'))).toBe(false)
     expect(retryIf(0, new ApiError(503, 'INTERNAL_ERROR'))).toBe(true)

@@ -6,6 +6,7 @@ import {
   IsObject,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -92,7 +93,7 @@ export class PlaceOrderBodyDto implements PlaceOrderRequestDto {
     | StorePickupDeliveryBodyDto;
 }
 
-export class OrderIdParamsDto {
-  @IsUUID()
-  orderId!: string;
+export class OrderReferenceParamsDto {
+  @Matches(/^VP-ORD-\d{6,}$/)
+  orderReference!: string;
 }

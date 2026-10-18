@@ -288,13 +288,13 @@
 - [ ] T119 [US6] Implement SqsConsumer (poll fulfillment-events queue; update Order status via aggregate and OrdersRepository; trigger SseService.broadcast and EmailWorker per transition) in `apps/api/src/events/sqs.consumer.ts`
 - [ ] T120 [US6] Implement EmailWorker (send transactional email per OrderStatus using configured email provider; template per status with plain-language description and order reference) in `apps/api/src/events/email.worker.ts`
 - [ ] T121 [US6] Create EventsModule (SqsPublisher, SqsConsumer, EmailWorker) and barrel in `apps/api/src/events/index.ts`
-- [ ] T122 [US6] Implement use-order-status-sse hook (EventSource to GET /orders/:orderId/status, update state on message, cleanup EventSource on unmount) in `apps/web/src/hooks/use-order-status-sse.ts`
+- [ ] T122 [US6] Implement use-order-status-sse hook (EventSource to GET /orders/:orderReference/status, update state on message, cleanup EventSource on unmount) in `apps/web/src/hooks/use-order-status-sse.ts`
 - [ ] T123 [P] [US6] Create OrderStatusBadge component (four plain-language labels: Processing / Items Prepared / On the Way / Delivered; with description text) in `apps/web/src/components/orders/order-status-badge.tsx`
 - [ ] T124 [P] [US6] Create OrderTimeline component (append-only list of status transitions with timestamps from statusHistory) in `apps/web/src/components/orders/order-timeline.tsx`
 - [ ] T125 [P] [US6] Create SSEStatusUpdater client component (mounts use-order-status-sse, calls parent onStatusChange callback) in `apps/web/src/components/orders/sse-status-updater.tsx`
 - [ ] T126 [US6] Implement orders API functions (listOrders, getOrderDetail) in `apps/web/src/lib/api/orders.ts`
 - [ ] T127 [US6] Implement order history page (Server Component, reverse chronological, order reference / date / item count / total / status per row) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/orders/page.tsx`
-- [ ] T128 [US6] Implement order detail page (Client Component + SSEStatusUpdater; full item list; OrderTimeline; cancellation button for PROCESSING status only; courier tracking reference when dispatched) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/orders/[orderId]/page.tsx`
+- [ ] T128 [US6] Implement order detail page (Client Component + SSEStatusUpdater; full item list; OrderTimeline; cancellation button for PROCESSING status only; courier tracking reference when dispatched) with `loading.tsx` and `error.tsx` in `apps/web/src/app/(shop)/orders/[orderReference]/page.tsx`
 
 **Checkpoint**: Customer sees order history and live status updates without page refresh. Email notifications fire on each status transition.
 
@@ -387,11 +387,11 @@ Both need a signed-in customer. The picker's starting order and why are in `docs
 
 ### Tests for User Story 10
 
-- [ ] T152 [US10] Write integration tests for all fulfillment SQS event types (FulfillmentItemsReady, OrderShipped with courierName + trackingReference, OrderDelivered, OrderFulfillmentFailed) in `apps/api/test/fulfillment.e2e-spec.ts`
+- [ ] T152 [US10] Write integration tests for all fulfillment SQS event types (FulfillmentItemsReady, OrderShipped with trackingReference, OrderDelivered, OrderFulfillmentFailed) in `apps/api/test/fulfillment.e2e-spec.ts`
 
 ### Implementation for User Story 10
 
-- [ ] T153 [US10] Extend SqsConsumer to handle OrderShipped event (set Order.courierName and Order.trackingReference from event payload) in `apps/api/src/events/sqs.consumer.ts`
+- [ ] T153 [US10] Extend SqsConsumer to handle OrderShipped event (set Order.trackingReference from event payload) in `apps/api/src/events/sqs.consumer.ts`
 - [ ] T154 [US10] Extend SqsConsumer to handle OrderDelivered and OrderFulfillmentFailed events with correct Order aggregate transitions in `apps/api/src/events/sqs.consumer.ts`
 - [ ] T155 [US10] Add daily summary query to OrdersRepository (count orders received/pending/dispatched/delivered today using createdAt index) in `apps/api/src/orders/orders.repository.ts`
 

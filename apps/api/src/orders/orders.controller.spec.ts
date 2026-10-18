@@ -21,7 +21,7 @@ const REQUEST: PlaceOrderRequestDto = {
   delivery: { method: DeliveryMethod.STORE_PICKUP },
 };
 
-const PLACED = { orderId: 'order-1', orderReference: 'VP-000042' };
+const PLACED = { orderId: 'order-1', orderReference: 'VP-ORD-000042' };
 
 describe('OrdersController', () => {
   const placeOrder = jest.fn();
@@ -86,9 +86,9 @@ describe('OrdersController', () => {
       getOrder.mockResolvedValue(order);
 
       await expect(
-        controller.getOrder(USER, { orderId: 'order-1' }),
+        controller.getOrder(USER, { orderReference: 'VP-ORD-000042' }),
       ).resolves.toBe(order);
-      expect(getOrder).toHaveBeenCalledWith('user_1', 'order-1');
+      expect(getOrder).toHaveBeenCalledWith('user_1', 'VP-ORD-000042');
     });
   });
 });

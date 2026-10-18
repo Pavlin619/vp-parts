@@ -126,7 +126,7 @@ All decisions derived from `ARCHITECTURE.md` (authoritative), `spec.md`, and `co
 
 ## 6. SSE for Real-Time Order Status
 
-**Decision**: NestJS exposes `GET /orders/:orderId/status` as a Server-Sent Events stream. When the `SqsConsumerService` processes a `fulfillment-events` message, it updates `shop.orders.status` in Postgres and notifies the `SseService` which broadcasts the new status to all open SSE connections for that `orderId`.
+**Decision**: NestJS exposes `GET /orders/:orderReference/status` as a Server-Sent Events stream. When the `SqsConsumerService` processes a `fulfillment-events` message, it updates `shop.orders.status` in Postgres and notifies the `SseService` which broadcasts the new status to all open SSE connections for that `orderId`.
 
 **In-memory connection registry**: `SseService` maintains a `Map<orderId, Set<Subject>>`. When a customer opens the order detail page, a new `Subject` (RxJS) is registered. When the customer disconnects (SSE `complete`), the Subject is removed. When an event arrives, the service calls `.next()` on all subjects for the affected order.
 

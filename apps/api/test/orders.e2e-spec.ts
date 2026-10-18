@@ -310,7 +310,7 @@ describe('Orders (e2e)', () => {
 
       expect(response.body).toEqual({
         orderId: expect.any(String),
-        orderReference: expect.stringMatching(/^VP-\d{6,}$/),
+        orderReference: expect.stringMatching(/^VP-ORD-\d{6,}$/),
       });
       expect(response.headers['cache-control']).toBe('no-store');
 
@@ -321,7 +321,7 @@ describe('Orders (e2e)', () => {
       expect(order).toMatchObject({
         cartId: cart.id,
         deliveryMethod: 'COURIER_OFFICE',
-        shippingMethod: 'ECONT',
+        carrier: 'ECONT',
         deliverySnapshot: {
           office: {
             code: '1127',
@@ -409,7 +409,7 @@ describe('Orders (e2e)', () => {
       });
       expect(order).toMatchObject({
         deliveryMethod: 'STORE_PICKUP',
-        shippingMethod: null,
+        carrier: null,
         deliveryPrice: 0,
         cashOnDeliveryFee: 0,
         total: GOODS,
@@ -637,7 +637,7 @@ describe('Orders (e2e)', () => {
       }).expect(201);
 
       const response = await request(server())
-        .get(`/orders/${placed.orderId}`)
+        .get(`/orders/${placed.orderReference}`)
         .set('Authorization', auth(clerkId))
         .expect(200);
 
@@ -674,7 +674,7 @@ describe('Orders (e2e)', () => {
       const stranger = await signUp();
 
       const response = await request(server())
-        .get(`/orders/${placed.orderId}`)
+        .get(`/orders/${placed.orderReference}`)
         .set('Authorization', auth(stranger))
         .expect(404);
 
@@ -685,9 +685,22 @@ describe('Orders (e2e)', () => {
     });
 
     it('refuses a visitor who is not signed in', async () => {
-      await request(server())
-        .get('/orders/7b0c2f4e-35a4-4f43-8f4c-6d1b1d3c2a10')
-        .expect(401);
+      await request(server()).get('/orders/VP-ORD-000001').expect(401);
+    });
+
+    it('refuses an order id where the reference belongs', async () => {
+      const { clerkId, cart } = await customerWithCart();
+      const { body: placed } = await placeOrder(clerkId, cart).expect(201);
+
+      const response = await request(server())
+        .get(`/orders/${placed.orderId}`)
+        .set('Authorization', auth(clerkId))
+        .expect(400);
+
+      expect(response.body).toEqual({
+        statusCode: 400,
+        errorCode: AppErrorCode.VALIDATION_ERROR,
+      });
     });
   });
 
@@ -715,7 +728,7 @@ describe('Orders (e2e)', () => {
         expectedTotalCents: (quote as DeliveryQuoteDto).money?.total,
       }).expect(201);
       const { body: order } = await request(server())
-        .get(`/orders/${placed.orderId}`)
+        .get(`/orders/${placed.orderReference}`)
         .set('Authorization', auth(clerkId))
         .expect(200);
 

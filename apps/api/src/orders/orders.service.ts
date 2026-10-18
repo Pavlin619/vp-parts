@@ -91,10 +91,13 @@ export class OrdersService {
     return this.settle(placement);
   }
 
-  async getOrder(clerkId: string, orderId: string): Promise<OrderDetailDto> {
+  async getOrder(
+    clerkId: string,
+    orderReference: string,
+  ): Promise<OrderDetailDto> {
     const customer = await this.customers.findByClerkId(clerkId);
     const order = customer
-      ? await this.orders.findOwned(orderId, customer.id)
+      ? await this.orders.findOwned(orderReference, customer.id)
       : null;
 
     if (!order) {

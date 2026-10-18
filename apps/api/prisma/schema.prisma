@@ -211,7 +211,7 @@ model ProductTypeParcelProfile {
 /// the customer pays exactly these figures — see docs/ORDERS.md.
 model Order {
   id                   String          @id @default(uuid())
-  /// `VP-000123`, numbered from the `order_reference_seq` sequence.
+  /// `VP-ORD-000123`, numbered from the `order_reference_seq` sequence.
   orderReference       String          @unique
   customerId           String
   /// The cart this order was placed from. Unique, so the database itself
@@ -220,8 +220,8 @@ model Order {
   cartId               String?         @unique
   status               OrderStatus     @default(PROCESSING)
   deliveryMethod       DeliveryMethod
-  /// The carrier. Null for store pickup.
-  shippingMethod       ShippingMethod?
+  /// Null for store pickup.
+  carrier              ShippingMethod?
   /// The destination as the customer chose it: the office, or the address.
   deliverySnapshot     Json
   expectedDeliveryDate DateTime?       @db.Date
@@ -240,7 +240,6 @@ model Order {
   contactEmail         String
   /// Which terms the customer ordered under.
   termsVersion         String
-  courierName          String?
   trackingReference    String?
   vehicleTag           String?
   jobReference         String?
