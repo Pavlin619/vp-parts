@@ -90,6 +90,7 @@ describe('useDeliverySummary', () => {
       priceIncVatCents: 714,
       cashOnDeliveryFeeIncVatCents: null,
       expectedDeliveryDate: '2026-09-30',
+      cartVersion: 4,
       money: null,
     })
     expect(getQuote).toHaveBeenCalledWith({

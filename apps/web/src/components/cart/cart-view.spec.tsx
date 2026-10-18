@@ -31,6 +31,24 @@ jest.mock('@/lib/api/catalog', () => ({
   }),
 }))
 
+// Stands in for the server's pricing of the cart it holds: the selected lines at 12,00 € each.
+const getTotals = jest.fn(() => {
+  const { version, lines } = useCart.getState()
+  const total = lines
+    .filter((entry) => entry.isSelected)
+    .reduce((sum, entry) => sum + 1200 * entry.quantity, 0)
+
+  return Promise.resolve({ cartVersion: version, goodsTotal: total, netAmount: 0, vatAmount: 0, total })
+})
+
+jest.mock('@/lib/api/checkout', () => ({
+  checkoutTotalsQueryOptions: (cartId: string, cartVersion: number) => ({
+    queryKey: ['checkout', 'totals', cartId, cartVersion],
+    queryFn: () => getTotals(),
+    enabled: cartId !== '',
+  }),
+}))
+
 // The cart writes through to the server; these cases are about what the page
 // shows for a cart already in the mirror, not about that request. Each write
 // is echoed straight back so it always lands, keeping the write-failure
@@ -45,7 +63,7 @@ const cart = jest.mocked(cartApi)
 function echoedCart(): CartDto {
   return {
     id: 'cart-1',
-    version: 1,
+    version: useCart.getState().version + 1,
     lines: useCart.getState().lines.map((entry) => ({
       ...entry,
       addedAt: '2026-09-01T10:00:00.000Z',
@@ -131,7 +149,7 @@ describe('CartView', () => {
     renderView()
 
     // Once on the line, once as the cart total.
-    expect(await screen.findAllByText('24,00 €')).toHaveLength(2)
+    await waitFor(() => expect(screen.getAllByText('24,00 €')).toHaveLength(2))
     expect(screen.getByText('12,00 €')).toBeInTheDocument()
     expect(getAvailability).toHaveBeenCalledWith([
       expect.objectContaining({ brandId: '268', articleNumber: 'WL6340' }),
@@ -226,12 +244,14 @@ describe('CartView', () => {
     renderView()
 
     // Both the line total and the cart total, before anything is deselected.
-    expect(await screen.findAllByText('24,00 €')).toHaveLength(2)
+    await waitFor(() => expect(screen.getAllByText('24,00 €')).toHaveLength(2))
 
     await user.click(screen.getByRole('checkbox', { name: 'Избери WL6340' }))
 
-    // The line keeps its own total; the summary's three figures drop to zero.
-    expect(await screen.findAllByText('0,00 €')).toHaveLength(3)
+    // The line keeps its own total; the API's total for the selection drops to zero.
+    await waitFor(() =>
+      expect(screen.getByText('Общо с ДДС', { selector: 'dt' }).nextSibling).toHaveTextContent('0,00 €'),
+    )
     expect(screen.getAllByText('24,00 €')).toHaveLength(1)
     expect(screen.getByText('Маслен филтър')).toBeInTheDocument()
   })

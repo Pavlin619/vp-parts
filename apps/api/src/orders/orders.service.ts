@@ -145,6 +145,7 @@ function toOrderItem({
     articleNumber: line.article.articleNumber,
     brandName: line.brandName,
     description: line.description,
+    thumbnailUrl: line.thumbnailUrl,
     quantity: line.quantity,
     unitPrice,
     lineTotal: unitPrice * line.quantity,

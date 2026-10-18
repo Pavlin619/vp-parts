@@ -264,7 +264,7 @@ describe('Orders (e2e)', () => {
         brandName: 'BOSCH',
         brandLogoUrl: null,
         description: `Част ${articleNumber}`,
-        thumbnailUrl: null,
+        thumbnailUrl: `https://images.example/${articleNumber}.jpg`,
         addedAtPriceIncVat: null,
       })
       .expect(201);
@@ -327,6 +327,8 @@ describe('Orders (e2e)', () => {
             code: '1127',
             name: 'София Център',
             address: 'София ул. Граф Игнатиев 1',
+            weekdayHours: null,
+            saturdayHours: null,
           },
         },
         parcelWeightGrams: 10000,
@@ -350,6 +352,7 @@ describe('Orders (e2e)', () => {
           expect.objectContaining({
             brandId: '30',
             articleNumber: 'DISC',
+            thumbnailUrl: 'https://images.example/DISC.jpg',
             quantity: 2,
             unitPrice: 1299,
             lineTotal: 2598,

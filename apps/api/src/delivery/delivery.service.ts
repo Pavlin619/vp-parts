@@ -357,9 +357,9 @@ function toDestination(delivery: CourierDelivery): DeliveryDestinationDto {
 
 function toOrderDestination(checked: CheckedDestination): OrderDestination {
   if (checked.type === DeliveryDestinationType.OFFICE) {
-    const { code, name, address } = checked.office;
+    const { code, name, address, weekdayHours, saturdayHours } = checked.office;
 
-    return { office: { code, name, address } };
+    return { office: { code, name, address, weekdayHours, saturdayHours } };
   }
 
   const { address, place } = checked;

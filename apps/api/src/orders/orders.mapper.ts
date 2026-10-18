@@ -51,6 +51,7 @@ function toOrderItemDto(item: OrderRecord['items'][number]): OrderItemDto {
     articleNumber: item.articleNumber,
     brandName: item.brandName,
     description: item.description,
+    thumbnailUrl: item.thumbnailUrl,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     lineTotal: item.lineTotal,

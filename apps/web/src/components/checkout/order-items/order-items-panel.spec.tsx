@@ -18,7 +18,6 @@ function row(articleNumber: string, quantity: number): CartRowModel {
     availability: undefined,
     unitPriceExVat: null,
     unitPriceIncVat: null,
-    lineTotalExVat: null,
     lineTotalIncVat: null,
     issue: null,
     availableQuantity: null,

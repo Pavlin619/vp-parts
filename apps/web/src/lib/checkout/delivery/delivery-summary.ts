@@ -1,12 +1,12 @@
 import {
   AppErrorCode,
   DeliveryDestinationType,
+  type CartTotalsDto,
   type DeliveryDestinationDto,
   type DeliveryQuoteDto,
   type OrderMoneyDto,
 } from "@vp-parts-shop/shared";
 import { ApiError } from "@/lib/api";
-import type { CartTotals } from "@/lib/cart/cart-totals";
 import type { DeliveryMethod } from "./delivery-methods";
 import type { ParcelCheck } from "./office-availability";
 
@@ -27,15 +27,15 @@ export type DeliverySummary =
       /** Null unless the courier collects the money on delivery. */
       cashOnDeliveryFeeIncVatCents: number | null;
       expectedDeliveryDate: string | null;
+      /** The cart version the quote priced. */
+      cartVersion: number;
       /** The whole order's money with this delivery; null while a selected line cannot be ordered. */
       money: OrderMoneyDto | null;
     };
 
-/** The money the summary shows. */
-export interface SummaryMoney {
-  netAmount: number;
-  vatAmount: number;
-  total: number;
+/** The money the summary shows, as the API priced it for one cart version. */
+export interface SummaryMoney extends CartTotalsDto {
+  /** Whether the total is the whole order's: delivery priced, or a pickup that costs nothing. */
   isDeliveryIncluded: boolean;
 }
 
@@ -96,22 +96,32 @@ export function resolveDeliverySummary({
 }
 
 /**
- * The quote's money once a delivery is priced, else the goods alone. Never a
- * sum made here: the order is charged the quote's total, VAT on delivery included.
+ * The quote's money once a delivery is priced, else the goods totals; null
+ * until either is read. Never a sum made here: the order is charged the
+ * quote's total, VAT on delivery included.
  */
-export function summaryMoney(goods: CartTotals, delivery: DeliverySummary): SummaryMoney {
+export function summaryMoney(
+  goods: CartTotalsDto | undefined,
+  delivery: DeliverySummary,
+): SummaryMoney | null {
   if (delivery.kind === "quoted" && delivery.money) {
-    const { netAmount, vatAmount, total } = delivery.money;
+    const { goodsTotal, netAmount, vatAmount, total } = delivery.money;
 
-    return { netAmount, vatAmount, total, isDeliveryIncluded: true };
+    return {
+      cartVersion: delivery.cartVersion,
+      goodsTotal,
+      netAmount,
+      vatAmount,
+      total,
+      isDeliveryIncluded: true,
+    };
   }
 
-  return {
-    netAmount: goods.subtotalExVat,
-    vatAmount: goods.vatAmount,
-    total: goods.totalIncVat,
-    isDeliveryIncluded: delivery.kind === "pickup",
-  };
+  if (!goods) {
+    return null;
+  }
+
+  return { ...goods, isDeliveryIncluded: delivery.kind === "pickup" };
 }
 
 /** "850 г" under a kilo, else kilograms with a decimal comma and no needless zeros. */
@@ -136,14 +146,20 @@ function summariseQuote(
   }
 
   if (quote.data) {
-    const { priceIncVatCents, cashOnDeliveryFeeIncVatCents, expectedDeliveryDate, money } =
-      quote.data;
+    const {
+      priceIncVatCents,
+      cashOnDeliveryFeeIncVatCents,
+      expectedDeliveryDate,
+      cartVersion,
+      money,
+    } = quote.data;
 
     return {
       kind: "quoted",
       priceIncVatCents,
       cashOnDeliveryFeeIncVatCents,
       expectedDeliveryDate,
+      cartVersion,
       money,
     };
   }

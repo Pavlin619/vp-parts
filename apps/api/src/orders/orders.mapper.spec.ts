@@ -14,7 +14,13 @@ function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
     deliveryMethod: 'COURIER_OFFICE',
     shippingMethod: 'ECONT',
     deliverySnapshot: {
-      office: { code: '1127', name: 'София', address: 'ул. 1' },
+      office: {
+        code: '1127',
+        name: 'София',
+        address: 'ул. 1',
+        weekdayHours: { opensAt: '09:00', closesAt: '18:00' },
+        saturdayHours: null,
+      },
     },
     expectedDeliveryDate: new Date('2026-10-17'),
     parcelWeightGrams: 4000,
@@ -44,6 +50,7 @@ function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
         articleNumber: 'DISC',
         brandName: 'BOSCH',
         description: 'Диск',
+        thumbnailUrl: 'https://images.example/DISC.jpg',
         quantity: 2,
         unitPrice: 1299,
         lineTotal: 2598,
@@ -94,6 +101,7 @@ describe('toOrderDetailDto', () => {
         articleNumber: 'DISC',
         brandName: 'BOSCH',
         description: 'Диск',
+        thumbnailUrl: 'https://images.example/DISC.jpg',
         quantity: 2,
         unitPrice: 1299,
         lineTotal: 2598,
@@ -105,7 +113,13 @@ describe('toOrderDetailDto', () => {
     expect(toOrderDetailDto(order()).delivery).toEqual({
       method: DeliveryMethod.COURIER_OFFICE,
       carrier: ShippingMethod.ECONT,
-      office: { code: '1127', name: 'София', address: 'ул. 1' },
+      office: {
+        code: '1127',
+        name: 'София',
+        address: 'ул. 1',
+        weekdayHours: { opensAt: '09:00', closesAt: '18:00' },
+        saturdayHours: null,
+      },
       expectedDeliveryDate: '2026-10-17',
     });
   });

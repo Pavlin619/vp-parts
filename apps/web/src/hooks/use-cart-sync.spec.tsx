@@ -105,6 +105,33 @@ describe('useCartSync', () => {
     expect(useCart.getState().lines).toHaveLength(1)
   })
 
+  // Writes answer into the mirror, not the query, so a read equal to the last
+  // one — empty before the parts went in, empty again once all were ordered —
+  // is still news to the mirror.
+  it('takes a read that answers the same as the one before', async () => {
+    api.getCart.mockImplementation(async () => ({ id: '', version: 0, lines: [] }))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const cartQuery = { queryKey: api.cartQueryOptions.queryKey }
+
+    renderHook(() => useCartSync(), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() =>
+      expect(client.getQueryState(cartQuery.queryKey)?.status).toBe('success'),
+    )
+    act(() => {
+      useCart.setState({ cartId: 'cart-1', version: 3, lines: SERVER_CART.lines })
+    })
+
+    await act(() => client.invalidateQueries(cartQuery))
+
+    expect(api.getCart).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(useCart.getState().cartId).toBe(''))
+    expect(useCart.getState().lines).toHaveLength(0)
+  })
+
   // Nothing else surfaces a failed background sync, so the banner every other
   // cart surface already renders is what has to say this happened.
   it('names a failed read as the reason the sync banner shows', async () => {

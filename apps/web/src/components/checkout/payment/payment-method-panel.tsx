@@ -11,13 +11,11 @@ const METHOD_ICONS: Record<PaymentMethod, ReactNode> = {
   [PaymentMethod.CASH_ON_DELIVERY]: <Banknote />,
 };
 
-const METHOD_FEES: Partial<Record<PaymentMethod, ReactNode>> = {
-  [PaymentMethod.CARD]: (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-ok-soft px-2 font-display text-[11px] font-bold text-ok">
-      0,00 € такса
-    </span>
-  ),
-};
+const COMING_SOON = (
+  <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-bg-sunken px-2 text-[11px] font-semibold text-ink-3">
+    Очаквайте скоро
+  </span>
+);
 
 interface PaymentMethodPanelProps {
   method: PaymentMethod | null;
@@ -45,8 +43,10 @@ export function PaymentMethodPanel({ method, onMethodChange }: PaymentMethodPane
             label={option.label}
             description={option.description}
             icon={METHOD_ICONS[option.id]}
-            trailing={METHOD_FEES[option.id]}
-            isSelected={method === option.id}
+            trailing={option.isAvailable ? undefined : COMING_SOON}
+            // A method remembered from before it was withdrawn is not a choice made.
+            isSelected={option.isAvailable && method === option.id}
+            isDisabled={!option.isAvailable}
             onSelect={() => onMethodChange(option.id)}
           />
         ))}

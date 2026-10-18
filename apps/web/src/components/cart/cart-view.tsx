@@ -11,6 +11,7 @@ import {
 } from "@/hooks/use-cart";
 import { useCartAvailability } from "@/hooks/use-cart-availability";
 import { useCartStatus } from "@/hooks/use-cart-status";
+import { useCheckoutTotals, type CheckoutTotals } from "@/hooks/use-checkout-totals";
 import { resolveOrderPromise } from "@/lib/cart/cart-promise";
 import {
   cartTotals,
@@ -51,6 +52,7 @@ export function CartView() {
   const clear = useCart((state) => state.clear);
 
   const { rows, isPending, isError, hasPrices, refetch } = useCartAvailability(lines);
+  const goods = useCheckoutTotals();
 
   // The summary answers "what am I about to order", so it counts only the
   // selected lines; the heading counts what the cart holds.
@@ -76,12 +78,16 @@ export function CartView() {
         <CartLines
           rows={rows}
           totals={totals}
+          goods={goods}
           itemCount={itemCount}
           promise={promise}
           isPending={isPending}
           isError={isError}
           hasPrices={hasPrices}
-          onRetry={refetch}
+          onRetry={() => {
+            refetch();
+            goods.refetch();
+          }}
           onQuantityChange={setQuantity}
           onToggleSelected={toggleLineSelected}
           onToggleAll={setAllLinesSelected}
@@ -96,6 +102,7 @@ export function CartView() {
 interface CartLinesProps {
   rows: CartRowModel[];
   totals: CartTotals;
+  goods: CheckoutTotals;
   itemCount: number;
   /** The deadline the selected lines are racing, if there is one. */
   promise: DeliveryPromise | null;
@@ -120,6 +127,7 @@ interface CartLinesProps {
 function CartLines({
   rows,
   totals,
+  goods,
   itemCount,
   promise,
   isPending,
@@ -175,6 +183,9 @@ function CartLines({
         <aside className="xl:sticky xl:top-24">
           <CartSummary
             totals={totals}
+            money={goods.totals}
+            isMoneyFailed={goods.isError}
+            isMoneyRecalculating={goods.isRecalculating}
             isPending={isPending}
             hasPrices={hasPrices}
             promise={promise}

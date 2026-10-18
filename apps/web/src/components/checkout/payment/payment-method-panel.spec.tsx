@@ -26,18 +26,33 @@ describe('PaymentMethodPanel', () => {
     expect(screen.getByRole('radio', { name: /Плащане с карта/ })).not.toBeChecked()
   })
 
-  it('says paying by card costs nothing extra', () => {
-    renderPanel(null)
+  // Card waits on its contract; nothing may promise it before then.
+  it('shows card as coming soon, without a fee, and does not let it be picked', async () => {
+    const user = userEvent.setup()
+    const onMethodChange = renderPanel(null)
 
-    expect(screen.getByText('0,00 € такса')).toBeInTheDocument()
+    const card = screen.getByRole('radio', { name: /Плащане с карта/ })
+    expect(card).toBeDisabled()
+    expect(screen.getByText('Очаквайте скоро')).toBeInTheDocument()
+    expect(screen.queryByText(/такса/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('Плащане с карта'))
+
+    expect(onMethodChange).not.toHaveBeenCalled()
+  })
+
+  it('does not show a card choice remembered from before as chosen', () => {
+    renderPanel(PaymentMethod.CARD)
+
+    expect(screen.getByRole('radio', { name: /Плащане с карта/ })).not.toBeChecked()
   })
 
   it('reports the method picked', async () => {
     const user = userEvent.setup()
     const onMethodChange = renderPanel(null)
 
-    await user.click(screen.getByRole('radio', { name: /Плащане с карта/ }))
+    await user.click(screen.getByRole('radio', { name: /Наложен платеж/ }))
 
-    expect(onMethodChange).toHaveBeenCalledWith(PaymentMethod.CARD)
+    expect(onMethodChange).toHaveBeenCalledWith(PaymentMethod.CASH_ON_DELIVERY)
   })
 })

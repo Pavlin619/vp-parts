@@ -49,16 +49,16 @@ beforeEach(() => {
 })
 
 describe('ContactPanel', () => {
-  it('offers sign-in, registration and a quick order', () => {
-    render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
+  it('offers sign-in and registration, not yet a quick order', () => {
+    render(<ContactPanel mode="register" onModeChange={jest.fn()} />)
 
     expect(
       screen.getByRole('radiogroup', { name: 'Данни за контакт' }),
     ).toBeInTheDocument()
-    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getAllByRole('radio')).toHaveLength(2)
     expect(screen.getByRole('radio', { name: /Вход/ })).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: /Регистрация/ })).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: /Бърза поръчка/ })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /Регистрация/ })).toBeChecked()
+    expect(screen.queryByRole('radio', { name: /Бърза поръчка/ })).not.toBeInTheDocument()
   })
 
   it('preselects nothing and asks for nothing until a mode is picked', () => {
@@ -74,7 +74,7 @@ describe('ContactPanel', () => {
 
   it('reports the mode the customer picks', async () => {
     const onModeChange = jest.fn()
-    render(<ContactPanel mode="quick" onModeChange={onModeChange} />)
+    render(<ContactPanel mode="register" onModeChange={onModeChange} />)
 
     await userEvent.click(screen.getByRole('radio', { name: /Вход/ }))
 
@@ -134,10 +134,9 @@ describe('ContactPanel', () => {
     expect(screen.getByTestId('signed-in-contact')).toBeInTheDocument()
   })
 
-  // Signed out, the panel offers a quick order, so the cart can still be ordered.
   it('signs out a signed-in customer, keeping them at checkout', async () => {
     mockSession({ isLoaded: true, isSignedIn: true })
-    render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
+    render(<ContactPanel mode={null} onModeChange={jest.fn()} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Изход' }))
 
@@ -145,14 +144,14 @@ describe('ContactPanel', () => {
   })
 
   it('offers no sign-out to a guest', () => {
-    render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
+    render(<ContactPanel mode="login" onModeChange={jest.fn()} />)
 
     expect(screen.queryByRole('button', { name: 'Изход' })).not.toBeInTheDocument()
   })
 
   it('waits for Clerk before choosing what to show', () => {
     mockSession({ isLoaded: false })
-    render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
+    render(<ContactPanel mode="login" onModeChange={jest.fn()} />)
 
     expect(screen.getByTestId('contact-panel-skeleton')).toBeInTheDocument()
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()

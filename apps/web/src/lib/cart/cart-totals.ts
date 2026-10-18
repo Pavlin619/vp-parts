@@ -20,7 +20,7 @@ export interface CartRowModel {
   availability: RowAvailability;
   unitPriceExVat: number | null;
   unitPriceIncVat: number | null;
-  lineTotalExVat: number | null;
+  /** One line's own figure, for its row. Never summed: the totals are the server's. */
   lineTotalIncVat: number | null;
   /** Why the line cannot be ordered as it stands; null when it can. */
   issue: CartLineIssue | null;
@@ -36,12 +36,13 @@ export interface CartRowModel {
   priceChange: number | null;
 }
 
+/**
+ * What the summaries say beside the money. The money itself is read from
+ * `GET /checkout/totals`, never summed here — see docs/ORDERS.md → "Money".
+ */
 export interface CartTotals {
   /** Pieces across every line, priced or not — what "N артикула" counts. */
   itemCount: number;
-  subtotalExVat: number;
-  vatAmount: number;
-  totalIncVat: number;
   /**
    * True when at least one line carries no price, so the totals describe only
    * part of the cart and the summary has to say so.
@@ -128,9 +129,7 @@ export function buildCartRows(
     const unitPriceExVat = detail?.bestPriceExVat ?? null;
     const unitPriceIncVat = detail?.bestPriceIncVat ?? null;
 
-    // Both halves or neither: the summary derives VAT as the difference
-    // between them, and a line contributing to one side only would report a
-    // VAT figure that is really a missing net price.
+    // Both halves or neither, so the VAT toggle never shows one price for a line without the other.
     const isPriced = unitPriceExVat != null && unitPriceIncVat != null;
 
     const availableQuantity = availableQuantityOf(detail);
@@ -140,7 +139,6 @@ export function buildCartRows(
       availability: detail,
       unitPriceExVat: isPriced ? unitPriceExVat : null,
       unitPriceIncVat: isPriced ? unitPriceIncVat : null,
-      lineTotalExVat: isPriced ? unitPriceExVat * line.quantity : null,
       lineTotalIncVat: isPriced ? unitPriceIncVat * line.quantity : null,
       issue: lineIssueOf(availableQuantity, line.quantity),
       priceChange: priceChangeOf(
@@ -156,35 +154,12 @@ export function buildCartRows(
   });
 }
 
-/**
- * The summary figures. VAT is the difference between the gross and net sums
- * rather than a percentage applied here — the rate is the backoffice's to set,
- * and re-deriving it in the browser is how a cart ends up disagreeing with the
- * order it becomes.
- */
 export function cartTotals(rows: CartRowModel[]): CartTotals {
   const itemCount = rows.reduce((total, row) => total + row.line.quantity, 0);
-
-  // Only lines we could actually ship carry money. The API quotes our own
-  // catalogue price for a part it holds no stock for, so a part we cannot
-  // supply arrives priced — summing it would quote a total no order can match.
   const orderable = rows.filter((row) => row.issue === null);
-
-  const subtotalExVat = orderable.reduce(
-    (total, row) => total + (row.lineTotalExVat ?? 0),
-    0,
-  );
-
-  const totalIncVat = orderable.reduce(
-    (total, row) => total + (row.lineTotalIncVat ?? 0),
-    0,
-  );
 
   return {
     itemCount,
-    subtotalExVat,
-    vatAmount: totalIncVat - subtotalExVat,
-    totalIncVat,
     hasUnpricedLines: orderable.some((row) => row.lineTotalIncVat == null),
     hasBlockedLines: rows.some((row) => row.issue !== null),
   };
