@@ -61,6 +61,18 @@ describe('OrderDeliveryDetails', () => {
     expect(screen.queryByTestId('carrier-mark')).not.toBeInTheDocument()
   })
 
+  it('names the recipient by phone alone when the order has no email', () => {
+    const order = orderDetail()
+    render(
+      <OrderDeliveryDetails order={{ ...order, contact: { ...order.contact, email: null } }} />,
+    )
+
+    const recipient = screen.getByText('Получател').parentElement!
+
+    expect(recipient).toHaveTextContent(order.contact.phoneNumber)
+    expect(recipient.querySelectorAll('p')).toHaveLength(2)
+  })
+
   it("gives the office's working hours", () => {
     render(<OrderDeliveryDetails order={orderDetail()} />)
 

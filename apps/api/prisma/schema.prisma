@@ -30,6 +30,8 @@ enum CartStatus {
 }
 
 enum OrderStatus {
+  /// Placed by a guest; the office calls to confirm it before it is fulfilled.
+  AWAITING_CONFIRMATION
   PROCESSING
   ITEMS_PREPARED
   ON_THE_WAY
@@ -213,7 +215,8 @@ model Order {
   id                   String          @id @default(uuid())
   /// `VP-ORD-000123`, numbered from the `order_reference_seq` sequence.
   orderReference       String          @unique
-  customerId           String
+  /// Null for a guest's quick order, which is known only by its contact snapshot.
+  customerId           String?
   /// The cart this order was placed from. Unique, so the database itself
   /// refuses a second order for one cart — that is the idempotency key a
   /// retried order request is checked against.
@@ -237,7 +240,8 @@ model Order {
   contactFirstName     String
   contactLastName      String
   contactPhone         String
-  contactEmail         String
+  /// Null when a guest ordered without one; no confirmation email is sent then.
+  contactEmail         String?
   /// Which terms the customer ordered under.
   termsVersion         String
   trackingReference    String?
@@ -246,7 +250,7 @@ model Order {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  customer       Customer             @relation(fields: [customerId], references: [id])
+  customer       Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items          OrderItem[]
   statusHistory  OrderStatusHistory[]
   /// `Restrict`, not the default `SetNull`: the guest-cart sweep already

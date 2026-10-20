@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OrderStatus } from '@vp-parts-shop/shared';
 import { EmailSender } from '../../email';
 import {
   idempotencyKeyOf,
@@ -35,6 +36,15 @@ export class OrderConfirmationHandler implements OutboxHandler, OnModuleInit {
 
   async handle(event: OutboxMessage): Promise<void> {
     const order = toOrderDetailDto(await readPlacedOrder(this.orders, event));
+
+    // A guest's email is unverified, so it is written to only once the call
+    // has confirmed the order — docs/ORDERS.md → "`OrderPlaced`".
+    if (
+      order.status === OrderStatus.AWAITING_CONFIRMATION ||
+      !order.contact.email
+    ) {
+      return;
+    }
 
     await this.sender.send(
       {

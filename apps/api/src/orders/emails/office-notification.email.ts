@@ -2,8 +2,10 @@ import {
   CARRIER_NAMES,
   DeliveryMethod,
   formatPrice,
+  OrderContactDto,
   OrderDeliveryDto,
   OrderDetailDto,
+  OrderStatus,
 } from '@vp-parts-shop/shared';
 import { EmailContent, EmailFact, renderEmail } from '../../email';
 import {
@@ -25,28 +27,25 @@ export function officeNotificationEmail(
   order: OrderDetailDto,
   parcelWeightGrams: number | null,
 ): EmailContent {
+  const isAwaitingCall = order.status === OrderStatus.AWAITING_CONFIRMATION;
+
   return renderEmail({
     subject:
+      (isAwaitingCall ? 'За потвърждение: ' : '') +
       `Нова поръчка ${order.orderReference} · ${deliveryKind(order.delivery)} · ` +
       formatPrice(order.total),
     blocks: [
       { type: 'title', text: `Нова поръчка ${order.orderReference}` },
       {
         type: 'paragraph',
-        text: `Приета на ${formatPlacedAt(order.createdAt)} ${nextStep(order.delivery)}`,
+        text: [
+          `Приета на ${formatPlacedAt(order.createdAt)}`,
+          ...(isAwaitingCall ? [confirmationCall(order.contact)] : []),
+          nextStep(order.delivery),
+        ].join(' '),
       },
       { type: 'heading', text: 'Клиент' },
-      {
-        type: 'facts',
-        rows: [
-          {
-            label: 'Име',
-            value: [`${order.contact.firstName} ${order.contact.lastName}`],
-          },
-          { label: 'Телефон', value: [order.contact.phoneNumber] },
-          { label: 'Имейл', value: [order.contact.email] },
-        ],
-      },
+      { type: 'facts', rows: contactFacts(order.contact) },
       { type: 'heading', text: 'Доставка' },
       {
         type: 'facts',
@@ -78,6 +77,22 @@ export function officeNotificationEmail(
       moneyFacts(order),
     ],
   });
+}
+
+function confirmationCall(contact: OrderContactDto): string {
+  return `Обадете се на ${contact.phoneNumber}, за да я потвърдите, преди да я изпълните.`;
+}
+
+function contactFacts(contact: OrderContactDto): EmailFact[] {
+  const email = contact.email
+    ? [{ label: 'Имейл', value: [contact.email] }]
+    : [];
+
+  return [
+    { label: 'Име', value: [`${contact.firstName} ${contact.lastName}`] },
+    { label: 'Телефон', value: [contact.phoneNumber] },
+    ...email,
+  ];
 }
 
 function nextStep(delivery: OrderDeliveryDto): string {

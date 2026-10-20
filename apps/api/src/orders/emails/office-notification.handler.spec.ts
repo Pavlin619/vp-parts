@@ -62,6 +62,20 @@ describe('OfficeNotificationHandler', () => {
     );
   });
 
+  it('has no reply address for an order placed without an email', async () => {
+    orders.findDetail.mockResolvedValue({
+      ...PLACED_ORDER_RECORD,
+      contactEmail: null,
+    });
+
+    await handler.handle(EVENT);
+
+    expect(sender.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'orders@vp-parts.bg', replyTo: undefined }),
+      'event-1:office-notification-email',
+    );
+  });
+
   it('fails, to be retried, when the order cannot be read', async () => {
     orders.findDetail.mockResolvedValue(null);
 

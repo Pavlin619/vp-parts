@@ -108,6 +108,24 @@ describe('toOrderDetailDto', () => {
     ]);
   });
 
+  it('answers a guest’s order, placed with no email, with the status it waits in', () => {
+    const dto = toOrderDetailDto(
+      order({
+        customerId: null,
+        contactEmail: null,
+        status: 'AWAITING_CONFIRMATION',
+      }),
+    );
+
+    expect(dto.status).toBe('AWAITING_CONFIRMATION');
+    expect(dto.contact).toEqual({
+      firstName: 'Иван',
+      lastName: 'Петров',
+      phoneNumber: '+359888123456',
+      email: null,
+    });
+  });
+
   it('names the office an office delivery goes to, with its date as a day', () => {
     expect(toOrderDetailDto(order()).delivery).toEqual({
       method: DeliveryMethod.COURIER_OFFICE,

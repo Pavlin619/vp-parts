@@ -39,7 +39,7 @@ export class OfficeNotificationHandler implements OutboxHandler, OnModuleInit {
     await this.sender.send(
       {
         to: this.notifyTo,
-        replyTo: order.contact.email,
+        replyTo: order.contact.email ?? undefined,
         ...officeNotificationEmail(order, record.parcelWeightGrams),
       },
       idempotencyKeyOf(event, this),

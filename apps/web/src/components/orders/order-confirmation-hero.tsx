@@ -30,13 +30,15 @@ export function OrderConfirmationHero({ order }: { order: HeroOrder }) {
           <span>{formatShopDateTime(order.createdAt)}</span>
         </div>
 
-        <p className="mt-4 flex items-start gap-[9px] rounded-[10px] bg-bg-sunken px-[13px] py-[11px] text-[12.5px] leading-normal text-ink-2">
-          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
-          <span>
-            Потвърждението изпращаме на{" "}
-            <b className="font-semibold text-ink">{order.contact.email}</b>.
-          </span>
-        </p>
+        {order.contact.email && (
+          <p className="mt-4 flex items-start gap-[9px] rounded-[10px] bg-bg-sunken px-[13px] py-[11px] text-[12.5px] leading-normal text-ink-2">
+            <Mail className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />
+            <span>
+              Потвърждението изпращаме на{" "}
+              <b className="font-semibold text-ink">{order.contact.email}</b>.
+            </span>
+          </p>
+        )}
 
         <div className="mt-[18px] flex flex-wrap gap-2">
           <Link
