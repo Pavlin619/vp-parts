@@ -9,8 +9,7 @@ reading the API's money, and the confirmation page `/orders/[orderReference]`
 the two order emails (`apps/api/src/orders/emails/`, sent by
 `apps/api/src/email/`); `OrderPlaced` on SQS (`orders/order-placed.publisher.ts`
 through `events/sqs.publisher.ts`) and the queues (`infra/aws/messaging.yml`).
-**Not yet:** the throttler's Redis storage, and the terms, withdrawal and
-privacy pages the button and the emails link to
+**Not yet:** the terms, withdrawal and privacy pages the button and the emails link to
 (`LEGAL_PAGES` in `packages/shared`). The cart side of the transition is in
 [CART.md](./CART.md), the delivery price in
 [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md), and who a customer is in
@@ -509,8 +508,9 @@ date, and the amount to pay at the door.
   counts in the throttler's storage under the verified customer id. The global
   `ThrottlerGuard` stays first and counts by address: it runs before any token
   is verified, so a flood of bad tokens is refused before each costs a
-  verification, and nothing trusts an unverified token's subject. The
-  throttler's storage is to move to Redis, shared by every instance (P6).
+  verification, and nothing trusts an unverified token's subject. Both count
+  in Redis (`RedisThrottlerStorage`), so every API instance shares one
+  allowance; it fails open, so a Redis outage stops nobody from ordering.
 - The logs name an order by its id only. No request body, name, phone, address
   or email.
 

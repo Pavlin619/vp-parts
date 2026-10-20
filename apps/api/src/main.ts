@@ -5,9 +5,12 @@ import { CART_TOKEN_HEADER } from '@vp-parts-shop/shared';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/exception.filter';
 import { LoggingInterceptor } from './common/logging.interceptor';
+import { securityHeaders } from './common/security-headers';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  app.use(securityHeaders());
 
   app.enableCors({
     origin: app.get(ConfigService).getOrThrow<string>('CORS_ORIGIN'),

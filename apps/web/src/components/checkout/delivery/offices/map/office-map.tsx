@@ -10,6 +10,7 @@ import type {
   MapLayerMouseEvent,
 } from "maplibre-gl";
 import { DeliveryOfficeType, ShippingMethod, type DeliveryOfficeDto } from "@vp-parts-shop/shared";
+import { MAP_STYLE_URL } from "@/lib/checkout/delivery/map-style";
 import type { ReferencePoint } from "@/lib/checkout/delivery/office-distance";
 import {
   framingBounds,
@@ -23,10 +24,6 @@ import {
   officePinImageId,
   officePinSvg,
 } from "@/lib/checkout/delivery/office-pin";
-
-/** OpenFreeMap needs no key; see docs/DELIVERY-PROVIDERS.md for the fallback. */
-const MAP_STYLE_URL =
-  process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? "https://tiles.openfreemap.org/styles/positron";
 
 /** Put there by scripts/copy-map-worker.mjs. */
 const MAP_WORKER_URL = "/vendor/maplibre/maplibre-gl-worker.mjs";

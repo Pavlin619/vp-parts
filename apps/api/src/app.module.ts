@@ -11,6 +11,7 @@ import * as Joi from 'joi';
 import { AuthModule, JwtGuard } from './auth';
 import { ClientIpOptions, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
+import { RedisModule, RedisThrottlerStorage } from './redis';
 import { CartModule } from './cart';
 import { CatalogModule } from './catalog';
 import { CheckoutModule } from './checkout';
@@ -28,7 +29,10 @@ const GLOBAL_RATE_LIMIT_WINDOW_MS = 60_000;
 const GLOBAL_RATE_LIMIT = 100;
 
 /** Attribution rules are resolved once here rather than on every request. */
-function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
+function buildThrottlerOptions(
+  config: ConfigService,
+  storage: RedisThrottlerStorage,
+): ThrottlerModuleOptions {
   const clientIpOptions: ClientIpOptions = {
     trustedProxyCount: config.get<number>('TRUSTED_PROXY_COUNT', 0),
     webOriginToken: config.get<string>('WEB_ORIGIN_TOKEN'),
@@ -39,6 +43,7 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
       { ttl: GLOBAL_RATE_LIMIT_WINDOW_MS, limit: GLOBAL_RATE_LIMIT },
     ],
     getTracker: (request) => resolveClientIp(request, clientIpOptions),
+    storage,
   };
 }
 
@@ -190,7 +195,8 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
-      inject: [ConfigService],
+      imports: [RedisModule],
+      inject: [ConfigService, RedisThrottlerStorage],
       useFactory: buildThrottlerOptions,
     }),
     AuthModule,

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT, RedisCache } from './redis-cache';
 import { RedisConnectionLifecycle } from './redis-lifecycle';
+import { RedisThrottlerStorage } from './redis-throttler-storage';
 
 /**
  * Owns the shared Redis connection and the read-through {@link RedisCache}
@@ -21,7 +22,8 @@ import { RedisConnectionLifecycle } from './redis-lifecycle';
     },
     RedisConnectionLifecycle,
     RedisCache,
+    RedisThrottlerStorage,
   ],
-  exports: [REDIS_CLIENT, RedisCache],
+  exports: [REDIS_CLIENT, RedisCache, RedisThrottlerStorage],
 })
 export class RedisModule {}

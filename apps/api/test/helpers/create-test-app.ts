@@ -5,9 +5,10 @@ import RedisMock from 'ioredis-mock';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
+import { securityHeaders } from '../../src/common/security-headers';
 import { EmailSender } from '../../src/email';
 import { SqsPublisher } from '../../src/events';
-import { REDIS_CLIENT } from '../../src/redis';
+import { REDIS_CLIENT, RedisThrottlerStorage } from '../../src/redis';
 import { RecordingEmailSender } from './recording-email-sender';
 import { RecordingSqsPublisher } from './recording-sqs-publisher';
 
@@ -21,9 +22,10 @@ export interface TestAppOptions {
 
 /**
  * Creates a fully-bootstrapped NestJS test application that mirrors the
- * production setup in main.ts (ValidationPipe, GlobalExceptionFilter,
- * LoggingInterceptor). Pass a moduleCustomizer to override providers
- * BEFORE module compilation (e.g. replace real services with mocks).
+ * production setup in main.ts (security headers, ValidationPipe,
+ * GlobalExceptionFilter, LoggingInterceptor). Pass a moduleCustomizer to
+ * override providers BEFORE module compilation (e.g. replace real services
+ * with mocks).
  */
 export async function createTestApp(
   moduleCustomizer?: (builder: TestingModuleBuilder) => void,
@@ -46,6 +48,11 @@ export async function createTestApp(
   // real socket (or its reconnect timer) leaking to keep the process alive.
   // Cache semantics (get/set/expire/flushall) are faithfully emulated.
   builder.overrideProvider(REDIS_CLIENT).useValue(new RedisMock());
+  // The library takes only a real ioredis client, which the mock is not, so
+  // the suite counts in memory; RedisThrottlerStorage has its own spec.
+  builder
+    .overrideProvider(RedisThrottlerStorage)
+    .useValue(new ThrottlerStorageService());
   builder.overrideProvider(EmailSender).useValue(new RecordingEmailSender());
   builder.overrideProvider(SqsPublisher).useValue(new RecordingSqsPublisher());
 
@@ -56,6 +63,8 @@ export async function createTestApp(
   const moduleRef = await builder.compile();
 
   const app = moduleRef.createNestApplication({ rawBody: true });
+
+  app.use(securityHeaders());
 
   app.useGlobalPipes(
     new ValidationPipe({

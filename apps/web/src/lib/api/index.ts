@@ -1,10 +1,11 @@
 import type { ApiErrorResponse } from "@vp-parts-shop/shared";
+import { BROWSER_API_URL } from "./browser-api-url";
 import { getSessionToken } from "./session-token";
 
 const API_BASE_URL =
   typeof window === "undefined"
     ? (process.env.API_URL ?? "http://127.0.0.1:3001")
-    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001");
+    : BROWSER_API_URL;
 
 export class ApiError extends Error {
   constructor(
