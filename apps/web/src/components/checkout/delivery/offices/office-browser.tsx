@@ -1,11 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { DeliveryOfficeDto, DeliveryPlaceDto, ShippingMethod } from "@vp-parts-shop/shared";
+import {
+  CARRIER_NAMES,
+  type DeliveryOfficeDto,
+  type DeliveryPlaceDto,
+  type ShippingMethod,
+} from "@vp-parts-shop/shared";
 import { useDeviceLocation } from "@/hooks/use-device-location";
 import { usePlaceScope } from "@/hooks/use-place-scope";
 import { nearbyOffices, placeOfOffice } from "@/lib/checkout/delivery/delivery-places";
-import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { officeAvailability, type ParcelCheck } from "@/lib/checkout/delivery/office-availability";
 import { sortOfficesByDistance, type GeoPoint } from "@/lib/checkout/delivery/office-distance";
 import {

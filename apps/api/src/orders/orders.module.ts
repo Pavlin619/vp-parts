@@ -2,15 +2,31 @@ import { Module } from '@nestjs/common';
 import { CartModule } from '../cart';
 import { CheckoutModule } from '../checkout';
 import { CustomersModule } from '../customers';
+import { EmailModule } from '../email';
+import { EventsModule } from '../events';
 import { PrismaModule } from '../prisma';
+import { OfficeNotificationHandler } from './emails/office-notification.handler';
+import { OrderConfirmationHandler } from './emails/order-confirmation.handler';
 import { OrdersController } from './orders.controller';
 import { OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 
-/** Placing an order and reading it back. See docs/ORDERS.md. */
+/** Placing an order, reading it back, and the emails that follow it. See docs/ORDERS.md. */
 @Module({
-  imports: [PrismaModule, CustomersModule, CartModule, CheckoutModule],
+  imports: [
+    PrismaModule,
+    CustomersModule,
+    CartModule,
+    CheckoutModule,
+    EventsModule,
+    EmailModule,
+  ],
   controllers: [OrdersController],
-  providers: [OrdersRepository, OrdersService],
+  providers: [
+    OrdersRepository,
+    OrdersService,
+    OrderConfirmationHandler,
+    OfficeNotificationHandler,
+  ],
 })
 export class OrdersModule {}

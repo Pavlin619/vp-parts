@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  CARRIER_NAMES,
   DeliveryAddressValidationStatus,
   type DeliveryAddressDto,
   type DeliveryAddressValidationDto,
@@ -12,7 +13,6 @@ import {
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { useCheckoutDelivery, useSelectedAddress } from "@/hooks/use-checkout-delivery";
 import { deliveryAddressPlacesQueryOptions, validateDeliveryAddress } from "@/lib/api/delivery";
-import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { AddressForm } from "./address-form";
 import {
   EMPTY_ADDRESS_FORM,

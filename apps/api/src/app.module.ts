@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import {
   ThrottlerModule,
   ThrottlerGuard,
@@ -108,9 +109,18 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
 
         RESEND_API_KEY: Joi.string().required(),
         EMAIL_FROM: Joi.string().email().required(),
+        // Where each order is announced until the backoffice reads shop-events.
+        ORDERS_NOTIFY_EMAIL: Joi.string().email().required(),
+        // Who sells, as every order confirmation must say (docs/ORDERS.md → "Legal").
+        SELLER_NAME: Joi.string().required(),
+        SELLER_COMPANY_ID: Joi.string().required(),
+        SELLER_ADDRESS: Joi.string().required(),
+        SELLER_EMAIL: Joi.string().email().required(),
+        SELLER_PHONE: Joi.string().required(),
 
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
-        // The web app's origin: CORS allows it, and a Clerk token must name it.
+        // The web app's origin: CORS allows it, a Clerk token must name it, and
+        // the emails link to it.
         CORS_ORIGIN: Joi.string().uri().default('http://localhost:3000'),
 
         // Rate-limit attribution (see resolveClientIp). Required in production
@@ -166,6 +176,7 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
         abortEarly: false,
       },
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: buildThrottlerOptions,

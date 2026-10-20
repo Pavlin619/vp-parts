@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   isProfileComplete,
+  orderPagePath,
   type PlaceOrderRequestDto,
   type PlaceOrderResponseDto,
 } from "@vp-parts-shop/shared";
@@ -97,7 +98,7 @@ export function usePlaceOrder({ money, areLinesOrderable }: PlaceOrderOptions): 
   const mutation = useMutation({
     mutationFn: placeOrder,
     onSuccess: ({ orderReference }) => {
-      router.replace(`/orders/${orderReference}`);
+      router.replace(orderPagePath(orderReference));
       forgetCheckout(queryClient);
     },
     onError: (error, sent) => {

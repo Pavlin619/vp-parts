@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LEGAL_PAGES } from "@/lib/legal/legal-pages";
+import { LEGAL_PAGES } from "@vp-parts-shop/shared";
 
 const LINK_CLASSES = "font-medium text-ink-2 underline underline-offset-2 hover:text-ink";
 

@@ -1,3 +1,4 @@
+import { ShippingMethod } from './enums';
 import type { WarehouseAvailabilityDto } from './dto/inventory.dto';
 
 /**
@@ -85,3 +86,8 @@ export function selectWarehouseForQuantity<T extends WarehouseAvailabilityDto>(
 
   return stocked[stocked.length - 1];
 }
+
+export const CARRIER_NAMES: Record<ShippingMethod, string> = {
+  [ShippingMethod.ECONT]: 'Еконт',
+  [ShippingMethod.SPEEDY]: 'Speedy',
+};

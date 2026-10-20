@@ -62,6 +62,12 @@ jobs:
       TECDOC_BASE_URL: https://stub.tecdoc.invalid
       RESEND_API_KEY: re_stub
       EMAIL_FROM: noreply@example.com
+      ORDERS_NOTIFY_EMAIL: orders@example.com
+      SELLER_NAME: Stub EOOD
+      SELLER_COMPANY_ID: '000000000'
+      SELLER_ADDRESS: Pleven
+      SELLER_EMAIL: shop@example.com
+      SELLER_PHONE: '+359000000000'
 
     steps:
       - uses: actions/checkout@v4

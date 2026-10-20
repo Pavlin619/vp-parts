@@ -292,6 +292,29 @@ model OrderStatusHistory {
   @@index([orderId])
 }
 
+/// An event written in the transaction of the change it reports, and sent on by
+/// `OutboxRelay` after the commit, which deletes it once every handler is done.
+/// See docs/ORDERS.md → "After the commit: the outbox".
+model OutboxEvent {
+  /// The `eventId` every handler deduplicates on.
+  id                String   @id @default(uuid())
+  type              String
+  payload           Json
+  createdAt         DateTime @default(now())
+  /// When the relay may next claim it: at once, after a retry's backoff, or
+  /// once a claim's lease runs out.
+  availableAt       DateTime @default(now())
+  attempts          Int      @default(0)
+  /// Set afresh by every claim. The relay's later writes name it, so a relay
+  /// whose lease ran out changes nothing the next claim owns.
+  claimToken        String?
+  /// The handlers that have done their part, so a retry runs only the rest.
+  completedHandlers String[] @default([])
+  lastError         String?
+
+  @@index([availableAt])
+}
+
 model SavedVehicle {
   id              String   @id @default(uuid())
   customerId      String

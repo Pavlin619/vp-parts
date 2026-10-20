@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { DeliveryOfficeDto, DeliveryPlaceDto, ShippingMethod } from "@vp-parts-shop/shared";
+import {
+  CARRIER_NAMES,
+  type DeliveryOfficeDto,
+  type DeliveryPlaceDto,
+  type ShippingMethod,
+} from "@vp-parts-shop/shared";
 import { AvailabilityLoadError } from "@/components/catalog/availability-load-error";
 import { useCheckoutDelivery, useSelectedOfficeCode } from "@/hooks/use-checkout-delivery";
 import { useParcelCheck } from "@/hooks/use-parcel-check";
@@ -11,7 +16,6 @@ import {
   deliveryOfficesQueryOptions,
   deliveryPlacesQueryOptions,
 } from "@/lib/api/delivery";
-import { CARRIER_NAMES } from "@/lib/checkout/delivery/delivery-methods";
 import { resolveSelectedOffice } from "@/lib/checkout/delivery/office-availability";
 import { OfficeBrowser } from "./office-browser";
 import { SelectedOfficeCard } from "./selected-office-card";

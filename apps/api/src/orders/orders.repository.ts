@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { OrderMoneyDto } from '@vp-parts-shop/shared';
 import { CartRepository } from '../cart';
 import type { DeliveryPrice } from '../delivery';
+import { OutboxRepository } from '../events';
 import {
   CartStatus,
   OrderStatus,
@@ -9,6 +10,7 @@ import {
   Prisma,
 } from '../generated/prisma';
 import { PrismaService } from '../prisma';
+import { ORDER_PLACED, OrderPlacedPayload } from './order-placed.event';
 
 export interface NewOrderItem {
   brandId: string;
@@ -73,11 +75,13 @@ export class OrdersRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly carts: CartRepository,
+    private readonly outbox: OutboxRepository,
   ) {}
 
   /**
-   * Writes the order and retires its cart in one transaction, holding the
-   * cart's row lock throughout, so two requests for one cart end in one order.
+   * Writes the order, its `OrderPlaced` event and retires its cart in one
+   * transaction, holding the cart's row lock throughout, so two requests for
+   * one cart end in one order and one event.
    */
   place(order: NewOrder): Promise<OrderPlacement> {
     return this.prisma.$transaction(async (tx) => {
@@ -105,6 +109,11 @@ export class OrdersRepository {
         select: referenceOnly,
       });
 
+      await this.outbox.append(tx, {
+        type: ORDER_PLACED,
+        payload: { orderId: placed.id } satisfies OrderPlacedPayload,
+      });
+
       await this.carts.closeForOrder(tx, {
         cartId: order.cartId,
         orderId: placed.id,
@@ -119,6 +128,13 @@ export class OrdersRepository {
     return this.prisma.order.findUnique({
       where: { id: orderId },
       select: referenceOnly,
+    });
+  }
+
+  findDetail(orderId: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: withDetail,
     });
   }
 
