@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { DeliveryMethod, ShippingMethod } from '@vp-parts-shop/shared';
 import { CartRepository } from '../cart';
+import { OutboxRepository } from '../events';
 import { PrismaService } from '../prisma';
 import { NewOrder, OrdersRepository } from './orders.repository';
 
@@ -62,6 +63,7 @@ describe('OrdersRepository', () => {
 
   const lockCart = jest.fn();
   const closeForOrder = jest.fn();
+  const append = jest.fn();
   const orderCreate = jest.fn();
   const orderFindUniqueOrThrow = jest.fn();
   const queryRaw = jest.fn();
@@ -91,6 +93,7 @@ describe('OrdersRepository', () => {
         OrdersRepository,
         { provide: PrismaService, useValue: prisma },
         { provide: CartRepository, useValue: { lockCart, closeForOrder } },
+        { provide: OutboxRepository, useValue: { append } },
       ],
     }).compile();
 
@@ -148,6 +151,15 @@ describe('OrdersRepository', () => {
       );
     });
 
+    it('writes OrderPlaced to the outbox in the same transaction, naming only the order', async () => {
+      await repository.place(ORDER);
+
+      expect(append).toHaveBeenCalledWith(tx, {
+        type: 'OrderPlaced',
+        payload: { orderId: 'order-1' },
+      });
+    });
+
     it('stores pickup with an empty destination and no date it cannot give', async () => {
       await repository.place({
         ...ORDER,
@@ -186,6 +198,7 @@ describe('OrdersRepository', () => {
       });
       expect(orderCreate).not.toHaveBeenCalled();
       expect(closeForOrder).not.toHaveBeenCalled();
+      expect(append).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -200,6 +213,7 @@ describe('OrdersRepository', () => {
           kind: 'stale',
         });
         expect(orderCreate).not.toHaveBeenCalled();
+        expect(append).not.toHaveBeenCalled();
       },
     );
   });
@@ -211,6 +225,14 @@ describe('OrdersRepository', () => {
       expect.objectContaining({
         where: { orderReference: 'VP-ORD-000042', customerId: 'customer-1' },
       }),
+    );
+  });
+
+  it('reads an order by its id for the handlers of its events', async () => {
+    await repository.findDetail('order-1');
+
+    expect(prisma.order.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'order-1' } }),
     );
   });
 });

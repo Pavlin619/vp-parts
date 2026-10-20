@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { CatalogModule } from '../catalog';
 import { CustomersModule } from '../customers';
 import { InventoryModule } from '../inventory';
@@ -11,13 +10,7 @@ import { ProductTypeParcelProfileRepository } from './shipping-profile/product-t
 import { ShippingProfileResolver } from './shipping-profile/shipping-profile.resolver';
 
 @Module({
-  imports: [
-    PrismaModule,
-    CustomersModule,
-    CatalogModule,
-    InventoryModule,
-    ScheduleModule.forRoot(),
-  ],
+  imports: [PrismaModule, CustomersModule, CatalogModule, InventoryModule],
   controllers: [CartController],
   providers: [
     CartRepository,

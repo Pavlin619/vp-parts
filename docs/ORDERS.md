@@ -5,9 +5,11 @@ The authoritative design for turning a cart into an order. **Built:** `POST
 /checkout/totals` and the quote's money (`apps/api/src/checkout/`), and in the
 web the order button (`use-place-order.ts`), the cart and checkout summaries
 reading the API's money, and the confirmation page `/orders/[orderReference]`
-(`components/orders/`). **Not yet:** the outbox and its emails, SQS, the
-throttler's Redis storage, and the terms, withdrawal and privacy pages the
-button links to (`lib/legal/legal-pages.ts`). The cart side of the transition is in
+(`components/orders/`); the outbox and its relay (`apps/api/src/events/`) and
+the two order emails (`apps/api/src/orders/emails/`, sent by
+`apps/api/src/email/`). **Not yet:** SQS, the throttler's Redis storage, and
+the terms, withdrawal and privacy pages the button and the emails link to
+(`LEGAL_PAGES` in `packages/shared`). The cart side of the transition is in
 [CART.md](./CART.md), the delivery price in
 [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md), and who a customer is in
 [AUTH.md](./AUTH.md).
@@ -94,8 +96,7 @@ row lock is ever held across an HTTP call.
    - lock the cart (`SELECT … FOR UPDATE`) and check again that it is `ACTIVE`
      at `cartVersion`. If it became `ORDERED` meanwhile, return that order;
    - insert the `Order`, its `OrderItem`s, the first `OrderStatusHistory` row
-     (`PROCESSING`, `source: 'shop'`) and, once the outbox exists, the
-     `OrderPlaced` outbox row;
+     (`PROCESSING`, `source: 'shop'`) and the `OrderPlaced` outbox row;
    - set the cart `ORDERED` with its `orderId`, and raise its version;
    - move the unselected lines, still unselected, to a fresh `ACTIVE` cart for
      the customer. None is opened when every line was ordered.
@@ -279,13 +280,37 @@ Publishing straight after the commit is a dual write: a crash between the two
 leaves an order nobody hears about. So the event is a row, `OutboxEvent`,
 written **in the order's transaction**, and a relay sends it on.
 
-- The relay runs on a `@nestjs/schedule` interval. It claims a batch with
-  `FOR UPDATE SKIP LOCKED`, so several API instances never send one event twice
-  at the same time.
-- Each event goes to its handlers. A failure is retried with backoff
-  (`attempts`, `availableAt`, `lastError`); after the last attempt it is logged
-  at `error` and left for a person.
-- Delivery is **at least once**. Every handler is idempotent on `eventId`.
+- `OutboxRelay` (`apps/api/src/events/`) runs every 5 seconds on a
+  `@nestjs/schedule` interval. It **leases** up to 10 due events in one
+  `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)`: the statement pushes
+  each row's `availableAt` 5 minutes ahead and counts the attempt, so several
+  API instances never take one event at once, and no row lock is held while a
+  handler calls out. If an instance dies mid-batch, its lease runs out and
+  another instance takes the event.
+- Every claim also sets a fresh `claimToken`, and each later write for the
+  event (a handler done, the retry, the delete) names that token. If a slow
+  instance's lease ran out and another claimed the event meanwhile, its writes
+  match no row: it stops, logs at `warn`, and moves on with its batch, leaving
+  the event to the claim that took it over.
+- Each event goes to **every** handler of its type, and one handler failing
+  does not stop the others. Each handler that succeeds is added to the row's
+  `completedHandlers`, and a retry runs only the handlers not yet in it. Once
+  all have succeeded the row is **deleted**: nothing reads a delivered event,
+  so the table holds only work still to do. The wait between attempts doubles
+  from 30 seconds up to an hour, and `lastError` names the handler and the
+  status, never the response body.
+- **After 10 attempts** (about three hours) the relay logs the event at
+  `error` and stops claiming it. A person fixes the cause, then sets its
+  `attempts` back to 0 to send it again; a handler that already succeeded is
+  not run again. An event that no handler takes counts as a failure, so a
+  missing registration cannot drop it.
+- Delivery is **at least once**. Every handler is idempotent on `eventId`,
+  because a send that timed out may still have gone out, or the relay may
+  have died before it recorded the handler as done. The ten attempts stay
+  well inside the 24 hours Resend keeps an idempotency key.
+- Handlers register with the relay at start-up (`OutboxRelay.register`), so
+  the events module knows no feature. The order emails are in
+  `apps/api/src/orders/emails/` and read the order by its id.
 
 ### `OrderPlaced`
 
@@ -309,11 +334,50 @@ Both emails carry an `Idempotency-Key` of `eventId:handler`, so a retried
 handler never sends twice. The office email is the channel **until the
 backoffice consumes `shop-events`**; it is kept or dropped then.
 
+- **The confirmation** goes to the order's `contactEmail`, with replies going
+  to `SELLER_EMAIL`. It opens with the amount to pay at the door, then lists
+  the lines, the money exactly as the order froze it (VAT is taken from the
+  whole total), the delivery and its date, and the recipient. It links the
+  order page and the legal pages (`LEGAL_PAGES`, `orderPagePath` in
+  `packages/shared`, under `CORS_ORIGIN`). It ends with the model withdrawal
+  wording of ЗЗП чл. 50 and the seller's identity. **[VERIFY]** the wording
+  with whoever handles legal.
+- **The office notice** goes to `ORDERS_NOTIFY_EMAIL`, with replies going to
+  the customer. It holds what a waybill needs: the office code or the address
+  and its note, the parcel weight, and the amount to collect. It lists the lines
+  with the article number in its own column, for picking.
+- Both are built from one list of blocks (`email/email-document.ts`) that
+  renders the HTML part and the plain-text part. Every value is escaped,
+  because names and part descriptions come from customers and suppliers.
+
 ### Email
 
-Resend, with `RESEND_API_KEY` and `EMAIL_FROM`. The free tier allows 3,000 a
-month and 100 a day; move to the paid plan before orders approach 100 a day. The
-sending domain needs Resend's SPF and DKIM records and a DMARC record.
+Resend, through its HTTP API (`EmailSender`, `apps/api/src/email/`), with
+`RESEND_API_KEY` and `EMAIL_FROM`. A failed send records Resend's status and
+error name, never its message, which can quote the recipient. The free tier
+allows 3,000 emails a month and 100 a day; move to the paid plan before orders
+approach 100 a day.
+
+Configuration, all required at start-up:
+
+| Variable | What it is |
+|---|---|
+| `ORDERS_NOTIFY_EMAIL` | The office inbox for new orders |
+| `SELLER_NAME`, `SELLER_COMPANY_ID` (ЕИК), `SELLER_ADDRESS`, `SELLER_EMAIL`, `SELLER_PHONE` | The seller's identity that every confirmation states (ЗЗП чл. 47) |
+| `CORS_ORIGIN` | The web origin, which the emails' links start from |
+
+**Before the first real email**, the sending domain has to be set up:
+
+1. In Resend, add the domain of `EMAIL_FROM` under Domains.
+2. Add the records Resend shows, the SPF `TXT` and `MX` on its `send.`
+   subdomain and the DKIM `TXT` (`resend._domainkey`), at the DNS host, then
+   verify them in Resend.
+3. Add a DMARC record, `_dmarc` `TXT` `v=DMARC1; p=none; rua=mailto:<inbox>`.
+   Raise it to `p=quarantine` once the reports show only our own mail.
+
+The e2e suites replace `EmailSender` with a recorder
+(`test/helpers/recording-email-sender.ts`), so no test reaches Resend. The
+orders suite stops the relay's interval and relays by hand.
 
 ### SQS
 

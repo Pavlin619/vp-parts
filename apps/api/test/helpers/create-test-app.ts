@@ -5,7 +5,9 @@ import RedisMock from 'ioredis-mock';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
+import { EmailSender } from '../../src/email';
 import { REDIS_CLIENT } from '../../src/redis';
+import { RecordingEmailSender } from './recording-email-sender';
 
 export interface TestAppOptions {
   /**
@@ -42,6 +44,7 @@ export async function createTestApp(
   // real socket (or its reconnect timer) leaking to keep the process alive.
   // Cache semantics (get/set/expire/flushall) are faithfully emulated.
   builder.overrideProvider(REDIS_CLIENT).useValue(new RedisMock());
+  builder.overrideProvider(EmailSender).useValue(new RecordingEmailSender());
 
   if (moduleCustomizer) {
     moduleCustomizer(builder);

@@ -1,4 +1,6 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import request from 'supertest';
 import type Redis from 'ioredis';
 import {
@@ -14,11 +16,18 @@ import {
   ShippingMethod,
 } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
+import { RecordingEmailSender } from './helpers/recording-email-sender';
 import { ClerkUsers } from '../src/auth';
 import { ClerkJwtStrategy } from '../src/auth/clerk-jwt.strategy';
 import { ArticlesTecDoc } from '../src/catalog';
 import { DeliveryUnavailableException } from '../src/delivery/delivery.exceptions';
 import { EcontTransport } from '../src/delivery/econt/econt.transport';
+import { EmailSender } from '../src/email';
+import {
+  OUTBOX_RELAY_INTERVAL,
+  OutboxRelay,
+  OutboxRepository,
+} from '../src/events';
 import { InventoryService } from '../src/inventory';
 import { PrismaService } from '../src/prisma';
 import { REDIS_CLIENT } from '../src/redis';
@@ -203,10 +212,20 @@ describe('Orders (e2e)', () => {
       builder.overrideProvider(EcontTransport).useValue(econt);
     });
     prisma = app.get(PrismaService);
+    // The suite relays by hand, so a tick never races an assertion.
+    app.get(SchedulerRegistry).deleteInterval(OUTBOX_RELAY_INTERVAL);
   });
 
   afterAll(async () => {
     const customer = { clerkId: { startsWith: RUN } };
+    const orders = await prisma.order.findMany({
+      where: { customer },
+      select: { id: true },
+    });
+
+    await prisma.outboxEvent.deleteMany({
+      where: { OR: orders.map(({ id }) => orderPlacedFilter(id)) },
+    });
 
     // Cart and order name each other with RESTRICT keys, so one side lets go first.
     await prisma.cart.updateMany({
@@ -301,6 +320,35 @@ describe('Orders (e2e)', () => {
 
   const ordersOf = (cartId: string) =>
     prisma.order.findMany({ where: { cartId } });
+
+  const orderPlacedFilter = (orderId: string) => ({
+    type: 'OrderPlaced',
+    payload: { path: ['orderId'], equals: orderId },
+  });
+
+  const eventsOf = (orderId: string) =>
+    prisma.outboxEvent.findMany({ where: orderPlacedFilter(orderId) });
+
+  /** Relays until the order's event is delivered; other suites may have left events due. */
+  async function relayOrderPlaced(orderId: string) {
+    const [event] = await eventsOf(orderId);
+    expect(event).toBeDefined();
+
+    for (let tick = 0; tick < 20; tick++) {
+      await app.get(OutboxRelay).relayDue();
+
+      if ((await eventsOf(orderId)).length === 0) {
+        return event;
+      }
+    }
+
+    throw new Error(`OrderPlaced for ${orderId} was never delivered`);
+  }
+
+  const emailsFor = (eventId: string) =>
+    app
+      .get<RecordingEmailSender>(EmailSender)
+      .sent.filter(({ idempotencyKey }) => idempotencyKey.startsWith(eventId));
 
   describe('placing an order', () => {
     it('places it to an office, freezing what the customer was shown', async () => {
@@ -482,6 +530,91 @@ describe('Orders (e2e)', () => {
       expect(responses.map(({ status }) => status).sort()).toEqual([200, 201]);
       expect(responses[0].body).toEqual(responses[1].body);
       expect(await ordersOf(cart.id)).toHaveLength(1);
+      expect(await eventsOf(responses[0].body.orderId)).toHaveLength(1);
+    });
+  });
+
+  describe('after the commit: the outbox', () => {
+    it('changes nothing for a relay whose lease a later claim took over', async () => {
+      const { clerkId, cart } = await customerWithCart();
+      const { body } = await placeOrder(clerkId, cart).expect(201);
+      const [event] = await eventsOf(body.orderId);
+      await prisma.outboxEvent.update({
+        where: { id: event.id },
+        data: { claimToken: 'later-claim' },
+      });
+      const outbox = app.get(OutboxRepository);
+      const superseded = { eventId: event.id, claimToken: 'earlier-claim' };
+
+      await expect(
+        Promise.all([
+          outbox.recordHandlerDone(superseded, 'order-confirmation-email'),
+          outbox.scheduleRetry(superseded, {
+            availableAt: new Date(),
+            error: 'down',
+          }),
+          outbox.deleteDelivered(superseded),
+        ]),
+      ).resolves.toEqual([false, false, false]);
+      expect(await eventsOf(body.orderId)).toEqual([
+        expect.objectContaining({ completedHandlers: [], lastError: null }),
+      ]);
+    });
+
+    it('writes one OrderPlaced with the order, naming nothing but the order', async () => {
+      const { clerkId, cart } = await customerWithCart();
+
+      const { body } = await placeOrder(clerkId, cart).expect(201);
+      await placeOrder(clerkId, cart).expect(200);
+
+      expect(await eventsOf(body.orderId)).toEqual([
+        expect.objectContaining({
+          type: 'OrderPlaced',
+          payload: { orderId: body.orderId },
+          completedHandlers: [],
+        }),
+      ]);
+    });
+
+    it('writes no event for an order it refuses', async () => {
+      const { clerkId, cart } = await customerWithCart();
+      const before = await prisma.outboxEvent.count();
+
+      await placeOrder(clerkId, cart, {
+        expectedTotalCents: COURIER_TOTAL - 1,
+      }).expect(409);
+
+      expect(await prisma.outboxEvent.count()).toBe(before);
+    });
+
+    it('relays it as the customer’s confirmation and the office’s notice, each once, then deletes it', async () => {
+      const { clerkId, cart } = await customerWithCart();
+      const { body } = await placeOrder(clerkId, cart).expect(201);
+
+      const event = await relayOrderPlaced(body.orderId);
+      await app.get(OutboxRelay).relayDue();
+
+      const emails = emailsFor(event.id);
+      expect(emails).toEqual(
+        expect.arrayContaining([
+          {
+            idempotencyKey: `${event.id}:order-confirmation-email`,
+            email: expect.objectContaining({
+              to: `${clerkId}@example.com`,
+              subject: `Поръчка ${body.orderReference} е приета`,
+            }),
+          },
+          {
+            idempotencyKey: `${event.id}:office-notification-email`,
+            email: expect.objectContaining({
+              to: app.get(ConfigService).get('ORDERS_NOTIFY_EMAIL'),
+              replyTo: `${clerkId}@example.com`,
+            }),
+          },
+        ]),
+      );
+      expect(emails).toHaveLength(2);
+      expect(await eventsOf(body.orderId)).toEqual([]);
     });
   });
 
