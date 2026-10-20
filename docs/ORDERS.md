@@ -1,7 +1,8 @@
 # Orders: placing one, and what happens after
 
 The authoritative design for turning a cart into an order. **Built:** `POST
-/orders`, `GET /orders/:orderReference` (`apps/api/src/orders/`), `GET
+/orders`, a guest's `POST /orders/quick`, `GET /orders/:orderReference`
+(`apps/api/src/orders/`), `GET
 /checkout/totals` and the quote's money (`apps/api/src/checkout/`), and in the
 web the order button (`use-place-order.ts`), the cart and checkout summaries
 reading the API's money, and the confirmation page `/orders/[orderReference]`
@@ -17,9 +18,10 @@ through `events/sqs.publisher.ts`) and the queues (`infra/aws/messaging.yml`).
 
 ## What is in scope
 
-- **Signed-in customers only.** Their email is verified at sign-up (AUTH.md),
-  so an order's confirmation reaches the person who placed it. A guest "quick
-  order" is hidden until it has its own design (see [Later](#later)).
+- **Signed-in customers**, whose email is verified at sign-up (AUTH.md), so an
+  order's confirmation reaches the person who placed it; and **guests**, through
+  a [quick order](#quick-order) the office confirms by phone. Its checkout tab
+  stays hidden until the guest's read and the bot check are built.
 - **Cash on delivery only.** Card is shown disabled, "Очаквайте скоро", with
   no fee badge. [Card payments](#card-payments-later) below says what changes.
 - **Three ways to receive it:** an Econt office (or Econtomat), an address by
@@ -97,7 +99,8 @@ row lock is ever held across an HTTP call.
    - lock the cart (`SELECT … FOR UPDATE`) and check again that it is `ACTIVE`
      at `cartVersion`. If it became `ORDERED` meanwhile, return that order;
    - insert the `Order`, its `OrderItem`s, the first `OrderStatusHistory` row
-     (`PROCESSING`, `source: 'shop'`) and the `OrderPlaced` outbox row;
+     (`PROCESSING`, or `AWAITING_CONFIRMATION` for a quick order;
+     `source: 'shop'`) and the `OrderPlaced` outbox row;
    - set the cart `ORDERED` with its `orderId`, and raise its version;
    - move the unselected lines, still unselected, to a fresh `ACTIVE` cart for
      the customer. None is opened when every line was ordered.
@@ -131,6 +134,56 @@ needed:
   before it touches a line, and refuses a cart that is no longer `ACTIVE` with
   `CART_STALE`. An edit that raced the order therefore cannot change the
   record of what was bought, and the two cannot deadlock.
+
+## Quick order
+
+```
+POST /orders/quick     @Public · x-cart-token · Cache-Control: no-store
+                       5 per 10 min per address · 3 an hour per phone
+{
+  …the body of POST /orders,
+  "contact": {
+    "firstName": "Мария", "lastName": "Иванова",
+    "phoneNumber": "0888 765 432", "email": "maria@example.com"   (optional)
+  }
+}
+
+201 / 200 { "orderId": "…", "orderReference": "VP-ORD-000123" }
+```
+
+A guest orders with a name and a phone, and the office calls to confirm before
+anything ships. It is a real order: the delivery is chosen and priced in
+checkout, so the cash-on-delivery total is frozen and exact, and the call
+confirms it and screens out fakes. **No account is created.** Clerk accounts
+rest on a verified email and the phone is never verified, so an account filed
+under a typed phone would let anyone attach orders to someone else's number.
+
+- **The cart is owned through the guest's token** (`x-cart-token`, checked by
+  `CartService.findGuestCart`). A signed-in customer's cart holds no token, so
+  it answers `404 NOT_FOUND` here, as does a cart another token holds. The
+  customer's route is `POST /orders`.
+- **The contact** follows registration's rules (`quickOrderContactSchema` in
+  `packages/shared`): two names, a Bulgarian mobile stored in E.164, and an
+  optional email. It becomes the order's snapshot, with no `customerId`.
+- **Everything else is `POST /orders`'s**: the same pricing, refusals and
+  transaction (`OrdersService.placeFromCart`). The order starts
+  `AWAITING_CONFIRMATION`.
+- **A retry still finds its cart after the token moved.** Ordering a guest's
+  cart moves its token to the cart that keeps the unselected lines, so the
+  browser's cart carries on, and the ordered cart keeps it as `releasedToken`.
+  A retry presents the same token, finds the ordered cart, and gets its order.
+- **Limits.** A fake cash-on-delivery order costs a shipment.
+  `QuickOrderRateLimitGuard` counts every attempt by the client's address (by
+  the global throttler's proxy rule) and by the phone it names. Guards run
+  before validation, so it reads the phone from the raw body, and a phone that
+  is not a mobile counts against the address only. One phone may also hold at
+  most **3 orders `AWAITING_CONFIRMATION`** (`429 RATE_LIMITED`). That is
+  checked after the replay check, so a retry still finds its order, and before
+  the transaction, so two concurrent orders from one phone can both pass it;
+  the per-phone limit bounds that.
+- **Not built yet:** reading a guest's order back (an access key in the link),
+  the bot check, and the checkout tab. Until then the response carries only the
+  order's reference.
 
 ## Money
 
@@ -526,6 +579,8 @@ date, and the amount to pay at the door.
   verification, and nothing trusts an unverified token's subject. Both count
   in Redis (`RedisThrottlerStorage`), so every API instance shares one
   allowance; it fails open, so a Redis outage stops nobody from ordering.
+- `POST /orders/quick` has no account to count against: see
+  [Quick order](#quick-order) for its limits by address and by phone.
 - The logs name an order by its id only. No request body, name, phone, address
   or email.
 
@@ -555,5 +610,5 @@ date, and the amount to pay at the door.
 - "My orders" (`GET /orders`), cancellation requests, live status over SSE and the
   `fulfillment-events` consumer.
 - Remembering a customer's delivery addresses (T091c).
-- Guest quick order: `customerId` loses `NOT NULL`, plus limits by phone and IP,
-  a bot check, and an operator confirming by phone.
+- Quick order: reading a guest's order with an access key, a bot check, the
+  checkout tab, and the confirmation email once the office has confirmed.

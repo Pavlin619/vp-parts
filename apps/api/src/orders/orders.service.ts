@@ -5,21 +5,25 @@ import {
   OrderDetailDto,
   PlaceOrderRequestDto,
   PlaceOrderResponseDto,
+  QuickOrderContactDto,
+  QuickOrderRequestDto,
 } from '@vp-parts-shop/shared';
 import { CartService, CartStaleException } from '../cart';
 import type { CartForOrder, CartOrderLine } from '../cart';
 import { CheckoutService } from '../checkout';
 import { CustomersService } from '../customers';
-import { CartStatus } from '../generated/prisma';
+import { CartStatus, OrderStatus } from '../generated/prisma';
 import type { PricedLine } from '../inventory';
 import {
   OrderCartNotFoundException,
   OrderNotFoundException,
+  OrdersAwaitingCallLimitException,
   PriceChangedException,
 } from './orders.exceptions';
 import { toOrderDetailDto } from './orders.mapper';
 import {
   NewOrderItem,
+  OrderContact,
   OrderPlacement,
   OrderReference,
   OrdersRepository,
@@ -28,16 +32,26 @@ import {
 /** The terms an order is placed under. Raise it whenever the terms page changes. */
 export const TERMS_VERSION = '2026-10-17';
 
+/** A fake cash-on-delivery order costs a shipment, so one phone may hold only a few. */
+export const MAX_ORDERS_AWAITING_CALL_PER_PHONE = 3;
+
 export interface PlacedOrder {
   order: PlaceOrderResponseDto;
   /** True when the cart had been ordered from already: a retry, answered with its order. */
   isReplay: boolean;
 }
 
+/** Who an order is placed for, and where it starts. */
+interface Orderer {
+  customerId: string | null;
+  contact: OrderContact;
+  initialStatus: OrderStatus;
+}
+
 /**
- * Turns a customer's cart into an order — docs/ORDERS.md. It is priced by
- * checkout, as the quote was, before the transaction, so no row lock is held
- * across a call to the stock or the courier.
+ * Turns a cart into an order — docs/ORDERS.md. It is priced by checkout, as
+ * the quote was, before the transaction, so no row lock is held across a call
+ * to the stock or the courier.
  */
 @Injectable()
 export class OrdersService {
@@ -57,38 +71,27 @@ export class OrdersService {
     const customer = await this.customers.requireCompleteProfile(clerkId);
     const cart = await this.cart.findOwnedCart(customer.id, request.cartId);
 
-    if (!cart) {
-      throw new OrderCartNotFoundException();
-    }
-
-    if (cart.orderId) {
-      return this.replay(cart.orderId);
-    }
-
-    assertPricedVersion(cart, request.cartVersion);
-
-    const { lines, delivery, money } = await this.checkout.priceOrder(
-      cart.lines,
-      request,
-    );
-
-    if (money.total !== request.expectedTotalCents) {
-      throw new PriceChangedException();
-    }
-
-    const placement = await this.orders.place({
-      cartId: cart.id,
-      cartVersion: cart.version,
+    return this.placeFromCart(cart, request, {
       customerId: customer.id,
       contact: contactOf(customer),
-      items: lines.map(toOrderItem),
-      delivery,
-      money,
-      paymentMethod: request.paymentMethod,
-      termsVersion: TERMS_VERSION,
+      initialStatus: OrderStatus.PROCESSING,
     });
+  }
 
-    return this.settle(placement);
+  /** A guest's order, owned through the cart token; the office calls to confirm it. */
+  async placeQuickOrder(
+    token: string | null,
+    request: QuickOrderRequestDto,
+  ): Promise<PlacedOrder> {
+    const cart = token
+      ? await this.cart.findGuestCart(token, request.cartId)
+      : null;
+
+    return this.placeFromCart(cart, request, {
+      customerId: null,
+      contact: guestContactOf(request.contact),
+      initialStatus: OrderStatus.AWAITING_CONFIRMATION,
+    });
   }
 
   async getOrder(
@@ -105,6 +108,61 @@ export class OrdersService {
     }
 
     return toOrderDetailDto(order);
+  }
+
+  private async placeFromCart(
+    cart: CartForOrder | null,
+    request: PlaceOrderRequestDto,
+    orderer: Orderer,
+  ): Promise<PlacedOrder> {
+    if (!cart) {
+      throw new OrderCartNotFoundException();
+    }
+
+    if (cart.orderId) {
+      return this.replay(cart.orderId);
+    }
+
+    assertPricedVersion(cart, request.cartVersion);
+    await this.assertRoomToAwaitCall(orderer);
+
+    const { lines, delivery, money } = await this.checkout.priceOrder(
+      cart.lines,
+      request,
+    );
+
+    if (money.total !== request.expectedTotalCents) {
+      throw new PriceChangedException();
+    }
+
+    const placement = await this.orders.place({
+      cartId: cart.id,
+      cartVersion: cart.version,
+      ...orderer,
+      items: lines.map(toOrderItem),
+      delivery,
+      money,
+      paymentMethod: request.paymentMethod,
+      termsVersion: TERMS_VERSION,
+    });
+
+    return this.settle(placement);
+  }
+
+  /** After the replay check, so a retry at the limit still finds its order. */
+  private async assertRoomToAwaitCall({
+    initialStatus,
+    contact,
+  }: Orderer): Promise<void> {
+    if (initialStatus !== OrderStatus.AWAITING_CONFIRMATION) {
+      return;
+    }
+
+    const awaiting = await this.orders.countAwaitingConfirmation(contact.phone);
+
+    if (awaiting >= MAX_ORDERS_AWAITING_CALL_PER_PHONE) {
+      throw new OrdersAwaitingCallLimitException();
+    }
   }
 
   private async replay(orderId: string): Promise<PlacedOrder> {
@@ -160,8 +218,17 @@ function contactOf({
   lastName,
   phoneNumber,
   email,
-}: CompleteProfileDetails<CustomerProfileDto>) {
+}: CompleteProfileDetails<CustomerProfileDto>): OrderContact {
   return { firstName, lastName, phone: phoneNumber, email };
+}
+
+function guestContactOf({
+  firstName,
+  lastName,
+  phoneNumber,
+  email,
+}: QuickOrderContactDto): OrderContact {
+  return { firstName, lastName, phone: phoneNumber, email: email ?? null };
 }
 
 function toResponse({ id, orderReference }: OrderReference) {

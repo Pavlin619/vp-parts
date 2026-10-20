@@ -114,6 +114,7 @@ minted on a write, never on a read. See `docs/CART.md`.
 |---|---|---|---|
 | `id` | UUID | PK | |
 | `token` | String | UNIQUE, NULL | Guest owner. Cleared once a customer claims the cart |
+| `releasedToken` | String | NULL | The guest token an ordered cart held; a retried quick order proves ownership with it |
 | `customerId` | UUID | FK → Customer, NULL | |
 | `status` | Enum | NOT NULL, default ACTIVE | `ACTIVE` \| `MERGED` \| `ORDERED` |
 | `version` | Int | NOT NULL, default 0 | Raised by every mutation; checkout pins it |
@@ -131,6 +132,7 @@ minted on a write, never on a read. See `docs/CART.md`.
 - A cart is **never deleted once ordered from**: it is the record of what was bought, and `orderId` being unique is what makes a retried payment webhook idempotent.
 - Guest carts (`customerId IS NULL`) are swept once `expiresAt` passes. Customer carts do not expire.
 - Merging sets the source cart to `MERGED` and releases its token.
+- Ordering a guest's cart moves its token to the cart keeping the unselected lines, and keeps it as `releasedToken`.
 
 ---
 

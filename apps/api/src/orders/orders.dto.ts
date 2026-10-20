@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -9,15 +9,29 @@ import {
   Matches,
   MaxLength,
   Min,
+  Validate,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
+  bulgarianMobileSchema,
+  contactEmailSchema,
   DeliveryMethod,
   PaymentMethod,
+  personNameSchema,
   PlaceOrderRequestDto,
+  QuickOrderContactDto,
+  QuickOrderRequestDto,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
-import { DeliveryAddressBodyDto, SUPPORTED_CARRIERS } from '../common';
+import {
+  asMobile,
+  DeliveryAddressBodyDto,
+  isGiven,
+  SatisfiesSchema,
+  SUPPORTED_CARRIERS,
+  trimmed,
+} from '../common';
 
 export class CourierOfficeDeliveryBodyDto {
   @IsIn([DeliveryMethod.COURIER_OFFICE])
@@ -91,6 +105,35 @@ export class PlaceOrderBodyDto implements PlaceOrderRequestDto {
     | CourierOfficeDeliveryBodyDto
     | CourierAddressDeliveryBodyDto
     | StorePickupDeliveryBodyDto;
+}
+
+export class QuickOrderContactBodyDto implements QuickOrderContactDto {
+  @Transform(trimmed)
+  @Validate(SatisfiesSchema, [personNameSchema])
+  firstName!: string;
+
+  @Transform(trimmed)
+  @Validate(SatisfiesSchema, [personNameSchema])
+  lastName!: string;
+
+  @Transform(asMobile)
+  @Validate(SatisfiesSchema, [bulgarianMobileSchema])
+  phoneNumber!: string;
+
+  @ValidateIf(isGiven)
+  @Transform(trimmed)
+  @Validate(SatisfiesSchema, [contactEmailSchema])
+  email?: string;
+}
+
+export class QuickOrderBodyDto
+  extends PlaceOrderBodyDto
+  implements QuickOrderRequestDto
+{
+  @IsObject()
+  @ValidateNested()
+  @Type(() => QuickOrderContactBodyDto)
+  contact!: QuickOrderContactBodyDto;
 }
 
 export class OrderReferenceParamsDto {

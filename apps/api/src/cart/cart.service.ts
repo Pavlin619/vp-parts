@@ -102,6 +102,20 @@ export class CartService {
   }
 
   /**
+   * A guest's cart by its id, in any status; null unless the token holds it,
+   * or held it when it was ordered.
+   */
+  async findGuestCart(
+    token: string,
+    cartId: string,
+  ): Promise<CartForOrder | null> {
+    const cart = await this.carts.findById(cartId);
+    const isHeld = cart?.token === token || cart?.releasedToken === token;
+
+    return cart && isHeld ? toCartForOrder(cart) : null;
+  }
+
+  /**
    * The capacity limit is enforced by {@link CartRepository.addLine} itself,
    * inside the same transaction as the insert — a check made here first,
    * against a cart already read, would leave two concurrent adds of two

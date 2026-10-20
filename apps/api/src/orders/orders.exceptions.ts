@@ -16,6 +16,13 @@ export class PriceChangedException extends AppHttpException {
   }
 }
 
+/** The phone already has as many quick orders waiting on a call as it may. */
+export class OrdersAwaitingCallLimitException extends AppHttpException {
+  constructor() {
+    super(HttpStatus.TOO_MANY_REQUESTS, AppErrorCode.RATE_LIMITED);
+  }
+}
+
 export class OrderNotFoundException extends AppHttpException {
   constructor() {
     super(HttpStatus.NOT_FOUND, AppErrorCode.ORDER_NOT_FOUND);

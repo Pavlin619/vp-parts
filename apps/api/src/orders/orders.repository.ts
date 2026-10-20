@@ -27,7 +27,7 @@ export interface OrderContact {
   firstName: string;
   lastName: string;
   phone: string;
-  email: string;
+  email: string | null;
 }
 
 /** Everything an order freezes, read and checked before the transaction opens. */
@@ -35,13 +35,16 @@ export interface NewOrder {
   cartId: string;
   /** The version every check before the transaction was made against. */
   cartVersion: number;
-  customerId: string;
+  /** Null for a guest's quick order. */
+  customerId: string | null;
   contact: OrderContact;
   items: NewOrderItem[];
   delivery: DeliveryPrice;
   money: OrderMoneyDto;
   paymentMethod: PaymentMethod;
   termsVersion: string;
+  /** Also the order's first status-history row. */
+  initialStatus: OrderStatus;
 }
 
 export interface OrderReference {
@@ -118,6 +121,7 @@ export class OrdersRepository {
         cartId: order.cartId,
         orderId: placed.id,
         customerId: order.customerId,
+        token: cart.token,
       });
 
       return { kind: 'placed', order: placed };
@@ -128,6 +132,15 @@ export class OrdersRepository {
     return this.prisma.order.findUnique({
       where: { id: orderId },
       select: referenceOnly,
+    });
+  }
+
+  countAwaitingConfirmation(phone: string): Promise<number> {
+    return this.prisma.order.count({
+      where: {
+        contactPhone: phone,
+        status: OrderStatus.AWAITING_CONFIRMATION,
+      },
     });
   }
 
@@ -184,9 +197,10 @@ function toOrderData(
     contactPhone: contact.phone,
     contactEmail: contact.email,
     termsVersion: order.termsVersion,
+    status: order.initialStatus,
     items: { create: items },
     statusHistory: {
-      create: { status: OrderStatus.PROCESSING, source: 'shop' },
+      create: { status: order.initialStatus, source: 'shop' },
     },
   };
 }

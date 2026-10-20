@@ -40,7 +40,12 @@ const MERGED_LINE = {
   addedAt: new Date('2026-09-01'),
 };
 
-const ACTIVE_CART = { status: 'ACTIVE', version: 3, orderId: null };
+const ACTIVE_CART = {
+  status: 'ACTIVE',
+  version: 3,
+  orderId: null,
+  token: null,
+};
 
 describe('CartRepository', () => {
   const cartUpdate = jest.fn();
@@ -398,6 +403,7 @@ describe('CartRepository', () => {
       );
       const [sql, cartId] = queryRaw.mock.calls[0] as [string[], string];
       expect(sql.join('?')).toContain('FOR UPDATE');
+      expect(sql.join('?')).toContain('token');
       expect(cartId).toBe('cart-1');
     });
 
@@ -416,6 +422,14 @@ describe('CartRepository', () => {
       cartId: 'cart-1',
       orderId: 'order-1',
       customerId: 'customer-1',
+      token: null,
+    };
+
+    const guestClosure = {
+      cartId: 'cart-1',
+      orderId: 'order-1',
+      customerId: null,
+      token: 'guest-token',
     };
 
     // The version moves too, so a merge computed against the cart before the
@@ -449,11 +463,51 @@ describe('CartRepository', () => {
       await repository.closeForOrder(client, closure);
 
       expect(txCartCreate).toHaveBeenCalledWith({
-        data: { customerId: 'customer-1', expiresAt: expect.any(Date) },
+        data: {
+          customerId: 'customer-1',
+          token: null,
+          expiresAt: expect.any(Date),
+        },
       });
       expect(itemUpdateMany).toHaveBeenCalledWith({
         where: { cartId: 'cart-1', isSelected: false },
         data: { cartId: 'cart-2' },
+      });
+      expect(cartUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+        txCartCreate.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('takes the token from a guest’s ordered cart, keeping it as released', async () => {
+      itemCount.mockResolvedValue(0);
+
+      await repository.closeForOrder(client, guestClosure);
+
+      expect(cartUpdate).toHaveBeenCalledWith({
+        where: { id: 'cart-1' },
+        data: {
+          status: 'ORDERED',
+          orderId: 'order-1',
+          version: { increment: 1 },
+          token: null,
+          releasedToken: 'guest-token',
+        },
+      });
+    });
+
+    // The token is unique, so it is released before the next cart takes it.
+    it('hands a guest’s token to the cart keeping the unselected lines', async () => {
+      itemCount.mockResolvedValue(1);
+      txCartCreate.mockResolvedValue({ id: 'cart-2' });
+
+      await repository.closeForOrder(client, guestClosure);
+
+      expect(txCartCreate).toHaveBeenCalledWith({
+        data: {
+          customerId: null,
+          token: 'guest-token',
+          expiresAt: expect.any(Date),
+        },
       });
       expect(cartUpdate.mock.invocationCallOrder[0]).toBeLessThan(
         txCartCreate.mock.invocationCallOrder[0],

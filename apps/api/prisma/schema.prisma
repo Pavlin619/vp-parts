@@ -128,21 +128,25 @@ model Address {
 /// the record of what was bought, and `orderId` is what makes a retried payment
 /// webhook idempotent.
 model Cart {
-  id           String     @id @default(uuid())
+  id            String     @id @default(uuid())
   /// Guest owner. Cleared once a customer claims the cart.
-  token        String?    @unique
-  customerId   String?
-  status       CartStatus @default(ACTIVE)
+  token         String?    @unique
+  /// The guest token this cart held when it was ordered, which then passed to
+  /// the cart keeping its unselected lines. A retried quick order proves its
+  /// ownership with it.
+  releasedToken String?
+  customerId    String?
+  status        CartStatus @default(ACTIVE)
   /// Raised by every mutation. Checkout pins the version it priced, so an order
   /// can refuse a cart that moved between the quote and the commitment.
-  version      Int        @default(0)
+  version       Int        @default(0)
   /// Where this cart's lines went when it was merged into another.
-  mergedIntoId String?
-  orderId      String?    @unique
+  mergedIntoId  String?
+  orderId       String?    @unique
   /// Guest carts are swept after this; a customer's cart does not expire.
-  expiresAt    DateTime
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  expiresAt     DateTime
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   customer        Customer?  @relation(fields: [customerId], references: [id])
   items           CartItem[]
@@ -266,7 +270,7 @@ model Order {
 }
 
 model OrderItem {
-  id            String @id @default(uuid())
+  id            String  @id @default(uuid())
   orderId       String
   /// TecDoc `dataSupplierId` — the other half of the article's identity.
   brandId       String

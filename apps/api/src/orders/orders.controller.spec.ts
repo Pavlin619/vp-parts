@@ -6,10 +6,12 @@ import {
   DeliveryMethod,
   PaymentMethod,
   PlaceOrderRequestDto,
+  QuickOrderRequestDto,
 } from '@vp-parts-shop/shared';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { PlaceOrderRateLimitGuard } from './place-order-rate-limit.guard';
+import { QuickOrderRateLimitGuard } from './quick-order-rate-limit.guard';
 
 const USER = { clerkId: 'user_1' };
 
@@ -21,10 +23,27 @@ const REQUEST: PlaceOrderRequestDto = {
   delivery: { method: DeliveryMethod.STORE_PICKUP },
 };
 
+const QUICK_REQUEST: QuickOrderRequestDto = {
+  ...REQUEST,
+  contact: {
+    firstName: 'Мария',
+    lastName: 'Иванова',
+    phoneNumber: '+359888765432',
+  },
+};
+
+const GUEST = { clerkId: null, token: 'g'.repeat(43) };
+
 const PLACED = { orderId: 'order-1', orderReference: 'VP-ORD-000042' };
+
+function handlerOf(name: keyof OrdersController) {
+  return Object.getOwnPropertyDescriptor(OrdersController.prototype, name)!
+    .value as object;
+}
 
 describe('OrdersController', () => {
   const placeOrder = jest.fn();
+  const placeQuickOrder = jest.fn();
   const getOrder = jest.fn();
   const status = jest.fn();
   const response = { status } as unknown as Response;
@@ -37,10 +56,15 @@ describe('OrdersController', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
-        { provide: OrdersService, useValue: { placeOrder, getOrder } },
+        {
+          provide: OrdersService,
+          useValue: { placeOrder, placeQuickOrder, getOrder },
+        },
       ],
     })
       .overrideGuard(PlaceOrderRateLimitGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(QuickOrderRateLimitGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -70,13 +94,41 @@ describe('OrdersController', () => {
     });
 
     it('is limited per customer', () => {
-      const { value: handler } = Object.getOwnPropertyDescriptor(
-        OrdersController.prototype,
-        'placeOrder',
-      )!;
-      const guards = Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[];
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        handlerOf('placeOrder'),
+      ) as unknown[];
 
       expect(guards).toEqual([PlaceOrderRateLimitGuard]);
+    });
+  });
+
+  describe('placeQuickOrder', () => {
+    it('places the order for the cart the guest’s token holds, leaving the 201', async () => {
+      placeQuickOrder.mockResolvedValue({ order: PLACED, isReplay: false });
+
+      await expect(
+        controller.placeQuickOrder(GUEST, QUICK_REQUEST, response),
+      ).resolves.toEqual(PLACED);
+      expect(placeQuickOrder).toHaveBeenCalledWith(GUEST.token, QUICK_REQUEST);
+      expect(status).not.toHaveBeenCalled();
+    });
+
+    it('answers a retry with its order, as a 200', async () => {
+      placeQuickOrder.mockResolvedValue({ order: PLACED, isReplay: true });
+
+      await controller.placeQuickOrder(GUEST, QUICK_REQUEST, response);
+
+      expect(status).toHaveBeenCalledWith(HttpStatus.OK);
+    });
+
+    it('is limited by address and phone', () => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        handlerOf('placeQuickOrder'),
+      ) as unknown[];
+
+      expect(guards).toEqual([QuickOrderRateLimitGuard]);
     });
   });
 

@@ -5,6 +5,7 @@ import {
   CourierOfficeDeliveryBodyDto,
   OrderReferenceParamsDto,
   PlaceOrderBodyDto,
+  QuickOrderBodyDto,
   StorePickupDeliveryBodyDto,
 } from './orders.dto';
 
@@ -82,6 +83,78 @@ describe('PlaceOrderBodyDto', () => {
     ],
     ['an unknown delivery method', { delivery: { method: 'DRONE' } }],
     ['the lines themselves', { lines: [{ articleNumber: 'X', price: 1 }] }],
+  ])('refuses %s', async (_case, change) => {
+    await expect(transform({ ...BODY, ...change })).rejects.toThrow();
+  });
+});
+
+describe('QuickOrderBodyDto', () => {
+  const pipe = new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  });
+
+  const transform = (value: object) =>
+    pipe.transform(value, { type: 'body', metatype: QuickOrderBodyDto });
+
+  const CONTACT = {
+    firstName: 'Мария',
+    lastName: 'Иванова',
+    phoneNumber: '0888 123 456',
+  };
+
+  const BODY = {
+    cartId: '7b0c2f4e-35a4-4f43-8f4c-6d1b1d3c2a10',
+    cartVersion: 7,
+    expectedTotalCents: 5304,
+    paymentMethod: 'CASH_ON_DELIVERY',
+    delivery: {
+      method: 'COURIER_OFFICE',
+      carrier: 'ECONT',
+      officeCode: '1127',
+    },
+    contact: CONTACT,
+  };
+
+  it('accepts a name and a phone, storing the phone in E.164', async () => {
+    const dto = (await transform(BODY)) as QuickOrderBodyDto;
+
+    expect(dto.delivery).toBeInstanceOf(CourierOfficeDeliveryBodyDto);
+    expect(dto.contact).toEqual({
+      firstName: 'Мария',
+      lastName: 'Иванова',
+      phoneNumber: '+359888123456',
+    });
+  });
+
+  it('trims the names and the email it is given', async () => {
+    const dto = (await transform({
+      ...BODY,
+      contact: {
+        ...CONTACT,
+        firstName: ' Мария ',
+        lastName: 'Иванова  ',
+        email: ' maria@example.com ',
+      },
+    })) as QuickOrderBodyDto;
+
+    expect(dto.contact).toMatchObject({
+      firstName: 'Мария',
+      lastName: 'Иванова',
+      email: 'maria@example.com',
+    });
+  });
+
+  it.each([
+    ['no contact', { contact: undefined }],
+    ['a landline', { contact: { ...CONTACT, phoneNumber: '02 987 6543' } }],
+    ['no last name', { contact: { ...CONTACT, lastName: undefined } }],
+    ['a name with digits', { contact: { ...CONTACT, firstName: 'Мария2' } }],
+    ['an email that is not one', { contact: { ...CONTACT, email: 'maria@' } }],
+    ['an empty email', { contact: { ...CONTACT, email: '' } }],
+    ['a contact field of its own', { contact: { ...CONTACT, note: 'x' } }],
+    ['card, which is not offered yet', { paymentMethod: 'CARD' }],
   ])('refuses %s', async (_case, change) => {
     await expect(transform({ ...BODY, ...change })).rejects.toThrow();
   });
