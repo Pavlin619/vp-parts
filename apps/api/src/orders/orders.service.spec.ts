@@ -4,6 +4,7 @@ import {
   DeliveryMethod,
   PaymentMethod,
   PlaceOrderRequestDto,
+  QuickOrderRequestDto,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
 import { CartService, CartStaleException } from '../cart';
@@ -18,10 +19,15 @@ import { ArticleUnavailableException } from '../inventory';
 import {
   OrderCartNotFoundException,
   OrderNotFoundException,
+  OrdersAwaitingCallLimitException,
   PriceChangedException,
 } from './orders.exceptions';
 import { OrdersRepository } from './orders.repository';
-import { OrdersService, TERMS_VERSION } from './orders.service';
+import {
+  MAX_ORDERS_AWAITING_CALL_PER_PHONE,
+  OrdersService,
+  TERMS_VERSION,
+} from './orders.service';
 
 const CLERK_ID = 'clerk-1';
 const CART_ID = '7b0c2f4e-35a4-4f43-8f4c-6d1b1d3c2a10';
@@ -100,6 +106,22 @@ function request(
   };
 }
 
+const GUEST_TOKEN = 'g'.repeat(43);
+
+function quickRequest(
+  overrides: Partial<QuickOrderRequestDto> = {},
+): QuickOrderRequestDto {
+  return {
+    ...request(),
+    contact: {
+      firstName: 'Мария',
+      lastName: 'Иванова',
+      phoneNumber: '+359888765432',
+    },
+    ...overrides,
+  };
+}
+
 describe('OrdersService', () => {
   let service: OrdersService;
   let cart: CartForOrder;
@@ -107,10 +129,12 @@ describe('OrdersService', () => {
   const requireCompleteProfile = jest.fn();
   const findByClerkId = jest.fn();
   const findOwnedCart = jest.fn();
+  const findGuestCart = jest.fn();
   const priceOrder = jest.fn();
   const place = jest.fn();
   const findReference = jest.fn();
   const findOwned = jest.fn();
+  const countAwaitingConfirmation = jest.fn();
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -123,6 +147,8 @@ describe('OrdersService', () => {
     };
     requireCompleteProfile.mockResolvedValue(PROFILE);
     findOwnedCart.mockImplementation(() => Promise.resolve(cart));
+    findGuestCart.mockImplementation(() => Promise.resolve(cart));
+    countAwaitingConfirmation.mockResolvedValue(0);
     priceOrder.mockImplementation(() =>
       Promise.resolve({
         lines: [
@@ -145,11 +171,16 @@ describe('OrdersService', () => {
           provide: CustomersService,
           useValue: { requireCompleteProfile, findByClerkId },
         },
-        { provide: CartService, useValue: { findOwnedCart } },
+        { provide: CartService, useValue: { findOwnedCart, findGuestCart } },
         { provide: CheckoutService, useValue: { priceOrder } },
         {
           provide: OrdersRepository,
-          useValue: { place, findReference, findOwned },
+          useValue: {
+            place,
+            findReference,
+            findOwned,
+            countAwaitingConfirmation,
+          },
         },
       ],
     }).compile();
@@ -201,7 +232,14 @@ describe('OrdersService', () => {
         money: MONEY,
         paymentMethod: 'CASH_ON_DELIVERY',
         termsVersion: TERMS_VERSION,
+        initialStatus: 'PROCESSING',
       });
+    });
+
+    it('never counts a customer’s orders against the call limit', async () => {
+      await service.placeOrder(CLERK_ID, request());
+
+      expect(countAwaitingConfirmation).not.toHaveBeenCalled();
     });
 
     it('prices the cart’s own lines with the delivery and payment asked for', async () => {
@@ -299,6 +337,117 @@ describe('OrdersService', () => {
       await expect(
         service.placeOrder(CLERK_ID, request()),
       ).rejects.toBeInstanceOf(CartStaleException);
+    });
+  });
+
+  describe('placeQuickOrder', () => {
+    it('places the guest’s cart with no customer, to wait on a confirmation call', async () => {
+      const result = await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(result).toEqual({
+        order: { orderId: 'order-1', orderReference: 'VP-ORD-000123' },
+        isReplay: false,
+      });
+      expect(findGuestCart).toHaveBeenCalledWith(GUEST_TOKEN, CART_ID);
+      expect(place).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cartId: CART_ID,
+          cartVersion: 7,
+          customerId: null,
+          contact: {
+            firstName: 'Мария',
+            lastName: 'Иванова',
+            phone: '+359888765432',
+            email: null,
+          },
+          initialStatus: 'AWAITING_CONFIRMATION',
+          termsVersion: TERMS_VERSION,
+        }),
+      );
+    });
+
+    it('snapshots the email the guest gave', async () => {
+      await service.placeQuickOrder(
+        GUEST_TOKEN,
+        quickRequest({
+          contact: { ...quickRequest().contact, email: 'maria@example.com' },
+        }),
+      );
+
+      expect(place).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contact: expect.objectContaining({ email: 'maria@example.com' }),
+        }),
+      );
+    });
+
+    it('prices it exactly as a customer’s order', async () => {
+      await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(priceOrder).toHaveBeenCalledWith(cart.lines, quickRequest());
+    });
+
+    it('answers 404 to a request holding no cart token', async () => {
+      await expect(
+        service.placeQuickOrder(null, quickRequest()),
+      ).rejects.toBeInstanceOf(OrderCartNotFoundException);
+      expect(findGuestCart).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 for a cart the token does not hold', async () => {
+      findGuestCart.mockResolvedValue(null);
+
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest()),
+      ).rejects.toBeInstanceOf(OrderCartNotFoundException);
+    });
+
+    it('answers a retry with its order, even at the limit of open orders', async () => {
+      cart = { ...cart, status: 'ORDERED', orderId: 'order-1', version: 8 };
+      findReference.mockResolvedValue({
+        id: 'order-1',
+        orderReference: 'VP-ORD-000123',
+      });
+      countAwaitingConfirmation.mockResolvedValue(
+        MAX_ORDERS_AWAITING_CALL_PER_PHONE,
+      );
+
+      const result = await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(result.isReplay).toBe(true);
+      expect(place).not.toHaveBeenCalled();
+    });
+
+    it('refuses a phone with as many orders waiting on a call as allowed', async () => {
+      countAwaitingConfirmation.mockResolvedValue(
+        MAX_ORDERS_AWAITING_CALL_PER_PHONE,
+      );
+
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest()),
+      ).rejects.toBeInstanceOf(OrdersAwaitingCallLimitException);
+      expect(countAwaitingConfirmation).toHaveBeenCalledWith('+359888765432');
+      expect(priceOrder).not.toHaveBeenCalled();
+    });
+
+    it('allows one below the limit', async () => {
+      countAwaitingConfirmation.mockResolvedValue(
+        MAX_ORDERS_AWAITING_CALL_PER_PHONE - 1,
+      );
+
+      await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(place).toHaveBeenCalled();
+    });
+
+    it('refuses a total that is not the live one', async () => {
+      await expect(
+        service.placeQuickOrder(
+          GUEST_TOKEN,
+          quickRequest({ expectedTotalCents: EXPECTED_TOTAL - 1 }),
+        ),
+      ).rejects.toBeInstanceOf(PriceChangedException);
+      expect(place).not.toHaveBeenCalled();
     });
   });
 

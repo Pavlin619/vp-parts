@@ -47,6 +47,19 @@ export interface PlaceOrderRequestDto {
   delivery: PlaceOrderDeliveryDto;
 }
 
+/** All a quick order knows a guest by. The office calls the phone to confirm it. */
+export interface QuickOrderContactDto {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email?: string;
+}
+
+/** A guest's order of the cart their device holds, owned through the cart token. */
+export interface QuickOrderRequestDto extends PlaceOrderRequestDto {
+  contact: QuickOrderContactDto;
+}
+
 export interface PlaceOrderResponseDto {
   orderId: string;
   orderReference: string;

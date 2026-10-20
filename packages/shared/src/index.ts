@@ -11,6 +11,7 @@ export * from './types/value-objects';
 
 export * from './schemas/cart.schema';
 export * from './schemas/customers.schema';
+export * from './schemas/orders.schema';
 
 export * from './dto/common.dto';
 export * from './dto/catalog/articles.dto';

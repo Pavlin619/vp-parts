@@ -136,10 +136,12 @@ A cart becomes an order by **transition, never deletion**:
    `ORDERED` and stamp `orderId`.
 4. Unselected lines move, still unselected, to a fresh `ACTIVE` cart for the
    same owner. The cart page already lets a customer pick a subset; this is what
-   that implies.
+   that implies. A guest's token moves with them, so the browser's cart carries
+   on; the ordered cart keeps it as `releasedToken` (a guest's quick order,
+   [ORDERS.md](ORDERS.md#quick-order)).
 5. The cart row is **never deleted**. It is the record of what was bought, and
-   it is the idempotency key: a retried `POST /orders` for a cart already
-   `ORDERED` by the same owner returns the existing order, two concurrent ones
+   it is the idempotency key: a retried `POST /orders` (or `POST /orders/quick`)
+   for a cart already `ORDERED` by the same owner returns the existing order, two concurrent ones
    serialise on the row lock, and `Order.cartId` being `UNIQUE` lets the database
    itself refuse a second order for one cart. No idempotency header is needed.
 6. An order that is refused leaves the cart `ACTIVE` and untouched.

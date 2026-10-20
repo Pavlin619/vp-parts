@@ -9,7 +9,7 @@ import {
 } from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AuthModule, JwtGuard } from './auth';
-import { ClientIpOptions, resolveClientIp } from './common';
+import { clientIpOptionsFrom, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
 import { RedisModule, RedisThrottlerStorage } from './redis';
 import { CartModule } from './cart';
@@ -33,10 +33,7 @@ function buildThrottlerOptions(
   config: ConfigService,
   storage: RedisThrottlerStorage,
 ): ThrottlerModuleOptions {
-  const clientIpOptions: ClientIpOptions = {
-    trustedProxyCount: config.get<number>('TRUSTED_PROXY_COUNT', 0),
-    webOriginToken: config.get<string>('WEB_ORIGIN_TOKEN'),
-  };
+  const clientIpOptions = clientIpOptionsFrom(config);
 
   return {
     throttlers: [

@@ -1,3 +1,4 @@
+import type { ConfigService } from '@nestjs/config';
 import {
   FORWARDED_FOR_HEADER,
   WEB_ORIGIN_TOKEN_HEADER,
@@ -6,6 +7,7 @@ import {
   ClientIpOptions,
   IncomingRequest,
   UNKNOWN_CLIENT_IP,
+  clientIpOptionsFrom,
   resolveClientIp,
 } from './client-ip';
 
@@ -165,6 +167,28 @@ describe('resolveClientIp', () => {
       expect(resolveClientIp(request, options({ trustedProxyCount: 1 }))).toBe(
         '203.0.113.7',
       );
+    });
+  });
+});
+
+describe('clientIpOptionsFrom', () => {
+  const configWith = (values: Record<string, unknown>) =>
+    ({
+      get: (key: string, fallback?: unknown) => values[key] ?? fallback,
+    }) as unknown as ConfigService;
+
+  it('reads the proxy count and the frontend token from the environment', () => {
+    expect(
+      clientIpOptionsFrom(
+        configWith({ TRUSTED_PROXY_COUNT: 1, WEB_ORIGIN_TOKEN: 'secret' }),
+      ),
+    ).toEqual({ trustedProxyCount: 1, webOriginToken: 'secret' });
+  });
+
+  it('trusts no proxy and no frontend when neither is configured', () => {
+    expect(clientIpOptionsFrom(configWith({}))).toEqual({
+      trustedProxyCount: 0,
+      webOriginToken: undefined,
     });
   });
 });

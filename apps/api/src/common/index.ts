@@ -1,6 +1,7 @@
 export { AppHttpException } from './app-http.exception';
 export {
   UNKNOWN_CLIENT_IP,
+  clientIpOptionsFrom,
   resolveClientIp,
   type ClientIpOptions,
   type IncomingRequest,
@@ -14,4 +15,5 @@ export {
 export { ExpiringMemo } from './expiring-memo';
 export { GlobalExceptionFilter } from './exception.filter';
 export { LoggingInterceptor } from './logging.interceptor';
+export { SatisfiesSchema, asMobile, isGiven, trimmed } from './schema-field';
 export { securityHeaders } from './security-headers';

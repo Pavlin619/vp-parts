@@ -54,6 +54,14 @@ const ORDER: NewOrder = {
   },
   paymentMethod: 'CASH_ON_DELIVERY',
   termsVersion: '2026-10-17',
+  initialStatus: 'PROCESSING',
+};
+
+const GUEST_ORDER: NewOrder = {
+  ...ORDER,
+  customerId: null,
+  contact: { ...ORDER.contact, email: null },
+  initialStatus: 'AWAITING_CONFIRMATION',
 };
 
 const REFERENCE = { id: 'order-1', orderReference: 'VP-ORD-000042' };
@@ -75,7 +83,7 @@ describe('OrdersRepository', () => {
 
   const prisma = {
     $transaction: jest.fn((run: (client: typeof tx) => unknown) => run(tx)),
-    order: { findUnique: jest.fn(), findFirst: jest.fn() },
+    order: { findUnique: jest.fn(), findFirst: jest.fn(), count: jest.fn() },
   };
 
   beforeEach(async () => {
@@ -84,6 +92,7 @@ describe('OrdersRepository', () => {
       status: 'ACTIVE',
       version: 7,
       orderId: null,
+      token: null,
     });
     queryRaw.mockResolvedValue([{ value: BigInt(42) }]);
     orderCreate.mockResolvedValue(REFERENCE);
@@ -128,6 +137,7 @@ describe('OrdersRepository', () => {
           contactPhone: '+359888123456',
           contactEmail: 'ivan@example.com',
           termsVersion: '2026-10-17',
+          status: 'PROCESSING',
           items: { create: ORDER.items },
           statusHistory: {
             create: { status: 'PROCESSING', source: 'shop' },
@@ -145,10 +155,46 @@ describe('OrdersRepository', () => {
         cartId: 'cart-1',
         orderId: 'order-1',
         customerId: 'customer-1',
+        token: null,
       });
       expect(lockCart.mock.invocationCallOrder[0]).toBeLessThan(
         orderCreate.mock.invocationCallOrder[0],
       );
+    });
+
+    it('writes a guest’s order with no customer, starting where it was asked to', async () => {
+      await repository.place(GUEST_ORDER);
+
+      expect(orderCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            customerId: null,
+            contactEmail: null,
+            status: 'AWAITING_CONFIRMATION',
+            statusHistory: {
+              create: { status: 'AWAITING_CONFIRMATION', source: 'shop' },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('passes a guest cart’s token, read under the lock, on to the next cart', async () => {
+      lockCart.mockResolvedValue({
+        status: 'ACTIVE',
+        version: 7,
+        orderId: null,
+        token: 'guest-token',
+      });
+
+      await repository.place(GUEST_ORDER);
+
+      expect(closeForOrder).toHaveBeenCalledWith(tx, {
+        cartId: 'cart-1',
+        orderId: 'order-1',
+        customerId: null,
+        token: 'guest-token',
+      });
     });
 
     it('writes OrderPlaced to the outbox in the same transaction, naming only the order', async () => {
@@ -226,6 +272,20 @@ describe('OrdersRepository', () => {
         where: { orderReference: 'VP-ORD-000042', customerId: 'customer-1' },
       }),
     );
+  });
+
+  it('counts the orders a phone has waiting on a confirmation call', async () => {
+    prisma.order.count.mockResolvedValue(2);
+
+    await expect(
+      repository.countAwaitingConfirmation('+359888123456'),
+    ).resolves.toBe(2);
+    expect(prisma.order.count).toHaveBeenCalledWith({
+      where: {
+        contactPhone: '+359888123456',
+        status: 'AWAITING_CONFIRMATION',
+      },
+    });
   });
 
   it('reads an order by its id for the handlers of its events', async () => {
