@@ -10,6 +10,7 @@ export enum MechanicApprovalStatus {
 }
 
 export enum OrderStatus {
+  AWAITING_CONFIRMATION = 'AWAITING_CONFIRMATION',
   PROCESSING = 'PROCESSING',
   ITEMS_PREPARED = 'ITEMS_PREPARED',
   ON_THE_WAY = 'ON_THE_WAY',

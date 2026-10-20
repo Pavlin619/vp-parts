@@ -1,3 +1,4 @@
+import { OrderStatus } from '@vp-parts-shop/shared';
 import { officeNotificationEmail } from './office-notification.email';
 import { PICKED_UP, PLACED_ORDER, TO_ADDRESS } from './placed-order.fixture';
 
@@ -26,6 +27,37 @@ describe('officeNotificationEmail', () => {
         'Имейл: ivan@example.com',
       ].join('\n'),
     );
+  });
+
+  it('leaves the email out for an order placed without one', () => {
+    const noEmail = officeNotificationEmail(
+      { ...PLACED_ORDER, contact: { ...PLACED_ORDER.contact, email: null } },
+      10_000,
+    );
+
+    expect(noEmail.text).toContain('Телефон: +359888123456');
+    expect(noEmail.text).not.toContain('Имейл');
+  });
+
+  describe('for an order that waits on a call', () => {
+    const awaiting = officeNotificationEmail(
+      { ...PLACED_ORDER, status: OrderStatus.AWAITING_CONFIRMATION },
+      10_000,
+    );
+
+    it('says so first in the subject', () => {
+      expect(awaiting.subject).toBe(
+        `За потвърждение: Нова поръчка VP-ORD-000042 · офис на Еконт · ${euros('53,04')}`,
+      );
+    });
+
+    it('asks for the call before the order is fulfilled', () => {
+      expect(awaiting.text).toContain(
+        'Приета на 18 октомври 2026 г. в 11:32 ч. ' +
+          'Обадете се на +359888123456, за да я потвърдите, преди да я изпълните. ' +
+          'Създайте товарителница в Еконт.',
+      );
+    });
   });
 
   it('gives what the waybill needs: the office code, the weight and the amount to collect', () => {

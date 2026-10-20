@@ -51,7 +51,7 @@ export function OrderDeliveryDetails({ order }: { order: DeliveryOrder }) {
         <InfoBlock
           label="Получател"
           main={`${contact.firstName} ${contact.lastName}`}
-          lines={[contact.phoneNumber, contact.email]}
+          lines={contact.email ? [contact.phoneNumber, contact.email] : [contact.phoneNumber]}
         />
         <InfoBlock label="Плащане" main={paymentLabel(order.paymentMethod)} lines={[]}>
           {order.paymentMethod === PaymentMethod.CASH_ON_DELIVERY && (

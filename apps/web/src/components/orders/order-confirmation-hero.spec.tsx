@@ -24,6 +24,13 @@ describe('OrderConfirmationHero', () => {
     expect(screen.getByText('ivan@example.bg')).toBeInTheDocument()
   })
 
+  it('promises no email for an order placed without one', () => {
+    const order = orderDetail()
+    render(<OrderConfirmationHero order={{ ...order, contact: { ...order.contact, email: null } }} />)
+
+    expect(screen.queryByText(/Потвърждението изпращаме/)).not.toBeInTheDocument()
+  })
+
   it('leads back to the shop', () => {
     render(<OrderConfirmationHero order={orderDetail()} />)
 

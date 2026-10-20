@@ -116,7 +116,8 @@ export interface OrderContactDto {
   firstName: string;
   lastName: string;
   phoneNumber: string;
-  email: string;
+  /** Null when a guest ordered with a name and a phone only. */
+  email: string | null;
 }
 
 export interface OrderDetailDto extends OrderMoneyDto {

@@ -75,6 +75,26 @@ describe('OrderConfirmationHandler', () => {
     );
   });
 
+  it('sends nothing yet for an order that waits on a call, and counts as done', async () => {
+    orders.findDetail.mockResolvedValue({
+      ...PLACED_ORDER_RECORD,
+      status: 'AWAITING_CONFIRMATION',
+    });
+
+    await expect(handler.handle(EVENT)).resolves.toBeUndefined();
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing for an order placed without an email, and counts as done', async () => {
+    orders.findDetail.mockResolvedValue({
+      ...PLACED_ORDER_RECORD,
+      contactEmail: null,
+    });
+
+    await expect(handler.handle(EVENT)).resolves.toBeUndefined();
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
   it('fails, to be retried, when the order cannot be read', async () => {
     orders.findDetail.mockResolvedValue(null);
 

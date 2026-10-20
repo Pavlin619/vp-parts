@@ -264,8 +264,11 @@ that cached figure is what the customer was shown.
   is not stored.
 - **Who it is for:** `contactFirstName`, `contactLastName`, `contactPhone`,
   `contactEmail`, copied from the profile, so a later profile edit never
-  rewrites an order. With the snapshot, a guest order later only needs
-  `customerId` to drop `NOT NULL`.
+  rewrites an order. A guest's quick order has no `customerId`, and has no
+  `contactEmail` unless the guest gave one; the snapshot is all it is known by.
+- **`status`:** a customer's order starts `PROCESSING`. A guest's starts
+  `AWAITING_CONFIRMATION`: the office calls the phone to confirm it before
+  anything is picked or shipped.
 - **`termsVersion`:** which terms the customer ordered under: `TERMS_VERSION`
   in `orders.service.ts`, raised whenever the terms page changes.
 - **Lines:** `OrderItem` with `brandId` *and* `articleNumber`, brand name,
@@ -344,8 +347,17 @@ backoffice consumes `shop-events`**; it is kept or dropped then.
   `packages/shared`, under `CORS_ORIGIN`). It ends with the model withdrawal
   wording of ЗЗП чл. 50 and the seller's identity. **[VERIFY]** the wording
   with whoever handles legal.
+- **A guest's order waits for the call.** An order `AWAITING_CONFIRMATION` is
+  sent no confirmation when it is placed, and the handler counts as done. The
+  guest's email is unverified, so we write to it only once the call has
+  confirmed the order, from the backoffice's `OrderConfirmed` on
+  `fulfillment-events` (not built yet). Until then a guest gets the call and
+  the paper confirmation in the parcel. That still satisfies ЗЗП чл. 49, which
+  asks for the confirmation by delivery at the latest.
 - **The office notice** goes to `ORDERS_NOTIFY_EMAIL`, with replies going to
-  the customer. It holds what a waybill needs: the office code or the address
+  the customer when there is an email. An order `AWAITING_CONFIRMATION` is
+  marked "За потвърждение:" in the subject and asks for the call before it is
+  fulfilled. It holds what a waybill needs: the office code or the address
   and its note, the parcel weight, and the amount to collect. It lists the lines
   with the article number in its own column, for picking.
 - Both are built from one list of blocks (`email/email-document.ts`) that
@@ -406,6 +418,9 @@ on a request after 10, so a hung send cannot hold the relay's batch.
 - The event carries no order data. Read the order from `shop."Order"`,
   `shop."OrderItem"` and `shop."OrderStatusHistory"` with the `SELECT` grant;
   the row is committed before the event exists, so it is always there.
+- An order read `AWAITING_CONFIRMATION` is not fulfilled until the office has
+  called the customer and confirmed it, or it is cancelled. The status then
+  moves on from the backoffice, with the `fulfillment-events` flow to come.
 - Delete a message once it is handled. One received 5 times without a delete
   moves to `shop-events-dlq`.
 - Order is not guaranteed between events.

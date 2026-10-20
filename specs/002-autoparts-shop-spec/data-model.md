@@ -173,9 +173,9 @@ A placed order. Cash on delivery creates it directly (`docs/ORDERS.md`). Status 
 |---|---|---|---|
 | `id` | UUID | PK | Internal ID |
 | `orderReference` | String | UNIQUE NOT NULL | `VP-ORD-000123`, numbered from the `order_reference_seq` sequence |
-| `customerId` | UUID | FK → Customer, NOT NULL | Drops `NOT NULL` when guest orders arrive |
+| `customerId` | UUID | FK → Customer, NULL | Null for a guest's quick order |
 | `cartId` | UUID | FK → Cart, UNIQUE, NULL | The cart it was placed from; one cart never produces two orders |
-| `status` | OrderStatus enum | NOT NULL, default PROCESSING | See state machine below |
+| `status` | OrderStatus enum | NOT NULL, default PROCESSING | `AWAITING_CONFIRMATION` for a guest's quick order. See state machine below |
 | `deliveryMethod` | DeliveryMethod enum | NOT NULL | `COURIER_OFFICE`, `COURIER_ADDRESS`, `STORE_PICKUP` |
 | `carrier` | ShippingMethod enum | NULL | Chosen at checkout; null for store pickup |
 | `deliverySnapshot` | JSON | NOT NULL | The destination as chosen (immutable), shape below |
@@ -188,7 +188,8 @@ A placed order. Cash on delivery creates it directly (`docs/ORDERS.md`). Status 
 | `vatAmount` | Int | NOT NULL | The VAT in `total`, worked out once by `orderMoney`; net is `total − vatAmount` |
 | `paymentMethod` | PaymentMethod enum | NOT NULL | `CASH_ON_DELIVERY` (card later) |
 | `paymentReference` | String | NULL | The card payment's reference, later |
-| `contactFirstName`, `contactLastName`, `contactPhone`, `contactEmail` | String | NOT NULL | Copied from the profile at order time |
+| `contactFirstName`, `contactLastName`, `contactPhone` | String | NOT NULL | Copied from the profile at order time, or as the guest gave them |
+| `contactEmail` | String | NULL | Null when a guest ordered without one |
 | `termsVersion` | String | NOT NULL | The terms the customer ordered under |
 | `trackingReference` | String | NULL | Set on `OrderShipped` event |
 | `vehicleTag` | String | NULL | Mechanic: vehicle registration for this job |
@@ -200,6 +201,8 @@ A placed order. Cash on delivery creates it directly (`docs/ORDERS.md`). Status 
 
 **State machine**:
 ```
+AWAITING_CONFIRMATION ─(call confirmed)─► PROCESSING
+     └──────────────────────────────────► CANCELLED
 PROCESSING → ITEMS_PREPARED → ON_THE_WAY → DELIVERED
      └──────────────────────────────────► CANCELLED
      └──────────────────────────────────► FULFILLMENT_FAILED
@@ -294,6 +297,7 @@ export enum MechanicApprovalStatus {
 }
 
 export enum OrderStatus {
+  AWAITING_CONFIRMATION = 'AWAITING_CONFIRMATION',
   PROCESSING          = 'PROCESSING',
   ITEMS_PREPARED      = 'ITEMS_PREPARED',
   ON_THE_WAY          = 'ON_THE_WAY',
