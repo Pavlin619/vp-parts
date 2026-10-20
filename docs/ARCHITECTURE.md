@@ -200,6 +200,19 @@ The rules that keep a forgeable header trustworthy:
 
 Both vars are **required in production** — misconfiguring either degrades silently into the self-throttling behaviour rather than failing visibly. `WEB_ORIGIN_TOKEN` is deliberately *not* `INTERNAL_API_TOKEN`: the frontend and the backoffice are different trust domains and must not share a secret.
 
+The counts live in Redis, so every container instance shares one allowance instead of each granting its own. The storage is `@nest-lab/throttler-storage-redis`, the ioredis provider the `@nestjs/throttler` README lists, given our shared connection. `RedisThrottlerStorage` (`apps/api/src/redis/`) wraps it only to make it **fail open**: if Redis cannot be reached, the request goes through uncounted and a warning is logged, as `RedisCache` does — a rate limiter must not take the whole shop down with it.
+
+### Security headers
+
+**API** (`apps/api/src/common/security-headers.ts`, applied in `main.ts`): `helmet()` with a CSP of `default-src 'none'; frame-ancestors 'none'`, since the API answers JSON only and nothing should load from it or frame it. Routes that answer one customer's cart, order or money also send `Cache-Control: no-store`.
+
+**Web** (`apps/web/src/lib/security/security-headers.ts`), in two places:
+
+- `next.config.ts` `headers()` sends the fixed headers on every route: HSTS, `X-Content-Type-Options`, `Referrer-Policy`, a `Permissions-Policy` that keeps geolocation for the office map only, and `X-Frame-Options: DENY`. A page with an order button must not be framed (clickjacking).
+- `proxy.ts` hands the CSP to Clerk's `clerkMiddleware({ contentSecurityPolicy })`, which keeps Clerk's own hosts (its Frontend API, Turnstile, `img.clerk.com`) current and merges ours on top: the browser API origin and the map tiles in `connect-src`, the TecDoc image CDNs in `img-src`, and `frame-ancestors 'none'`. `REMOTE_IMAGE_HOSTS` feeds both that `img-src` and next/image's `remotePatterns`, so an image host is added in one place.
+
+The CSP is **enforced**. A new third-party origin (a script, an image CDN, an API the browser calls) is refused until it is added to `contentSecurityPolicyDirectives`, and the refusal shows in the browser console as `Refused to load …`. To check a change without breaking anything, set `reportOnly: true` in `proxy.ts` while browsing, then remove it. Clerk's `strict: true` (nonce plus `'strict-dynamic'`) would also drop `'unsafe-inline'` and `https:` from `script-src`, but a nonce makes every page dynamic, which costs the Partial Prerendering `cacheComponents` gives — weigh that before switching it on.
+
 ### NestJS → Backoffice (synchronous REST)
 Internal REST API secured with a **shared-secret bearer token**. Both NestJS and Spring Boot hold the same secret in their environment (`INTERNAL_API_TOKEN`). NestJS includes `Authorization: Bearer <INTERNAL_API_TOKEN>` on every internal call. The backoffice verifies the token on arrival. Internal endpoints are only reachable within the Lightsail private network — they are not exposed to the public internet.
 

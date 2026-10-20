@@ -46,6 +46,7 @@ export class CheckoutController {
 
   @Post('quote')
   @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
   @Throttle(CARRIER_CALL_THROTTLE)
   quote(
     @CartRequesterOf() requester: CartRequester,

@@ -314,6 +314,7 @@ describe('Checkout (e2e)', () => {
         expectedDeliveryDate: '2026-09-24',
         cartVersion: expect.any(Number),
       });
+      expect(response.headers['cache-control']).toBe('no-store');
     });
 
     it('hands Econt the parcel on the day its slowest part is at the shop', async () => {

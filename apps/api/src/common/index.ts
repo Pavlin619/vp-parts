@@ -14,3 +14,4 @@ export {
 export { ExpiringMemo } from './expiring-memo';
 export { GlobalExceptionFilter } from './exception.filter';
 export { LoggingInterceptor } from './logging.interceptor';
+export { securityHeaders } from './security-headers';
