@@ -6,8 +6,10 @@ import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/common/exception.filter';
 import { LoggingInterceptor } from '../../src/common/logging.interceptor';
 import { EmailSender } from '../../src/email';
+import { SqsPublisher } from '../../src/events';
 import { REDIS_CLIENT } from '../../src/redis';
 import { RecordingEmailSender } from './recording-email-sender';
+import { RecordingSqsPublisher } from './recording-sqs-publisher';
 
 export interface TestAppOptions {
   /**
@@ -45,6 +47,7 @@ export async function createTestApp(
   // Cache semantics (get/set/expire/flushall) are faithfully emulated.
   builder.overrideProvider(REDIS_CLIENT).useValue(new RedisMock());
   builder.overrideProvider(EmailSender).useValue(new RecordingEmailSender());
+  builder.overrideProvider(SqsPublisher).useValue(new RecordingSqsPublisher());
 
   if (moduleCustomizer) {
     moduleCustomizer(builder);

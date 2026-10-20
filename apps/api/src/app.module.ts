@@ -67,6 +67,18 @@ function buildThrottlerOptions(config: ConfigService): ThrottlerModuleOptions {
         INTERNAL_API_TOKEN: Joi.string().required(),
 
         AWS_REGION: Joi.string().default('eu-central-1'),
+        // The SDK reads these itself. Lightsail cannot assume a role, so the
+        // container runs as an IAM user (docs/ORDERS.md → "SQS").
+        AWS_ACCESS_KEY_ID: Joi.string().when('NODE_ENV', {
+          is: 'production',
+          then: Joi.required(),
+          otherwise: Joi.optional(),
+        }),
+        AWS_SECRET_ACCESS_KEY: Joi.string().when('NODE_ENV', {
+          is: 'production',
+          then: Joi.required(),
+          otherwise: Joi.optional(),
+        }),
         SQS_FULFILLMENT_QUEUE_URL: Joi.string().uri().required(),
         SQS_EVENTS_QUEUE_URL: Joi.string().uri().required(),
 

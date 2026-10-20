@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  The shop's SQS event bus: shop-events (the shop publishes, the backoffice
+  consumes) and fulfillment-events (the other way), each with a dead-letter
+  queue, and the IAM user the shop's Lightsail container runs as.
+  Deploy and key rotation: docs/ORDERS.md -> "SQS".
+
+# 14 days, the most SQS keeps a message. A standard queue's DLQ counts from the
+# original enqueue, so it keeps the same retention or messages expire on arrival.
+Mappings:
+  Queue:
+    Settings:
+      RetentionSeconds: 1209600
+      MaxReceiveCount: 5
+      WaitTimeSeconds: 20
+
+Resources:
+  ShopEventsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: shop-events-dlq
+      MessageRetentionPeriod: !FindInMap [Queue, Settings, RetentionSeconds]
+      SqsManagedSseEnabled: true
+
+  ShopEventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: shop-events
+      MessageRetentionPeriod: !FindInMap [Queue, Settings, RetentionSeconds]
+      ReceiveMessageWaitTimeSeconds: !FindInMap [Queue, Settings, WaitTimeSeconds]
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ShopEventsDeadLetterQueue.Arn
+        maxReceiveCount: !FindInMap [Queue, Settings, MaxReceiveCount]
+
+  FulfillmentEventsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: fulfillment-events-dlq
+      MessageRetentionPeriod: !FindInMap [Queue, Settings, RetentionSeconds]
+      SqsManagedSseEnabled: true
+
+  FulfillmentEventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: fulfillment-events
+      MessageRetentionPeriod: !FindInMap [Queue, Settings, RetentionSeconds]
+      ReceiveMessageWaitTimeSeconds: !FindInMap [Queue, Settings, WaitTimeSeconds]
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FulfillmentEventsDeadLetterQueue.Arn
+        maxReceiveCount: !FindInMap [Queue, Settings, MaxReceiveCount]
+
+  # Lightsail containers cannot assume a role, so the shop runs as this user.
+  # Its access key is created outside the stack, so the secret never sits in
+  # a template output or the stack's events.
+  ShopApiUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: vp-parts-shop-api
+      Policies:
+        - PolicyName: shop-api-sqs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: PublishShopEvents
+                Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt ShopEventsQueue.Arn
+              - Sid: ConsumeFulfillmentEvents
+                Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt FulfillmentEventsQueue.Arn
+
+Outputs:
+  ShopEventsQueueUrl:
+    Description: SQS_EVENTS_QUEUE_URL
+    Value: !Ref ShopEventsQueue
+  FulfillmentEventsQueueUrl:
+    Description: SQS_FULFILLMENT_QUEUE_URL
+    Value: !Ref FulfillmentEventsQueue
+  ShopEventsDeadLetterQueueUrl:
+    Value: !Ref ShopEventsDeadLetterQueue
+  FulfillmentEventsDeadLetterQueueUrl:
+    Value: !Ref FulfillmentEventsDeadLetterQueue
+  ShopApiUserName:
+    Value: !Ref ShopApiUser
