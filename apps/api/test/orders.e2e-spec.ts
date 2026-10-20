@@ -17,6 +17,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { RecordingEmailSender } from './helpers/recording-email-sender';
+import { RecordingSqsPublisher } from './helpers/recording-sqs-publisher';
 import { ClerkUsers } from '../src/auth';
 import { ClerkJwtStrategy } from '../src/auth/clerk-jwt.strategy';
 import { ArticlesTecDoc } from '../src/catalog';
@@ -27,6 +28,7 @@ import {
   OUTBOX_RELAY_INTERVAL,
   OutboxRelay,
   OutboxRepository,
+  SqsPublisher,
 } from '../src/events';
 import { InventoryService } from '../src/inventory';
 import { PrismaService } from '../src/prisma';
@@ -350,6 +352,11 @@ describe('Orders (e2e)', () => {
       .get<RecordingEmailSender>(EmailSender)
       .sent.filter(({ idempotencyKey }) => idempotencyKey.startsWith(eventId));
 
+  const publishedFor = (eventId: string) =>
+    app
+      .get<RecordingSqsPublisher>(SqsPublisher)
+      .published.filter(({ event }) => event.eventId === eventId);
+
   describe('placing an order', () => {
     it('places it to an office, freezing what the customer was shown', async () => {
       const { clerkId, cart } = await customerWithCart();
@@ -587,7 +594,7 @@ describe('Orders (e2e)', () => {
       expect(await prisma.outboxEvent.count()).toBe(before);
     });
 
-    it('relays it as the customer’s confirmation and the office’s notice, each once, then deletes it', async () => {
+    it('relays it as the customer’s confirmation, the office’s notice and the backoffice’s event, each once, then deletes it', async () => {
       const { clerkId, cart } = await customerWithCart();
       const { body } = await placeOrder(clerkId, cart).expect(201);
 
@@ -614,6 +621,12 @@ describe('Orders (e2e)', () => {
         ]),
       );
       expect(emails).toHaveLength(2);
+      expect(publishedFor(event.id)).toEqual([
+        {
+          event: expect.objectContaining({ type: 'OrderPlaced' }),
+          fields: { orderId: body.orderId },
+        },
+      ]);
       expect(await eventsOf(body.orderId)).toEqual([]);
     });
   });

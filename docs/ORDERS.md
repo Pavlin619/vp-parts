@@ -7,8 +7,10 @@ web the order button (`use-place-order.ts`), the cart and checkout summaries
 reading the API's money, and the confirmation page `/orders/[orderReference]`
 (`components/orders/`); the outbox and its relay (`apps/api/src/events/`) and
 the two order emails (`apps/api/src/orders/emails/`, sent by
-`apps/api/src/email/`). **Not yet:** SQS, the throttler's Redis storage, and
-the terms, withdrawal and privacy pages the button and the emails link to
+`apps/api/src/email/`); `OrderPlaced` on SQS (`orders/order-placed.publisher.ts`
+through `events/sqs.publisher.ts`) and the queues (`infra/aws/messaging.yml`).
+**Not yet:** the throttler's Redis storage, and the terms, withdrawal and
+privacy pages the button and the emails link to
 (`LEGAL_PAGES` in `packages/shared`). The cart side of the transition is in
 [CART.md](./CART.md), the delivery price in
 [DELIVERY-PROVIDERS.md](./DELIVERY-PROVIDERS.md), and who a customer is in
@@ -310,7 +312,8 @@ written **in the order's transaction**, and a relay sends it on.
   well inside the 24 hours Resend keeps an idempotency key.
 - Handlers register with the relay at start-up (`OutboxRelay.register`), so
   the events module knows no feature. The order emails are in
-  `apps/api/src/orders/emails/` and read the order by its id.
+  `apps/api/src/orders/emails/` and read the order by its id; the SQS
+  publisher is `apps/api/src/orders/order-placed.publisher.ts`.
 
 ### `OrderPlaced`
 
@@ -318,8 +321,8 @@ written **in the order's transaction**, and a relay sends it on.
 { "eventType": "OrderPlaced", "eventId": "…", "orderId": "…", "occurredAt": "2026-10-16T08:32:00Z" }
 ```
 
-A **thin** event: the consumer reads the order from `shop.orders` and
-`shop.order_items`. No name, phone, address or email sits in a queue, a DLQ or a
+A **thin** event: the consumer reads the order from `shop."Order"` and
+`shop."OrderItem"`. No name, phone, address or email sits in a queue, a DLQ or a
 log line, and the event can never disagree with the row.
 
 Its handlers:
@@ -328,7 +331,7 @@ Its handlers:
 |---|---|---|
 | Customer confirmation | The reference, lines, totals with VAT, delivery and its expected date, "Платете X € при получаване", the seller's identity, and the withdrawal right with links to the terms and the model form | Resend |
 | Office notification | The order, to `ORDERS_NOTIFY_EMAIL`, so an office worker creates the Econt waybill | Resend |
-| Backoffice | `OrderPlaced` on SQS `shop-events` | `@aws-sdk/client-sqs` |
+| Backoffice | `OrderPlaced` on SQS `shop-events` ([below](#sqs)) | `@aws-sdk/client-sqs` |
 
 Both emails carry an `Idempotency-Key` of `eventId:handler`, so a retried
 handler never sends twice. The office email is the channel **until the
@@ -381,16 +384,83 @@ orders suite stops the relay's interval and relays by hand.
 
 ### SQS
 
-`shop-events` (we publish) and `fulfillment-events` (the backoffice publishes),
-each with a DLQ: redrive after 5 receives, 14-day retention, SSE-SQS. They are
-defined in `infra/aws/messaging.yml` (CloudFormation). The Lightsail container
-cannot assume a role, so it gets an IAM user allowed only `sqs:SendMessage` on
-`shop-events` and receive/delete/change-visibility on `fulfillment-events`, with
-its keys in the container's environment. The commands to deploy the stack and
-rotate the keys are added here with it.
+Two standard queues, defined in `infra/aws/messaging.yml` (CloudFormation):
+`shop-events`, which we publish to and the backoffice consumes, and
+`fulfillment-events`, the other way, for the status flow to come. Each has a
+DLQ that takes a message after 5 receives; all four keep a message 14 days, the
+most SQS allows, and are encrypted with SSE-SQS, which needs no KMS key or
+permission. Consumers long-poll (20 seconds).
 
-For the backoffice: deduplicate on `eventId`, then read the order from
-`shop.orders`/`shop.order_items`.
+`OrderPlacedPublisher` (handler `shop-events-publisher`) sends each
+`OrderPlaced` with `SqsPublisher` (`apps/api/src/events/`): the body is the
+thin event [above](#orderplaced), and an `eventType` message attribute lets a
+consumer route without parsing the body. `occurredAt` is when the outbox row
+was written, in the order's transaction. A failed send is retried by the relay
+like any handler, without resending either email, and is recorded as SQS's
+status and error name. The client gives up on a connection after 5 seconds and
+on a request after 10, so a hung send cannot hold the relay's batch.
+
+**The backoffice's contract:**
+
+- Delivery is **at least once**: a send whose answer was lost is sent again,
+  and SQS itself may deliver a message twice. Deduplicate on `eventId`.
+- The event carries no order data. Read the order from `shop."Order"`,
+  `shop."OrderItem"` and `shop."OrderStatusHistory"` with the `SELECT` grant;
+  the row is committed before the event exists, so it is always there.
+- Delete a message once it is handled. One received 5 times without a delete
+  moves to `shop-events-dlq`.
+- Order is not guaranteed between events.
+
+**Credentials.** The Lightsail container cannot assume a role, so it runs as
+the IAM user `vp-parts-shop-api`, allowed only `sqs:SendMessage` on
+`shop-events` and receive, delete and change-visibility on
+`fulfillment-events`. Its access key is made outside the stack, so the secret
+never appears in a template output or the stack's events, and it goes into the
+container's environment as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`,
+which the start-up validation requires in production. The backoffice needs
+its own user, to consume `shop-events` and publish `fulfillment-events`; it is
+added with the backoffice's consumer.
+
+**Deploying the stack** (needs `CAPABILITY_NAMED_IAM` because it names the user):
+
+```bash
+aws cloudformation deploy --region eu-central-1 \
+  --stack-name vp-parts-messaging \
+  --template-file infra/aws/messaging.yml \
+  --capabilities CAPABILITY_NAMED_IAM
+
+# The queue URLs, for SQS_EVENTS_QUEUE_URL and SQS_FULFILLMENT_QUEUE_URL
+aws cloudformation describe-stacks --region eu-central-1 \
+  --stack-name vp-parts-messaging --query 'Stacks[0].Outputs'
+
+# The first access key
+aws iam create-access-key --user-name vp-parts-shop-api
+```
+
+**Rotating the key.** A user may hold two keys, so the new one goes live before
+the old one stops working:
+
+```bash
+aws iam create-access-key --user-name vp-parts-shop-api
+# Put the new pair in the container's environment and deploy it, then check
+# that an order still reaches shop-events.
+aws iam update-access-key --user-name vp-parts-shop-api \
+  --access-key-id <old key id> --status Inactive
+# A day later, with nothing broken:
+aws iam delete-access-key --user-name vp-parts-shop-api --access-key-id <old key id>
+```
+
+**Looking at the queues.** `aws sqs get-queue-attributes --queue-url <url>
+--attribute-names ApproximateNumberOfMessages` counts what waits, without
+touching it. `aws sqs receive-message` does touch it: every receive counts
+toward the 5 that send a message to the DLQ, so do not read a live queue the
+backoffice consumes. After fixing a consumer, `aws sqs start-message-move-task
+--source-arn <DLQ ARN>` moves the DLQ's messages back to their queue.
+
+Locally, `SQS_EVENTS_QUEUE_URL` can be a placeholder: the publisher's handler
+then fails and is retried until it gives up, and the emails are not held up.
+The e2e suites replace `SqsPublisher` with a recorder
+(`test/helpers/recording-sqs-publisher.ts`), so no test reaches AWS.
 
 ## Reading an order
 

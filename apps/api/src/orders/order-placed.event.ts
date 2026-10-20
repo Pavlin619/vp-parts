@@ -11,7 +11,7 @@ export interface OrderPlacedPayload {
   orderId: string;
 }
 
-function orderIdOf(event: OutboxMessage): string {
+export function orderIdOf(event: OutboxMessage): string {
   const { orderId } = (event.payload ?? {}) as Partial<OrderPlacedPayload>;
 
   if (typeof orderId !== 'string') {

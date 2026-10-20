@@ -7,11 +7,12 @@ import { EventsModule } from '../events';
 import { PrismaModule } from '../prisma';
 import { OfficeNotificationHandler } from './emails/office-notification.handler';
 import { OrderConfirmationHandler } from './emails/order-confirmation.handler';
+import { OrderPlacedPublisher } from './order-placed.publisher';
 import { OrdersController } from './orders.controller';
 import { OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 
-/** Placing an order, reading it back, and the emails that follow it. See docs/ORDERS.md. */
+/** Placing an order, reading it back, and the emails and the event that follow it. See docs/ORDERS.md. */
 @Module({
   imports: [
     PrismaModule,
@@ -27,6 +28,7 @@ import { OrdersService } from './orders.service';
     OrdersService,
     OrderConfirmationHandler,
     OfficeNotificationHandler,
+    OrderPlacedPublisher,
   ],
 })
 export class OrdersModule {}
