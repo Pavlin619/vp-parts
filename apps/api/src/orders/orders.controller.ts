@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Header,
+  Headers,
   HttpStatus,
   Param,
   Post,
@@ -10,9 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { ORDER_KEY_HEADER } from '@vp-parts-shop/shared';
 import type {
   OrderDetailDto,
   PlaceOrderResponseDto,
+  QuickOrderResponseDto,
 } from '@vp-parts-shop/shared';
 import { CurrentUser, Public } from '../auth';
 import type { AuthenticatedUser } from '../auth';
@@ -54,11 +57,22 @@ export class OrdersController {
     @CartRequesterOf() requester: CartRequester,
     @Body() body: QuickOrderBodyDto,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<PlaceOrderResponseDto> {
+  ): Promise<QuickOrderResponseDto> {
     return respond(
       response,
       await this.orders.placeQuickOrder(requester.token, body),
     );
+  }
+
+  /** A guest's order, read with the access key its link carries; no account. */
+  @Get('guest/:orderReference')
+  @Public()
+  @Header('Cache-Control', 'no-store')
+  getGuestOrder(
+    @Param() { orderReference }: OrderReferenceParamsDto,
+    @Headers(ORDER_KEY_HEADER) accessKey: string | undefined,
+  ): Promise<OrderDetailDto> {
+    return this.orders.getGuestOrder(orderReference, accessKey);
   }
 
   @Get(':orderReference')
@@ -72,10 +86,10 @@ export class OrdersController {
 }
 
 /** 201 for a new order, 200 for a cart already ordered from — a retry. */
-function respond(
+function respond<Placed extends PlaceOrderResponseDto>(
   response: Response,
-  { order, isReplay }: PlacedOrder,
-): PlaceOrderResponseDto {
+  { order, isReplay }: PlacedOrder<Placed>,
+): Placed {
   if (isReplay) {
     response.status(HttpStatus.OK);
   }

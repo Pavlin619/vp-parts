@@ -1,8 +1,8 @@
 # Orders: placing one, and what happens after
 
 The authoritative design for turning a cart into an order. **Built:** `POST
-/orders`, a guest's `POST /orders/quick`, `GET /orders/:orderReference`
-(`apps/api/src/orders/`), `GET
+/orders`, a guest's `POST /orders/quick`, `GET /orders/:orderReference` and
+`GET /orders/guest/:orderReference` (`apps/api/src/orders/`), `GET
 /checkout/totals` and the quote's money (`apps/api/src/checkout/`), and in the
 web the order button (`use-place-order.ts`), the cart and checkout summaries
 reading the API's money, and the confirmation page `/orders/[orderReference]`
@@ -148,7 +148,7 @@ POST /orders/quick     @Public · x-cart-token · Cache-Control: no-store
   }
 }
 
-201 / 200 { "orderId": "…", "orderReference": "VP-ORD-000123" }
+201 / 200 { "orderId": "…", "orderReference": "VP-ORD-000123", "accessKey": "…" }
 ```
 
 A guest orders with a name and a phone, and the office calls to confirm before
@@ -181,9 +181,12 @@ under a typed phone would let anyone attach orders to someone else's number.
   checked after the replay check, so a retry still finds its order, and before
   the transaction, so two concurrent orders from one phone can both pass it;
   the per-phone limit bounds that.
-- **Not built yet:** reading a guest's order back (an access key in the link),
-  the bot check, and the checkout tab. Until then the response carries only the
-  order's reference.
+- **The access key** reads the order back with no account (see
+  [Reading an order](#reading-an-order)). It is
+  `HMAC-SHA256(ORDER_LINK_SECRET, orderId)` in base64url, derived rather than
+  stored (`OrderAccessKeys`), so a retry is answered with the same key and an
+  email sent later can carry it too.
+- **Not built yet:** the bot check and the checkout tab.
 
 ## Money
 
@@ -432,6 +435,7 @@ Configuration, all required at start-up:
 | `ORDERS_NOTIFY_EMAIL` | The office inbox for new orders |
 | `SELLER_NAME`, `SELLER_COMPANY_ID` (ЕИК), `SELLER_ADDRESS`, `SELLER_EMAIL`, `SELLER_PHONE` | The seller's identity that every confirmation states (ЗЗП чл. 47) |
 | `CORS_ORIGIN` | The web origin, which the emails' links start from |
+| `ORDER_LINK_SECRET` | At least 32 characters; signs the access key in a guest's order link (`openssl rand -base64 48`) |
 
 **Before the first real email**, the sending domain has to be set up:
 
@@ -540,6 +544,24 @@ new one holds the unselected lines) and replaces the page with
 `/orders/[orderReference]`: the reference, lines, totals with VAT, delivery and its
 date, and the amount to pay at the door.
 
+A guest has no account to read with, so their order is read with its access key:
+
+```
+GET /orders/guest/:orderReference    @Public · X-Order-Key: <accessKey> · no-store
+```
+
+- **The key travels in a header**, and the guest's link carries it in the URL
+  fragment, `/orders/VP-ORD-000123#k=…` (`orderPagePath` in `packages/shared`).
+  The browser never sends a fragment, so the key reaches no server log and no
+  `Referer`.
+- **A missing or wrong key is `404 ORDER_NOT_FOUND`**, the same as no order,
+  and the comparison is constant-time.
+- **Only a guest's order is read this way.** A customer's order is read through
+  the account, so the route never answers one, whatever key is presented, and
+  a customer's email links to their order without a key.
+- **Rotating `ORDER_LINK_SECRET` breaks every guest link already sent.** Rotate
+  it only if it leaks.
+
 ## The button
 
 - **Its words say that ordering means paying**: "Купи сега". ЗЗП чл. 49, ал. 2
@@ -610,5 +632,5 @@ date, and the amount to pay at the door.
 - "My orders" (`GET /orders`), cancellation requests, live status over SSE and the
   `fulfillment-events` consumer.
 - Remembering a customer's delivery addresses (T091c).
-- Quick order: reading a guest's order with an access key, a bot check, the
-  checkout tab, and the confirmation email once the office has confirmed.
+- Quick order: a bot check, the checkout tab, and the confirmation email once
+  the office has confirmed.

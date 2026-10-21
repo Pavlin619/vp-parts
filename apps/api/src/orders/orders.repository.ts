@@ -135,6 +135,14 @@ export class OrdersRepository {
     });
   }
 
+  /** A customer's order is read through the account, never by a key. */
+  findGuest(orderReference: string): Promise<OrderRecord | null> {
+    return this.prisma.order.findFirst({
+      where: { orderReference, customerId: null },
+      include: withDetail,
+    });
+  }
+
   countAwaitingConfirmation(phone: string): Promise<number> {
     return this.prisma.order.count({
       where: {

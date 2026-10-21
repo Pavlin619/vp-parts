@@ -131,6 +131,9 @@ function buildThrottlerOptions(
         SELLER_ADDRESS: Joi.string().required(),
         SELLER_EMAIL: Joi.string().email().required(),
         SELLER_PHONE: Joi.string().required(),
+        // Signs the access key a guest's order link carries (OrderAccessKeys).
+        // Rotating it breaks every link already sent.
+        ORDER_LINK_SECRET: Joi.string().min(32).required(),
 
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         // The web app's origin: CORS allows it, a Clerk token must name it, and

@@ -10,7 +10,8 @@ const NBSP = ' ';
 const euros = (amount: string) => `${amount}${NBSP}€`;
 
 describe('orderConfirmationEmail', () => {
-  const email = orderConfirmationEmail(PLACED_ORDER, SHOP);
+  const ORDER_PATH = '/orders/VP-ORD-000042';
+  const email = orderConfirmationEmail(PLACED_ORDER, SHOP, ORDER_PATH);
 
   it('names the order in the subject', () => {
     expect(email.subject).toBe('Поръчка VP-ORD-000042 е приета');
@@ -57,6 +58,7 @@ describe('orderConfirmationEmail', () => {
     const toAddress = orderConfirmationEmail(
       { ...PLACED_ORDER, delivery: TO_ADDRESS },
       SHOP,
+      ORDER_PATH,
     );
 
     expect(toAddress.text).toContain(
@@ -69,6 +71,7 @@ describe('orderConfirmationEmail', () => {
     const pickup = orderConfirmationEmail(
       { ...PLACED_ORDER, ...PICKED_UP },
       SHOP,
+      ORDER_PATH,
     );
 
     expect(pickup.text).toContain(
@@ -89,6 +92,18 @@ describe('orderConfirmationEmail', () => {
     expect(email.text).toContain('https://vp-parts.bg/withdrawal');
     expect(email.text).toContain('https://vp-parts.bg/terms');
     expect(email.text).toContain('https://vp-parts.bg/privacy');
+  });
+
+  it('links a guest’s order with the key its path carries', () => {
+    const guest = orderConfirmationEmail(
+      PLACED_ORDER,
+      SHOP,
+      '/orders/VP-ORD-000042#k=the-key',
+    );
+
+    expect(guest.text).toContain(
+      'Вижте поръчката онлайн: https://vp-parts.bg/orders/VP-ORD-000042#k=the-key',
+    );
   });
 
   it('states the 14-day withdrawal right and how to use it', () => {

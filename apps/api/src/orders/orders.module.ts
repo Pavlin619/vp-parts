@@ -7,6 +7,7 @@ import { EventsModule } from '../events';
 import { PrismaModule } from '../prisma';
 import { OfficeNotificationHandler } from './emails/office-notification.handler';
 import { OrderConfirmationHandler } from './emails/order-confirmation.handler';
+import { OrderAccessKeys } from './order-access-keys';
 import { OrderPlacedPublisher } from './order-placed.publisher';
 import { OrdersController } from './orders.controller';
 import { OrdersRepository } from './orders.repository';
@@ -24,6 +25,7 @@ import { OrdersService } from './orders.service';
   ],
   controllers: [OrdersController],
   providers: [
+    OrderAccessKeys,
     OrdersRepository,
     OrdersService,
     OrderConfirmationHandler,

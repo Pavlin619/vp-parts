@@ -16,12 +16,14 @@ import {
 } from '../customers';
 import type { DeliveryPrice } from '../delivery';
 import { ArticleUnavailableException } from '../inventory';
+import { PLACED_ORDER_RECORD } from './emails/placed-order.fixture';
 import {
   OrderCartNotFoundException,
   OrderNotFoundException,
   OrdersAwaitingCallLimitException,
   PriceChangedException,
 } from './orders.exceptions';
+import { OrderAccessKeys } from './order-access-keys';
 import { OrdersRepository } from './orders.repository';
 import {
   MAX_ORDERS_AWAITING_CALL_PER_PHONE,
@@ -135,6 +137,9 @@ describe('OrdersService', () => {
   const findReference = jest.fn();
   const findOwned = jest.fn();
   const countAwaitingConfirmation = jest.fn();
+  const findGuest = jest.fn();
+  const keyFor = jest.fn((orderId: string) => `key-of-${orderId}`);
+  const matches = jest.fn();
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -149,6 +154,7 @@ describe('OrdersService', () => {
     findOwnedCart.mockImplementation(() => Promise.resolve(cart));
     findGuestCart.mockImplementation(() => Promise.resolve(cart));
     countAwaitingConfirmation.mockResolvedValue(0);
+    keyFor.mockImplementation((orderId: string) => `key-of-${orderId}`);
     priceOrder.mockImplementation(() =>
       Promise.resolve({
         lines: [
@@ -179,9 +185,11 @@ describe('OrdersService', () => {
             place,
             findReference,
             findOwned,
+            findGuest,
             countAwaitingConfirmation,
           },
         },
+        { provide: OrderAccessKeys, useValue: { keyFor, matches } },
       ],
     }).compile();
 
@@ -345,7 +353,11 @@ describe('OrdersService', () => {
       const result = await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
 
       expect(result).toEqual({
-        order: { orderId: 'order-1', orderReference: 'VP-ORD-000123' },
+        order: {
+          orderId: 'order-1',
+          orderReference: 'VP-ORD-000123',
+          accessKey: 'key-of-order-1',
+        },
         isReplay: false,
       });
       expect(findGuestCart).toHaveBeenCalledWith(GUEST_TOKEN, CART_ID);
@@ -415,6 +427,7 @@ describe('OrdersService', () => {
       const result = await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
 
       expect(result.isReplay).toBe(true);
+      expect(result.order.accessKey).toBe('key-of-order-1');
       expect(place).not.toHaveBeenCalled();
     });
 
@@ -448,6 +461,37 @@ describe('OrdersService', () => {
         ),
       ).rejects.toBeInstanceOf(PriceChangedException);
       expect(place).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getGuestOrder', () => {
+    it('answers the guest’s order to the key its link carries', async () => {
+      findGuest.mockResolvedValue(PLACED_ORDER_RECORD);
+      matches.mockReturnValue(true);
+
+      const order = await service.getGuestOrder('VP-ORD-000042', 'the-key');
+
+      expect(findGuest).toHaveBeenCalledWith('VP-ORD-000042');
+      expect(matches).toHaveBeenCalledWith(PLACED_ORDER_RECORD.id, 'the-key');
+      expect(order.orderReference).toBe('VP-ORD-000042');
+    });
+
+    it('answers a wrong key as though there were no such order', async () => {
+      findGuest.mockResolvedValue(PLACED_ORDER_RECORD);
+      matches.mockReturnValue(false);
+
+      await expect(
+        service.getGuestOrder('VP-ORD-000042', 'wrong'),
+      ).rejects.toBeInstanceOf(OrderNotFoundException);
+    });
+
+    it('answers no guest order by that reference with the same 404', async () => {
+      findGuest.mockResolvedValue(null);
+
+      await expect(
+        service.getGuestOrder('VP-ORD-000042', 'the-key'),
+      ).rejects.toBeInstanceOf(OrderNotFoundException);
+      expect(matches).not.toHaveBeenCalled();
     });
   });
 
