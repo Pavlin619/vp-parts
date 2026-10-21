@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BotCheckModule } from '../bot-check';
 import { CartModule } from '../cart';
 import { CheckoutModule } from '../checkout';
 import { CustomersModule } from '../customers';
@@ -7,6 +8,7 @@ import { EventsModule } from '../events';
 import { PrismaModule } from '../prisma';
 import { OfficeNotificationHandler } from './emails/office-notification.handler';
 import { OrderConfirmationHandler } from './emails/order-confirmation.handler';
+import { OrderAccessKeys } from './order-access-keys';
 import { OrderPlacedPublisher } from './order-placed.publisher';
 import { OrdersController } from './orders.controller';
 import { OrdersRepository } from './orders.repository';
@@ -21,9 +23,11 @@ import { OrdersService } from './orders.service';
     CheckoutModule,
     EventsModule,
     EmailModule,
+    BotCheckModule,
   ],
   controllers: [OrdersController],
   providers: [
+    OrderAccessKeys,
     OrdersRepository,
     OrdersService,
     OrderConfirmationHandler,

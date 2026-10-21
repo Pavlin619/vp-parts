@@ -4,14 +4,12 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-import { ThrottlerException, ThrottlerStorage } from '@nestjs/throttler';
-import type { Response } from 'express';
+import { ThrottlerStorage } from '@nestjs/throttler';
 import { currentUserOf } from '../auth';
+import { countAttempt } from './order-rate-limit';
 
 export const PLACE_ORDER_RATE_LIMIT_WINDOW_MS = 60_000;
 export const PLACE_ORDER_RATE_LIMIT = 5;
-
-const THROTTLER_NAME = 'place-order';
 
 /**
  * An order is placed by an account, so its allowance follows the account, not
@@ -26,22 +24,13 @@ export class PlaceOrderRateLimitGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const { clerkId } = currentUserOf(context);
-    const { isBlocked, timeToBlockExpire } = await this.storage.increment(
-      `${THROTTLER_NAME}:${clerkId}`,
-      PLACE_ORDER_RATE_LIMIT_WINDOW_MS,
-      PLACE_ORDER_RATE_LIMIT,
-      PLACE_ORDER_RATE_LIMIT_WINDOW_MS,
-      THROTTLER_NAME,
-    );
 
-    if (isBlocked) {
-      context
-        .switchToHttp()
-        .getResponse<Response>()
-        .header('Retry-After', String(timeToBlockExpire));
-
-      throw new ThrottlerException();
-    }
+    await countAttempt(this.storage, context, {
+      name: 'place-order',
+      key: clerkId,
+      limit: PLACE_ORDER_RATE_LIMIT,
+      windowMs: PLACE_ORDER_RATE_LIMIT_WINDOW_MS,
+    });
 
     return true;
   }

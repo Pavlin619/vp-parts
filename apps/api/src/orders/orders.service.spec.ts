@@ -4,10 +4,12 @@ import {
   DeliveryMethod,
   PaymentMethod,
   PlaceOrderRequestDto,
+  QuickOrderRequestDto,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
 import { CartService, CartStaleException } from '../cart';
 import type { CartForOrder } from '../cart';
+import { BotCheckFailedException, TurnstileVerifier } from '../bot-check';
 import { CheckoutService } from '../checkout';
 import {
   CustomerDetailsRequiredException,
@@ -15,13 +17,20 @@ import {
 } from '../customers';
 import type { DeliveryPrice } from '../delivery';
 import { ArticleUnavailableException } from '../inventory';
+import { PLACED_ORDER_RECORD } from './emails/placed-order.fixture';
 import {
   OrderCartNotFoundException,
   OrderNotFoundException,
+  OrdersAwaitingCallLimitException,
   PriceChangedException,
 } from './orders.exceptions';
+import { OrderAccessKeys } from './order-access-keys';
 import { OrdersRepository } from './orders.repository';
-import { OrdersService, TERMS_VERSION } from './orders.service';
+import {
+  MAX_ORDERS_AWAITING_CALL_PER_PHONE,
+  OrdersService,
+  TERMS_VERSION,
+} from './orders.service';
 
 const CLERK_ID = 'clerk-1';
 const CART_ID = '7b0c2f4e-35a4-4f43-8f4c-6d1b1d3c2a10';
@@ -100,6 +109,23 @@ function request(
   };
 }
 
+const GUEST_TOKEN = 'g'.repeat(43);
+
+function quickRequest(
+  overrides: Partial<QuickOrderRequestDto> = {},
+): QuickOrderRequestDto {
+  return {
+    ...request(),
+    contact: {
+      firstName: 'Мария',
+      lastName: 'Иванова',
+      phoneNumber: '+359888765432',
+    },
+    botCheckToken: 'solved-turnstile-token',
+    ...overrides,
+  };
+}
+
 describe('OrdersService', () => {
   let service: OrdersService;
   let cart: CartForOrder;
@@ -107,10 +133,16 @@ describe('OrdersService', () => {
   const requireCompleteProfile = jest.fn();
   const findByClerkId = jest.fn();
   const findOwnedCart = jest.fn();
+  const findGuestCart = jest.fn();
   const priceOrder = jest.fn();
   const place = jest.fn();
   const findReference = jest.fn();
   const findOwned = jest.fn();
+  const countAwaitingConfirmation = jest.fn();
+  const findGuest = jest.fn();
+  const keyFor = jest.fn((orderId: string) => `key-of-${orderId}`);
+  const matches = jest.fn();
+  const verifyBotCheck = jest.fn();
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -123,6 +155,10 @@ describe('OrdersService', () => {
     };
     requireCompleteProfile.mockResolvedValue(PROFILE);
     findOwnedCart.mockImplementation(() => Promise.resolve(cart));
+    findGuestCart.mockImplementation(() => Promise.resolve(cart));
+    countAwaitingConfirmation.mockResolvedValue(0);
+    verifyBotCheck.mockResolvedValue(undefined);
+    keyFor.mockImplementation((orderId: string) => `key-of-${orderId}`);
     priceOrder.mockImplementation(() =>
       Promise.resolve({
         lines: [
@@ -145,12 +181,20 @@ describe('OrdersService', () => {
           provide: CustomersService,
           useValue: { requireCompleteProfile, findByClerkId },
         },
-        { provide: CartService, useValue: { findOwnedCart } },
+        { provide: CartService, useValue: { findOwnedCart, findGuestCart } },
         { provide: CheckoutService, useValue: { priceOrder } },
         {
           provide: OrdersRepository,
-          useValue: { place, findReference, findOwned },
+          useValue: {
+            place,
+            findReference,
+            findOwned,
+            findGuest,
+            countAwaitingConfirmation,
+          },
         },
+        { provide: OrderAccessKeys, useValue: { keyFor, matches } },
+        { provide: TurnstileVerifier, useValue: { verify: verifyBotCheck } },
       ],
     }).compile();
 
@@ -201,7 +245,15 @@ describe('OrdersService', () => {
         money: MONEY,
         paymentMethod: 'CASH_ON_DELIVERY',
         termsVersion: TERMS_VERSION,
+        initialStatus: 'PROCESSING',
       });
+    });
+
+    it('puts a customer through neither the bot check nor the call limit', async () => {
+      await service.placeOrder(CLERK_ID, request());
+
+      expect(verifyBotCheck).not.toHaveBeenCalled();
+      expect(countAwaitingConfirmation).not.toHaveBeenCalled();
     });
 
     it('prices the cart’s own lines with the delivery and payment asked for', async () => {
@@ -299,6 +351,182 @@ describe('OrdersService', () => {
       await expect(
         service.placeOrder(CLERK_ID, request()),
       ).rejects.toBeInstanceOf(CartStaleException);
+    });
+  });
+
+  describe('placeQuickOrder', () => {
+    it('places the guest’s cart with no customer, to wait on a confirmation call', async () => {
+      const result = await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(result).toEqual({
+        order: {
+          orderId: 'order-1',
+          orderReference: 'VP-ORD-000123',
+          accessKey: 'key-of-order-1',
+        },
+        isReplay: false,
+      });
+      expect(findGuestCart).toHaveBeenCalledWith(GUEST_TOKEN, CART_ID);
+      expect(place).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cartId: CART_ID,
+          cartVersion: 7,
+          customerId: null,
+          contact: {
+            firstName: 'Мария',
+            lastName: 'Иванова',
+            phone: '+359888765432',
+            email: null,
+          },
+          initialStatus: 'AWAITING_CONFIRMATION',
+          termsVersion: TERMS_VERSION,
+        }),
+      );
+    });
+
+    it('snapshots the email the guest gave', async () => {
+      await service.placeQuickOrder(
+        GUEST_TOKEN,
+        quickRequest({
+          contact: { ...quickRequest().contact, email: 'maria@example.com' },
+        }),
+      );
+
+      expect(place).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contact: expect.objectContaining({ email: 'maria@example.com' }),
+        }),
+      );
+    });
+
+    it('prices it exactly as a customer’s order', async () => {
+      await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(priceOrder).toHaveBeenCalledWith(cart.lines, quickRequest());
+    });
+
+    it('answers 404 to a request holding no cart token', async () => {
+      await expect(
+        service.placeQuickOrder(null, quickRequest()),
+      ).rejects.toBeInstanceOf(OrderCartNotFoundException);
+      expect(findGuestCart).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 for a cart the token does not hold', async () => {
+      findGuestCart.mockResolvedValue(null);
+
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest()),
+      ).rejects.toBeInstanceOf(OrderCartNotFoundException);
+    });
+
+    it('spends the bot check token before pricing anything', async () => {
+      await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(verifyBotCheck).toHaveBeenCalledWith('solved-turnstile-token');
+      expect(verifyBotCheck.mock.invocationCallOrder[0]).toBeLessThan(
+        priceOrder.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('refuses a failed bot check, counting, pricing and placing nothing', async () => {
+      verifyBotCheck.mockRejectedValue(new BotCheckFailedException());
+
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest()),
+      ).rejects.toBeInstanceOf(BotCheckFailedException);
+      expect(countAwaitingConfirmation).not.toHaveBeenCalled();
+      expect(priceOrder).not.toHaveBeenCalled();
+      expect(place).not.toHaveBeenCalled();
+    });
+
+    it('leaves the token unspent for a cart that moved since it was priced', async () => {
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest({ cartVersion: 6 })),
+      ).rejects.toBeInstanceOf(CartStaleException);
+      expect(verifyBotCheck).not.toHaveBeenCalled();
+    });
+
+    it('answers a retry with its order, though its token is spent and its phone at the limit', async () => {
+      cart = { ...cart, status: 'ORDERED', orderId: 'order-1', version: 8 };
+      findReference.mockResolvedValue({
+        id: 'order-1',
+        orderReference: 'VP-ORD-000123',
+      });
+      verifyBotCheck.mockRejectedValue(new BotCheckFailedException());
+      countAwaitingConfirmation.mockResolvedValue(
+        MAX_ORDERS_AWAITING_CALL_PER_PHONE,
+      );
+
+      const result = await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(result.isReplay).toBe(true);
+      expect(result.order.accessKey).toBe('key-of-order-1');
+      expect(verifyBotCheck).not.toHaveBeenCalled();
+      expect(place).not.toHaveBeenCalled();
+    });
+
+    it('refuses a phone with as many orders waiting on a call as allowed', async () => {
+      countAwaitingConfirmation.mockResolvedValue(
+        MAX_ORDERS_AWAITING_CALL_PER_PHONE,
+      );
+
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest()),
+      ).rejects.toBeInstanceOf(OrdersAwaitingCallLimitException);
+      expect(countAwaitingConfirmation).toHaveBeenCalledWith('+359888765432');
+      expect(priceOrder).not.toHaveBeenCalled();
+    });
+
+    it('allows one below the limit', async () => {
+      countAwaitingConfirmation.mockResolvedValue(
+        MAX_ORDERS_AWAITING_CALL_PER_PHONE - 1,
+      );
+
+      await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(place).toHaveBeenCalled();
+    });
+
+    it('refuses a total that is not the live one', async () => {
+      await expect(
+        service.placeQuickOrder(
+          GUEST_TOKEN,
+          quickRequest({ expectedTotalCents: EXPECTED_TOTAL - 1 }),
+        ),
+      ).rejects.toBeInstanceOf(PriceChangedException);
+      expect(place).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getGuestOrder', () => {
+    it('answers the guest’s order to the key its link carries', async () => {
+      findGuest.mockResolvedValue(PLACED_ORDER_RECORD);
+      matches.mockReturnValue(true);
+
+      const order = await service.getGuestOrder('VP-ORD-000042', 'the-key');
+
+      expect(findGuest).toHaveBeenCalledWith('VP-ORD-000042');
+      expect(matches).toHaveBeenCalledWith(PLACED_ORDER_RECORD.id, 'the-key');
+      expect(order.orderReference).toBe('VP-ORD-000042');
+    });
+
+    it('answers a wrong key as though there were no such order', async () => {
+      findGuest.mockResolvedValue(PLACED_ORDER_RECORD);
+      matches.mockReturnValue(false);
+
+      await expect(
+        service.getGuestOrder('VP-ORD-000042', 'wrong'),
+      ).rejects.toBeInstanceOf(OrderNotFoundException);
+    });
+
+    it('answers no guest order by that reference with the same 404', async () => {
+      findGuest.mockResolvedValue(null);
+
+      await expect(
+        service.getGuestOrder('VP-ORD-000042', 'the-key'),
+      ).rejects.toBeInstanceOf(OrderNotFoundException);
+      expect(matches).not.toHaveBeenCalled();
     });
   });
 

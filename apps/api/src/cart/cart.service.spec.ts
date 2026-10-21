@@ -56,6 +56,7 @@ function cart(overrides: Partial<CartRecord> = {}): CartRecord {
   return {
     id: 'cart-1',
     token: TOKEN,
+    releasedToken: null,
     customerId: null,
     status: 'ACTIVE',
     version: 3,
@@ -404,6 +405,58 @@ describe('CartService', () => {
       findById.mockResolvedValue(null);
 
       expect(await service.findOwnedCart('customer-1', 'nope')).toBeNull();
+    });
+  });
+
+  describe('findGuestCart', () => {
+    it('reads the cart the token holds, with only the selected lines', async () => {
+      findById.mockResolvedValue(
+        cart({
+          items: [item(), item({ articleNumber: 'OC90', isSelected: false })],
+        }),
+      );
+
+      const result = await service.findGuestCart(TOKEN, 'cart-1');
+
+      expect(findById).toHaveBeenCalledWith('cart-1');
+      expect(result).toMatchObject({ id: 'cart-1', status: 'ACTIVE' });
+      expect(result?.lines).toHaveLength(1);
+    });
+
+    // The token moved on to the cart that kept the unselected lines.
+    it('answers a cart ordered with the token, so a retry can find its order', async () => {
+      findById.mockResolvedValue(
+        cart({
+          token: null,
+          releasedToken: TOKEN,
+          status: 'ORDERED',
+          orderId: 'o-1',
+        }),
+      );
+
+      const result = await service.findGuestCart(TOKEN, 'cart-1');
+
+      expect(result).toMatchObject({ status: 'ORDERED', orderId: 'o-1' });
+    });
+
+    it('is null for a cart another token holds', async () => {
+      findById.mockResolvedValue(cart({ token: 'b'.repeat(43) }));
+
+      expect(await service.findGuestCart(TOKEN, 'cart-1')).toBeNull();
+    });
+
+    it('is null for a customer’s cart, which holds no token', async () => {
+      findById.mockResolvedValue(
+        cart({ token: null, customerId: 'customer-1' }),
+      );
+
+      expect(await service.findGuestCart(TOKEN, 'cart-1')).toBeNull();
+    });
+
+    it('is null for no cart at all', async () => {
+      findById.mockResolvedValue(null);
+
+      expect(await service.findGuestCart(TOKEN, 'nope')).toBeNull();
     });
   });
 

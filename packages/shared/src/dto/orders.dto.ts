@@ -47,9 +47,29 @@ export interface PlaceOrderRequestDto {
   delivery: PlaceOrderDeliveryDto;
 }
 
+/** All a quick order knows a guest by. The office calls the phone to confirm it. */
+export interface QuickOrderContactDto {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email?: string;
+}
+
+/** A guest's order of the cart their device holds, owned through the cart token. */
+export interface QuickOrderRequestDto extends PlaceOrderRequestDto {
+  contact: QuickOrderContactDto;
+  /** The Turnstile widget's token. The server spends it, so a refused order needs a fresh one. */
+  botCheckToken: string;
+}
+
 export interface PlaceOrderResponseDto {
   orderId: string;
   orderReference: string;
+}
+
+export interface QuickOrderResponseDto extends PlaceOrderResponseDto {
+  /** Reads the order back with no account; see `ORDER_KEY_HEADER`. */
+  accessKey: string;
 }
 
 export interface OrderListItemDto {

@@ -17,6 +17,8 @@ export enum AppErrorCode {
   NOT_FOUND = 'NOT_FOUND',
   /** Throttled by our own rate limiter. The caller may retry after a pause. */
   RATE_LIMITED = 'RATE_LIMITED',
+  /** The bot check's token was refused or already spent. The caller solves a fresh one. */
+  BOT_CHECK_FAILED = 'BOT_CHECK_FAILED',
   /** Anything unexpected. Never carries detail — see the note above. */
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   ARTICLE_NOT_FOUND = 'ARTICLE_NOT_FOUND',

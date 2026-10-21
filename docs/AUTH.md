@@ -227,11 +227,14 @@ their next checkout — task T091c, built with the order endpoint. Until then no
 
 ## Checkout's contact panel
 
-Signed out, it offers two tabs: "Вход" mounts Clerk's `<SignIn routing="hash"/>`
-with its own sign-up link hidden (the "Регистрация" tab sits beside it), and
-"Регистрация" mounts `RegistrationForm`. A third, "Бърза поръчка", takes a name
-and a phone; it is hidden behind `IS_QUICK_ORDER_OFFERED` (`contact-modes.ts`)
-until the guest order has its own design (ORDERS.md → "Later"). Signed in, it shows the profile's name, email and phone with a way to
+Signed out, it offers three tabs: "Вход" mounts Clerk's `<SignIn routing="hash"/>`
+with its own sign-up link hidden (the "Регистрация" tab sits beside it),
+"Регистрация" mounts `RegistrationForm`, and "Бърза поръчка" takes both names, a
+mobile and an optional email for a guest's order, with no account (ORDERS.md →
+"Quick order"). No account is made from it: the phone is never verified, and a
+Clerk account rests on a verified email. After the order, the confirmation page
+offers one, handing the details to `RegistrationForm` through
+`useRegistrationDraft`. Signed in, it shows the profile's name, email and phone with a way to
 sign out — or, for an incomplete profile, the completion step. While the
 session sync is still filing a new customer, the profile read answers
 `CUSTOMER_PROFILE_INCOMPLETE`; the card shows its skeleton until the filed

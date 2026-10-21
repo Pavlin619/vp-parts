@@ -9,7 +9,7 @@ import {
 } from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AuthModule, JwtGuard } from './auth';
-import { ClientIpOptions, resolveClientIp } from './common';
+import { clientIpOptionsFrom, resolveClientIp } from './common';
 import { PrismaModule } from './prisma';
 import { RedisModule, RedisThrottlerStorage } from './redis';
 import { CartModule } from './cart';
@@ -33,10 +33,7 @@ function buildThrottlerOptions(
   config: ConfigService,
   storage: RedisThrottlerStorage,
 ): ThrottlerModuleOptions {
-  const clientIpOptions: ClientIpOptions = {
-    trustedProxyCount: config.get<number>('TRUSTED_PROXY_COUNT', 0),
-    webOriginToken: config.get<string>('WEB_ORIGIN_TOKEN'),
-  };
+  const clientIpOptions = clientIpOptionsFrom(config);
 
   return {
     throttlers: [
@@ -134,6 +131,11 @@ function buildThrottlerOptions(
         SELLER_ADDRESS: Joi.string().required(),
         SELLER_EMAIL: Joi.string().email().required(),
         SELLER_PHONE: Joi.string().required(),
+        // Signs the access key a guest's order link carries (OrderAccessKeys).
+        // Rotating it breaks every link already sent.
+        ORDER_LINK_SECRET: Joi.string().min(32).required(),
+        // Checks a quick order's Turnstile token (TurnstileVerifier).
+        TURNSTILE_SECRET_KEY: Joi.string().required(),
 
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         // The web app's origin: CORS allows it, a Clerk token must name it, and

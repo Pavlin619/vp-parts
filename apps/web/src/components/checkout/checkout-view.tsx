@@ -66,7 +66,7 @@ export function CheckoutView() {
     !availability.isError &&
     !totals.hasBlockedLines &&
     !totals.hasUnpricedLines;
-  const order = usePlaceOrder({ money, areLinesOrderable });
+  const order = usePlaceOrder({ money, areLinesOrderable, isQuickOrder });
 
   // The cart is already the next one; the confirmation page is on its way.
   if (order.isPlaced) {

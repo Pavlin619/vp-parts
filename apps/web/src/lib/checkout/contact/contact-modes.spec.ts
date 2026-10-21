@@ -1,44 +1,8 @@
-import {
-  CONTACT_MODES,
-  contactNameError,
-  contactPhoneError,
-  initialContactMode,
-} from './contact-modes'
+import { CONTACT_MODES, initialContactMode } from './contact-modes'
 
 describe('CONTACT_MODES', () => {
-  it('offers sign-in and registration, and no quick order until it has its own design', () => {
-    expect(CONTACT_MODES.map((mode) => mode.id)).toEqual(['login', 'register'])
-  })
-})
-
-describe('contactNameError', () => {
-  it('asks for a name shorter than three characters once trimmed', () => {
-    expect(contactNameError('')).toBe('Въведете име и фамилия')
-    expect(contactNameError('  Ив  ')).toBe('Въведете име и фамилия')
-  })
-
-  it('accepts a full name', () => {
-    expect(contactNameError('Иван Петров')).toBeUndefined()
-  })
-})
-
-describe('contactPhoneError', () => {
-  it('accepts a Bulgarian mobile in national or international form', () => {
-    expect(contactPhoneError('0888123456')).toBeUndefined()
-    expect(contactPhoneError('+359 88 123 4567')).toBeUndefined()
-  })
-
-  it('refuses an empty or truncated number', () => {
-    expect(contactPhoneError('')).toBe('Въведете валиден мобилен номер')
-    expect(contactPhoneError('+359 88')).toBe('Въведете валиден мобилен номер')
-  })
-
-  it('refuses a landline', () => {
-    expect(contactPhoneError('021234567')).toBe('Въведете валиден мобилен номер')
-  })
-
-  it('refuses a foreign mobile', () => {
-    expect(contactPhoneError('+44 7700 900123')).toBe('Въведете валиден мобилен номер')
+  it('offers sign-in, registration and a quick order', () => {
+    expect(CONTACT_MODES.map((mode) => mode.id)).toEqual(['login', 'register', 'quick'])
   })
 })
 

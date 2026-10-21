@@ -1,7 +1,8 @@
 # Orders: placing one, and what happens after
 
 The authoritative design for turning a cart into an order. **Built:** `POST
-/orders`, `GET /orders/:orderReference` (`apps/api/src/orders/`), `GET
+/orders`, a guest's `POST /orders/quick`, `GET /orders/:orderReference` and
+`GET /orders/guest/:orderReference` (`apps/api/src/orders/`), `GET
 /checkout/totals` and the quote's money (`apps/api/src/checkout/`), and in the
 web the order button (`use-place-order.ts`), the cart and checkout summaries
 reading the API's money, and the confirmation page `/orders/[orderReference]`
@@ -17,9 +18,10 @@ through `events/sqs.publisher.ts`) and the queues (`infra/aws/messaging.yml`).
 
 ## What is in scope
 
-- **Signed-in customers only.** Their email is verified at sign-up (AUTH.md),
-  so an order's confirmation reaches the person who placed it. A guest "quick
-  order" is hidden until it has its own design (see [Later](#later)).
+- **Signed-in customers**, whose email is verified at sign-up (AUTH.md), so an
+  order's confirmation reaches the person who placed it; and **guests**, through
+  a [quick order](#quick-order) the office confirms by phone, from checkout's
+  "Бърза поръчка" tab.
 - **Cash on delivery only.** Card is shown disabled, "Очаквайте скоро", with
   no fee badge. [Card payments](#card-payments-later) below says what changes.
 - **Three ways to receive it:** an Econt office (or Econtomat), an address by
@@ -97,7 +99,8 @@ row lock is ever held across an HTTP call.
    - lock the cart (`SELECT … FOR UPDATE`) and check again that it is `ACTIVE`
      at `cartVersion`. If it became `ORDERED` meanwhile, return that order;
    - insert the `Order`, its `OrderItem`s, the first `OrderStatusHistory` row
-     (`PROCESSING`, `source: 'shop'`) and the `OrderPlaced` outbox row;
+     (`PROCESSING`, or `AWAITING_CONFIRMATION` for a quick order;
+     `source: 'shop'`) and the `OrderPlaced` outbox row;
    - set the cart `ORDERED` with its `orderId`, and raise its version;
    - move the unselected lines, still unselected, to a fresh `ACTIVE` cart for
      the customer. None is opened when every line was ordered.
@@ -114,6 +117,7 @@ row lock is ever held across an HTTP call.
 | `DELIVERY_*` (office, address, locker) | 422 | Points at the delivery panel |
 | `INVENTORY_UNAVAILABLE`, `DELIVERY_UNAVAILABLE` | 503 | Offers a retry |
 | `RATE_LIMITED` | 429 | Asks to wait |
+| `BOT_CHECK_FAILED` (quick order) | 400 | Says so; the next click solves a fresh challenge |
 
 ## Idempotency is the cart
 
@@ -131,6 +135,105 @@ needed:
   before it touches a line, and refuses a cart that is no longer `ACTIVE` with
   `CART_STALE`. An edit that raced the order therefore cannot change the
   record of what was bought, and the two cannot deadlock.
+
+## Quick order
+
+```
+POST /orders/quick     @Public · x-cart-token · Cache-Control: no-store
+                       5 per 10 min per address · 3 an hour per phone
+{
+  …the body of POST /orders,
+  "contact": {
+    "firstName": "Мария", "lastName": "Иванова",
+    "phoneNumber": "0888 765 432", "email": "maria@example.com"   (optional)
+  },
+  "botCheckToken": "…"                                             the Turnstile widget's
+}
+
+201 / 200 { "orderId": "…", "orderReference": "VP-ORD-000123", "accessKey": "…" }
+```
+
+A guest orders with a name and a phone, and the office calls to confirm before
+anything ships. It is a real order: the delivery is chosen and priced in
+checkout, so the cash-on-delivery total is frozen and exact, and the call
+confirms it and screens out fakes. **No account is created.** Clerk accounts
+rest on a verified email and the phone is never verified, so an account filed
+under a typed phone would let anyone attach orders to someone else's number.
+
+- **The cart is owned through the guest's token** (`x-cart-token`, checked by
+  `CartService.findGuestCart`). A signed-in customer's cart holds no token, so
+  it answers `404 NOT_FOUND` here, as does a cart another token holds. The
+  customer's route is `POST /orders`.
+- **The contact** follows registration's rules (`quickOrderContactSchema` in
+  `packages/shared`): two names, a Bulgarian mobile stored in E.164, and an
+  optional email. It becomes the order's snapshot, with no `customerId`.
+- **Everything else is `POST /orders`'s**: the same pricing, refusals and
+  transaction (`OrdersService.placeFromCart`). The order starts
+  `AWAITING_CONFIRMATION`.
+- **A retry still finds its cart after the token moved.** Ordering a guest's
+  cart moves its token to the cart that keeps the unselected lines, so the
+  browser's cart carries on, and the ordered cart keeps it as `releasedToken`.
+  A retry presents the same token, finds the ordered cart, and gets its order.
+- **Limits.** A fake cash-on-delivery order costs a shipment.
+  `QuickOrderRateLimitGuard` counts every attempt by the client's address (by
+  the global throttler's proxy rule) and by the phone it names. Guards run
+  before validation, so it reads the phone from the raw body, and a phone that
+  is not a mobile counts against the address only. One phone may also hold at
+  most **3 orders `AWAITING_CONFIRMATION`** (`429 RATE_LIMITED`). That is
+  checked after the replay check, so a retry still finds its order, and before
+  the transaction, so two concurrent orders from one phone can both pass it;
+  the per-phone limit bounds that.
+- **The bot check.** `botCheckToken` is a Cloudflare Turnstile token, checked
+  with siteverify against `TURNSTILE_SECRET_KEY` (`TurnstileVerifier`,
+  `apps/api/src/bot-check/`). A token that is invalid, expired or spent is
+  `400 BOT_CHECK_FAILED`; a missing one is `400 VALIDATION_ERROR`. Our secret
+  being wrong, or Cloudflare failing or unreachable, is `500` and fails closed:
+  the signed-in route stays open, and an order nobody can verify is the one the
+  check exists to stop. Cloudflare accepts a token **once**, so it is checked
+  after the replay and version checks, which leave it unspent, and before the
+  call limit and any pricing. A retry is answered with its order whatever its
+  token. Any refusal after the check (the call limit, `PRICE_CHANGED`, a
+  delivery refusal) has spent the token, so every click solves a challenge of
+  its own. Two concurrent requests carrying one token end in one order and one
+  `BOT_CHECK_FAILED`, and the button is disabled while a request is in flight.
+  The visitor's address is not sent with the token: a browser can reach
+  Cloudflare and us over different IP versions, and the per-address limit
+  above already counts by address. Local and CI environments use Cloudflare's
+  test secret `1x0000000000000000000000000000000AA`, which passes every token.
+- **The access key** reads the order back with no account (see
+  [Reading an order](#reading-an-order)). It is
+  `HMAC-SHA256(ORDER_LINK_SECRET, orderId)` in base64url, derived rather than
+  stored (`OrderAccessKeys`), so a retry is answered with the same key and an
+  email sent later can carry it too.
+- **In checkout** the "Бърза поръчка" tab asks for both names (the courier's
+  receiver needs them), a mobile and an optional email (`QuickOrderFields`,
+  held in the unpersisted `useQuickOrder` store, checked against
+  `quickOrderContactSchema` with registration's messages). The payment panel
+  is hidden: a quick order is paid on delivery. The button is the same "Купи
+  сега" under the same terms note, since the click binds the guest as it binds
+  a customer; it is enabled once the contact is valid and Cloudflare's script
+  has loaded.
+- **The bot check runs at the click, not when the tab opens.** The Turnstile
+  widget (`QuickOrderBotCheck`) sits beside the button, rendered with
+  `execution: "execute"` and `appearance: "interaction-only"`: it draws
+  nothing, and runs its challenge only when "Купи сега" is clicked
+  (`BotCheckChallenge`, which resets the widget before every attempt after the
+  first, so each gets a fresh token). Most visitors pass unseen; one Cloudflare
+  wants to see tick a box gets the box there, beside the button. One it cannot
+  vouch for gets no puzzle to fall back on, so the panel says so and points to
+  signing in. The site key is `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, falling back to
+  Cloudflare's **invisible** test key `1x00000000000000000000BB`; its visible
+  test key prints "Само за тестване" in the widget. The production widget is
+  created in Cloudflare's **Managed** mode, which with `interaction-only` stays
+  hidden unless it needs a click.
+- **The confirmation page** opens at `/orders/VP-ORD-…#k=…` and reads the order
+  with that key (`useOrderAccessKey`, `getGuestOrder`). An order
+  `AWAITING_CONFIRMATION` says "Ще ви се обадим на … за потвърждение" and
+  promises no email, since a guest's email is unverified. A guest is then
+  offered an account (`GuestAccountInvite`), filled in with the order's name,
+  phone and email through `useRegistrationDraft`. The account does not take
+  this order: linking a guest's orders waits on a verified email equal to
+  `contactEmail`, never the phone.
 
 ## Money
 
@@ -379,6 +482,7 @@ Configuration, all required at start-up:
 | `ORDERS_NOTIFY_EMAIL` | The office inbox for new orders |
 | `SELLER_NAME`, `SELLER_COMPANY_ID` (ЕИК), `SELLER_ADDRESS`, `SELLER_EMAIL`, `SELLER_PHONE` | The seller's identity that every confirmation states (ЗЗП чл. 47) |
 | `CORS_ORIGIN` | The web origin, which the emails' links start from |
+| `ORDER_LINK_SECRET` | At least 32 characters; signs the access key in a guest's order link (`openssl rand -base64 48`) |
 
 **Before the first real email**, the sending domain has to be set up:
 
@@ -487,6 +591,26 @@ new one holds the unselected lines) and replaces the page with
 `/orders/[orderReference]`: the reference, lines, totals with VAT, delivery and its
 date, and the amount to pay at the door.
 
+A guest has no account to read with, so their order is read with its access key:
+
+```
+GET /orders/guest/:orderReference    @Public · X-Order-Key: <accessKey> · no-store
+```
+
+- **The key travels in a header**, and the guest's link carries it in the URL
+  fragment, `/orders/VP-ORD-000123#k=…` (`orderPagePath` in `packages/shared`).
+  The browser never sends a fragment, so the key reaches no server log and no
+  `Referer`.
+- **A missing or wrong key is `404 ORDER_NOT_FOUND`**, the same as no order,
+  and the comparison is constant-time.
+- **CORS allows the header** (`ORDER_KEY_HEADER` in `main.ts`'s
+  `allowedHeaders`), or the browser's preflight would refuse the read.
+- **Only a guest's order is read this way.** A customer's order is read through
+  the account, so the route never answers one, whatever key is presented, and
+  a customer's email links to their order without a key.
+- **Rotating `ORDER_LINK_SECRET` breaks every guest link already sent.** Rotate
+  it only if it leaks.
+
 ## The button
 
 - **Its words say that ordering means paying**: "Купи сега". ЗЗП чл. 49, ал. 2
@@ -497,7 +621,8 @@ date, and the amount to pay at the door.
   order", and the consumer is then not bound. Nor is a payment method on the
   button ("Плати с наложен платеж"), which reads as choosing how to pay. Under
   it, one line links the terms, the withdrawal right and the privacy notice.
-- **Enabled only when** the profile is complete, a delivery method is chosen and
+- **Enabled only when** the profile is complete (for a quick order, the contact
+  is valid and the bot check has passed), a delivery method is chosen and
   its quote has loaded (or it is pickup), cash on delivery is selected,
   availability has loaded, and no line is blocked or unpriced. While the request
   is pending it is disabled, and once it succeeds checkout shows "Поръчката е
@@ -526,6 +651,8 @@ date, and the amount to pay at the door.
   verification, and nothing trusts an unverified token's subject. Both count
   in Redis (`RedisThrottlerStorage`), so every API instance shares one
   allowance; it fails open, so a Redis outage stops nobody from ordering.
+- `POST /orders/quick` has no account to count against: see
+  [Quick order](#quick-order) for its limits by address and by phone.
 - The logs name an order by its id only. No request body, name, phone, address
   or email.
 
@@ -534,7 +661,9 @@ date, and the amount to pay at the door.
 - **Cash on delivery collected by Econt** is a postal money transfer, outside
   Наредба Н-18: no fiscal receipt and no NAP registration for it.
 - **The confirmation email is the durable medium** the contract has to be
-  confirmed on (CRD Art. 8(7), ЗЗП Art. 49).
+  confirmed on (CRD Art. 8(7), ЗЗП Art. 49). **[VERIFY]** A quick order may
+  have no email, so its written confirmation is printed and put in the parcel,
+  which still reaches the consumer "at the latest at the time of delivery".
 - **Pickup paid at the counter** goes through the store's own fiscal device.
 - Before launch the shop needs pages for its terms, its privacy notice, and the
   14-day withdrawal right with its model form. They are the business's content.
@@ -555,5 +684,5 @@ date, and the amount to pay at the door.
 - "My orders" (`GET /orders`), cancellation requests, live status over SSE and the
   `fulfillment-events` consumer.
 - Remembering a customer's delivery addresses (T091c).
-- Guest quick order: `customerId` loses `NOT NULL`, plus limits by phone and IP,
-  a bot check, and an operator confirming by phone.
+- Quick order: the confirmation email once the office has confirmed, and
+  linking a guest's orders to an account by a verified email.

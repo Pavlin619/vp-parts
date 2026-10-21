@@ -37,12 +37,15 @@ export interface LockedCart {
   status: CartStatus;
   version: number;
   orderId: string | null;
+  token: string | null;
 }
 
 export interface CartOrderClosure {
   cartId: string;
   orderId: string;
-  customerId: string;
+  customerId: string | null;
+  /** A guest's cart token, which the cart keeping the unselected lines inherits. */
+  token: string | null;
 }
 
 /** How long a guest's cart survives its last touch. */
@@ -334,7 +337,7 @@ export class CartRepository {
     cartId: string,
   ): Promise<LockedCart | null> {
     const [locked] = await tx.$queryRaw<LockedCart[]>`
-      SELECT status, version, "orderId" FROM "Cart" WHERE id = ${cartId} FOR UPDATE`;
+      SELECT status, version, "orderId", token FROM "Cart" WHERE id = ${cartId} FOR UPDATE`;
 
     return locked ?? null;
   }
@@ -342,12 +345,17 @@ export class CartRepository {
   /**
    * Retires an ordered cart as the record of what was bought, and carries the
    * lines left unselected into a fresh active cart, as they were. Retired
-   * first: a customer may hold only one active cart. The version moves too, so
-   * a merge computed against the cart before the order is refused.
+   * first: a customer may hold only one active cart, and a guest's token is
+   * unique. The version moves too, so a merge computed against the cart before
+   * the order is refused.
+   *
+   * A guest's token moves to the fresh cart, so the browser's cart carries on,
+   * and the ordered cart keeps it as `releasedToken` for a retry to prove
+   * ownership with.
    */
   async closeForOrder(
     tx: Prisma.TransactionClient,
-    { cartId, orderId, customerId }: CartOrderClosure,
+    { cartId, orderId, customerId, token }: CartOrderClosure,
   ): Promise<void> {
     await tx.cart.update({
       where: { id: cartId },
@@ -355,6 +363,7 @@ export class CartRepository {
         status: CartStatus.ORDERED,
         orderId,
         version: { increment: 1 },
+        ...(token && { token: null, releasedToken: token }),
       },
     });
 
@@ -365,7 +374,7 @@ export class CartRepository {
     }
 
     const next = await tx.cart.create({
-      data: { customerId, expiresAt: guestExpiry() },
+      data: { customerId, token, expiresAt: guestExpiry() },
     });
 
     await tx.cartItem.updateMany({

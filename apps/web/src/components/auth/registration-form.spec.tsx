@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { useClerk, useSignUp } from '@clerk/nextjs'
 import { ClerkAPIResponseError } from '@clerk/nextjs/errors'
 import { CustomerRole, type CustomerProfileDto } from '@vp-parts-shop/shared'
+import { useRegistrationDraft } from '@/hooks/use-registration-draft'
 import { fileCustomer } from '@/lib/api/customers'
 import { RegistrationForm } from './registration-form'
 
@@ -102,6 +103,7 @@ beforeEach(() => {
   } as unknown as ReturnType<typeof useClerk>)
   getToken.mockResolvedValue('fresh-jwt')
   mockedFileCustomer.mockResolvedValue(PROFILE)
+  useRegistrationDraft.getState().clear()
 })
 
 describe('RegistrationForm', () => {
@@ -117,6 +119,24 @@ describe('RegistrationForm', () => {
       google.compareDocumentPosition(screen.getByLabelText('Име')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  // A guest's quick order hands over what they typed, so they need not type it twice.
+  it('starts from the details a quick order handed over', () => {
+    useRegistrationDraft.getState().setDraft({
+      firstName: 'Мария',
+      lastName: 'Иванова',
+      phoneNumber: '+359888765432',
+      email: 'maria@example.com',
+    })
+
+    renderForm()
+
+    expect(screen.getByLabelText('Име')).toHaveValue('Мария')
+    expect(screen.getByLabelText('Фамилия')).toHaveValue('Иванова')
+    expect(screen.getByLabelText('Телефон')).toHaveValue('+359888765432')
+    expect(screen.getByLabelText('Имейл')).toHaveValue('maria@example.com')
+    expect(screen.getByLabelText('Парола')).toHaveValue('')
   })
 
   it('holds the element Clerk mounts its captcha into', () => {

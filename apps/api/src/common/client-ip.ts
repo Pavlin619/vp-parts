@@ -1,3 +1,4 @@
+import type { ConfigService } from '@nestjs/config';
 import {
   FORWARDED_FOR_HEADER,
   WEB_ORIGIN_TOKEN_HEADER,
@@ -18,6 +19,13 @@ export interface ClientIpOptions {
   trustedProxyCount: number;
   /** Secret our frontend presents. Unset means no caller is ever believed. */
   webOriginToken?: string;
+}
+
+export function clientIpOptionsFrom(config: ConfigService): ClientIpOptions {
+  return {
+    trustedProxyCount: config.get<number>('TRUSTED_PROXY_COUNT', 0),
+    webOriginToken: config.get<string>('WEB_ORIGIN_TOKEN'),
+  };
 }
 
 /**
