@@ -9,6 +9,7 @@ import {
 } from '@vp-parts-shop/shared';
 import { CartService, CartStaleException } from '../cart';
 import type { CartForOrder } from '../cart';
+import { BotCheckFailedException, TurnstileVerifier } from '../bot-check';
 import { CheckoutService } from '../checkout';
 import {
   CustomerDetailsRequiredException,
@@ -120,6 +121,7 @@ function quickRequest(
       lastName: 'Иванова',
       phoneNumber: '+359888765432',
     },
+    botCheckToken: 'solved-turnstile-token',
     ...overrides,
   };
 }
@@ -140,6 +142,7 @@ describe('OrdersService', () => {
   const findGuest = jest.fn();
   const keyFor = jest.fn((orderId: string) => `key-of-${orderId}`);
   const matches = jest.fn();
+  const verifyBotCheck = jest.fn();
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -154,6 +157,7 @@ describe('OrdersService', () => {
     findOwnedCart.mockImplementation(() => Promise.resolve(cart));
     findGuestCart.mockImplementation(() => Promise.resolve(cart));
     countAwaitingConfirmation.mockResolvedValue(0);
+    verifyBotCheck.mockResolvedValue(undefined);
     keyFor.mockImplementation((orderId: string) => `key-of-${orderId}`);
     priceOrder.mockImplementation(() =>
       Promise.resolve({
@@ -190,6 +194,7 @@ describe('OrdersService', () => {
           },
         },
         { provide: OrderAccessKeys, useValue: { keyFor, matches } },
+        { provide: TurnstileVerifier, useValue: { verify: verifyBotCheck } },
       ],
     }).compile();
 
@@ -244,9 +249,10 @@ describe('OrdersService', () => {
       });
     });
 
-    it('never counts a customer’s orders against the call limit', async () => {
+    it('puts a customer through neither the bot check nor the call limit', async () => {
       await service.placeOrder(CLERK_ID, request());
 
+      expect(verifyBotCheck).not.toHaveBeenCalled();
       expect(countAwaitingConfirmation).not.toHaveBeenCalled();
     });
 
@@ -414,12 +420,40 @@ describe('OrdersService', () => {
       ).rejects.toBeInstanceOf(OrderCartNotFoundException);
     });
 
-    it('answers a retry with its order, even at the limit of open orders', async () => {
+    it('spends the bot check token before pricing anything', async () => {
+      await service.placeQuickOrder(GUEST_TOKEN, quickRequest());
+
+      expect(verifyBotCheck).toHaveBeenCalledWith('solved-turnstile-token');
+      expect(verifyBotCheck.mock.invocationCallOrder[0]).toBeLessThan(
+        priceOrder.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('refuses a failed bot check, counting, pricing and placing nothing', async () => {
+      verifyBotCheck.mockRejectedValue(new BotCheckFailedException());
+
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest()),
+      ).rejects.toBeInstanceOf(BotCheckFailedException);
+      expect(countAwaitingConfirmation).not.toHaveBeenCalled();
+      expect(priceOrder).not.toHaveBeenCalled();
+      expect(place).not.toHaveBeenCalled();
+    });
+
+    it('leaves the token unspent for a cart that moved since it was priced', async () => {
+      await expect(
+        service.placeQuickOrder(GUEST_TOKEN, quickRequest({ cartVersion: 6 })),
+      ).rejects.toBeInstanceOf(CartStaleException);
+      expect(verifyBotCheck).not.toHaveBeenCalled();
+    });
+
+    it('answers a retry with its order, though its token is spent and its phone at the limit', async () => {
       cart = { ...cart, status: 'ORDERED', orderId: 'order-1', version: 8 };
       findReference.mockResolvedValue({
         id: 'order-1',
         orderReference: 'VP-ORD-000123',
       });
+      verifyBotCheck.mockRejectedValue(new BotCheckFailedException());
       countAwaitingConfirmation.mockResolvedValue(
         MAX_ORDERS_AWAITING_CALL_PER_PHONE,
       );
@@ -428,6 +462,7 @@ describe('OrdersService', () => {
 
       expect(result.isReplay).toBe(true);
       expect(result.order.accessKey).toBe('key-of-order-1');
+      expect(verifyBotCheck).not.toHaveBeenCalled();
       expect(place).not.toHaveBeenCalled();
     });
 

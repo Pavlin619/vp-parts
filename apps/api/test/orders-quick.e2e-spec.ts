@@ -18,6 +18,7 @@ import { RecordingEmailSender } from './helpers/recording-email-sender';
 import { RecordingSqsPublisher } from './helpers/recording-sqs-publisher';
 import { ClerkUsers } from '../src/auth';
 import { ClerkJwtStrategy } from '../src/auth/clerk-jwt.strategy';
+import { BotCheckFailedException, TurnstileVerifier } from '../src/bot-check';
 import { ArticlesTecDoc } from '../src/catalog';
 import { EcontTransport } from '../src/delivery/econt/econt.transport';
 import { EmailSender } from '../src/email';
@@ -139,6 +140,26 @@ const econt = {
     }),
 };
 
+const spentBotCheckTokens = new Set<string>();
+
+/** Like Cloudflare, it accepts each token a widget issued once. */
+const turnstile = {
+  verify: (token: string) => {
+    if (!token.startsWith('solved-') || spentBotCheckTokens.has(token)) {
+      return Promise.reject(new BotCheckFailedException());
+    }
+    spentBotCheckTokens.add(token);
+
+    return Promise.resolve();
+  },
+};
+
+let botCheckCount = 0;
+
+function nextBotCheckToken(): string {
+  return `solved-${++botCheckCount}`;
+}
+
 /** Two discs and three pads to an Econt office, as in docs/ORDERS.md → "Money". */
 const COURIER_TOTAL = 2 * 1299 + 3 * 749 + 378 + 81;
 
@@ -166,6 +187,7 @@ describe('Quick orders (e2e)', () => {
       builder.overrideProvider(ArticlesTecDoc).useValue(articles);
       builder.overrideProvider(InventoryService).useValue(inventory);
       builder.overrideProvider(EcontTransport).useValue(econt);
+      builder.overrideProvider(TurnstileVerifier).useValue(turnstile);
     });
     prisma = app.get(PrismaService);
     app.get(SchedulerRegistry).deleteInterval(OUTBOX_RELAY_INTERVAL);
@@ -273,6 +295,7 @@ describe('Quick orders (e2e)', () => {
         officeCode: '1127',
       },
       contact: contact(),
+      botCheckToken: nextBotCheckToken(),
       ...overrides,
     });
   }
@@ -387,9 +410,9 @@ describe('Quick orders (e2e)', () => {
   });
 
   describe('idempotency', () => {
-    it('answers a retry with the same order', async () => {
+    it('answers a retry with the same order, though its bot check token is spent', async () => {
       const { token, cart } = await guestWithCart();
-      const body = { contact: contact() };
+      const body = { contact: contact(), botCheckToken: nextBotCheckToken() };
 
       const first = await placeQuickOrder(token, cart, body).expect(201);
       const retry = await placeQuickOrder(token, cart, body).expect(200);
@@ -659,6 +682,7 @@ describe('Quick orders (e2e)', () => {
             officeCode: '1127',
           },
           contact: contact(),
+          botCheckToken: nextBotCheckToken(),
         })
         .expect(404);
 
@@ -672,6 +696,47 @@ describe('Quick orders (e2e)', () => {
       const response = await placeQuickOrder(token, cart).expect(409);
 
       expect(response.body.errorCode).toBe(AppErrorCode.PRICE_CHANGED);
+      await expectNothingWritten(cart);
+    });
+
+    it('refuses a failed bot check', async () => {
+      const { token, cart } = await guestWithCart();
+
+      const response = await placeQuickOrder(token, cart, {
+        botCheckToken: 'not-solved',
+      }).expect(400);
+
+      expect(response.body).toEqual({
+        statusCode: 400,
+        errorCode: AppErrorCode.BOT_CHECK_FAILED,
+      });
+      await expectNothingWritten(cart);
+    });
+
+    it('refuses a bot check token another order spent', async () => {
+      const first = await guestWithCart();
+      const second = await guestWithCart();
+      const botCheckToken = nextBotCheckToken();
+      await placeQuickOrder(first.token, first.cart, { botCheckToken }).expect(
+        201,
+      );
+
+      const response = await placeQuickOrder(second.token, second.cart, {
+        botCheckToken,
+      }).expect(400);
+
+      expect(response.body.errorCode).toBe(AppErrorCode.BOT_CHECK_FAILED);
+      await expectNothingWritten(second.cart);
+    });
+
+    it('refuses a request with no bot check token', async () => {
+      const { token, cart } = await guestWithCart();
+
+      const response = await placeQuickOrder(token, cart, {
+        botCheckToken: undefined,
+      }).expect(400);
+
+      expect(response.body.errorCode).toBe(AppErrorCode.VALIDATION_ERROR);
       await expectNothingWritten(cart);
     });
 

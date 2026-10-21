@@ -69,6 +69,7 @@ jobs:
       SELLER_EMAIL: shop@example.com
       SELLER_PHONE: '+359000000000'
       ORDER_LINK_SECRET: ci-stub-order-link-secret-at-least-32-chars
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
 
     steps:
       - uses: actions/checkout@v4

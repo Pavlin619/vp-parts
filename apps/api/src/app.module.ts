@@ -134,6 +134,8 @@ function buildThrottlerOptions(
         // Signs the access key a guest's order link carries (OrderAccessKeys).
         // Rotating it breaks every link already sent.
         ORDER_LINK_SECRET: Joi.string().min(32).required(),
+        // Checks a quick order's Turnstile token (TurnstileVerifier).
+        TURNSTILE_SECRET_KEY: Joi.string().required(),
 
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         // The web app's origin: CORS allows it, a Clerk token must name it, and
