@@ -2,40 +2,46 @@
 
 import { useState } from "react";
 import { Phone } from "lucide-react";
-import { contactNameError, contactPhoneError } from "@/lib/checkout/contact/contact-modes";
 import { PhoneField } from "@/components/auth/phone-field";
 import { TextField } from "@/components/common/text-field";
+import { useQuickOrder } from "@/hooks/use-quick-order";
+import {
+  validateQuickOrderContact,
+  type QuickOrderContactField,
+} from "@/lib/checkout/contact/quick-order-contact";
+import { QuickOrderBotCheck } from "./quick-order-bot-check";
 
-type QuickOrderField = "name" | "phone";
-
-/** The name and phone a quick order is placed with; each is checked once left. */
+/**
+ * Who a quick order is for: both names, as the courier's receiver needs them, a
+ * mobile the office calls to confirm, and an optional email. Each field is
+ * checked once left; the order button reads them from `useQuickOrder`.
+ */
 export function QuickOrderFields() {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [touched, setTouched] = useState<Record<QuickOrderField, boolean>>({
-    name: false,
-    phone: false,
-  });
+  const contact = useQuickOrder((state) => state.contact);
+  const setContactField = useQuickOrder((state) => state.setContactField);
+  const [touched, setTouched] = useState<ReadonlySet<QuickOrderContactField>>(new Set());
 
-  const markTouched = (field: QuickOrderField) => () =>
-    setTouched((current) => ({ ...current, [field]: true }));
+  const validation = validateQuickOrderContact(contact);
+  const errors = validation.success ? {} : validation.errors;
+
+  const fieldProps = (field: QuickOrderContactField) => ({
+    value: contact[field],
+    onValueChange: (value: string) => setContactField(field, value),
+    onBlur: () => setTouched((current) => new Set(current).add(field)),
+    error: touched.has(field) ? errors[field] : undefined,
+  });
 
   return (
     <>
       <div className="mt-3.5 grid gap-3 sm:grid-cols-2">
+        <TextField label="Име" autoComplete="given-name" {...fieldProps("firstName")} />
+        <TextField label="Фамилия" autoComplete="family-name" {...fieldProps("lastName")} />
+        <PhoneField {...fieldProps("phoneNumber")} />
         <TextField
-          label="Име и фамилия"
-          autoComplete="name"
-          value={name}
-          onValueChange={setName}
-          onBlur={markTouched("name")}
-          error={touched.name ? contactNameError(name) : undefined}
-        />
-        <PhoneField
-          value={phone}
-          onValueChange={setPhone}
-          onBlur={markTouched("phone")}
-          error={touched.phone ? contactPhoneError(phone) : undefined}
+          label="Имейл (по избор)"
+          type="email"
+          autoComplete="email"
+          {...fieldProps("email")}
         />
       </div>
 
@@ -46,6 +52,8 @@ export function QuickOrderFields() {
           Плащането е при доставка.
         </span>
       </p>
+
+      <QuickOrderBotCheck />
     </>
   );
 }

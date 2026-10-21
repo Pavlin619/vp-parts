@@ -21,3 +21,8 @@ export function orderPagePath(
 
   return accessKey ? `${path}#k=${accessKey}` : path;
 }
+
+/** The access key an `orderPagePath` fragment carries, or null. */
+export function orderAccessKeyOf(fragment: string): string | null {
+  return new URLSearchParams(fragment.replace(/^#/, '')).get('k') || null;
+}

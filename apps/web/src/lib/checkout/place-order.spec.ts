@@ -11,6 +11,7 @@ import {
   isFailureCurrent,
   placeOrderFailureOf,
   placeOrderRequestOf,
+  quickOrderRequestOf,
   type PlaceOrderInput,
 } from './place-order'
 
@@ -34,7 +35,7 @@ function input(overrides: Partial<PlaceOrderInput> = {}): PlaceOrderInput {
     address: null,
     paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
     money: QUOTED,
-    isProfileComplete: true,
+    isContactComplete: true,
     areLinesOrderable: true,
     ...overrides,
   }
@@ -94,10 +95,31 @@ describe('placeOrderRequestOf', () => {
     // The last figures stand while the next version is read; they are not this cart's total.
     ['the money was priced for an earlier cart version', { cartVersion: 8 }],
     ['the total leaves the delivery out', { money: { ...QUOTED, isDeliveryIncluded: false } }],
-    ['the profile lacks details', { isProfileComplete: false }],
+    ['who the order is for is not known yet', { isContactComplete: false }],
     ['a line cannot be ordered', { areLinesOrderable: false }],
   ])('builds no order while %s', (_, overrides) => {
     expect(placeOrderRequestOf(input(overrides))).toBeNull()
+  })
+})
+
+describe('quickOrderRequestOf', () => {
+  const ORDER = placeOrderRequestOf(input())
+  const CONTACT = { firstName: 'Мария', lastName: 'Иванова', phoneNumber: '+359888765432' }
+
+  it('adds the guest’s contact and the bot check’s token to the order', () => {
+    expect(quickOrderRequestOf(ORDER, { contact: CONTACT, botCheckToken: 'token-1' })).toEqual({
+      ...ORDER,
+      contact: CONTACT,
+      botCheckToken: 'token-1',
+    })
+  })
+
+  it.each<[string, Parameters<typeof quickOrderRequestOf>]>([
+    ['the order cannot be placed yet', [null, { contact: CONTACT, botCheckToken: 'token-1' }]],
+    ['the contact is not valid', [ORDER, { contact: null, botCheckToken: 'token-1' }]],
+    ['the bot check has not passed', [ORDER, { contact: CONTACT, botCheckToken: null }]],
+  ])('builds nothing while %s', (_, args) => {
+    expect(quickOrderRequestOf(...args)).toBeNull()
   })
 })
 
@@ -146,6 +168,12 @@ describe('placeOrderFailureOf', () => {
     })
   })
 
+  it('waits for a fresh bot check when its token was refused', () => {
+    expect(placeOrderFailureOf(new ApiError(400, AppErrorCode.BOT_CHECK_FAILED), SENT)).toEqual({
+      kind: 'bot-check',
+    })
+  })
+
   // An outage — ours, the courier's or the network's — is worth the same click again.
   it.each([
     new ApiError(503, AppErrorCode.INVENTORY_UNAVAILABLE),
@@ -179,7 +207,7 @@ describe('isFailureCurrent', () => {
     expect(isFailureCurrent({ kind: 'price-changed', shownTotal: 5304 }, SENT, repriced)).toBe(true)
   })
 
-  it.each(['cart-stale', 'unavailable', 'rate-limited', 'retry'] as const)(
+  it.each(['cart-stale', 'unavailable', 'rate-limited', 'bot-check', 'retry'] as const)(
     'keeps a %s refusal until the next attempt',
     (kind) => {
       expect(isFailureCurrent({ kind }, SENT, input({ officeCode: '2000' }))).toBe(true)

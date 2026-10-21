@@ -85,7 +85,11 @@ jest.mock('@/lib/api/cart', () => ({
   cartQueryOptions: jest.requireActual('@/lib/api/cart').cartQueryOptions,
 }))
 
-jest.mock('@/lib/api/orders', () => ({ placeOrder: jest.fn() }))
+jest.mock('@/lib/api/orders', () => ({ placeOrder: jest.fn(), placeQuickOrder: jest.fn() }))
+
+jest.mock('./contact/quick-order-bot-check', () => ({
+  QuickOrderBotCheck: () => <div data-testid="quick-order-bot-check" />,
+}))
 
 jest.mock('@/lib/api/customers', () => ({
   customerProfileQueryOptions: {
@@ -288,15 +292,29 @@ describe('CheckoutView', () => {
     expect(screen.getByTestId('office-picker')).toBeInTheDocument()
   })
 
-  it('preselects no contact mode, and offers no quick order yet', async () => {
+  it('preselects no contact mode, offering a quick order beside the account', async () => {
     useCart.setState({ lines: [line()] })
 
     renderView()
 
     expect(await screen.findByRole('radio', { name: /Вход/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /Регистрация/ })).not.toBeChecked()
-    expect(screen.queryByRole('radio', { name: /Бърза поръчка/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Бърза поръчка/ })).not.toBeChecked()
+  })
+
+  // Clicking binds the guest as it binds a customer, so the button says the same.
+  it('places a quick order with the same button, paid on delivery', async () => {
+    const user = userEvent.setup()
+    useCart.setState({ lines: [line()] })
+
+    renderView()
+    await user.click(await screen.findByRole('radio', { name: /Бърза поръчка/ }))
+
+    expect(screen.getByLabelText('Име')).toBeInTheDocument()
+    expect(screen.getByTestId('quick-order-bot-check')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /Наложен платеж/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Купи сега' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: 'Общите условия' })).toBeInTheDocument()
   })
 
   it('preselects no payment method and remembers the one picked', async () => {
@@ -342,7 +360,7 @@ describe('CheckoutView', () => {
     expect(
       screen.getByRole('button', { name: 'Купи сега' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Заяви поръчка' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('quick-order-bot-check')).not.toBeInTheDocument()
   })
 
   // A reload, or a return visit, finds the customer's choice where they left it.

@@ -11,7 +11,7 @@ interface OrderPageProps {
   params: Promise<{ orderReference: string }>;
 }
 
-/** Read in the browser with the customer's session; the API answers only its owner. */
+/** Read in the browser: with the customer's session, or the key a guest's link carries. */
 export default async function OrderPage({ params }: OrderPageProps) {
   const { orderReference } = await params;
 

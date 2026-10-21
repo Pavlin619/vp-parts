@@ -16,16 +16,17 @@ import { cartQueryOptions } from '@/lib/api/cart'
 import { AVAILABILITY_QUERY_KEY } from '@/lib/api/catalog'
 import { CHECKOUT_QUERY_KEY, DELIVERY_QUOTE_QUERY_KEY } from '@/lib/api/checkout'
 import { customerProfileQueryOptions } from '@/lib/api/customers'
-import { placeOrder } from '@/lib/api/orders'
+import { placeOrder, placeQuickOrder } from '@/lib/api/orders'
 import type { SummaryMoney } from '@/lib/checkout/delivery/delivery-summary'
 import { useCart } from './use-cart'
 import { useCheckoutDelivery } from './use-checkout-delivery'
 import { useCheckoutPayment } from './use-checkout-payment'
 import { usePlaceOrder } from './use-place-order'
+import { useQuickOrder } from './use-quick-order'
 
 jest.mock('@clerk/nextjs', () => ({ useAuth: jest.fn() }))
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }))
-jest.mock('@/lib/api/orders', () => ({ placeOrder: jest.fn() }))
+jest.mock('@/lib/api/orders', () => ({ placeOrder: jest.fn(), placeQuickOrder: jest.fn() }))
 jest.mock('@/lib/api/cart', () => ({
   ...jest.createMockFromModule<object>('@/lib/api/cart'),
   cartQueryOptions: jest.requireActual('@/lib/api/cart').cartQueryOptions,
@@ -36,6 +37,7 @@ jest.mock('@/lib/api/customers', () => ({
 }))
 
 const mockPlaceOrder = jest.mocked(placeOrder)
+const mockPlaceQuickOrder = jest.mocked(placeQuickOrder)
 const replace = jest.fn()
 
 const PROFILE: CustomerProfileDto = {
@@ -63,8 +65,12 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-function renderPlaceOrder(money: SummaryMoney | null = MONEY, areLinesOrderable = true) {
-  return renderHook(() => usePlaceOrder({ money, areLinesOrderable }), { wrapper })
+function renderPlaceOrder(
+  money: SummaryMoney | null = MONEY,
+  areLinesOrderable = true,
+  isQuickOrder = false,
+) {
+  return renderHook(() => usePlaceOrder({ money, areLinesOrderable, isQuickOrder }), { wrapper })
 }
 
 describe('usePlaceOrder', () => {
@@ -84,6 +90,7 @@ describe('usePlaceOrder', () => {
       address: null,
     })
     useCheckoutPayment.setState({ method: PaymentMethod.CASH_ON_DELIVERY })
+    useQuickOrder.getState().reset()
   })
 
   it('places the order the checkout shows', async () => {
@@ -225,6 +232,96 @@ describe('usePlaceOrder', () => {
       expect(invalidated).toEqual([])
       expect(result.current.canPlace).toBe(true)
       expect(replace).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('a quick order', () => {
+    const renderQuickOrder = () => renderPlaceOrder(MONEY, true, true)
+
+    function fillContact() {
+      const { setContactField } = useQuickOrder.getState()
+      setContactField('firstName', 'Мария')
+      setContactField('lastName', 'Иванова')
+      setContactField('phoneNumber', '0888 765 432')
+    }
+
+    beforeEach(() => {
+      jest.mocked(useAuth).mockReturnValue({ isSignedIn: false } as ReturnType<typeof useAuth>)
+      // A quick order hides the payment panel: it is paid on delivery whatever was chosen.
+      useCheckoutPayment.setState({ method: null })
+      mockPlaceQuickOrder.mockReset().mockResolvedValue({
+        orderId: 'order-1',
+        orderReference: 'VP-ORD-000123',
+        accessKey: 'key-1',
+      })
+      fillContact()
+      useQuickOrder.getState().solveBotCheck('token-1')
+    })
+
+    it('places the guest’s order with the contact and the bot check’s token', async () => {
+      const { result } = renderQuickOrder()
+      expect(result.current.canPlace).toBe(true)
+
+      act(() => result.current.place())
+
+      await waitFor(() => expect(mockPlaceQuickOrder).toHaveBeenCalled())
+      expect(mockPlaceQuickOrder.mock.calls[0][0]).toEqual({
+        cartId: 'cart-1',
+        cartVersion: 7,
+        expectedTotalCents: 5304,
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        delivery: {
+          method: DeliveryMethod.COURIER_OFFICE,
+          carrier: ShippingMethod.ECONT,
+          officeCode: '1127',
+        },
+        contact: { firstName: 'Мария', lastName: 'Иванова', phoneNumber: '+359888765432' },
+        botCheckToken: 'token-1',
+      })
+      expect(mockPlaceOrder).not.toHaveBeenCalled()
+    })
+
+    it('cannot place it while the contact is not valid', () => {
+      useQuickOrder.getState().setContactField('phoneNumber', '02 987 6543')
+
+      expect(renderQuickOrder().result.current.canPlace).toBe(false)
+    })
+
+    it('cannot place it before the bot check has passed', () => {
+      useQuickOrder.getState().expireBotCheck()
+
+      expect(renderQuickOrder().result.current.canPlace).toBe(false)
+    })
+
+    it('opens the order with its key, and forgets the contact', async () => {
+      const { result } = renderQuickOrder()
+
+      act(() => result.current.place())
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/orders/VP-ORD-000123#k=key-1'))
+      expect(useQuickOrder.getState().contact.firstName).toBe('')
+    })
+
+    // The API spends the token on the way to any refusal after its check.
+    it('asks the widget for a fresh token after a refusal, keeping the contact', async () => {
+      mockPlaceQuickOrder.mockRejectedValue(new ApiError(409, AppErrorCode.PRICE_CHANGED))
+      const { result } = renderQuickOrder()
+
+      act(() => result.current.place())
+
+      await waitFor(() => expect(result.current.failure).not.toBeNull())
+      expect(useQuickOrder.getState().botCheck).toMatchObject({ token: null, round: 1 })
+      expect(useQuickOrder.getState().contact.firstName).toBe('Мария')
+      expect(result.current.canPlace).toBe(false)
+    })
+
+    it('says the bot check must be passed again on BOT_CHECK_FAILED', async () => {
+      mockPlaceQuickOrder.mockRejectedValue(new ApiError(400, AppErrorCode.BOT_CHECK_FAILED))
+      const { result } = renderQuickOrder()
+
+      act(() => result.current.place())
+
+      await waitFor(() => expect(result.current.failure).toEqual({ kind: 'bot-check' }))
     })
   })
 })

@@ -1,4 +1,4 @@
-import { ArrowRight, Loader2, Phone } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { formatPrice, PaymentMethod } from "@vp-parts-shop/shared";
 import { Button } from "@/components/ui/button";
 import type { PlaceOrder } from "@/hooks/use-place-order";
@@ -38,7 +38,7 @@ interface OrderSummaryPanelProps {
   isMoneyFailed: boolean;
   parcelCheck: ParcelCheck;
   delivery: DeliverySummary;
-  /** A quick order is requested for a call-back rather than placed outright. */
+  /** A quick order is paid on delivery, whatever payment was chosen before. */
   isQuickOrder: boolean;
   paymentMethod: PaymentMethod | null;
   order: PlaceOrder;
@@ -107,13 +107,13 @@ export function OrderSummaryPanel({
         />
       </dl>
 
-      <PlaceOrderButton isQuickOrder={isQuickOrder} order={order} />
+      <PlaceOrderButton order={order} />
 
       {order.failure && (
         <PlaceOrderFailureNotice failure={order.failure} currentTotal={money?.total ?? null} />
       )}
 
-      {!isQuickOrder && <OrderTermsNote />}
+      <OrderTermsNote />
     </section>
   );
 }
@@ -121,23 +121,9 @@ export function OrderSummaryPanel({
 /**
  * Worded so ordering plainly means paying (ЗЗП чл. 49, ал. 2; CJEU C-249/21): buying
  * implies paying, while "Поръчай сега" or "Завърши поръчката" would not bind the consumer.
+ * A quick order binds the guest just the same; the call confirms it, and screens out fakes.
  */
-function PlaceOrderButton({
-  isQuickOrder,
-  order,
-}: {
-  isQuickOrder: boolean;
-  order: PlaceOrder;
-}) {
-  if (isQuickOrder) {
-    return (
-      <Button type="button" size="lg" disabled className={BUTTON_CLASSES}>
-        <Phone className="h-4 w-4" aria-hidden="true" />
-        Заяви поръчка
-      </Button>
-    );
-  }
-
+function PlaceOrderButton({ order }: { order: PlaceOrder }) {
   return (
     <Button
       type="button"

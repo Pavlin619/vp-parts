@@ -133,13 +133,15 @@ describe('OrderSummaryPanel', () => {
       ).toHaveAttribute('href', '/privacy')
     })
 
-    it('asks to request the order when it is a quick order', () => {
-      renderPanel({ isQuickOrder: true })
+    // The guest is bound by the click as a customer is (ЗЗП чл. 49, ал. 2).
+    it('places a quick order with the same words, under the same terms', async () => {
+      const place = jest.fn()
+      renderPanel({ isQuickOrder: true, order: order({ canPlace: true, place }) })
 
-      expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeDisabled()
-      expect(
-        screen.queryByRole('button', { name: 'Купи сега' }),
-      ).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Купи сега' }))
+
+      expect(place).toHaveBeenCalled()
+      expect(screen.getByRole('link', { name: 'Общите условия' })).toBeInTheDocument()
     })
   })
 
@@ -178,6 +180,7 @@ describe('OrderSummaryPanel', () => {
       ['details-required', /данните за контакт/],
       ['delivery', /друг офис или адрес/],
       ['rate-limited', /Изчакайте минута/],
+      ['bot-check', /Изчакайте проверката за сигурност/],
       ['retry', /временен проблем/],
     ] as const)('explains %s', (kind, text) => {
       renderPanel({ order: order({ failure: { kind } }) })

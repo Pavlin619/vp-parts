@@ -280,7 +280,7 @@ A cart line is identified by brand *and* article number throughout. An article n
 
 **Checkout**
 
-- **FR-025**: Placing an order MUST be restricted to signed-in customers whose email was verified at sign-up. Anonymous visitors sign in or register inside checkout without losing their cart. A guest "quick order" is planned separately and its tab is hidden until then (`docs/ORDERS.md` → Later).
+- **FR-025**: An order MUST be placed either by a signed-in customer whose email was verified at sign-up, or as a guest "quick order" with both names, a Bulgarian mobile and an optional email, which waits for the office to confirm it by phone and creates no account (`docs/ORDERS.md` → Quick order). Anonymous visitors sign in, register or order quickly inside checkout without losing their cart.
 - **FR-026**: The checkout flow MUST collect, in order: delivery address, shipping method, payment method, and a final order review before payment.
 - **FR-027**: The delivery address form MUST validate Bulgarian address fields: city/town, postcode (4-digit Bulgarian format), street name, and street number. A house/apartment number field MUST be optional.
 - **FR-028**: Shipping methods MUST include at least Econt and Speedy courier delivery. Each option MUST show the calculated shipping cost and an estimated delivery window.

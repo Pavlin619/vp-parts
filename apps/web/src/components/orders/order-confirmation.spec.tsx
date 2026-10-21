@@ -1,14 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AppErrorCode } from '@vp-parts-shop/shared'
+import { AppErrorCode, ORDER_KEY_HEADER, OrderStatus } from '@vp-parts-shop/shared'
 import { ApiError } from '@/lib/api'
 import { OrderConfirmation } from './order-confirmation'
 import { orderDetail } from './order-fixtures'
 
 jest.mock('@/lib/api/index', () => ({
   ...jest.requireActual('@/lib/api/index'),
-  apiFetch: (path: string) => mockApiFetch(path),
+  apiFetch: (path: string, options?: unknown) => mockApiFetch(path, options),
 }))
 
 const mockApiFetch = jest.fn()
@@ -29,6 +29,10 @@ describe('OrderConfirmation', () => {
     mockApiFetch.mockReset().mockResolvedValue(orderDetail())
   })
 
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
   it('stands in a skeleton while the order is read', () => {
     mockApiFetch.mockReturnValue(new Promise(() => {}))
 
@@ -41,7 +45,14 @@ describe('OrderConfirmation', () => {
     renderConfirmation()
 
     await screen.findByText('VP-ORD-000123')
-    expect(mockApiFetch).toHaveBeenCalledWith('/orders/VP-ORD-000123')
+    expect(mockApiFetch).toHaveBeenCalledWith('/orders/VP-ORD-000123', { withSession: true })
+  })
+
+  it('offers a customer no account, having one', async () => {
+    renderConfirmation()
+
+    await screen.findByText('VP-ORD-000123')
+    expect(screen.queryByRole('link', { name: 'Създайте профил' })).not.toBeInTheDocument()
   })
 
   it('names the order by its reference', async () => {
@@ -105,5 +116,49 @@ describe('OrderConfirmation', () => {
     await user.click(await screen.findByRole('button', { name: 'Опитай отново' }))
 
     expect(await screen.findByText('VP-ORD-000123')).toBeInTheDocument()
+  })
+
+  describe('a guest’s order, opened from its link', () => {
+    const GUEST_ORDER = {
+      ...orderDetail(),
+      status: OrderStatus.AWAITING_CONFIRMATION,
+      contact: {
+        firstName: 'Мария',
+        lastName: 'Иванова',
+        phoneNumber: '+359888765432',
+        email: null,
+      },
+    }
+
+    beforeEach(() => {
+      window.location.hash = '#k=key-1'
+      mockApiFetch.mockResolvedValue(GUEST_ORDER)
+    })
+
+    it('reads the order with the key the link carries, and no session', async () => {
+      renderConfirmation()
+
+      await screen.findByText('VP-ORD-000123')
+      expect(mockApiFetch).toHaveBeenCalledWith('/orders/guest/VP-ORD-000123', {
+        headers: { [ORDER_KEY_HEADER]: 'key-1' },
+      })
+    })
+
+    it('says the office will call the phone given to confirm it', async () => {
+      renderConfirmation()
+
+      expect(await screen.findByText(/Ще ви се обадим на/)).toHaveTextContent(
+        'Ще ви се обадим на +359888765432, за да потвърдим поръчката.',
+      )
+    })
+
+    it('offers an account for the next order', async () => {
+      renderConfirmation()
+
+      expect(await screen.findByRole('link', { name: 'Създайте профил' })).toHaveAttribute(
+        'href',
+        '/sign-up',
+      )
+    })
   })
 })
