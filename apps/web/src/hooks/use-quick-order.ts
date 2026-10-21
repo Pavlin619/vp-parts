@@ -8,10 +8,8 @@ import {
 } from "@/lib/checkout/contact/quick-order-contact";
 
 interface BotCheck {
-  /** The Turnstile token the order is sent with; null until solved, and once spent or expired. */
-  token: string | null;
-  /** Raised each time a token is spent, so the widget starts a fresh challenge. */
-  round: number;
+  /** Runs Cloudflare's challenge and answers a fresh token; null until the widget has loaded. */
+  solve: (() => Promise<string>) | null;
   hasFailed: boolean;
 }
 
@@ -20,15 +18,12 @@ interface QuickOrderState {
   botCheck: BotCheck;
 
   setContactField: (field: QuickOrderContactField, value: string) => void;
-  solveBotCheck: (token: string) => void;
-  expireBotCheck: () => void;
+  setBotCheckSolver: (solve: (() => Promise<string>) | null) => void;
+  passBotCheck: () => void;
   failBotCheck: () => void;
-  /** Cloudflare accepts a token once, so every attempt that sent one needs the next. */
-  spendBotCheck: () => void;
+  /** Forgets the contact; the widget stays loaded for the next order. */
   reset: () => void;
 }
-
-const FIRST_BOT_CHECK: BotCheck = { token: null, round: 0, hasFailed: false };
 
 /**
  * What a guest's quick order is sent with. Not persisted: the contact is a
@@ -36,16 +31,16 @@ const FIRST_BOT_CHECK: BotCheck = { token: null, round: 0, hasFailed: false };
  */
 export const useQuickOrder = create<QuickOrderState>()((set) => ({
   contact: EMPTY_QUICK_ORDER_CONTACT,
-  botCheck: FIRST_BOT_CHECK,
+  botCheck: { solve: null, hasFailed: false },
 
   setContactField: (field, value) =>
     set(({ contact }) => ({ contact: { ...contact, [field]: value } })),
-  solveBotCheck: (token) =>
-    set(({ botCheck }) => ({ botCheck: { ...botCheck, token, hasFailed: false } })),
-  expireBotCheck: () => set(({ botCheck }) => ({ botCheck: { ...botCheck, token: null } })),
-  failBotCheck: () =>
-    set(({ botCheck }) => ({ botCheck: { ...botCheck, token: null, hasFailed: true } })),
-  spendBotCheck: () =>
-    set(({ botCheck }) => ({ botCheck: { ...FIRST_BOT_CHECK, round: botCheck.round + 1 } })),
-  reset: () => set({ contact: EMPTY_QUICK_ORDER_CONTACT, botCheck: FIRST_BOT_CHECK }),
+  setBotCheckSolver: (solve) => set(({ botCheck }) => ({ botCheck: { ...botCheck, solve } })),
+  passBotCheck: () => set(({ botCheck }) => ({ botCheck: { ...botCheck, hasFailed: false } })),
+  failBotCheck: () => set(({ botCheck }) => ({ botCheck: { ...botCheck, hasFailed: true } })),
+  reset: () =>
+    set(({ botCheck }) => ({
+      contact: EMPTY_QUICK_ORDER_CONTACT,
+      botCheck: { ...botCheck, hasFailed: false },
+    })),
 }));

@@ -117,7 +117,7 @@ row lock is ever held across an HTTP call.
 | `DELIVERY_*` (office, address, locker) | 422 | Points at the delivery panel |
 | `INVENTORY_UNAVAILABLE`, `DELIVERY_UNAVAILABLE` | 503 | Offers a retry |
 | `RATE_LIMITED` | 429 | Asks to wait |
-| `BOT_CHECK_FAILED` (quick order) | 400 | Resets the Turnstile widget for a fresh token |
+| `BOT_CHECK_FAILED` (quick order) | 400 | Says so; the next click solves a fresh challenge |
 
 ## Idempotency is the cart
 
@@ -193,8 +193,8 @@ under a typed phone would let anyone attach orders to someone else's number.
   after the replay and version checks, which leave it unspent, and before the
   call limit and any pricing. A retry is answered with its order whatever its
   token. Any refusal after the check (the call limit, `PRICE_CHANGED`, a
-  delivery refusal) has spent the token, so the widget is reset before the next
-  attempt. Two concurrent requests carrying one token end in one order and one
+  delivery refusal) has spent the token, so every click solves a challenge of
+  its own. Two concurrent requests carrying one token end in one order and one
   `BOT_CHECK_FAILED`, and the button is disabled while a request is in flight.
   The visitor's address is not sent with the token: a browser can reach
   Cloudflare and us over different IP versions, and the per-address limit
@@ -208,16 +208,24 @@ under a typed phone would let anyone attach orders to someone else's number.
 - **In checkout** the "Бърза поръчка" tab asks for both names (the courier's
   receiver needs them), a mobile and an optional email (`QuickOrderFields`,
   held in the unpersisted `useQuickOrder` store, checked against
-  `quickOrderContactSchema` with registration's messages), and shows the
-  Turnstile widget (`QuickOrderBotCheck`, site key
-  `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, falling back to Cloudflare's test key
-  `1x00000000000000000000AA`). The payment panel is hidden: a quick order is
-  paid on delivery. The button is the same "Купи сега" under the same terms
-  note, since the click binds the guest as it binds a customer; it is enabled
-  once the contact is valid and the widget has handed over a token. Every
-  refused attempt starts the widget on a fresh challenge, keeping the contact.
-  A visitor the widget cannot vouch for gets no puzzle to fall back on, so the
-  panel says so and points to signing in.
+  `quickOrderContactSchema` with registration's messages). The payment panel
+  is hidden: a quick order is paid on delivery. The button is the same "Купи
+  сега" under the same terms note, since the click binds the guest as it binds
+  a customer; it is enabled once the contact is valid and Cloudflare's script
+  has loaded.
+- **The bot check runs at the click, not when the tab opens.** The Turnstile
+  widget (`QuickOrderBotCheck`) sits beside the button, rendered with
+  `execution: "execute"` and `appearance: "interaction-only"`: it draws
+  nothing, and runs its challenge only when "Купи сега" is clicked
+  (`BotCheckChallenge`, which resets the widget before every attempt after the
+  first, so each gets a fresh token). Most visitors pass unseen; one Cloudflare
+  wants to see tick a box gets the box there, beside the button. One it cannot
+  vouch for gets no puzzle to fall back on, so the panel says so and points to
+  signing in. The site key is `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, falling back to
+  Cloudflare's **invisible** test key `1x00000000000000000000BB`; its visible
+  test key prints "Само за тестване" in the widget. The production widget is
+  created in Cloudflare's **Managed** mode, which with `interaction-only` stays
+  hidden unless it needs a click.
 - **The confirmation page** opens at `/orders/VP-ORD-…#k=…` and reads the order
   with that key (`useOrderAccessKey`, `getGuestOrder`). An order
   `AWAITING_CONFIRMATION` says "Ще ви се обадим на … за потвърждение" and

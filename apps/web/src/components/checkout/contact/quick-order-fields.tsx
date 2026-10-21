@@ -9,7 +9,6 @@ import {
   validateQuickOrderContact,
   type QuickOrderContactField,
 } from "@/lib/checkout/contact/quick-order-contact";
-import { QuickOrderBotCheck } from "./quick-order-bot-check";
 
 /**
  * Who a quick order is for: both names, as the courier's receiver needs them, a
@@ -52,8 +51,6 @@ export function QuickOrderFields() {
           Плащането е при доставка.
         </span>
       </p>
-
-      <QuickOrderBotCheck />
     </>
   );
 }

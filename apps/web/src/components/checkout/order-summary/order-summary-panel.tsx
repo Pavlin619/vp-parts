@@ -13,6 +13,7 @@ import { formatDay, formatShopDate } from "@/lib/delivery/format";
 import { cn } from "@/lib/utils";
 import { OrderTermsNote } from "./order-terms-note";
 import { PlaceOrderFailureNotice } from "./place-order-failure-notice";
+import { QuickOrderBotCheck } from "./quick-order-bot-check";
 
 const NOT_CALCULATED = "—";
 
@@ -106,6 +107,8 @@ export function OrderSummaryPanel({
           isMinor
         />
       </dl>
+
+      {isQuickOrder && <QuickOrderBotCheck />}
 
       <PlaceOrderButton order={order} />
 

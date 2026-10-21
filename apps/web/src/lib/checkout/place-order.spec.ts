@@ -106,18 +106,14 @@ describe('quickOrderRequestOf', () => {
   const ORDER = placeOrderRequestOf(input())
   const CONTACT = { firstName: 'Мария', lastName: 'Иванова', phoneNumber: '+359888765432' }
 
-  it('adds the guest’s contact and the bot check’s token to the order', () => {
-    expect(quickOrderRequestOf(ORDER, { contact: CONTACT, botCheckToken: 'token-1' })).toEqual({
-      ...ORDER,
-      contact: CONTACT,
-      botCheckToken: 'token-1',
-    })
+  // The bot check's token is added at the click, by a challenge of its own.
+  it('adds the guest’s contact to the order, and no token yet', () => {
+    expect(quickOrderRequestOf(ORDER, CONTACT)).toEqual({ ...ORDER, contact: CONTACT })
   })
 
   it.each<[string, Parameters<typeof quickOrderRequestOf>]>([
-    ['the order cannot be placed yet', [null, { contact: CONTACT, botCheckToken: 'token-1' }]],
-    ['the contact is not valid', [ORDER, { contact: null, botCheckToken: 'token-1' }]],
-    ['the bot check has not passed', [ORDER, { contact: CONTACT, botCheckToken: null }]],
+    ['the order cannot be placed yet', [null, CONTACT]],
+    ['the contact is not valid', [ORDER, null]],
   ])('builds nothing while %s', (_, args) => {
     expect(quickOrderRequestOf(...args)).toBeNull()
   })

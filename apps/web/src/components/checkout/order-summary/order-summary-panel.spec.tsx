@@ -10,6 +10,10 @@ import {
 import type { ParcelCheck } from '@/lib/checkout/delivery/office-availability'
 import { OrderSummaryPanel } from './order-summary-panel'
 
+jest.mock('./quick-order-bot-check', () => ({
+  QuickOrderBotCheck: () => <div data-testid="quick-order-bot-check" />,
+}))
+
 const GOODS = {
   cartVersion: 3,
   goodsTotal: 8400,
@@ -143,6 +147,16 @@ describe('OrderSummaryPanel', () => {
       expect(place).toHaveBeenCalled()
       expect(screen.getByRole('link', { name: 'Общите условия' })).toBeInTheDocument()
     })
+
+    // Beside the button, so a box Cloudflare asks to be ticked shows where the click was.
+    it('holds the bot check beside the button on a quick order only', () => {
+      const { unmount } = renderPanel({ isQuickOrder: true })
+      expect(screen.getByTestId('quick-order-bot-check')).toBeInTheDocument()
+      unmount()
+
+      renderPanel()
+      expect(screen.queryByTestId('quick-order-bot-check')).not.toBeInTheDocument()
+    })
   })
 
   describe('a refused order', () => {
@@ -180,7 +194,7 @@ describe('OrderSummaryPanel', () => {
       ['details-required', /данните за контакт/],
       ['delivery', /друг офис или адрес/],
       ['rate-limited', /Изчакайте минута/],
-      ['bot-check', /Изчакайте проверката за сигурност/],
+      ['bot-check', /Проверката за сигурност не беше приета/],
       ['retry', /временен проблем/],
     ] as const)('explains %s', (kind, text) => {
       renderPanel({ order: order({ failure: { kind } }) })

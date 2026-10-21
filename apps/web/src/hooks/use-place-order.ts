@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import {
   useMutation,
@@ -31,6 +32,7 @@ import {
   placeOrderFailureOf,
   placeOrderRequestOf,
   quickOrderRequestOf,
+  type GuestOrderRequest,
   type PlaceOrderFailure,
   type PlaceOrderInput,
 } from "@/lib/checkout/place-order";
@@ -55,6 +57,9 @@ interface PlaceOrderOptions {
 type OrderRequest = PlaceOrderRequestDto | QuickOrderRequestDto;
 
 type OrderResponse = PlaceOrderResponseDto | QuickOrderResponseDto;
+
+/** Readies the request at the click: a quick order solves its bot check first. */
+type RequestPreparer = () => Promise<OrderRequest>;
 
 export interface PlaceOrder {
   canPlace: boolean;
@@ -99,7 +104,8 @@ export function usePlaceOrder({
   const selectedAddress = useSelectedAddress(CHECKOUT_CARRIER);
   const paymentMethod = usePaymentMethod();
   const guestContact = validateQuickOrderContact(useQuickOrder((state) => state.contact));
-  const botCheckToken = useQuickOrder((state) => state.botCheck.token);
+  const solveBotCheck = useQuickOrder((state) => state.botCheck.solve);
+  const [isPreparing, setIsPreparing] = useState(false);
 
   const input: PlaceOrderInput = {
     cartId,
@@ -115,12 +121,12 @@ export function usePlaceOrder({
     areLinesOrderable,
   };
   const order = placeOrderRequestOf(input);
-  const request: OrderRequest | null = isQuickOrder
-    ? quickOrderRequestOf(order, {
-        contact: guestContact.success ? guestContact.data : null,
-        botCheckToken,
-      })
-    : order;
+  const prepare = isQuickOrder
+    ? guestRequestPreparer(
+        quickOrderRequestOf(order, guestContact.success ? guestContact.data : null),
+        solveBotCheck,
+      )
+    : order && (() => Promise.resolve(order));
 
   const mutation = useMutation({
     mutationFn: submitOrder,
@@ -129,25 +135,51 @@ export function usePlaceOrder({
       forgetCheckout(queryClient);
     },
     onError: (error, sent) => {
-      if (isQuickOrderRequest(sent)) {
-        useQuickOrder.getState().spendBotCheck();
-      }
       refetchFor(queryClient, placeOrderFailureOf(error, sent));
     },
   });
 
-  const isBusy = mutation.isPending || mutation.isSuccess;
+  const isBusy = isPreparing || mutation.isPending || mutation.isSuccess;
+
+  const send = async (prepareRequest: RequestPreparer) => {
+    setIsPreparing(true);
+
+    try {
+      mutation.mutate(await prepareRequest());
+    } catch {
+      useQuickOrder.getState().failBotCheck();
+    } finally {
+      setIsPreparing(false);
+    }
+  };
 
   return {
-    canPlace: request !== null && !isBusy,
-    isPlacing: mutation.isPending,
+    canPlace: prepare !== null && !isBusy,
+    isPlacing: isPreparing || mutation.isPending,
     isPlaced: mutation.isSuccess,
     failure: currentFailureOf(mutation, input),
     place: () => {
-      if (request !== null && !isBusy) {
-        mutation.mutate(request);
+      if (prepare !== null && !isBusy) {
+        void send(prepare);
       }
     },
+  };
+}
+
+/** Each attempt solves its own challenge, since Cloudflare accepts a token once. */
+function guestRequestPreparer(
+  guestOrder: GuestOrderRequest | null,
+  solveBotCheck: (() => Promise<string>) | null,
+): RequestPreparer | null {
+  if (!guestOrder || !solveBotCheck) {
+    return null;
+  }
+
+  return async () => {
+    const botCheckToken = await solveBotCheck();
+    useQuickOrder.getState().passBotCheck();
+
+    return { ...guestOrder, botCheckToken };
   };
 }
 

@@ -1,14 +1,16 @@
 import { EMPTY_QUICK_ORDER_CONTACT } from '@/lib/checkout/contact/quick-order-contact'
 import { useQuickOrder } from './use-quick-order'
 
-const { getState } = useQuickOrder
+const { getState, setState } = useQuickOrder
 
-beforeEach(() => getState().reset())
+beforeEach(() => setState({ botCheck: { solve: null, hasFailed: false } }))
 
 describe('useQuickOrder', () => {
-  it('starts with an empty contact and no bot check token', () => {
+  beforeEach(() => getState().reset())
+
+  it('starts with an empty contact and no bot check loaded', () => {
     expect(getState().contact).toEqual(EMPTY_QUICK_ORDER_CONTACT)
-    expect(getState().botCheck).toEqual({ token: null, round: 0, hasFailed: false })
+    expect(getState().botCheck).toEqual({ solve: null, hasFailed: false })
   })
 
   it('records each contact field as it is typed', () => {
@@ -22,37 +24,33 @@ describe('useQuickOrder', () => {
     })
   })
 
-  it('holds the token the widget hands it, clearing an earlier failure', () => {
+  it('holds the widget’s solver while it is loaded', () => {
+    const solve = jest.fn()
+
+    getState().setBotCheckSolver(solve)
+    expect(getState().botCheck.solve).toBe(solve)
+
+    getState().setBotCheckSolver(null)
+    expect(getState().botCheck.solve).toBeNull()
+  })
+
+  it('says the bot check failed until a later one passes', () => {
     getState().failBotCheck()
+    expect(getState().botCheck.hasFailed).toBe(true)
 
-    getState().solveBotCheck('token-1')
-
-    expect(getState().botCheck).toMatchObject({ token: 'token-1', hasFailed: false })
+    getState().passBotCheck()
+    expect(getState().botCheck.hasFailed).toBe(false)
   })
 
-  it('drops an expired token', () => {
-    getState().solveBotCheck('token-1')
-
-    getState().expireBotCheck()
-
-    expect(getState().botCheck.token).toBeNull()
-  })
-
-  it('drops the token and says so when the widget fails', () => {
-    getState().solveBotCheck('token-1')
-
-    getState().failBotCheck()
-
-    expect(getState().botCheck).toMatchObject({ token: null, hasFailed: true })
-  })
-
-  it('starts a new round once a token is spent, keeping the contact', () => {
+  it('forgets the contact once the order is placed, keeping the widget loaded', () => {
+    const solve = jest.fn()
+    getState().setBotCheckSolver(solve)
     getState().setContactField('firstName', 'Мария')
-    getState().solveBotCheck('token-1')
+    getState().failBotCheck()
 
-    getState().spendBotCheck()
+    getState().reset()
 
-    expect(getState().botCheck).toEqual({ token: null, round: 1, hasFailed: false })
-    expect(getState().contact.firstName).toBe('Мария')
+    expect(getState().contact).toEqual(EMPTY_QUICK_ORDER_CONTACT)
+    expect(getState().botCheck).toEqual({ solve, hasFailed: false })
   })
 })

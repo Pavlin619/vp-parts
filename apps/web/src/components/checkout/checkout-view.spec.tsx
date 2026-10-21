@@ -87,7 +87,7 @@ jest.mock('@/lib/api/cart', () => ({
 
 jest.mock('@/lib/api/orders', () => ({ placeOrder: jest.fn(), placeQuickOrder: jest.fn() }))
 
-jest.mock('./contact/quick-order-bot-check', () => ({
+jest.mock('./order-summary/quick-order-bot-check', () => ({
   QuickOrderBotCheck: () => <div data-testid="quick-order-bot-check" />,
 }))
 

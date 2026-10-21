@@ -237,6 +237,7 @@ describe('usePlaceOrder', () => {
 
   describe('a quick order', () => {
     const renderQuickOrder = () => renderPlaceOrder(MONEY, true, true)
+    const solveBotCheck = jest.fn<Promise<string>, []>()
 
     function fillContact() {
       const { setContactField } = useQuickOrder.getState()
@@ -255,16 +256,19 @@ describe('usePlaceOrder', () => {
         accessKey: 'key-1',
       })
       fillContact()
-      useQuickOrder.getState().solveBotCheck('token-1')
+      solveBotCheck.mockReset().mockResolvedValue('token-1')
+      useQuickOrder.setState({ botCheck: { solve: solveBotCheck, hasFailed: false } })
     })
 
-    it('places the guest’s order with the contact and the bot check’s token', async () => {
+    it('runs the bot check at the click, then places the order with its token', async () => {
       const { result } = renderQuickOrder()
       expect(result.current.canPlace).toBe(true)
+      expect(solveBotCheck).not.toHaveBeenCalled()
 
       act(() => result.current.place())
 
       await waitFor(() => expect(mockPlaceQuickOrder).toHaveBeenCalled())
+      expect(solveBotCheck).toHaveBeenCalledTimes(1)
       expect(mockPlaceQuickOrder.mock.calls[0][0]).toEqual({
         cartId: 'cart-1',
         cartVersion: 7,
@@ -281,16 +285,53 @@ describe('usePlaceOrder', () => {
       expect(mockPlaceOrder).not.toHaveBeenCalled()
     })
 
+    it('shows the button busy while the bot check runs', async () => {
+      solveBotCheck.mockReturnValue(new Promise(() => {}))
+      const { result } = renderQuickOrder()
+
+      act(() => result.current.place())
+
+      await waitFor(() => expect(result.current.isPlacing).toBe(true))
+      act(() => result.current.place())
+      expect(solveBotCheck).toHaveBeenCalledTimes(1)
+      expect(result.current.canPlace).toBe(false)
+    })
+
     it('cannot place it while the contact is not valid', () => {
       useQuickOrder.getState().setContactField('phoneNumber', '02 987 6543')
 
       expect(renderQuickOrder().result.current.canPlace).toBe(false)
     })
 
-    it('cannot place it before the bot check has passed', () => {
-      useQuickOrder.getState().expireBotCheck()
+    it('cannot place it before Cloudflare’s widget has loaded', () => {
+      useQuickOrder.setState({ botCheck: { solve: null, hasFailed: false } })
 
       expect(renderQuickOrder().result.current.canPlace).toBe(false)
+    })
+
+    it('sends nothing when the bot check fails, and lets the guest try again', async () => {
+      solveBotCheck.mockRejectedValue(new Error('bot check failed'))
+      const { result } = renderQuickOrder()
+
+      act(() => result.current.place())
+
+      await waitFor(() => expect(useQuickOrder.getState().botCheck.hasFailed).toBe(true))
+      expect(mockPlaceQuickOrder).not.toHaveBeenCalled()
+      await waitFor(() => expect(result.current.canPlace).toBe(true))
+    })
+
+    // Cloudflare accepts a token once, so a retry after a refusal solves a fresh one.
+    it('solves a new challenge for every attempt', async () => {
+      mockPlaceQuickOrder.mockRejectedValueOnce(new ApiError(409, AppErrorCode.PRICE_CHANGED))
+      solveBotCheck.mockResolvedValueOnce('token-1').mockResolvedValueOnce('token-2')
+      const { result } = renderQuickOrder()
+
+      act(() => result.current.place())
+      await waitFor(() => expect(result.current.failure).not.toBeNull())
+      act(() => result.current.place())
+
+      await waitFor(() => expect(mockPlaceQuickOrder).toHaveBeenCalledTimes(2))
+      expect(mockPlaceQuickOrder.mock.calls[1][0].botCheckToken).toBe('token-2')
     })
 
     it('opens the order with its key, and forgets the contact', async () => {
@@ -302,20 +343,7 @@ describe('usePlaceOrder', () => {
       expect(useQuickOrder.getState().contact.firstName).toBe('')
     })
 
-    // The API spends the token on the way to any refusal after its check.
-    it('asks the widget for a fresh token after a refusal, keeping the contact', async () => {
-      mockPlaceQuickOrder.mockRejectedValue(new ApiError(409, AppErrorCode.PRICE_CHANGED))
-      const { result } = renderQuickOrder()
-
-      act(() => result.current.place())
-
-      await waitFor(() => expect(result.current.failure).not.toBeNull())
-      expect(useQuickOrder.getState().botCheck).toMatchObject({ token: null, round: 1 })
-      expect(useQuickOrder.getState().contact.firstName).toBe('Мария')
-      expect(result.current.canPlace).toBe(false)
-    })
-
-    it('says the bot check must be passed again on BOT_CHECK_FAILED', async () => {
+    it('says the bot check was refused on BOT_CHECK_FAILED', async () => {
       mockPlaceQuickOrder.mockRejectedValue(new ApiError(400, AppErrorCode.BOT_CHECK_FAILED))
       const { result } = renderQuickOrder()
 

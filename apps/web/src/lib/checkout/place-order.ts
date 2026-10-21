@@ -56,13 +56,8 @@ const FAILURE_KINDS: Partial<Record<string, PlaceOrderFailure["kind"]>> = {
   [AppErrorCode.BOT_CHECK_FAILED]: "bot-check",
 };
 
-/** What a guest's quick order adds to the order the button would place. */
-export interface QuickOrderGuest {
-  /** Null while the contact form is not valid. */
-  contact: QuickOrderContactDto | null;
-  /** Null until the Turnstile widget hands over a fresh token. */
-  botCheckToken: string | null;
-}
+/** A guest's order before its bot check, which runs only once the button is clicked. */
+export type GuestOrderRequest = Omit<QuickOrderRequestDto, "botCheckToken">;
 
 /**
  * The order the button would place, or null while one cannot be: every choice
@@ -96,15 +91,12 @@ export function placeOrderRequestOf(input: PlaceOrderInput): PlaceOrderRequestDt
   };
 }
 
+/** Null while the order cannot be placed, or the contact form is not valid. */
 export function quickOrderRequestOf(
   order: PlaceOrderRequestDto | null,
-  { contact, botCheckToken }: QuickOrderGuest,
-): QuickOrderRequestDto | null {
-  if (!order || !contact || !botCheckToken) {
-    return null;
-  }
-
-  return { ...order, contact, botCheckToken };
+  contact: QuickOrderContactDto | null,
+): GuestOrderRequest | null {
+  return order && contact ? { ...order, contact } : null;
 }
 
 export function placeOrderFailureOf(

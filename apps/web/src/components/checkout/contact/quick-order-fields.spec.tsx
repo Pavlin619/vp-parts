@@ -3,21 +3,16 @@ import userEvent from '@testing-library/user-event'
 import { useQuickOrder } from '@/hooks/use-quick-order'
 import { QuickOrderFields } from './quick-order-fields'
 
-jest.mock('./quick-order-bot-check', () => ({
-  QuickOrderBotCheck: () => <div data-testid="quick-order-bot-check" />,
-}))
-
 beforeEach(() => useQuickOrder.getState().reset())
 
 describe('QuickOrderFields', () => {
-  it('asks for the names, a mobile, an optional email and the bot check', () => {
+  it('asks for the names, a mobile and an optional email', () => {
     render(<QuickOrderFields />)
 
     expect(screen.getByLabelText('Име')).toBeInTheDocument()
     expect(screen.getByLabelText('Фамилия')).toBeInTheDocument()
     expect(screen.getByLabelText('Телефон')).toBeInTheDocument()
     expect(screen.getByLabelText('Имейл (по избор)')).toBeInTheDocument()
-    expect(screen.getByTestId('quick-order-bot-check')).toBeInTheDocument()
   })
 
   it('keeps what is typed where the order button reads it', async () => {

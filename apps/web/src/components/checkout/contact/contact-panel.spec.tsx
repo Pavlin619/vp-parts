@@ -24,10 +24,6 @@ jest.mock('@/components/auth/registration-form', () => ({
   RegistrationForm: () => <form aria-label="Регистрация" />,
 }))
 
-jest.mock('./quick-order-bot-check', () => ({
-  QuickOrderBotCheck: () => <div data-testid="quick-order-bot-check" />,
-}))
-
 jest.mock('./signed-in-contact', () => ({
   SignedInContact: () => <div data-testid="signed-in-contact" />,
 }))
@@ -85,14 +81,13 @@ describe('ContactPanel', () => {
     expect(onModeChange).toHaveBeenCalledWith('login')
   })
 
-  it('asks for the names, a phone and the bot check on a quick order', () => {
+  it('asks for the names and a phone on a quick order', () => {
     render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
 
     expect(screen.getByLabelText('Име')).toBeInTheDocument()
     expect(screen.getByLabelText('Фамилия')).toBeInTheDocument()
     expect(screen.getByLabelText('Телефон')).toBeInTheDocument()
     expect(screen.getByText('Ще ви се обадим')).toBeInTheDocument()
-    expect(screen.getByTestId('quick-order-bot-check')).toBeInTheDocument()
   })
 
   it('signs in on the page, coming back to checkout', () => {
@@ -120,7 +115,7 @@ describe('ContactPanel', () => {
 
     expect(screen.getByRole('form', { name: 'Регистрация' })).toBeInTheDocument()
     expect(screen.queryByTestId('clerk-sign-in')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('quick-order-bot-check')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Фамилия')).not.toBeInTheDocument()
   })
 
   it('shows the signed-in customer instead of the choices', () => {
