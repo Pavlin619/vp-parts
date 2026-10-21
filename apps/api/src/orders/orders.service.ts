@@ -7,6 +7,7 @@ import {
   PlaceOrderResponseDto,
   QuickOrderContactDto,
   QuickOrderRequestDto,
+  QuickOrderResponseDto,
 } from '@vp-parts-shop/shared';
 import { CartService, CartStaleException } from '../cart';
 import type { CartForOrder, CartOrderLine } from '../cart';
@@ -20,6 +21,7 @@ import {
   OrdersAwaitingCallLimitException,
   PriceChangedException,
 } from './orders.exceptions';
+import { OrderAccessKeys } from './order-access-keys';
 import { toOrderDetailDto } from './orders.mapper';
 import {
   NewOrderItem,
@@ -35,8 +37,10 @@ export const TERMS_VERSION = '2026-10-17';
 /** A fake cash-on-delivery order costs a shipment, so one phone may hold only a few. */
 export const MAX_ORDERS_AWAITING_CALL_PER_PHONE = 3;
 
-export interface PlacedOrder {
-  order: PlaceOrderResponseDto;
+export interface PlacedOrder<
+  Response extends PlaceOrderResponseDto = PlaceOrderResponseDto,
+> {
+  order: Response;
   /** True when the cart had been ordered from already: a retry, answered with its order. */
   isReplay: boolean;
 }
@@ -62,6 +66,7 @@ export class OrdersService {
     private readonly cart: CartService,
     private readonly checkout: CheckoutService,
     private readonly orders: OrdersRepository,
+    private readonly accessKeys: OrderAccessKeys,
   ) {}
 
   async placeOrder(
@@ -78,20 +83,28 @@ export class OrdersService {
     });
   }
 
-  /** A guest's order, owned through the cart token; the office calls to confirm it. */
+  /**
+   * A guest's order, owned through the cart token; the office calls to confirm
+   * it. A retry is answered with the same access key, since the key is derived.
+   */
   async placeQuickOrder(
     token: string | null,
     request: QuickOrderRequestDto,
-  ): Promise<PlacedOrder> {
+  ): Promise<PlacedOrder<QuickOrderResponseDto>> {
     const cart = token
       ? await this.cart.findGuestCart(token, request.cartId)
       : null;
 
-    return this.placeFromCart(cart, request, {
+    const { order, isReplay } = await this.placeFromCart(cart, request, {
       customerId: null,
       contact: guestContactOf(request.contact),
       initialStatus: OrderStatus.AWAITING_CONFIRMATION,
     });
+
+    return {
+      order: { ...order, accessKey: this.accessKeys.keyFor(order.orderId) },
+      isReplay,
+    };
   }
 
   async getOrder(
@@ -104,6 +117,20 @@ export class OrdersService {
       : null;
 
     if (!order) {
+      throw new OrderNotFoundException();
+    }
+
+    return toOrderDetailDto(order);
+  }
+
+  /** A wrong key answers as a missing order does, so a guess reveals nothing. */
+  async getGuestOrder(
+    orderReference: string,
+    accessKey: string | undefined,
+  ): Promise<OrderDetailDto> {
+    const order = await this.orders.findGuest(orderReference);
+
+    if (!order || !this.accessKeys.matches(order.id, accessKey)) {
       throw new OrderNotFoundException();
     }
 

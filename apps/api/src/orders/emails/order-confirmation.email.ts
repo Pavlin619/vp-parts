@@ -2,7 +2,6 @@ import {
   formatPrice,
   LEGAL_PAGES,
   OrderDetailDto,
-  orderPagePath,
 } from '@vp-parts-shop/shared';
 import { EmailBlock, EmailContent, renderEmail } from '../../email';
 import {
@@ -21,6 +20,7 @@ import type { Seller, ShopDetails } from './shop-details';
 export function orderConfirmationEmail(
   order: OrderDetailDto,
   shop: ShopDetails,
+  orderPath: string,
 ): EmailContent {
   return renderEmail({
     subject: `Поръчка ${order.orderReference} е приета`,
@@ -46,7 +46,7 @@ export function orderConfirmationEmail(
         links: [
           {
             text: 'Вижте поръчката онлайн',
-            href: webLink(shop, orderPagePath(order.orderReference)),
+            href: webLink(shop, orderPath),
           },
         ],
       },

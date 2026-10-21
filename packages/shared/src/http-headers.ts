@@ -18,3 +18,9 @@ export const WEB_ORIGIN_TOKEN_HEADER = 'x-web-origin-token';
  * borrowed time. The token names one cart and grants nothing else.
  */
 export const CART_TOKEN_HEADER = 'x-cart-token';
+
+/**
+ * Proves the right to read a guest's order: the access key its confirmation
+ * link carries. A header, so the key never lands in an access log.
+ */
+export const ORDER_KEY_HEADER = 'x-order-key';

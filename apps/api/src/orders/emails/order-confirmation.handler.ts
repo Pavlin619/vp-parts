@@ -8,6 +8,7 @@ import {
   OutboxMessage,
   OutboxRelay,
 } from '../../events';
+import { OrderAccessKeys } from '../order-access-keys';
 import { ORDER_PLACED, readPlacedOrder } from '../order-placed.event';
 import { toOrderDetailDto } from '../orders.mapper';
 import { OrdersRepository } from '../orders.repository';
@@ -25,6 +26,7 @@ export class OrderConfirmationHandler implements OutboxHandler, OnModuleInit {
     private readonly relay: OutboxRelay,
     private readonly orders: OrdersRepository,
     private readonly sender: EmailSender,
+    private readonly accessKeys: OrderAccessKeys,
     config: ConfigService,
   ) {
     this.shop = shopDetailsFrom(config);
@@ -35,7 +37,8 @@ export class OrderConfirmationHandler implements OutboxHandler, OnModuleInit {
   }
 
   async handle(event: OutboxMessage): Promise<void> {
-    const order = toOrderDetailDto(await readPlacedOrder(this.orders, event));
+    const record = await readPlacedOrder(this.orders, event);
+    const order = toOrderDetailDto(record);
 
     // A guest's email is unverified, so it is written to only once the call
     // has confirmed the order — docs/ORDERS.md → "`OrderPlaced`".
@@ -50,7 +53,11 @@ export class OrderConfirmationHandler implements OutboxHandler, OnModuleInit {
       {
         to: order.contact.email,
         replyTo: this.shop.seller.email,
-        ...orderConfirmationEmail(order, this.shop),
+        ...orderConfirmationEmail(
+          order,
+          this.shop,
+          this.accessKeys.pagePathFor(record),
+        ),
       },
       idempotencyKeyOf(event, this),
     );

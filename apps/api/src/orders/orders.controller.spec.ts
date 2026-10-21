@@ -45,6 +45,7 @@ describe('OrdersController', () => {
   const placeOrder = jest.fn();
   const placeQuickOrder = jest.fn();
   const getOrder = jest.fn();
+  const getGuestOrder = jest.fn();
   const status = jest.fn();
   const response = { status } as unknown as Response;
 
@@ -58,7 +59,7 @@ describe('OrdersController', () => {
       providers: [
         {
           provide: OrdersService,
-          useValue: { placeOrder, placeQuickOrder, getOrder },
+          useValue: { placeOrder, placeQuickOrder, getOrder, getGuestOrder },
         },
       ],
     })
@@ -105,11 +106,12 @@ describe('OrdersController', () => {
 
   describe('placeQuickOrder', () => {
     it('places the order for the cart the guest’s token holds, leaving the 201', async () => {
-      placeQuickOrder.mockResolvedValue({ order: PLACED, isReplay: false });
+      const placed = { ...PLACED, accessKey: 'the-key' };
+      placeQuickOrder.mockResolvedValue({ order: placed, isReplay: false });
 
       await expect(
         controller.placeQuickOrder(GUEST, QUICK_REQUEST, response),
-      ).resolves.toEqual(PLACED);
+      ).resolves.toEqual(placed);
       expect(placeQuickOrder).toHaveBeenCalledWith(GUEST.token, QUICK_REQUEST);
       expect(status).not.toHaveBeenCalled();
     });
@@ -141,6 +143,18 @@ describe('OrdersController', () => {
         controller.getOrder(USER, { orderReference: 'VP-ORD-000042' }),
       ).resolves.toBe(order);
       expect(getOrder).toHaveBeenCalledWith('user_1', 'VP-ORD-000042');
+    });
+  });
+
+  describe('getGuestOrder', () => {
+    it('reads a guest’s order with the key the request presents', async () => {
+      const order = { orderId: 'order-1' };
+      getGuestOrder.mockResolvedValue(order);
+
+      await expect(
+        controller.getGuestOrder({ orderReference: 'VP-ORD-000042' }, 'k'),
+      ).resolves.toBe(order);
+      expect(getGuestOrder).toHaveBeenCalledWith('VP-ORD-000042', 'k');
     });
   });
 });

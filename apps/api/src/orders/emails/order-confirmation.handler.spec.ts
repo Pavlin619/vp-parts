@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { EmailSender } from '../../email';
 import { OutboxMessage, OutboxRelay } from '../../events';
+import { OrderAccessKeys } from '../order-access-keys';
 import { OrdersRepository } from '../orders.repository';
 import { OrderConfirmationHandler } from './order-confirmation.handler';
 import { PLACED_ORDER_RECORD, SHOP } from './placed-order.fixture';
@@ -13,6 +14,7 @@ const CONFIG: Record<string, string> = {
   SELLER_EMAIL: SHOP.seller.email,
   SELLER_PHONE: SHOP.seller.phone,
   CORS_ORIGIN: SHOP.webOrigin,
+  ORDER_LINK_SECRET: 's'.repeat(32),
 };
 
 const EVENT: OutboxMessage = {
@@ -25,6 +27,7 @@ const EVENT: OutboxMessage = {
 
 describe('OrderConfirmationHandler', () => {
   let handler: OrderConfirmationHandler;
+  let accessKeys: OrderAccessKeys;
 
   const relay = { register: jest.fn() };
   const orders = { findDetail: jest.fn() };
@@ -40,6 +43,7 @@ describe('OrderConfirmationHandler', () => {
         { provide: OutboxRelay, useValue: relay },
         { provide: OrdersRepository, useValue: orders },
         { provide: EmailSender, useValue: sender },
+        OrderAccessKeys,
         {
           provide: ConfigService,
           useValue: { get: (key: string) => CONFIG[key] },
@@ -48,6 +52,7 @@ describe('OrderConfirmationHandler', () => {
     }).compile();
 
     handler = moduleRef.get(OrderConfirmationHandler);
+    accessKeys = moduleRef.get(OrderAccessKeys);
   });
 
   it('takes OrderPlaced from the relay', () => {
@@ -70,6 +75,26 @@ describe('OrderConfirmationHandler', () => {
           'https://vp-parts.bg/orders/VP-ORD-000042',
         ),
         text: expect.stringContaining('ВП Партс ЕООД'),
+      }),
+      'event-1:order-confirmation-email',
+    );
+  });
+
+  // A guest's order is emailed once the office has confirmed it by phone.
+  it('links a guest’s order with its access key', async () => {
+    orders.findDetail.mockResolvedValue({
+      ...PLACED_ORDER_RECORD,
+      customerId: null,
+    });
+
+    await handler.handle(EVENT);
+
+    const key = accessKeys.keyFor('order-1');
+    expect(sender.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining(
+          `https://vp-parts.bg/orders/VP-ORD-000042#k=${key}`,
+        ),
       }),
       'event-1:order-confirmation-email',
     );

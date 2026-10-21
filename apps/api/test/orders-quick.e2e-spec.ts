@@ -8,6 +8,8 @@ import {
   CART_TOKEN_HEADER,
   CartDto,
   DeliveryMethod,
+  ORDER_KEY_HEADER,
+  OrderDetailDto,
   PaymentMethod,
   ShippingMethod,
 } from '@vp-parts-shop/shared';
@@ -25,6 +27,7 @@ import {
   SqsPublisher,
 } from '../src/events';
 import { InventoryService } from '../src/inventory';
+import { OrderAccessKeys } from '../src/orders/order-access-keys';
 import { PrismaService } from '../src/prisma';
 import { REDIS_CLIENT } from '../src/redis';
 
@@ -303,6 +306,7 @@ describe('Quick orders (e2e)', () => {
       expect(response.body).toEqual({
         orderId: expect.any(String),
         orderReference: expect.stringMatching(/^VP-ORD-\d{6,}$/),
+        accessKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
       });
       expect(response.headers['cache-control']).toBe('no-store');
       const order = await prisma.order.findUniqueOrThrow({
@@ -483,6 +487,116 @@ describe('Quick orders (e2e)', () => {
           fields: { orderId: body.orderId },
         },
       ]);
+    });
+  });
+
+  describe('reading a guest’s order', () => {
+    const readGuestOrder = (orderReference: string, accessKey?: string) => {
+      const call = request(server()).get(`/orders/guest/${orderReference}`);
+
+      return accessKey ? call.set(ORDER_KEY_HEADER, accessKey) : call;
+    };
+
+    it('answers the order to the key its placement handed out, with no account', async () => {
+      const { token, cart } = await guestWithCart();
+      const { body: placed } = await placeQuickOrder(token, cart).expect(201);
+
+      const response = await readGuestOrder(
+        placed.orderReference,
+        placed.accessKey,
+      ).expect(200);
+
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body as OrderDetailDto).toMatchObject({
+        orderId: placed.orderId,
+        orderReference: placed.orderReference,
+        status: 'AWAITING_CONFIRMATION',
+        total: COURIER_TOTAL,
+        contact: { firstName: 'Мария', lastName: 'Иванова', email: null },
+        statusHistory: [{ status: 'AWAITING_CONFIRMATION' }],
+      });
+    });
+
+    it('hands a retry the same key', async () => {
+      const { token, cart } = await guestWithCart();
+      const body = { contact: contact() };
+
+      const first = await placeQuickOrder(token, cart, body).expect(201);
+      const retry = await placeQuickOrder(token, cart, body).expect(200);
+
+      expect(retry.body.accessKey).toBe(first.body.accessKey);
+    });
+
+    it('answers a missing, wrong or borrowed key as though there were no such order', async () => {
+      const first = await guestWithCart();
+      const second = await guestWithCart();
+      const { body: placed } = await placeQuickOrder(
+        first.token,
+        first.cart,
+      ).expect(201);
+      const { body: other } = await placeQuickOrder(
+        second.token,
+        second.cart,
+      ).expect(201);
+
+      for (const key of [undefined, 'wrong', other.accessKey as string]) {
+        const response = await readGuestOrder(placed.orderReference, key);
+
+        expect(response.status).toBe(404);
+        expect(response.body).toEqual({
+          statusCode: 404,
+          errorCode: AppErrorCode.ORDER_NOT_FOUND,
+        });
+      }
+    });
+
+    it('never answers a customer’s order, even to its derived key', async () => {
+      const auth = `Bearer test:${RUN}-reader`;
+      await request(server())
+        .post('/customers/me')
+        .set('Authorization', auth)
+        .expect(201);
+      const { body: cart } = await request(server())
+        .post('/cart/items')
+        .set('Authorization', auth)
+        .send({
+          brandId: '30',
+          articleNumber: 'DISC',
+          quantity: 1,
+          brandName: 'BOSCH',
+          brandLogoUrl: null,
+          description: 'Част DISC',
+          thumbnailUrl: null,
+          addedAtPriceIncVat: null,
+        })
+        .expect(201);
+      const { body: placed } = await request(server())
+        .post('/orders')
+        .set('Authorization', auth)
+        .send({
+          cartId: (cart as CartDto).id,
+          cartVersion: (cart as CartDto).version,
+          expectedTotalCents: 1299 + 378 + 81,
+          paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+          delivery: {
+            method: DeliveryMethod.COURIER_OFFICE,
+            carrier: ShippingMethod.ECONT,
+            officeCode: '1127',
+          },
+        })
+        .expect(201);
+
+      await readGuestOrder(
+        placed.orderReference,
+        app.get(OrderAccessKeys).keyFor(placed.orderId),
+      ).expect(404);
+    });
+
+    it('refuses an order id where the reference belongs', async () => {
+      const { token, cart } = await guestWithCart();
+      const { body: placed } = await placeQuickOrder(token, cart).expect(201);
+
+      await readGuestOrder(placed.orderId, placed.accessKey).expect(400);
     });
   });
 

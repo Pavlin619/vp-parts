@@ -65,6 +65,11 @@ export interface PlaceOrderResponseDto {
   orderReference: string;
 }
 
+export interface QuickOrderResponseDto extends PlaceOrderResponseDto {
+  /** Reads the order back with no account; see `ORDER_KEY_HEADER`. */
+  accessKey: string;
+}
+
 export interface OrderListItemDto {
   orderId: string;
   orderReference: string;

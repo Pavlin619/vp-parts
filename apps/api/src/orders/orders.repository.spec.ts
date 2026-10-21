@@ -274,6 +274,16 @@ describe('OrdersRepository', () => {
     );
   });
 
+  it('reads a guest’s order by its reference, never a customer’s', async () => {
+    await repository.findGuest('VP-ORD-000042');
+
+    expect(prisma.order.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orderReference: 'VP-ORD-000042', customerId: null },
+      }),
+    );
+  });
+
   it('counts the orders a phone has waiting on a confirmation call', async () => {
     prisma.order.count.mockResolvedValue(2);
 
