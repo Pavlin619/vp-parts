@@ -9,6 +9,7 @@ import {
   QuickOrderRequestDto,
   QuickOrderResponseDto,
 } from '@vp-parts-shop/shared';
+import { TurnstileVerifier } from '../bot-check';
 import { CartService, CartStaleException } from '../cart';
 import type { CartForOrder, CartOrderLine } from '../cart';
 import { CheckoutService } from '../checkout';
@@ -50,6 +51,8 @@ interface Orderer {
   customerId: string | null;
   contact: OrderContact;
   initialStatus: OrderStatus;
+  /** What a new order must pass before it is priced. A retry skips it to find its order. */
+  admit?: () => Promise<void>;
 }
 
 /**
@@ -67,6 +70,7 @@ export class OrdersService {
     private readonly checkout: CheckoutService,
     private readonly orders: OrdersRepository,
     private readonly accessKeys: OrderAccessKeys,
+    private readonly botCheck: TurnstileVerifier,
   ) {}
 
   async placeOrder(
@@ -94,11 +98,13 @@ export class OrdersService {
     const cart = token
       ? await this.cart.findGuestCart(token, request.cartId)
       : null;
+    const contact = guestContactOf(request.contact);
 
     const { order, isReplay } = await this.placeFromCart(cart, request, {
       customerId: null,
-      contact: guestContactOf(request.contact),
+      contact,
       initialStatus: OrderStatus.AWAITING_CONFIRMATION,
+      admit: () => this.admitQuickOrder(request.botCheckToken, contact.phone),
     });
 
     return {
@@ -140,7 +146,7 @@ export class OrdersService {
   private async placeFromCart(
     cart: CartForOrder | null,
     request: PlaceOrderRequestDto,
-    orderer: Orderer,
+    { admit, ...orderer }: Orderer,
   ): Promise<PlacedOrder> {
     if (!cart) {
       throw new OrderCartNotFoundException();
@@ -151,7 +157,7 @@ export class OrdersService {
     }
 
     assertPricedVersion(cart, request.cartVersion);
-    await this.assertRoomToAwaitCall(orderer);
+    await admit?.();
 
     const { lines, delivery, money } = await this.checkout.priceOrder(
       cart.lines,
@@ -176,16 +182,14 @@ export class OrdersService {
     return this.settle(placement);
   }
 
-  /** After the replay check, so a retry at the limit still finds its order. */
-  private async assertRoomToAwaitCall({
-    initialStatus,
-    contact,
-  }: Orderer): Promise<void> {
-    if (initialStatus !== OrderStatus.AWAITING_CONFIRMATION) {
-      return;
-    }
+  /** After the replay and version checks, so neither spends the bot check's token. */
+  private async admitQuickOrder(
+    botCheckToken: string,
+    phone: string,
+  ): Promise<void> {
+    await this.botCheck.verify(botCheckToken);
 
-    const awaiting = await this.orders.countAwaitingConfirmation(contact.phone);
+    const awaiting = await this.orders.countAwaitingConfirmation(phone);
 
     if (awaiting >= MAX_ORDERS_AWAITING_CALL_PER_PHONE) {
       throw new OrdersAwaitingCallLimitException();

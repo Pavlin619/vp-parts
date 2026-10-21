@@ -33,6 +33,9 @@ import {
   trimmed,
 } from '../common';
 
+/** The longest token Turnstile issues. */
+const BOT_CHECK_TOKEN_MAX_LENGTH = 2048;
+
 export class CourierOfficeDeliveryBodyDto {
   @IsIn([DeliveryMethod.COURIER_OFFICE])
   method!: DeliveryMethod.COURIER_OFFICE;
@@ -134,6 +137,11 @@ export class QuickOrderBodyDto
   @ValidateNested()
   @Type(() => QuickOrderContactBodyDto)
   contact!: QuickOrderContactBodyDto;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(BOT_CHECK_TOKEN_MAX_LENGTH)
+  botCheckToken!: string;
 }
 
 export class OrderReferenceParamsDto {

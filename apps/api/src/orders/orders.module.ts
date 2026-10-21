@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BotCheckModule } from '../bot-check';
 import { CartModule } from '../cart';
 import { CheckoutModule } from '../checkout';
 import { CustomersModule } from '../customers';
@@ -22,6 +23,7 @@ import { OrdersService } from './orders.service';
     CheckoutModule,
     EventsModule,
     EmailModule,
+    BotCheckModule,
   ],
   controllers: [OrdersController],
   providers: [

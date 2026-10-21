@@ -21,7 +21,7 @@ through `events/sqs.publisher.ts`) and the queues (`infra/aws/messaging.yml`).
 - **Signed-in customers**, whose email is verified at sign-up (AUTH.md), so an
   order's confirmation reaches the person who placed it; and **guests**, through
   a [quick order](#quick-order) the office confirms by phone. Its checkout tab
-  stays hidden until the guest's read and the bot check are built.
+  stays hidden until the web side, with its Turnstile widget, is built.
 - **Cash on delivery only.** Card is shown disabled, "Очаквайте скоро", with
   no fee badge. [Card payments](#card-payments-later) below says what changes.
 - **Three ways to receive it:** an Econt office (or Econtomat), an address by
@@ -117,6 +117,7 @@ row lock is ever held across an HTTP call.
 | `DELIVERY_*` (office, address, locker) | 422 | Points at the delivery panel |
 | `INVENTORY_UNAVAILABLE`, `DELIVERY_UNAVAILABLE` | 503 | Offers a retry |
 | `RATE_LIMITED` | 429 | Asks to wait |
+| `BOT_CHECK_FAILED` (quick order) | 400 | Resets the Turnstile widget for a fresh token |
 
 ## Idempotency is the cart
 
@@ -145,7 +146,8 @@ POST /orders/quick     @Public · x-cart-token · Cache-Control: no-store
   "contact": {
     "firstName": "Мария", "lastName": "Иванова",
     "phoneNumber": "0888 765 432", "email": "maria@example.com"   (optional)
-  }
+  },
+  "botCheckToken": "…"                                             the Turnstile widget's
 }
 
 201 / 200 { "orderId": "…", "orderReference": "VP-ORD-000123", "accessKey": "…" }
@@ -181,12 +183,29 @@ under a typed phone would let anyone attach orders to someone else's number.
   checked after the replay check, so a retry still finds its order, and before
   the transaction, so two concurrent orders from one phone can both pass it;
   the per-phone limit bounds that.
+- **The bot check.** `botCheckToken` is a Cloudflare Turnstile token, checked
+  with siteverify against `TURNSTILE_SECRET_KEY` (`TurnstileVerifier`,
+  `apps/api/src/bot-check/`). A token that is invalid, expired or spent is
+  `400 BOT_CHECK_FAILED`; a missing one is `400 VALIDATION_ERROR`. Our secret
+  being wrong, or Cloudflare failing or unreachable, is `500` and fails closed:
+  the signed-in route stays open, and an order nobody can verify is the one the
+  check exists to stop. Cloudflare accepts a token **once**, so it is checked
+  after the replay and version checks, which leave it unspent, and before the
+  call limit and any pricing. A retry is answered with its order whatever its
+  token. Any refusal after the check (the call limit, `PRICE_CHANGED`, a
+  delivery refusal) has spent the token, so the widget is reset before the next
+  attempt. Two concurrent requests carrying one token end in one order and one
+  `BOT_CHECK_FAILED`, and the button is disabled while a request is in flight.
+  The visitor's address is not sent with the token: a browser can reach
+  Cloudflare and us over different IP versions, and the per-address limit
+  above already counts by address. Local and CI environments use Cloudflare's
+  test secret `1x0000000000000000000000000000000AA`, which passes every token.
 - **The access key** reads the order back with no account (see
   [Reading an order](#reading-an-order)). It is
   `HMAC-SHA256(ORDER_LINK_SECRET, orderId)` in base64url, derived rather than
   stored (`OrderAccessKeys`), so a retry is answered with the same key and an
   email sent later can carry it too.
-- **Not built yet:** the bot check and the checkout tab.
+- **Not built yet:** the checkout tab and its Turnstile widget.
 
 ## Money
 
@@ -632,5 +651,5 @@ GET /orders/guest/:orderReference    @Public · X-Order-Key: <accessKey> · no-s
 - "My orders" (`GET /orders`), cancellation requests, live status over SSE and the
   `fulfillment-events` consumer.
 - Remembering a customer's delivery addresses (T091c).
-- Quick order: a bot check, the checkout tab, and the confirmation email once
-  the office has confirmed.
+- Quick order: the checkout tab, and the confirmation email once the office
+  has confirmed.

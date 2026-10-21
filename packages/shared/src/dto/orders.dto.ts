@@ -58,6 +58,8 @@ export interface QuickOrderContactDto {
 /** A guest's order of the cart their device holds, owned through the cart token. */
 export interface QuickOrderRequestDto extends PlaceOrderRequestDto {
   contact: QuickOrderContactDto;
+  /** The Turnstile widget's token. The server spends it, so a refused order needs a fresh one. */
+  botCheckToken: string;
 }
 
 export interface PlaceOrderResponseDto {

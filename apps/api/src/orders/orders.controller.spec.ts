@@ -30,6 +30,7 @@ const QUICK_REQUEST: QuickOrderRequestDto = {
     lastName: 'Иванова',
     phoneNumber: '+359888765432',
   },
+  botCheckToken: 'solved-turnstile-token',
 };
 
 const GUEST = { clerkId: null, token: 'g'.repeat(43) };

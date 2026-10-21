@@ -115,6 +115,7 @@ describe('QuickOrderBodyDto', () => {
       officeCode: '1127',
     },
     contact: CONTACT,
+    botCheckToken: '0.solved-turnstile-token',
   };
 
   it('accepts a name and a phone, storing the phone in E.164', async () => {
@@ -155,6 +156,12 @@ describe('QuickOrderBodyDto', () => {
     ['an empty email', { contact: { ...CONTACT, email: '' } }],
     ['a contact field of its own', { contact: { ...CONTACT, note: 'x' } }],
     ['card, which is not offered yet', { paymentMethod: 'CARD' }],
+    ['no bot check token', { botCheckToken: undefined }],
+    ['an empty bot check token', { botCheckToken: '' }],
+    [
+      'a bot check token longer than Turnstile issues',
+      { botCheckToken: 'x'.repeat(2049) },
+    ],
   ])('refuses %s', async (_case, change) => {
     await expect(transform({ ...BODY, ...change })).rejects.toThrow();
   });
