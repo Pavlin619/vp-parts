@@ -6,9 +6,11 @@ import { AppErrorCode, type OrderDetailDto } from "@vp-parts-shop/shared";
 import { CheckoutSteps } from "@/components/cart";
 import { buttonVariants } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
+import { useOrderAccessKey } from "@/hooks/use-order-access-key";
 import { ApiError } from "@/lib/api";
 import { orderQueryOptions } from "@/lib/api/orders";
 import { OrderConfirmationHero } from "./order-confirmation-hero";
+import { GuestAccountInvite } from "./guest-account-invite";
 import { OrderConfirmationSkeleton } from "./order-confirmation-skeleton";
 import { OrderDeliveryDetails } from "./order-delivery-details";
 import { OrderLines } from "./order-lines";
@@ -21,9 +23,16 @@ const NOT_FOUND_CODES: readonly string[] = [
   AppErrorCode.VALIDATION_ERROR,
 ];
 
-/** The order as placed: what checkout lands on, and the link the customer keeps. */
+/**
+ * The order as placed: what checkout lands on, and the link the customer keeps.
+ * A guest's link carries its access key; a customer's order is read through the account.
+ */
 export function OrderConfirmation({ orderReference }: { orderReference: string }) {
-  const { data, error, isPending, refetch } = useQuery(orderQueryOptions(orderReference));
+  const accessKey = useOrderAccessKey();
+  const { data, error, isPending, refetch } = useQuery({
+    ...orderQueryOptions(orderReference, accessKey ?? null),
+    enabled: accessKey !== undefined,
+  });
 
   if (isPending) {
     return <OrderConfirmationSkeleton />;
@@ -33,10 +42,10 @@ export function OrderConfirmation({ orderReference }: { orderReference: string }
     return <OrderUnavailable error={error} onRetry={() => void refetch()} />;
   }
 
-  return <PlacedOrder order={data} />;
+  return <PlacedOrder order={data} isGuest={accessKey !== null} />;
 }
 
-function PlacedOrder({ order }: { order: OrderDetailDto }) {
+function PlacedOrder({ order, isGuest }: { order: OrderDetailDto; isGuest: boolean }) {
   return (
     <>
       <CheckoutSteps current={3} />
@@ -44,6 +53,7 @@ function PlacedOrder({ order }: { order: OrderDetailDto }) {
       <div className="grid items-start gap-7 pb-16 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex min-w-0 flex-col gap-3">
           <OrderConfirmationHero order={order} />
+          {isGuest && <GuestAccountInvite contact={order.contact} />}
           <OrderDeliveryDetails order={order} />
           <OrderLines items={order.items} />
         </div>

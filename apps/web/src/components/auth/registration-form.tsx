@@ -7,6 +7,7 @@ import type { RegisterCustomerInput, RegistrationMetadata } from "@vp-parts-shop
 import { Button } from "@/components/ui/button";
 import { PRIMARY_ACTION_CLASS } from "@/components/checkout/delivery/address/address-action-buttons";
 import { TextField } from "@/components/common/text-field";
+import { useRegistrationDraft } from "@/hooks/use-registration-draft";
 import { customerProfileQueryOptions, fileCustomer } from "@/lib/api/customers";
 import {
   describeEmailCodeError,
@@ -62,7 +63,10 @@ export function RegistrationForm({
   const queryClient = useQueryClient();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [values, setValues] = useState<RegistrationValues>(EMPTY_REGISTRATION);
+  const [values, setValues] = useState<RegistrationValues>(() => ({
+    ...EMPTY_REGISTRATION,
+    ...useRegistrationDraft.getState().draft,
+  }));
   const [touched, setTouched] = useState<ReadonlySet<RegistrationField>>(new Set());
   const [submitAttempts, setSubmitAttempts] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);

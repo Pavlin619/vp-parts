@@ -49,16 +49,16 @@ beforeEach(() => {
 })
 
 describe('ContactPanel', () => {
-  it('offers sign-in and registration, not yet a quick order', () => {
+  it('offers sign-in, registration and a quick order', () => {
     render(<ContactPanel mode="register" onModeChange={jest.fn()} />)
 
     expect(
       screen.getByRole('radiogroup', { name: 'Данни за контакт' }),
     ).toBeInTheDocument()
-    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
     expect(screen.getByRole('radio', { name: /Вход/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /Регистрация/ })).toBeChecked()
-    expect(screen.queryByRole('radio', { name: /Бърза поръчка/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Бърза поръчка/ })).not.toBeChecked()
   })
 
   it('preselects nothing and asks for nothing until a mode is picked', () => {
@@ -69,7 +69,7 @@ describe('ContactPanel', () => {
     }
     expect(screen.queryByTestId('clerk-sign-in')).not.toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Регистрация' })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Име и фамилия')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
   })
 
   it('reports the mode the customer picks', async () => {
@@ -81,10 +81,11 @@ describe('ContactPanel', () => {
     expect(onModeChange).toHaveBeenCalledWith('login')
   })
 
-  it('asks for a name and a phone on a quick order', () => {
+  it('asks for the names and a phone on a quick order', () => {
     render(<ContactPanel mode="quick" onModeChange={jest.fn()} />)
 
-    expect(screen.getByLabelText('Име и фамилия')).toBeInTheDocument()
+    expect(screen.getByLabelText('Име')).toBeInTheDocument()
+    expect(screen.getByLabelText('Фамилия')).toBeInTheDocument()
     expect(screen.getByLabelText('Телефон')).toBeInTheDocument()
     expect(screen.getByText('Ще ви се обадим')).toBeInTheDocument()
   })
@@ -95,7 +96,7 @@ describe('ContactPanel', () => {
     const signIn = screen.getByTestId('clerk-sign-in')
     expect(signIn).toHaveAttribute('data-routing', 'hash')
     expect(signIn).toHaveAttribute('data-redirect', '/checkout')
-    expect(screen.queryByLabelText('Име и фамилия')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
   })
 
   // Clerk turns a first Google sign-in into a sign-up, which
@@ -114,7 +115,7 @@ describe('ContactPanel', () => {
 
     expect(screen.getByRole('form', { name: 'Регистрация' })).toBeInTheDocument()
     expect(screen.queryByTestId('clerk-sign-in')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Име и фамилия')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Фамилия')).not.toBeInTheDocument()
   })
 
   it('shows the signed-in customer instead of the choices', () => {

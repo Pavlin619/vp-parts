@@ -10,6 +10,10 @@ import {
 import type { ParcelCheck } from '@/lib/checkout/delivery/office-availability'
 import { OrderSummaryPanel } from './order-summary-panel'
 
+jest.mock('./quick-order-bot-check', () => ({
+  QuickOrderBotCheck: () => <div data-testid="quick-order-bot-check" />,
+}))
+
 const GOODS = {
   cartVersion: 3,
   goodsTotal: 8400,
@@ -133,13 +137,25 @@ describe('OrderSummaryPanel', () => {
       ).toHaveAttribute('href', '/privacy')
     })
 
-    it('asks to request the order when it is a quick order', () => {
-      renderPanel({ isQuickOrder: true })
+    // The guest is bound by the click as a customer is (ЗЗП чл. 49, ал. 2).
+    it('places a quick order with the same words, under the same terms', async () => {
+      const place = jest.fn()
+      renderPanel({ isQuickOrder: true, order: order({ canPlace: true, place }) })
 
-      expect(screen.getByRole('button', { name: 'Заяви поръчка' })).toBeDisabled()
-      expect(
-        screen.queryByRole('button', { name: 'Купи сега' }),
-      ).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Купи сега' }))
+
+      expect(place).toHaveBeenCalled()
+      expect(screen.getByRole('link', { name: 'Общите условия' })).toBeInTheDocument()
+    })
+
+    // Beside the button, so a box Cloudflare asks to be ticked shows where the click was.
+    it('holds the bot check beside the button on a quick order only', () => {
+      const { unmount } = renderPanel({ isQuickOrder: true })
+      expect(screen.getByTestId('quick-order-bot-check')).toBeInTheDocument()
+      unmount()
+
+      renderPanel()
+      expect(screen.queryByTestId('quick-order-bot-check')).not.toBeInTheDocument()
     })
   })
 
@@ -178,6 +194,7 @@ describe('OrderSummaryPanel', () => {
       ['details-required', /данните за контакт/],
       ['delivery', /друг офис или адрес/],
       ['rate-limited', /Изчакайте минута/],
+      ['bot-check', /Проверката за сигурност не беше приета/],
       ['retry', /временен проблем/],
     ] as const)('explains %s', (kind, text) => {
       renderPanel({ order: order({ failure: { kind } }) })

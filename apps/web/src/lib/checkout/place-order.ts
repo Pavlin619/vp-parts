@@ -5,6 +5,8 @@ import {
   type DeliveryAddressDto,
   type PlaceOrderDeliveryDto,
   type PlaceOrderRequestDto,
+  type QuickOrderContactDto,
+  type QuickOrderRequestDto,
 } from "@vp-parts-shop/shared";
 import { ApiError } from "@/lib/api";
 import { CHECKOUT_CARRIER, type DeliveryMethod } from "./delivery/delivery-methods";
@@ -21,7 +23,8 @@ export interface PlaceOrderInput {
   paymentMethod: PaymentMethod | null;
   /** The money the summary shows; null until it is read. */
   money: SummaryMoney | null;
-  isProfileComplete: boolean;
+  /** Who the order is for is known: a complete profile, or a quick order's valid contact. */
+  isContactComplete: boolean;
   /** Live availability has loaded and no selected line is blocked or unpriced. */
   areLinesOrderable: boolean;
 }
@@ -34,6 +37,7 @@ export type PlaceOrderFailure =
   | { kind: "details-required" }
   | { kind: "delivery" }
   | { kind: "rate-limited" }
+  | { kind: "bot-check" }
   | { kind: "retry" };
 
 const FAILURE_KINDS: Partial<Record<string, PlaceOrderFailure["kind"]>> = {
@@ -49,7 +53,11 @@ const FAILURE_KINDS: Partial<Record<string, PlaceOrderFailure["kind"]>> = {
   [AppErrorCode.DELIVERY_ADDRESS_NOT_SERVED]: "delivery",
   [AppErrorCode.DELIVERY_LOCKER_INELIGIBLE]: "delivery",
   [AppErrorCode.RATE_LIMITED]: "rate-limited",
+  [AppErrorCode.BOT_CHECK_FAILED]: "bot-check",
 };
+
+/** A guest's order before its bot check, which runs only once the button is clicked. */
+export type GuestOrderRequest = Omit<QuickOrderRequestDto, "botCheckToken">;
 
 /**
  * The order the button would place, or null while one cannot be: every choice
@@ -58,7 +66,7 @@ const FAILURE_KINDS: Partial<Record<string, PlaceOrderFailure["kind"]>> = {
  * lines or prices; the total is what the server checks it against.
  */
 export function placeOrderRequestOf(input: PlaceOrderInput): PlaceOrderRequestDto | null {
-  const { cartId, cartVersion, paymentMethod, money, isProfileComplete, areLinesOrderable } =
+  const { cartId, cartVersion, paymentMethod, money, isContactComplete, areLinesOrderable } =
     input;
   const delivery = deliveryOf(input);
 
@@ -67,7 +75,7 @@ export function placeOrderRequestOf(input: PlaceOrderInput): PlaceOrderRequestDt
     paymentMethod === PaymentMethod.CASH_ON_DELIVERY &&
     money?.isDeliveryIncluded === true &&
     money.cartVersion === cartVersion &&
-    isProfileComplete &&
+    isContactComplete &&
     areLinesOrderable;
 
   if (!isReady || delivery === null) {
@@ -81,6 +89,14 @@ export function placeOrderRequestOf(input: PlaceOrderInput): PlaceOrderRequestDt
     paymentMethod,
     delivery,
   };
+}
+
+/** Null while the order cannot be placed, or the contact form is not valid. */
+export function quickOrderRequestOf(
+  order: PlaceOrderRequestDto | null,
+  contact: QuickOrderContactDto | null,
+): GuestOrderRequest | null {
+  return order && contact ? { ...order, contact } : null;
 }
 
 export function placeOrderFailureOf(
