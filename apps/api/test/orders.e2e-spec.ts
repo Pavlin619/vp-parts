@@ -719,16 +719,6 @@ describe('Orders (e2e)', () => {
       await expectNothingWritten(cart);
     });
 
-    it('refuses card, which is not offered yet', async () => {
-      const { clerkId, cart } = await customerWithCart();
-
-      const response = await placeOrder(clerkId, cart, {
-        paymentMethod: PaymentMethod.CARD,
-      }).expect(400);
-
-      expect(response.body.errorCode).toBe(AppErrorCode.VALIDATION_ERROR);
-    });
-
     it('refuses a visitor who is not signed in', async () => {
       const { cart } = await customerWithCart();
 

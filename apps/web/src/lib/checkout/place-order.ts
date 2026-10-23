@@ -91,12 +91,14 @@ export function placeOrderRequestOf(input: PlaceOrderInput): PlaceOrderRequestDt
   };
 }
 
-/** Null while the order cannot be placed, or the contact form is not valid. */
+/** Null while the order cannot be placed, or the contact form is not valid. A guest pays on delivery. */
 export function quickOrderRequestOf(
   order: PlaceOrderRequestDto | null,
   contact: QuickOrderContactDto | null,
 ): GuestOrderRequest | null {
-  return order && contact ? { ...order, contact } : null;
+  return order && contact
+    ? { ...order, paymentMethod: PaymentMethod.CASH_ON_DELIVERY, contact }
+    : null;
 }
 
 export function placeOrderFailureOf(

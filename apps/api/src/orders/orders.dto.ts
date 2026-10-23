@@ -1,3 +1,4 @@
+import { OmitType } from '@nestjs/mapped-types';
 import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
@@ -79,8 +80,8 @@ export class PlaceOrderBodyDto implements PlaceOrderRequestDto {
   @Min(0)
   expectedTotalCents!: number;
 
-  @IsIn([PaymentMethod.CASH_ON_DELIVERY])
-  paymentMethod!: PaymentMethod.CASH_ON_DELIVERY;
+  @IsIn([PaymentMethod.CASH_ON_DELIVERY, PaymentMethod.CARD])
+  paymentMethod!: PaymentMethod.CASH_ON_DELIVERY | PaymentMethod.CARD;
 
   @IsObject()
   @ValidateNested()
@@ -130,9 +131,12 @@ export class QuickOrderContactBodyDto implements QuickOrderContactDto {
 }
 
 export class QuickOrderBodyDto
-  extends PlaceOrderBodyDto
+  extends OmitType(PlaceOrderBodyDto, ['paymentMethod'] as const)
   implements QuickOrderRequestDto
 {
+  @IsIn([PaymentMethod.CASH_ON_DELIVERY])
+  paymentMethod!: PaymentMethod.CASH_ON_DELIVERY;
+
   @IsObject()
   @ValidateNested()
   @Type(() => QuickOrderContactBodyDto)

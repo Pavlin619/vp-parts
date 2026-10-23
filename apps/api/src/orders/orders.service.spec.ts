@@ -116,6 +116,7 @@ function quickRequest(
 ): QuickOrderRequestDto {
   return {
     ...request(),
+    paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
     contact: {
       firstName: 'Мария',
       lastName: 'Иванова',
@@ -246,7 +247,23 @@ describe('OrdersService', () => {
         paymentMethod: 'CASH_ON_DELIVERY',
         termsVersion: TERMS_VERSION,
         initialStatus: 'PROCESSING',
+        isAnnounced: true,
       });
+    });
+
+    it('places a card order to wait for its payment, announcing nothing yet', async () => {
+      await service.placeOrder(
+        CLERK_ID,
+        request({ paymentMethod: PaymentMethod.CARD }),
+      );
+
+      expect(place).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentMethod: 'CARD',
+          initialStatus: 'PENDING_PAYMENT',
+          isAnnounced: false,
+        }),
+      );
     });
 
     it('puts a customer through neither the bot check nor the call limit', async () => {
@@ -379,6 +396,7 @@ describe('OrdersService', () => {
             email: null,
           },
           initialStatus: 'AWAITING_CONFIRMATION',
+          isAnnounced: true,
           termsVersion: TERMS_VERSION,
         }),
       );

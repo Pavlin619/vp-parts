@@ -43,7 +43,8 @@ export interface PlaceOrderRequestDto {
   cartVersion: number;
   /** The total the checkout summary showed. */
   expectedTotalCents: number;
-  paymentMethod: PaymentMethod.CASH_ON_DELIVERY;
+  /** Card is for signed-in customers only; a card order waits for its payment. */
+  paymentMethod: PaymentMethod.CASH_ON_DELIVERY | PaymentMethod.CARD;
   delivery: PlaceOrderDeliveryDto;
 }
 
@@ -57,6 +58,8 @@ export interface QuickOrderContactDto {
 
 /** A guest's order of the cart their device holds, owned through the cart token. */
 export interface QuickOrderRequestDto extends PlaceOrderRequestDto {
+  /** The office confirms a quick order by phone, and it is paid at the door. */
+  paymentMethod: PaymentMethod.CASH_ON_DELIVERY;
   contact: QuickOrderContactDto;
   /** The Turnstile widget's token. The server spends it, so a refused order needs a fresh one. */
   botCheckToken: string;
@@ -70,6 +73,14 @@ export interface PlaceOrderResponseDto {
 export interface QuickOrderResponseDto extends PlaceOrderResponseDto {
   /** Reads the order back with no account; see `ORDER_KEY_HEADER`. */
   accessKey: string;
+}
+
+/** What the payment widget is started with, for a card order's open session. */
+export interface OrderPaymentSessionDto {
+  cashierKey: string;
+  cashierToken: string;
+  /** When the session ends; an order still unpaid then is cancelled. */
+  expiresAt: string;
 }
 
 export interface OrderListItemDto {

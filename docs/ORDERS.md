@@ -22,8 +22,9 @@ through `events/sqs.publisher.ts`) and the queues (`infra/aws/messaging.yml`).
   order's confirmation reaches the person who placed it; and **guests**, through
   a [quick order](#quick-order) the office confirms by phone, from checkout's
   "Бърза поръчка" tab.
-- **Cash on delivery only.** Card is shown disabled, "Очаквайте скоро", with
-  no fee badge. [Card payments](#card-payments-later) below says what changes.
+- **Cash on delivery, and card for signed-in customers.** The API takes card
+  ([PAYMENTS.md](./PAYMENTS.md)); checkout still shows it disabled,
+  "Очаквайте скоро", until the payment widget is built.
 - **Three ways to receive it:** an Econt office (or Econtomat), an address by
   Econt, or pickup from our store.
 
@@ -61,8 +62,10 @@ the customer saw.
   Resolving "the customer's active cart" instead would, on a retry after
   success, find the *new* cart holding the unselected lines.
 
-`paymentMethod` accepts only `CASH_ON_DELIVERY` for now; anything else is
-`400 VALIDATION_ERROR`. The checkout page's live reads (availability, the
+`paymentMethod` is `CASH_ON_DELIVERY` or `CARD` (a quick order takes cash on
+delivery only); anything else is `400 VALIDATION_ERROR`. A card order is
+priced without the cash-on-delivery fee and waits for its payment
+([Card payments](#card-payments)). The checkout page's live reads (availability, the
 quote) already are the confirmation, so there is no separate
 `POST /checkout/confirm`.
 
@@ -99,8 +102,9 @@ row lock is ever held across an HTTP call.
    - lock the cart (`SELECT … FOR UPDATE`) and check again that it is `ACTIVE`
      at `cartVersion`. If it became `ORDERED` meanwhile, return that order;
    - insert the `Order`, its `OrderItem`s, the first `OrderStatusHistory` row
-     (`PROCESSING`, or `AWAITING_CONFIRMATION` for a quick order;
-     `source: 'shop'`) and the `OrderPlaced` outbox row;
+     (`PROCESSING`, `AWAITING_CONFIRMATION` for a quick order, or
+     `PENDING_PAYMENT` for card; `source: 'shop'`) and the `OrderPlaced`
+     outbox row, which a card order writes only once it is paid;
    - set the cart `ORDERED` with its `orderId`, and raise its version;
    - move the unselected lines, still unselected, to a fresh `ACTIVE` cart for
      the customer. None is opened when every line was ordered.
@@ -369,9 +373,9 @@ that cached figure is what the customer was shown.
   `contactEmail`, copied from the profile, so a later profile edit never
   rewrites an order. A guest's quick order has no `customerId`, and has no
   `contactEmail` unless the guest gave one; the snapshot is all it is known by.
-- **`status`:** a customer's order starts `PROCESSING`. A guest's starts
-  `AWAITING_CONFIRMATION`: the office calls the phone to confirm it before
-  anything is picked or shipped.
+- **`status`:** a customer's order starts `PROCESSING`, or `PENDING_PAYMENT`
+  when paid by card. A guest's starts `AWAITING_CONFIRMATION`: the office calls
+  the phone to confirm it before anything is picked or shipped.
 - **`termsVersion`:** which terms the customer ordered under: `TERMS_VERSION`
   in `orders.service.ts`, raised whenever the terms page changes.
 - **Lines:** `OrderItem` with `brandId` *and* `articleNumber`, brand name,
@@ -668,7 +672,7 @@ GET /orders/guest/:orderReference    @Public · X-Order-Key: <accessKey> · no-s
 - Before launch the shop needs pages for its terms, its privacy notice, and the
   14-day withdrawal right with its model form. They are the business's content.
 
-## Card payments, later
+## Card payments
 
 Being built: [PAYMENTS.md](./PAYMENTS.md) holds the design and what is built.
 
