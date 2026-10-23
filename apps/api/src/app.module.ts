@@ -137,6 +137,15 @@ function buildThrottlerOptions(
         // Checks a quick order's Turnstile token (TurnstileVerifier).
         TURNSTILE_SECRET_KEY: Joi.string().required(),
 
+        // Card payments (docs/PAYMENTS.md). A key works only against the host that
+        // issued it, so the base URL travels with the key.
+        DOMINAITE_KEY_ID: Joi.string().pattern(/^dmk_/).required(),
+        DOMINAITE_SECRET: Joi.string().pattern(/^dms_/).required(),
+        DOMINAITE_BASE_URL: Joi.string().uri({ scheme: 'https' }).required(),
+        DOMINAITE_WEBHOOK_SECRET: Joi.string()
+          .pattern(/^whsec_/)
+          .required(),
+
         VAT_RATE: Joi.number().min(0).max(1).default(0.2),
         // The web app's origin: CORS allows it, a Clerk token must name it, and
         // the emails link to it.

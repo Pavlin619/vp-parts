@@ -45,6 +45,8 @@ export enum AppErrorCode {
   /** Catalogue data (TecDoc) could not be read. Retryable. */
   CATALOG_UNAVAILABLE = 'CATALOG_UNAVAILABLE',
   PAYMENT_FAILED = 'PAYMENT_FAILED',
+  /** The card payment provider could not be reached or is not taking payments. Retryable. */
+  PAYMENT_UNAVAILABLE = 'PAYMENT_UNAVAILABLE',
   /** The office code names no office the carrier currently lists. */
   DELIVERY_OFFICE_NOT_FOUND = 'DELIVERY_OFFICE_NOT_FOUND',
   /** The carrier lists the office but refuses to deliver there. The customer can pick another. */

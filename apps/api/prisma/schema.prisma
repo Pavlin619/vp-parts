@@ -30,6 +30,8 @@ enum CartStatus {
 }
 
 enum OrderStatus {
+  /// A card order whose payment has not been confirmed. Nothing is announced yet.
+  PENDING_PAYMENT
   /// Placed by a guest; the office calls to confirm it before it is fulfilled.
   AWAITING_CONFIRMATION
   PROCESSING
@@ -54,6 +56,14 @@ enum DeliveryMethod {
 enum PaymentMethod {
   CARD
   CASH_ON_DELIVERY
+}
+
+enum CardPaymentStatus {
+  OPEN
+  SUCCEEDED
+  FAILED
+  ABANDONED
+  CANCELLED
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +267,7 @@ model Order {
   customer       Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items          OrderItem[]
   statusHistory  OrderStatusHistory[]
+  cardPayments   CardPayment[]
   /// `Restrict`, not the default `SetNull`: the guest-cart sweep already
   /// excludes ordered carts by `status` and `orderId`, but if that invariant
   /// were ever broken, this FK must block the delete, not silently orphan the
@@ -298,6 +309,36 @@ model OrderStatusHistory {
   order Order @relation(fields: [orderId], references: [id])
 
   @@index([orderId])
+}
+
+/// One Dominaite checkout session for a card order — docs/PAYMENTS.md. A
+/// session that ends unpaid spends its idempotency key, so a retry is the next
+/// `attempt`, with a session of its own.
+model CardPayment {
+  id            String            @id @default(uuid())
+  orderId       String
+  attempt       Int
+  transactionId String            @unique
+  status        CardPaymentStatus @default(OPEN)
+  /// Euro cents, as the session was opened for: the order's total.
+  amount        Int
+  currency      String
+  expiresAt     DateTime
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, attempt])
+  @@index([status, expiresAt])
+}
+
+/// A Dominaite webhook delivery already handled. Dominaite delivers at least
+/// once, and `id` is the delivery's own, stable across its retries.
+model PaymentWebhookEvent {
+  id         String   @id
+  type       String
+  receivedAt DateTime @default(now())
 }
 
 /// An event written in the transaction of the change it reports, and sent on by

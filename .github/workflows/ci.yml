@@ -70,6 +70,10 @@ jobs:
       SELLER_PHONE: '+359000000000'
       ORDER_LINK_SECRET: ci-stub-order-link-secret-at-least-32-chars
       TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      DOMINAITE_KEY_ID: dmk_stub
+      DOMINAITE_SECRET: dms_stub
+      DOMINAITE_BASE_URL: https://stub.dominaite.invalid
+      DOMINAITE_WEBHOOK_SECRET: whsec_stub
 
     steps:
       - uses: actions/checkout@v4

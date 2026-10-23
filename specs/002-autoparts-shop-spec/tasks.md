@@ -231,7 +231,7 @@
 
 - [ ] T082 [P] [US5] Write unit tests for Order aggregate state machine (all valid transitions, all invalid transitions throw, terminal states reject further transitions) in `apps/api/src/orders/order.aggregate.spec.ts`
 - [ ] T083 [P] [US5] Write unit tests for CheckoutService (live confirm calls backoffice, price-change detection, out-of-stock halt prevents order creation, PriceCalculator used for totals) in `apps/api/src/orders/checkout.service.spec.ts`
-- [ ] T085 [P] [US5] Write unit tests for DominaiteAdapter (open a payment session, webhook signature verification) in `apps/api/src/payments/dominaite/dominaite.adapter.spec.ts`
+- [x] T085 [P] [US5] Write unit tests for DominaiteAdapter (open a payment session, webhook signature verification) in `apps/api/src/payments/dominaite/dominaite.adapter.spec.ts` **Covered by `docs/PAYMENTS.md`:** `dominaite.gateway.spec.ts` and `dominaite-webhooks.spec.ts` in `apps/api/src/payments/`, pinned by Dominaite's offline vectors.
 - [ ] T087 [P] [US5] Write unit tests for EcontClient and SpeedyClient (shipping cost calculation, flat-rate fallback when API unavailable) in `apps/api/src/shipping/econt.client.spec.ts` and `apps/api/src/shipping/speedy.client.spec.ts`
 - [ ] T088 [US5] Write integration tests for full checkout flow (POST /orders/checkout/confirm, POST /payments/card/initiate, POST /payments/dominaite/webhook, POST /orders, order confirmation response) in `apps/api/test/checkout.e2e-spec.ts`
 
@@ -252,10 +252,10 @@
 - [ ] T098 [US5] Implement ShippingService (orchestrate Econt + Speedy; return flat-rate fallback on API error with "estimate" note) in `apps/api/src/shipping/shipping.service.ts`
 - [ ] T099 [US5] Implement ShippingController (@Public; GET /shipping/rates?method&city&postcode&weightGrams) in `apps/api/src/shipping/shipping.controller.ts`
 - [ ] T100 [US5] Create ShippingModule and barrel in `apps/api/src/shipping/index.ts`
-- [ ] T103 [P] [US5] Implement DominaiteAdapter (server-side call that opens a payment session) in `apps/api/src/payments/dominaite/dominaite.adapter.ts`
-- [ ] T104 [P] [US5] Implement DominaiteWebhookController (@Public; POST /payments/dominaite/webhook; signature verification; on `payment.succeeded` trigger order creation + SqsPublisher) in `apps/api/src/payments/dominaite/dominaite-webhook.controller.ts`
+- [x] T103 [P] [US5] Implement DominaiteAdapter (server-side call that opens a payment session) in `apps/api/src/payments/dominaite/dominaite.adapter.ts` **Covered by `docs/PAYMENTS.md`:** `DominaiteGateway` in `apps/api/src/payments/dominaite.gateway.ts`, over `@dominaite/merchant-sdk`.
+- [ ] T104 [P] [US5] Implement DominaiteWebhookController (@Public; POST /payments/dominaite/webhook; signature verification; on `payment.succeeded` trigger order creation + SqsPublisher) in `apps/api/src/payments/dominaite/dominaite-webhook.controller.ts` **Moved by `docs/PAYMENTS.md`:** the route lives in `apps/api/src/orders/`, and it confirms an order placed `PENDING_PAYMENT` rather than creating one; the signature check is `DominaiteWebhooks` in `apps/api/src/payments/`.
 - [ ] T105 [P] [US5] Implement CodAdapter (direct order creation for COD orders, with no order-total limit) in `apps/api/src/payments/cod/cod.adapter.ts` **Superseded by `docs/ORDERS.md`:** there is no COD adapter or endpoint; a cash-on-delivery order is `POST /orders` with `CASH_ON_DELIVERY`.
-- [ ] T106 [US5] Create PaymentsModule and barrel in `apps/api/src/payments/index.ts`
+- [x] T106 [US5] Create PaymentsModule and barrel in `apps/api/src/payments/index.ts`
 - [ ] T107 [US5] Implement ConfigController (@Public; GET /config/checkout → { vatRate }) in `apps/api/src/config/config.controller.ts` **Superseded by `docs/ORDERS.md`:** the web does no money arithmetic, so it never needs the VAT rate; every total and VAT figure comes from the API, computed by `orderMoney`.
 - [x] T108 [US5] Implement checkout and orders API functions (confirmCheckout, createOrder, initiateCardPayment, confirmCodOrder) in `apps/web/src/lib/api/orders.ts` and `apps/web/src/lib/api/payments.ts` **Covered by `docs/ORDERS.md`:** `placeOrder` and `orderQueryOptions` in `apps/web/src/lib/api/orders.ts`; there is no confirm call, and the card functions come with card payments.
 - [ ] T109 [US5] Implement shipping API function (getShippingRates) in `apps/web/src/lib/api/shipping.ts`
@@ -394,6 +394,14 @@ Both need a signed-in customer. The picker's starting order and why are in `docs
 - [ ] T153 [US10] Extend SqsConsumer to handle OrderShipped event (set Order.trackingReference from event payload) in `apps/api/src/events/sqs.consumer.ts`
 - [ ] T154 [US10] Extend SqsConsumer to handle OrderDelivered and OrderFulfillmentFailed events with correct Order aggregate transitions in `apps/api/src/events/sqs.consumer.ts`
 - [ ] T155 [US10] Add daily summary query to OrdersRepository (count orders received/pending/dispatched/delivered today using createdAt index) in `apps/api/src/orders/orders.repository.ts`
+
+### Deferred into US10 from the quick order
+
+Phase 6 of the quick-order plan. A quick order is placed `AWAITING_CONFIRMATION`, the office calls the guest, and only the backoffice can confirm or cancel it (`docs/ORDERS.md` → "Quick order" and "The backoffice's contract"). Until these ship, nothing moves a quick order on: it stays `AWAITING_CONFIRMATION` for good, the guest gets no confirmation email, and every quick order counts toward the cap of 3 per phone, so a returning guest is refused `429 RATE_LIMITED` from their fourth order. Blocked on T119 (the `fulfillment-events` consumer) and on the backoffice publishing to `fulfillment-events`.
+
+- [ ] T155a [US10] Agree the `fulfillment-events` contract with the backoffice and record it in `docs/ORDERS.md` beside the `shop-events` one, with the event types in `packages/shared`. Add `OrderConfirmed` and `OrderCancelled` to the US10 events. Each event is thin and carries `eventId`, the order's id and reference, and when it happened. Delivery is at least once, so the shop deduplicates on `eventId`. State which status each event may move an order from (`OrderConfirmed` only from `AWAITING_CONFIRMATION`). An event that does not fit the order's status is deleted and logged at `warn`, not retried.
+- [ ] T155b [US10] Handle `OrderConfirmed` in the consumer. In one transaction: move the order `AWAITING_CONFIRMATION` → `PROCESSING`, write an `OrderStatusHistory` row, and append an `OrderConfirmed` outbox event. A repeated `eventId` changes nothing. Handle `OrderCancelled` the same way, to `CANCELLED`, so a quick order the call could not confirm stops counting toward the per-phone cap. Unit specs for the transitions and the dedupe, and an e2e with the SQS client mocked.
+- [ ] T155c [US10] Send "Поръчката е потвърдена" after the call: an outbox handler for `OrderConfirmed` that writes to `contactEmail` when the order has one, and counts as done when it has none. It has the same content as the signed-in confirmation (the amount to pay at the door, the lines, the frozen money, the delivery, the ЗЗП чл. 50 withdrawal wording and the seller's identity), and its links carry the guest's access key. Send it through Resend with the `Idempotency-Key` `eventId:handler`. Update "A guest's order waits for the call" in `docs/ORDERS.md`, which says this is not built yet. Specs for the template data with Resend mocked.
 
 **Checkpoint**: All SQS fulfillment events correctly handled; order status transitions drive SSE push and email notifications end-to-end.
 
