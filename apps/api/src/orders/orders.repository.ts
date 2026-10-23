@@ -45,6 +45,8 @@ export interface NewOrder {
   termsVersion: string;
   /** Also the order's first status-history row. */
   initialStatus: OrderStatus;
+  /** False for a card order: its `OrderPlaced` waits for the payment. */
+  isAnnounced: boolean;
 }
 
 export interface OrderReference {
@@ -82,9 +84,9 @@ export class OrdersRepository {
   ) {}
 
   /**
-   * Writes the order, its `OrderPlaced` event and retires its cart in one
-   * transaction, holding the cart's row lock throughout, so two requests for
-   * one cart end in one order and one event.
+   * Writes the order, its `OrderPlaced` event when it is announced, and
+   * retires its cart in one transaction, holding the cart's row lock
+   * throughout, so two requests for one cart end in one order and one event.
    */
   place(order: NewOrder): Promise<OrderPlacement> {
     return this.prisma.$transaction(async (tx) => {
@@ -112,10 +114,12 @@ export class OrdersRepository {
         select: referenceOnly,
       });
 
-      await this.outbox.append(tx, {
-        type: ORDER_PLACED,
-        payload: { orderId: placed.id } satisfies OrderPlacedPayload,
-      });
+      if (order.isAnnounced) {
+        await this.outbox.append(tx, {
+          type: ORDER_PLACED,
+          payload: { orderId: placed.id } satisfies OrderPlacedPayload,
+        });
+      }
 
       await this.carts.closeForOrder(tx, {
         cartId: order.cartId,

@@ -26,6 +26,10 @@ export enum AppErrorCode {
   PRICE_CHANGED = 'PRICE_CHANGED',
   ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
   ORDER_CANNOT_BE_CANCELLED = 'ORDER_CANNOT_BE_CANCELLED',
+  /** The order takes no card payment now: paid, cancelled, its session ended, or out of attempts. */
+  ORDER_NOT_PAYABLE = 'ORDER_NOT_PAYABLE',
+  /** The card order's payment went through and is being confirmed. Nothing more to pay. */
+  ORDER_PAYMENT_PROCESSING = 'ORDER_PAYMENT_PROCESSING',
   CART_ITEM_NOT_FOUND = 'CART_ITEM_NOT_FOUND',
   /** The cart already holds as many distinct lines as it may. */
   CART_FULL = 'CART_FULL',

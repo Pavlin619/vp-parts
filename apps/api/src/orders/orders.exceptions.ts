@@ -28,3 +28,17 @@ export class OrderNotFoundException extends AppHttpException {
     super(HttpStatus.NOT_FOUND, AppErrorCode.ORDER_NOT_FOUND);
   }
 }
+
+/** The order takes no card payment now: paid, cancelled, its session ended, or out of attempts. */
+export class OrderNotPayableException extends AppHttpException {
+  constructor() {
+    super(HttpStatus.CONFLICT, AppErrorCode.ORDER_NOT_PAYABLE);
+  }
+}
+
+/** Dominaite has the payment, and its confirmation has not reached the order yet. */
+export class OrderPaymentProcessingException extends AppHttpException {
+  constructor() {
+    super(HttpStatus.CONFLICT, AppErrorCode.ORDER_PAYMENT_PROCESSING);
+  }
+}

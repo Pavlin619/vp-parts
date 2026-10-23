@@ -55,6 +55,7 @@ const ORDER: NewOrder = {
   paymentMethod: 'CASH_ON_DELIVERY',
   termsVersion: '2026-10-17',
   initialStatus: 'PROCESSING',
+  isAnnounced: true,
 };
 
 const GUEST_ORDER: NewOrder = {
@@ -204,6 +205,26 @@ describe('OrdersRepository', () => {
         type: 'OrderPlaced',
         payload: { orderId: 'order-1' },
       });
+    });
+
+    it('writes no OrderPlaced for an order not to be announced yet, retiring its cart all the same', async () => {
+      await repository.place({
+        ...ORDER,
+        paymentMethod: 'CARD',
+        initialStatus: 'PENDING_PAYMENT',
+        isAnnounced: false,
+      });
+
+      expect(orderCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'PENDING_PAYMENT' }),
+        }),
+      );
+      expect(append).not.toHaveBeenCalled();
+      expect(closeForOrder).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({ cartId: 'cart-1', orderId: 'order-1' }),
+      );
     });
 
     it('stores pickup with an empty destination and no date it cannot give', async () => {

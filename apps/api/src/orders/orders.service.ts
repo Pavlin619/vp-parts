@@ -3,6 +3,7 @@ import {
   CompleteProfileDetails,
   CustomerProfileDto,
   OrderDetailDto,
+  PaymentMethod,
   PlaceOrderRequestDto,
   PlaceOrderResponseDto,
   QuickOrderContactDto,
@@ -83,7 +84,10 @@ export class OrdersService {
     return this.placeFromCart(cart, request, {
       customerId: customer.id,
       contact: contactOf(customer),
-      initialStatus: OrderStatus.PROCESSING,
+      initialStatus:
+        request.paymentMethod === PaymentMethod.CARD
+          ? OrderStatus.PENDING_PAYMENT
+          : OrderStatus.PROCESSING,
     });
   }
 
@@ -177,6 +181,7 @@ export class OrdersService {
       money,
       paymentMethod: request.paymentMethod,
       termsVersion: TERMS_VERSION,
+      isAnnounced: orderer.initialStatus !== OrderStatus.PENDING_PAYMENT,
     });
 
     return this.settle(placement);

@@ -59,6 +59,15 @@ describe('PlaceOrderBodyDto', () => {
     expect(dto.delivery).toBeInstanceOf(StorePickupDeliveryBodyDto);
   });
 
+  it('accepts card', async () => {
+    const dto = (await transform({
+      ...BODY,
+      paymentMethod: 'CARD',
+    })) as PlaceOrderBodyDto;
+
+    expect(dto.paymentMethod).toBe('CARD');
+  });
+
   it('refuses an address that does not locate a door', async () => {
     await expect(
       transform({
@@ -73,7 +82,7 @@ describe('PlaceOrderBodyDto', () => {
   });
 
   it.each([
-    ['card, which is not offered yet', { paymentMethod: 'CARD' }],
+    ['a payment method we do not take', { paymentMethod: 'BANK_TRANSFER' }],
     ['a cart id that is not one', { cartId: 'cart-1' }],
     ['a fractional total', { expectedTotalCents: 53.04 }],
     ['a negative version', { cartVersion: -1 }],
@@ -155,7 +164,7 @@ describe('QuickOrderBodyDto', () => {
     ['an email that is not one', { contact: { ...CONTACT, email: 'maria@' } }],
     ['an empty email', { contact: { ...CONTACT, email: '' } }],
     ['a contact field of its own', { contact: { ...CONTACT, note: 'x' } }],
-    ['card, which is not offered yet', { paymentMethod: 'CARD' }],
+    ['card, which a guest cannot pay with', { paymentMethod: 'CARD' }],
     ['no bot check token', { botCheckToken: undefined }],
     ['an empty bot check token', { botCheckToken: '' }],
     [

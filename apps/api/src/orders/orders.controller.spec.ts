@@ -25,6 +25,7 @@ const REQUEST: PlaceOrderRequestDto = {
 
 const QUICK_REQUEST: QuickOrderRequestDto = {
   ...REQUEST,
+  paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
   contact: {
     firstName: 'Мария',
     lastName: 'Иванова',
