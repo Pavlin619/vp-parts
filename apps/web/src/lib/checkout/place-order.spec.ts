@@ -111,6 +111,12 @@ describe('quickOrderRequestOf', () => {
     expect(quickOrderRequestOf(ORDER, CONTACT)).toEqual({ ...ORDER, contact: CONTACT })
   })
 
+  it('asks a guest to pay on delivery, whatever the order was built with', () => {
+    const card = { ...ORDER!, paymentMethod: PaymentMethod.CARD }
+
+    expect(quickOrderRequestOf(card, CONTACT)?.paymentMethod).toBe(PaymentMethod.CASH_ON_DELIVERY)
+  })
+
   it.each<[string, Parameters<typeof quickOrderRequestOf>]>([
     ['the order cannot be placed yet', [null, CONTACT]],
     ['the contact is not valid', [ORDER, null]],
