@@ -3,8 +3,9 @@
 How a card order is paid. **Built:** the Dominaite adapter (`apps/api/src/payments/`):
 opening and reading a checkout session, and checking a webhook's signature; the
 `PENDING_PAYMENT` status and the `CardPayment` and `PaymentWebhookEvent` tables;
-placing a card order, and opening its session (`apps/api/src/orders/card-payment/`).
-**Not yet:** the webhook route, the sweep, cancelling a card order, and the web's
+placing a card order, opening its session, and the webhook that confirms it
+(`apps/api/src/orders/card-payment/`), with the emails' card wording.
+**Not yet:** the sweep, cancelling a card order, and the web's
 [order page](#the-order-page-not-yet-built). Placing an order is
 [ORDERS.md](./ORDERS.md), which stays the authority for everything up to the
 order's commit.
@@ -26,7 +27,7 @@ sweep                      reads every open session; the safety net for a lost w
 - **Card is for signed-in customers only.** A quick order stays cash on delivery,
   confirmed by phone.
 - **Only `payment.succeeded`, or the sweep reading `succeeded`, marks an order
-  paid.** The widget's browser events (`[bp]:deposit`) are feedback for the page,
+  paid** ([the webhook](#the-webhook)). The widget's browser events (`[bp]:deposit`) are feedback for the page,
   never proof: a customer can close the tab the moment they pay.
 - **A declined card is retried in a new session.** A decline ends its session
   ([measured](#what-dominaite-does-measured)), so another card is the next
@@ -75,6 +76,46 @@ sends no amount: the session is opened for the order's `total` as stored.
 The e2e suite (`apps/api/test/orders-card.e2e-spec.ts`) replaces the SDK's
 client with `test/helpers/dominaite-fake.ts`, which replays a key's session and
 refuses a key whose payment ended, as Dominaite does.
+
+## The webhook
+
+```
+POST /payments/dominaite/webhook     @Public · no rate limit · X-Webhook-Signature
+```
+
+`DominaiteWebhookController` checks the signature over the raw body
+(`DominaiteWebhooks.verify`), then `PaymentOutcomeService` applies the event.
+Dominaite redelivers anything not answered `2xx`, so the route answers `400`
+only for a delivery it did not sign (a bad or missing signature, or one more
+than 300 s old), `200` for everything it reads, and lets a failure to apply the
+event (the database down) surface as `500`, to be delivered again. The
+signature guards the route, so the global rate limit does not apply.
+
+| Event | The attempt | The order |
+|---|---|---|
+| `payment.succeeded` | `SUCCEEDED` | `PENDING_PAYMENT` → `PROCESSING`, `paymentReference` = the `transactionId`, a history row with `source: 'dominaite'`, and `OrderPlaced` written, so the two emails and the SQS message follow through the outbox |
+| `payment.failed` | `FAILED` | unchanged: the next session opens attempt n+1 |
+| `payment.abandoned`, `payment.cancelled` | `ABANDONED`, `CANCELLED` | unchanged for now; cancelling it is the sweep's work, not built yet |
+| anything else, or a `transactionId` not ours | — | — |
+
+- **Exactly once.** The delivery's id goes into `PaymentWebhookEvent` in the
+  same transaction as the change, so a redelivery changes nothing. Each change
+  is also guarded by the status it moves from (the attempt `OPEN`, the order
+  `PENDING_PAYMENT`), so two deliveries of one outcome under different ids, or
+  the sweep and the webhook together, still write one `OrderPlaced`.
+- **Only the whole total pays the order.** A success whose `amount` (what we
+  are paid, surcharge excluded) is not the order's `total`, or whose currency is
+  not `EUR`, is logged at `error` and leaves the order unpaid.
+- **A success for an order already `CANCELLED`** marks the attempt
+  `SUCCEEDED` and is logged at `error`, for a refund by hand until refunds are
+  built.
+- **The emails.** A card order's confirmation says "Платено с карта: X €" in
+  place of the amount to pay at the door, and the office notice says "Платено
+  с карта — без наложен платеж", so no waybill collects cash for it.
+
+The e2e suite posts deliveries signed with the test environment's
+`DOMINAITE_WEBHOOK_SECRET` and relays the outbox by hand, so it checks the
+order, the attempt, both emails and the SQS message.
 
 ## The adapter
 

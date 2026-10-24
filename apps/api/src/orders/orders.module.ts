@@ -10,6 +10,8 @@ import { PrismaModule } from '../prisma';
 import { CardPaymentController } from './card-payment/card-payment.controller';
 import { CardPaymentRepository } from './card-payment/card-payment.repository';
 import { CardPaymentService } from './card-payment/card-payment.service';
+import { DominaiteWebhookController } from './card-payment/dominaite-webhook.controller';
+import { PaymentOutcomeService } from './card-payment/payment-outcome.service';
 import { OfficeNotificationHandler } from './emails/office-notification.handler';
 import { OrderConfirmationHandler } from './emails/order-confirmation.handler';
 import { OrderAccessKeys } from './order-access-keys';
@@ -33,7 +35,11 @@ import { OrdersService } from './orders.service';
     BotCheckModule,
     PaymentsModule,
   ],
-  controllers: [OrdersController, CardPaymentController],
+  controllers: [
+    OrdersController,
+    CardPaymentController,
+    DominaiteWebhookController,
+  ],
   providers: [
     OrderAccessKeys,
     OrdersRepository,
@@ -43,6 +49,7 @@ import { OrdersService } from './orders.service';
     OrderPlacedPublisher,
     CardPaymentRepository,
     CardPaymentService,
+    PaymentOutcomeService,
   ],
 })
 export class OrdersModule {}
