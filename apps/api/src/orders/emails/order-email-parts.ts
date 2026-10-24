@@ -29,12 +29,12 @@ export function isPickup(delivery: OrderDeliveryDto): boolean {
   return delivery.method === DeliveryMethod.STORE_PICKUP;
 }
 
-/** "Платете 53,04 € при получаване." Null for an order paid some other way. */
-export function amountDueText(
+/** "Платете 53,04 € при получаване.", or "Платено с карта: 52,23 €." */
+export function paymentText(
   order: Pick<OrderDetailDto, 'paymentMethod' | 'total' | 'delivery'>,
-): string | null {
-  if (order.paymentMethod !== PaymentMethod.CASH_ON_DELIVERY) {
-    return null;
+): string {
+  if (order.paymentMethod === PaymentMethod.CARD) {
+    return `Платено с карта: ${formatPrice(order.total)}.`;
   }
 
   const where = isPickup(order.delivery)

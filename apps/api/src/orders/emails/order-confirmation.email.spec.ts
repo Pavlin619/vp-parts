@@ -1,5 +1,6 @@
 import { orderConfirmationEmail } from './order-confirmation.email';
 import {
+  PAID_BY_CARD,
   PICKED_UP,
   PLACED_ORDER,
   SHOP,
@@ -83,6 +84,37 @@ describe('orderConfirmationEmail', () => {
       'Вземане от магазина: Нашият магазин в Плевен',
     );
     expect(pickup.text).toContain('Готова за вземане: вт, 20 октомври');
+  });
+
+  describe('for an order paid by card', () => {
+    const paid = orderConfirmationEmail(
+      { ...PLACED_ORDER, ...PAID_BY_CARD },
+      SHOP,
+      ORDER_PATH,
+    );
+
+    it('says it is paid before anything else, asking for nothing at the door', () => {
+      const paidLine = paid.text.indexOf(`Платено с карта: ${euros('52,23')}.`);
+
+      expect(paidLine).toBeGreaterThan(-1);
+      expect(paidLine).toBeLessThan(paid.text.indexOf('Поръчани части'));
+      expect(paid.text).not.toContain('Платете');
+    });
+
+    it('says so for a pickup too', () => {
+      const pickup = orderConfirmationEmail(
+        { ...PLACED_ORDER, ...PICKED_UP, ...PAID_BY_CARD, total: 4845 },
+        SHOP,
+        ORDER_PATH,
+      );
+
+      expect(pickup.text).toContain(`Платено с карта: ${euros('48,45')}.`);
+      expect(pickup.text).not.toContain('при вземане от магазина');
+    });
+
+    it('carries no cash-on-delivery fee', () => {
+      expect(paid.text).not.toContain('Такса наложен платеж');
+    });
   });
 
   it('links the order page and the legal pages on the web', () => {

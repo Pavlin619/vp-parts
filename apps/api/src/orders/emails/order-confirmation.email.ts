@@ -5,9 +5,9 @@ import {
 } from '@vp-parts-shop/shared';
 import { EmailBlock, EmailContent, renderEmail } from '../../email';
 import {
-  amountDueText,
   deliveryFacts,
   moneyFacts,
+  paymentText,
   recipientFact,
   webLink,
 } from './order-email-parts';
@@ -32,7 +32,7 @@ export function orderConfirmationEmail(
           `Здравейте, ${order.contact.firstName}! Приехме поръчката ви ` +
           `${order.orderReference}. Това писмо потвърждава договора ни — пазете го.`,
       },
-      ...amountDueBlocks(order),
+      { type: 'paragraph', text: paymentText(order), isStrong: true },
       { type: 'heading', text: 'Поръчани части' },
       itemsTable(order),
       moneyFacts(order),
@@ -54,12 +54,6 @@ export function orderConfirmationEmail(
       { type: 'note', text: sellerLine(shop.seller) },
     ],
   });
-}
-
-function amountDueBlocks(order: OrderDetailDto): EmailBlock[] {
-  const text = amountDueText(order);
-
-  return text ? [{ type: 'paragraph', text, isStrong: true }] : [];
 }
 
 function itemsTable(order: OrderDetailDto): EmailBlock {

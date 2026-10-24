@@ -438,7 +438,7 @@ Its handlers:
 
 | Handler | Sends | Through |
 |---|---|---|
-| Customer confirmation | The reference, lines, totals with VAT, delivery and its expected date, "Платете X € при получаване", the seller's identity, and the withdrawal right with links to the terms and the model form | Resend |
+| Customer confirmation | The reference, lines, totals with VAT, delivery and its expected date, "Платете X € при получаване" (or "Платено с карта"), the seller's identity, and the withdrawal right with links to the terms and the model form | Resend |
 | Office notification | The order, to `ORDERS_NOTIFY_EMAIL`, so an office worker creates the Econt waybill | Resend |
 | Backoffice | `OrderPlaced` on SQS `shop-events` ([below](#sqs)) | `@aws-sdk/client-sqs` |
 
@@ -447,7 +447,8 @@ handler never sends twice. The office email is the channel **until the
 backoffice consumes `shop-events`**; it is kept or dropped then.
 
 - **The confirmation** goes to the order's `contactEmail`, with replies going
-  to `SELLER_EMAIL`. It opens with the amount to pay at the door, then lists
+  to `SELLER_EMAIL`. It opens with the amount to pay at the door, or
+  "Платено с карта: X €" for a card order, then lists
   the lines, the money exactly as the order froze it (VAT is taken from the
   whole total), the delivery and its date, and the recipient. It links the
   order page and the legal pages (`LEGAL_PAGES`, `orderPagePath` in
@@ -465,7 +466,9 @@ backoffice consumes `shop-events`**; it is kept or dropped then.
   the customer when there is an email. An order `AWAITING_CONFIRMATION` is
   marked "За потвърждение:" in the subject and asks for the call before it is
   fulfilled. It holds what a waybill needs: the office code or the address
-  and its note, the parcel weight, and the amount to collect. It lists the lines
+  and its note, the parcel weight, and the amount to collect. A card order says
+  "Платено с карта — без наложен платеж" in its place, so no waybill collects
+  cash for an order already paid. It lists the lines
   with the article number in its own column, for picking.
 - Both are built from one list of blocks (`email/email-document.ts`) that
   renders the HTML part and the plain-text part. Every value is escaped,

@@ -1,6 +1,11 @@
 import { OrderStatus } from '@vp-parts-shop/shared';
 import { officeNotificationEmail } from './office-notification.email';
-import { PICKED_UP, PLACED_ORDER, TO_ADDRESS } from './placed-order.fixture';
+import {
+  PAID_BY_CARD,
+  PICKED_UP,
+  PLACED_ORDER,
+  TO_ADDRESS,
+} from './placed-order.fixture';
 
 const NBSP = ' ';
 const euros = (amount: string) => `${amount}${NBSP}€`;
@@ -104,5 +109,34 @@ describe('officeNotificationEmail', () => {
     expect(pickup.text).toContain(`Плаща се в магазина: ${euros('48,45')}`);
     expect(pickup.text).not.toContain('Тегло на пратката');
     expect(pickup.text).not.toContain('Наложен платеж за събиране');
+  });
+
+  describe('for an order paid by card', () => {
+    const paid = officeNotificationEmail(
+      { ...PLACED_ORDER, ...PAID_BY_CARD },
+      10_000,
+    );
+
+    it('says the waybill collects nothing', () => {
+      expect(paid.text).toContain(
+        'Плащане: Платено с карта — без наложен платеж',
+      );
+      expect(paid.text).not.toContain('Наложен платеж за събиране');
+    });
+
+    it('still gives the office code and the weight', () => {
+      expect(paid.text).toContain('Код на офиса: 1127');
+      expect(paid.text).toContain('Тегло на пратката: 10 кг');
+    });
+
+    it('says a pickup is paid, with nothing to take at the counter', () => {
+      const pickup = officeNotificationEmail(
+        { ...PLACED_ORDER, ...PICKED_UP, ...PAID_BY_CARD, total: 4845 },
+        null,
+      );
+
+      expect(pickup.text).toContain('Плащане: Платено с карта');
+      expect(pickup.text).not.toContain('Плаща се в магазина');
+    });
   });
 });

@@ -1,4 +1,7 @@
+import { createHmac, randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import request from 'supertest';
 import type Redis from 'ioredis';
 import {
@@ -11,10 +14,18 @@ import {
 } from '@vp-parts-shop/shared';
 import { createTestApp, resetRateLimits } from './helpers/create-test-app';
 import { DominaiteFake } from './helpers/dominaite-fake';
+import { RecordingEmailSender } from './helpers/recording-email-sender';
+import { RecordingSqsPublisher } from './helpers/recording-sqs-publisher';
 import { ClerkUsers } from '../src/auth';
 import { ClerkJwtStrategy } from '../src/auth/clerk-jwt.strategy';
 import { ArticlesTecDoc } from '../src/catalog';
 import { EcontTransport } from '../src/delivery/econt/econt.transport';
+import { EmailSender } from '../src/email';
+import {
+  OUTBOX_RELAY_INTERVAL,
+  OutboxRelay,
+  SqsPublisher,
+} from '../src/events';
 import { InventoryService } from '../src/inventory';
 import { MAX_PAYMENT_ATTEMPTS } from '../src/orders/card-payment/card-payment.service';
 import { DOMINAITE_CLIENT } from '../src/payments/dominaite.client';
@@ -167,6 +178,8 @@ describe('Card orders (e2e)', () => {
       builder.overrideProvider(DOMINAITE_CLIENT).useValue(dominaite);
     });
     prisma = app.get(PrismaService);
+    // The suite relays by hand, so a tick never races an assertion.
+    app.get(SchedulerRegistry).deleteInterval(OUTBOX_RELAY_INTERVAL);
   });
 
   afterAll(async () => {
@@ -182,6 +195,9 @@ describe('Card orders (e2e)', () => {
           payload: { path: ['orderId'], equals: id },
         })),
       },
+    });
+    await prisma.paymentWebhookEvent.deleteMany({
+      where: { id: { startsWith: RUN } },
     });
     await prisma.cardPayment.deleteMany({ where: { order: { customer } } });
     // Cart and order name each other with RESTRICT keys, so one side lets go first.
@@ -282,6 +298,78 @@ describe('Card orders (e2e)', () => {
       where: { orderId },
       orderBy: { attempt: 'asc' },
     });
+
+  /** A card order whose payment session is open, as the widget would find it. */
+  async function cardOrderToPay() {
+    const order = await cardOrder();
+    await openPayment(order.clerkId, order.orderReference).expect(200);
+    const [attempt] = await attemptsOf(order.orderId);
+
+    return { ...order, transactionId: attempt.transactionId };
+  }
+
+  function signed(body: string, timestamp = Math.floor(Date.now() / 1000)) {
+    const secret = app
+      .get(ConfigService)
+      .getOrThrow<string>('DOMINAITE_WEBHOOK_SECRET');
+    const mac = createHmac('sha256', secret)
+      .update(`${timestamp}.${body}`)
+      .digest('hex');
+
+    return `t=${timestamp},v1=${mac}`;
+  }
+
+  function deliver(body: string, signature = signed(body)) {
+    return request(server())
+      .post('/payments/dominaite/webhook')
+      .set('Content-Type', 'application/json')
+      .set('X-Webhook-Signature', signature)
+      .send(body);
+  }
+
+  function paymentDelivery(
+    type: string,
+    transactionId: string,
+    data: Record<string, unknown> = {},
+    deliveryId = `${RUN}-${randomUUID()}`,
+  ) {
+    return JSON.stringify({
+      id: deliveryId,
+      type,
+      createdAt: new Date().toISOString(),
+      data: {
+        transactionId,
+        status: type.replace('payment.', ''),
+        amount: CARD_TOTAL,
+        currency: 'EUR',
+        ...data,
+      },
+    });
+  }
+
+  const orderPlacedOf = (orderId: string) =>
+    prisma.outboxEvent.findMany({
+      where: {
+        type: 'OrderPlaced',
+        payload: { path: ['orderId'], equals: orderId },
+      },
+    });
+
+  /** Relays until the order's event is delivered; other suites may have left events due. */
+  async function relayOrderPlaced(orderId: string) {
+    const [event] = await orderPlacedOf(orderId);
+    expect(event).toBeDefined();
+
+    for (let tick = 0; tick < 20; tick++) {
+      await app.get(OutboxRelay).relayDue();
+
+      if ((await orderPlacedOf(orderId)).length === 0) {
+        return event;
+      }
+    }
+
+    throw new Error(`OrderPlaced for ${orderId} was never delivered`);
+  }
 
   describe('placing a card order', () => {
     it('writes the order to wait for its payment, with no cash-on-delivery fee', async () => {
@@ -468,6 +556,194 @@ describe('Card orders (e2e)', () => {
       await request(server())
         .post(`/orders/${orderReference}/payment`)
         .expect(401);
+    });
+  });
+
+  describe('confirming its payment: the webhook', () => {
+    it('marks the order paid on payment.succeeded, and only then announces it', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+
+      await deliver(paymentDelivery('payment.succeeded', transactionId)).expect(
+        200,
+      );
+
+      const order = await prisma.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { statusHistory: { orderBy: { occurredAt: 'asc' } } },
+      });
+      expect(order).toMatchObject({
+        status: 'PROCESSING',
+        paymentReference: transactionId,
+      });
+      expect(order.statusHistory).toEqual([
+        expect.objectContaining({ status: 'PENDING_PAYMENT', source: 'shop' }),
+        expect.objectContaining({ status: 'PROCESSING', source: 'dominaite' }),
+      ]);
+      await expect(attemptsOf(orderId)).resolves.toEqual([
+        expect.objectContaining({ attempt: 1, status: 'SUCCEEDED' }),
+      ]);
+      await expect(orderPlacedOf(orderId)).resolves.toHaveLength(1);
+    });
+
+    it('tells the customer it is paid, the office to collect nothing, and the backoffice', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      await deliver(paymentDelivery('payment.succeeded', transactionId)).expect(
+        200,
+      );
+
+      const event = await relayOrderPlaced(orderId);
+
+      const emails = app
+        .get<RecordingEmailSender>(EmailSender)
+        .sent.filter(({ idempotencyKey }) =>
+          idempotencyKey.startsWith(event.id),
+        );
+      const textOf = (handler: string) =>
+        emails.find(({ idempotencyKey }) => idempotencyKey.endsWith(handler))
+          ?.email.text;
+      expect(textOf('order-confirmation-email')).toContain('Платено с карта');
+      expect(textOf('order-confirmation-email')).not.toContain('Платете');
+      expect(textOf('office-notification-email')).toContain(
+        'Платено с карта — без наложен платеж',
+      );
+      expect(textOf('office-notification-email')).not.toContain(
+        'Наложен платеж за събиране',
+      );
+      expect(
+        app
+          .get<RecordingSqsPublisher>(SqsPublisher)
+          .published.filter(
+            (published) => published.event.eventId === event.id,
+          ),
+      ).toEqual([
+        {
+          event: expect.objectContaining({ type: 'OrderPlaced' }),
+          fields: { orderId },
+        },
+      ]);
+    });
+
+    it('announces the order once, however often the success is delivered', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      const delivery = paymentDelivery('payment.succeeded', transactionId);
+
+      await deliver(delivery).expect(200);
+      await deliver(delivery).expect(200);
+      await deliver(paymentDelivery('payment.succeeded', transactionId)).expect(
+        200,
+      );
+
+      await expect(orderPlacedOf(orderId)).resolves.toHaveLength(1);
+      await expect(
+        prisma.orderStatusHistory.count({ where: { orderId } }),
+      ).resolves.toBe(2);
+    });
+
+    it('leaves the order unpaid when the amount taken is not its total', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+
+      await deliver(
+        paymentDelivery('payment.succeeded', transactionId, {
+          amount: CARD_TOTAL - 1,
+        }),
+      ).expect(200);
+
+      await expect(
+        prisma.order.findUniqueOrThrow({ where: { id: orderId } }),
+      ).resolves.toMatchObject({
+        status: 'PENDING_PAYMENT',
+        paymentReference: null,
+      });
+      await expect(orderPlacedOf(orderId)).resolves.toHaveLength(0);
+    });
+
+    it('closes the attempt on payment.failed, so another card opens the next one', async () => {
+      const { clerkId, orderId, orderReference, transactionId } =
+        await cardOrderToPay();
+
+      await deliver(paymentDelivery('payment.failed', transactionId)).expect(
+        200,
+      );
+
+      await expect(
+        prisma.order.findUniqueOrThrow({ where: { id: orderId } }),
+      ).resolves.toMatchObject({ status: 'PENDING_PAYMENT' });
+      await openPayment(clerkId, orderReference).expect(200);
+      expect(dominaite.opened.at(-1)?.idempotencyKey).toBe(
+        `checkout-2-${orderReference}-${CARD_TOTAL}-EUR`,
+      );
+      await expect(attemptsOf(orderId)).resolves.toEqual([
+        expect.objectContaining({ attempt: 1, status: 'FAILED' }),
+        expect.objectContaining({ attempt: 2, status: 'OPEN' }),
+      ]);
+    });
+
+    it('closes the attempt on payment.abandoned, leaving the order unpaid', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+
+      await deliver(paymentDelivery('payment.abandoned', transactionId)).expect(
+        200,
+      );
+
+      await expect(attemptsOf(orderId)).resolves.toEqual([
+        expect.objectContaining({ status: 'ABANDONED' }),
+      ]);
+      await expect(orderPlacedOf(orderId)).resolves.toHaveLength(0);
+    });
+
+    it('answers an event it does not act on, so Dominaite stops delivering it', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+
+      await deliver(paymentDelivery('payment.refunded', transactionId)).expect(
+        200,
+      );
+      await deliver(paymentDelivery('payment.succeeded', randomUUID())).expect(
+        200,
+      );
+
+      await expect(attemptsOf(orderId)).resolves.toEqual([
+        expect.objectContaining({ status: 'OPEN' }),
+      ]);
+    });
+
+    it('refuses a delivery whose signature does not match, changing nothing', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      const delivery = paymentDelivery('payment.succeeded', transactionId);
+
+      const response = await deliver(
+        delivery,
+        signed(delivery.replace(String(CARD_TOTAL), '1')),
+      ).expect(400);
+
+      expect(response.body).toEqual({
+        statusCode: 400,
+        errorCode: expect.any(String),
+      });
+      await expect(
+        prisma.order.findUniqueOrThrow({ where: { id: orderId } }),
+      ).resolves.toMatchObject({ status: 'PENDING_PAYMENT' });
+    });
+
+    it('refuses a delivery signed too long ago, so a captured one cannot be replayed', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      const delivery = paymentDelivery('payment.succeeded', transactionId);
+      const tenMinutesAgo = Math.floor(Date.now() / 1000) - 600;
+
+      await deliver(delivery, signed(delivery, tenMinutesAgo)).expect(400);
+
+      await expect(
+        prisma.order.findUniqueOrThrow({ where: { id: orderId } }),
+      ).resolves.toMatchObject({ status: 'PENDING_PAYMENT' });
+    });
+
+    it('refuses a delivery with no signature', async () => {
+      const { transactionId } = await cardOrderToPay();
+
+      await request(server())
+        .post('/payments/dominaite/webhook')
+        .set('Content-Type', 'application/json')
+        .send(paymentDelivery('payment.succeeded', transactionId))
+        .expect(400);
     });
   });
 });

@@ -6,12 +6,14 @@ import {
   OrderDeliveryDto,
   OrderDetailDto,
   OrderStatus,
+  PaymentMethod,
 } from '@vp-parts-shop/shared';
 import { EmailContent, EmailFact, renderEmail } from '../../email';
 import {
   deliveryFacts,
   deliveryKind,
   formatPlacedAt,
+  isPickup,
   moneyFacts,
 } from './order-email-parts';
 
@@ -105,10 +107,15 @@ function waybillFacts(
   order: OrderDetailDto,
   parcelWeightGrams: number | null,
 ): EmailFact[] {
+  const isPaidByCard = order.paymentMethod === PaymentMethod.CARD;
   const total = [formatPrice(order.total)];
 
-  if (order.delivery.method === DeliveryMethod.STORE_PICKUP) {
-    return [{ label: 'Плаща се в магазина', value: total }];
+  if (isPickup(order.delivery)) {
+    return [
+      isPaidByCard
+        ? paidByCard('Платено с карта')
+        : { label: 'Плаща се в магазина', value: total },
+    ];
   }
 
   const officeCode =
@@ -128,6 +135,12 @@ function waybillFacts(
   return [
     ...officeCode,
     ...weight,
-    { label: 'Наложен платеж за събиране', value: total, isStrong: true },
+    isPaidByCard
+      ? paidByCard('Платено с карта — без наложен платеж')
+      : { label: 'Наложен платеж за събиране', value: total, isStrong: true },
   ];
+}
+
+function paidByCard(text: string): EmailFact {
+  return { label: 'Плащане', value: [text], isStrong: true };
 }

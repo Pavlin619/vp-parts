@@ -96,6 +96,18 @@ export const PICKED_UP: Pick<
   vatAmount: 807,
 };
 
+/** The same order paid by card, so with no cash-on-delivery fee. */
+export const PAID_BY_CARD: Pick<
+  OrderDetailDto,
+  'paymentMethod' | 'cashOnDeliveryFee' | 'total' | 'vatAmount' | 'netAmount'
+> = {
+  paymentMethod: PaymentMethod.CARD,
+  cashOnDeliveryFee: 0,
+  total: 5223,
+  vatAmount: 871,
+  netAmount: 4352,
+};
+
 export const SHOP: ShopDetails = {
   seller: {
     name: 'ВП Партс ЕООД',
