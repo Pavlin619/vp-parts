@@ -4,6 +4,7 @@ import {
   DominaiteClient,
   ErrorCodes,
   RateLimitError,
+  RefundError,
   TransportError,
   isPaid,
   isTerminal,
@@ -51,6 +52,16 @@ export interface CheckoutSessionState {
   /** False for a status the SDK does not know, which must keep an order open. */
   isTerminal: boolean;
 }
+
+export interface RefundRequest {
+  transactionId: string;
+  /** The same key answers the same refund, so a retry never refunds twice. */
+  idempotencyKey: string;
+  reason: string;
+}
+
+/** `nothing-to-refund`: the payment is refunded already, in the dashboard or by an earlier call. */
+export type RefundOutcome = 'queued' | 'nothing-to-refund';
 
 /** The attempt's key already ended in a payment, or a failure; it opens no session again. */
 export class CheckoutKeySpentError extends Error {
@@ -128,6 +139,28 @@ export class DominaiteGateway {
     }
   }
 
+  /** Queues a refund of the whole payment. Its outcome arrives later, and a failed one sends no webhook. */
+  async refundPayment({
+    transactionId,
+    idempotencyKey,
+    reason,
+  }: RefundRequest): Promise<RefundOutcome> {
+    try {
+      await this.client.createRefund(transactionId, { idempotencyKey, reason });
+
+      return 'queued';
+    } catch (error) {
+      if (
+        error instanceof RefundError &&
+        error.errorCode === ErrorCodes.PAYMENT_NOT_REFUNDABLE
+      ) {
+        return 'nothing-to-refund';
+      }
+
+      throw this.translate(error);
+    }
+  }
+
   private translate(error: unknown): unknown {
     if (error instanceof CheckoutRefusedError) {
       return this.translateRefusal(error);
@@ -135,6 +168,12 @@ export class DominaiteGateway {
 
     if (error instanceof TransportError || error instanceof RateLimitError) {
       return this.unavailable(error.name, error.errorCode);
+    }
+
+    if (error instanceof RefundError) {
+      return error.retryable
+        ? this.unavailable(error.name, error.errorCode)
+        : new Error(`Dominaite refused the refund: ${error.errorCode}`);
     }
 
     return error;

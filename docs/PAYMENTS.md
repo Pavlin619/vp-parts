@@ -3,12 +3,13 @@
 How a card order is paid. **Built:** the Dominaite adapter (`apps/api/src/payments/`):
 opening and reading a checkout session, and checking a webhook's signature; the
 `PENDING_PAYMENT` status and the `CardPayment` and `PaymentWebhookEvent` tables;
-placing a card order, opening its session, and the webhook that confirms it
-(`apps/api/src/orders/card-payment/`), with the emails' card wording.
-**Not yet:** the sweep, cancelling a card order, and the web's
-[order page](#the-order-page-not-yet-built). Placing an order is
-[ORDERS.md](./ORDERS.md), which stays the authority for everything up to the
-order's commit.
+placing a card order, opening its session, the webhook that confirms it, the
+sweep, cancelling an order that ended unpaid, and refunding a payment that came
+too late (`apps/api/src/orders/card-payment/`), with the emails' card wording.
+**Not yet:** [keeping the cart until it is paid](#keeping-the-cart-until-it-is-paid-not-yet-built),
+and the web's [order page](#the-order-page-not-yet-built). Placing an
+order is [ORDERS.md](./ORDERS.md), which stays the authority for everything up
+to the order's commit.
 
 ## Who does what
 
@@ -22,6 +23,7 @@ POST /orders/:ref/payment  we open a session for the order's total → cashierKe
 order page                 the widget pays it
 webhook payment.succeeded  order PROCESSING, OrderPlaced written → emails, SQS
 sweep                      reads every open session; the safety net for a lost webhook
+ended unpaid               order CANCELLED
 ```
 
 - **Card is for signed-in customers only.** A quick order stays cash on delivery,
@@ -31,9 +33,8 @@ sweep                      reads every open session; the safety net for a lost w
   never proof: a customer can close the tab the moment they pay.
 - **A declined card is retried in a new session.** A decline ends its session
   ([measured](#what-dominaite-does-measured)), so another card is the next
-  attempt, up to five. An order that ends unpaid (out of time, out of attempts,
-  or the customer chose another way to pay) is cancelled, and its lines go back
-  in the customer's cart.
+  attempt, up to five. An order that ends unpaid (out of time or out of
+  attempts) is cancelled.
 
 ## Placing a card order
 
@@ -58,12 +59,17 @@ sends no amount: the session is opened for the order's `total` as stored.
 - **Which attempt** (`CardPaymentService`, over the order's latest `CardPayment`):
   none yet is attempt 1; an `OPEN` one inside its `expiresAt` is asked for
   again, and Dominaite answers its session; after a `FAILED` one it is the next.
+- **How long the order is held:** until the latest session's `expiresAt`, even
+  after that session was declined, so the deadline the page shows stays true.
+  An order with no session yet is held two hours from placing
+  (`UNOPENED_ORDER_HOLD_MS`), as long as a session would have held it. After
+  that the order is refused and the [sweep](#the-sweep) cancels it.
 - **Dominaite says the key is spent.** `ALREADY_PROCESSED` is a payment not yet
   confirmed: `409 ORDER_PAYMENT_PROCESSING`, and the webhook or the sweep will
   confirm it. `PRIOR_ATTEMPT_FAILED` marks the attempt `FAILED` and opens the
   next one.
 - **`409 ORDER_NOT_PAYABLE`** for an order that is not `PENDING_PAYMENT`, whose
-  last session has ended unpaid, or whose fifth attempt has failed
+  hold is over, or whose fifth attempt has failed
   (`MAX_PAYMENT_ATTEMPTS`). It is cancelled, never paid late. Each decline buys a
   fresh two-hour session, so without a limit one order could stay open for good,
   and take card after card, which is how stolen cards are tested.
@@ -94,8 +100,8 @@ signature guards the route, so the global rate limit does not apply.
 | Event | The attempt | The order |
 |---|---|---|
 | `payment.succeeded` | `SUCCEEDED` | `PENDING_PAYMENT` → `PROCESSING`, `paymentReference` = the `transactionId`, a history row with `source: 'dominaite'`, and `OrderPlaced` written, so the two emails and the SQS message follow through the outbox |
-| `payment.failed` | `FAILED` | unchanged: the next session opens attempt n+1 |
-| `payment.abandoned`, `payment.cancelled` | `ABANDONED`, `CANCELLED` | unchanged for now; cancelling it is the sweep's work, not built yet |
+| `payment.failed` | `FAILED` | unchanged: the next session opens attempt n+1. On the fifth attempt, [cancelled](#an-order-that-ends-unpaid) |
+| `payment.abandoned`, `payment.cancelled` | `ABANDONED`, `CANCELLED` | [cancelled](#an-order-that-ends-unpaid) |
 | anything else, or a `transactionId` not ours | — | — |
 
 - **Exactly once.** The delivery's id goes into `PaymentWebhookEvent` in the
@@ -106,16 +112,89 @@ signature guards the route, so the global rate limit does not apply.
 - **Only the whole total pays the order.** A success whose `amount` (what we
   are paid, surcharge excluded) is not the order's `total`, or whose currency is
   not `EUR`, is logged at `error` and leaves the order unpaid.
-- **A success for an order already `CANCELLED`** marks the attempt
-  `SUCCEEDED` and is logged at `error`, for a refund by hand until refunds are
-  built.
+- **A success for an order that no longer waits for it** (cancelled before
+  the payment landed) marks the attempt `SUCCEEDED`, leaves the order as it is
+  and [gives the money back](#a-payment-that-came-too-late).
 - **The emails.** A card order's confirmation says "Платено с карта: X €" in
   place of the amount to pay at the door, and the office notice says "Платено
   с карта — без наложен платеж", so no waybill collects cash for it.
 
 The e2e suite posts deliveries signed with the test environment's
-`DOMINAITE_WEBHOOK_SECRET` and relays the outbox by hand, so it checks the
-order, the attempt, both emails and the SQS message.
+`DOMINAITE_WEBHOOK_SECRET` and relays the outbox and runs the sweep by hand. It
+checks the order, the attempt, both emails, the SQS message, and the refund.
+
+## An order that ends unpaid
+
+`PaymentOutcomeService.cancelUnpaid`, in one transaction
+(`CardPaymentRepository.cancelUnpaid`):
+
+- the attempt still `OPEN` closes as it ended (`ABANDONED`, `CANCELLED` or
+  `FAILED`);
+- the order moves `PENDING_PAYMENT` → `CANCELLED`, with a history row whose
+  `source` says who ended it: `dominaite` (its webhook, or its status as the
+  sweep read it) or `shop` (the sweep gave up on time).
+
+**Never while an attempt is open or paid.** The order moves only if none of its
+attempts is `OPEN` or `SUCCEEDED`, checked in the same statement. A late report
+about an earlier session ends nothing, and a payment that landed first wins.
+
+**The cart stays `ORDERED` for now.** Its lines are not given back: the next
+change keeps them in the cart until the payment succeeds
+([below](#keeping-the-cart-until-it-is-paid-not-yet-built)), so a cancelled order
+has nothing to return.
+
+No email goes out: nothing was announced for an unpaid order.
+
+## The sweep
+
+`CardPaymentSweep`, every 5 minutes on every instance (the
+`card-payment-sweep` interval). Dominaite calls it mandatory: a webhook can be
+lost, and an endpoint can sit disabled. Each run:
+
+1. **Reads the open sessions.** It leases up to 20 `OPEN` attempts whose
+   `nextCheckAt` is due. The lease moves `nextCheckAt` 5 minutes on, under
+   `FOR UPDATE SKIP LOCKED`, the outbox's pattern, so two instances never read
+   one session and no lock is held while Dominaite answers. For each one, it
+   applies `getStatus` the way the webhook applies an event
+   (`PaymentOutcomeService.applySessionState`):
+   - `succeeded` → paid, under the same amount and currency check;
+   - `failed` → the attempt closes and the order waits for another card, or is
+     cancelled on the fifth attempt;
+   - `abandoned`, `cancelled`, or any other terminal status → cancelled;
+   - not terminal (`pending`, `processing`, `requires_capture`, or a status the
+     SDK does not know) → left open, **unless it is still `pending` 15 minutes
+     past `expiresAt`** (`GRACE_AFTER_EXPIRY_MS`). After `expiresAt` a pending
+     session can only become `abandoned`. The grace covers a payment approved
+     just before then, which reads `pending` for a while yet. The order is
+     then cancelled with `source: 'shop'`.
+
+   An unreachable Dominaite ends the reads for the run, and the rest of the
+   batch is read when its lease runs out. 20 reads per instance per run leaves
+   most of Dominaite's 60 requests a minute for opening payments.
+2. **Cancels lapsed orders** (`findLapsedOrders`), which need nothing from
+   Dominaite: `PENDING_PAYMENT` with no attempt open and every attempt expired
+   (declined, and the customer never tried another card), or no attempt at all
+   two hours after placing, or the fifth attempt declined.
+
+Each write is guarded by the status it moves from, so the sweep and the
+webhook together still write one `OrderPlaced` or one cancellation.
+
+## A payment that came too late
+
+A success for an attempt whose order no longer waits (it was cancelled while
+Dominaite still took the card) writes `CardPaymentRefundDue` to the outbox in
+the same transaction. `LatePaymentRefundHandler` refunds the whole payment
+(`DominaiteGateway.refundPayment`). The idempotency key is
+`late-{transactionId}`, so a retried event never refunds twice. A payment with
+nothing left to refund (refunded in the dashboard already) is done.
+
+No one is emailed. The order was never announced, so the office has nothing to
+hold back. Dominaite sends no webhook when a refund fails, so a refund the
+outbox gives up on is seen only in its `error` log.
+
+The order stays `CANCELLED`. It is logged at
+`error`, and it is rare: the sweep cancels an order only on Dominaite's own
+terminal status or after the grace period.
 
 ## The adapter
 
@@ -133,6 +212,8 @@ already needs payments to open a session.
   - `readCheckoutSession` answers the status with the SDK's `isPaid` and
     `isTerminal`. A status the SDK does not know is neither, so it keeps an order
     open rather than closing a live one.
+  - `refundPayment` refunds a whole payment under the caller's key, and
+    answers `nothing-to-refund` when nothing is left (`PAYMENT_NOT_REFUNDABLE`).
 - **The idempotency key** is `orderIdempotencyKey` with scope
   `checkout-{attempt}`: `checkout-1-VP-ORD-000123-5304-EUR`. The same order,
   attempt and amount replay the same open session, so a reload or a retry after
@@ -169,6 +250,8 @@ test, not a payment.
 - **`CardPayment`**: one row per session. `attempt` counts from 1 per order,
   `transactionId` is Dominaite's id, `amount` is the order's total, and
   `expiresAt` (two hours after opening) is when the sweep may give up on it.
+  `nextCheckAt` is when the sweep reads it next; moving it is the sweep's
+  lease.
 - **`PaymentWebhookEvent`**: the id of every delivery handled. Dominaite
   delivers at least once, retrying after 1 min, 5 min, 30 min, 2 h and 12 h,
   and the delivery's id, not the `transactionId`, is what repeats.
@@ -216,9 +299,9 @@ So:
 
 - **When is `payment.abandoned` sent:** at `expiresAt`, or when Dominaite closes
   the attempt about an hour later? The sweep cancels only on Dominaite's own
-  terminal status, or once a grace period past `expiresAt` has run out (a
+  terminal status, or once 15 minutes past `expiresAt` have run out (a
   payment approved just before `expiresAt` can still read `pending` after it).
-  Only how long a cart stays locked depends on the answer.
+  Only how soon the order is cancelled depends on the answer.
 
 ## Testing on localhost
 
@@ -246,14 +329,39 @@ Before go-live, run the whole flow through the shop on staging:
 - pay and reload within 15 s: the page says the payment is being confirmed,
   never "start over";
 - decline, retry with another card, pay;
-- decline five times: the order is cancelled and its lines are back in the cart;
-- leave unpaid, come back within two hours and pay from the unpaid-order banner;
+- decline five times: the order is cancelled, and the cart still holds the lines;
+- press Back from the payment: the cart still holds the lines, and "Купи сега"
+  again returns to the same order and session;
+- choose "Друг начин на плащане" and order with cash on delivery: the card order
+  is cancelled;
 - leave unpaid past the session: the sweep cancels the order;
 - stop ngrok during a payment: the sweep alone marks the order paid.
 
 Test payments go to a simulator; no money moves. The storefront whitelist is
 enforced in Production only (`STOREFRONT_NOT_WHITELISTED`), so localhost works in
 Test.
+
+## Keeping the cart until it is paid (not yet built)
+
+Today a card order closes its cart `ORDERED` when it is placed, as a cash order
+does, so the cart is empty while the customer pays. Next, the cart stays
+`ACTIVE` until the payment succeeds, so Back, a closed tab or a change of mind
+leaves it as it was. The order is still created first: the session, the
+webhook, the sweep and the idempotency key all need it.
+
+- **Placing a card order leaves the cart `ACTIVE`.** `Order.cartVersion` records
+  the version it was placed at.
+- **Placing again while the cart has a card order `PENDING_PAYMENT`:** at the
+  same version, with card, inside its hold, the same order is answered, so a
+  double click or Back → "Купи сега" lands on the same order and session.
+  Anything else (the cart moved, cash on delivery, the hold over) cancels the
+  waiting order first, asking Dominaite: while it is taking the payment, the
+  answer is `409 ORDER_PAYMENT_PROCESSING`.
+- **Every cancellation releases the cart** (`Order.cartId` set to null), so the
+  cart can take the next order.
+- **The payment closes the cart** (`closeForOrder`, in the webhook's
+  transaction). A cart edited while paying is closed all the same; `OrderItem`
+  is the record of what was bought.
 
 ## The order page (not yet built)
 
@@ -268,26 +376,21 @@ confirmed.
 | Confirming | "Потвърждаваме плащането…", re-reading the order every 2–3 s; after about 60 s, "Обработваме плащането. Можете да затворите страницата — ще получите имейл, щом бъде потвърдено." | nothing: no second payment is offered |
 | Declined | "Картата беше отказана. Не е изтеглена сума." | "Опитай с друга карта" (the next attempt, in a fresh widget); or "Друг начин на плащане" |
 | Paid | The confirmation, with "Платено с карта" in place of the amount to pay at the door | |
-| Ended unpaid | "Времето за плащане изтече. Поръчката е отказана, продуктите са върнати в количката." | "Към количката" |
+| Ended unpaid | "Плащането не беше извършено. Поръчката е отказана, продуктите са в количката." | "Към количката" |
 
 - **Confirming** starts on `[bp]:deposit` with `approved` or `pending`, on
   `[bp]:error`, and on `409 ORDER_PAYMENT_PROCESSING`. The widget's own "start
   over" message is never left on screen.
 - **Declined** starts on `[bp]:deposit` with `declined`; trying again calls the
   session route, which opens the next attempt.
-- **"Друг начин на плащане"** cancels the order the way the sweep does, and
-  returns the customer to checkout with the lines back in the cart.
+- **"Друг начин на плащане"** is a link back to checkout. Placing the order again
+  with cash on delivery cancels the card order.
 - The states are announced through an `aria-live` region.
-- **An unpaid order can be found again.** The cart is empty once its lines are
-  ordered, and there is no "My orders" yet, so the cart and checkout pages show
-  "Имате неплатена поръчка VP-ORD-000123 — Плати до 12:14" while the customer
-  has a card order `PENDING_PAYMENT`. Without it, a customer who closed the tab
-  orders again.
 
-This is the order-first flow of a hosted payment page (WooCommerce's and
-Magento's "pending payment" orders, and the Borica and ePay shops): the order
-exists before the payment, so a reload, a closed tab or a retry always has an
-order to come back to.
+This is WooCommerce's order-first flow for a hosted payment page: the order
+exists before the payment, as a "Pending payment" order, so a reload, a closed
+tab or a retry always has an order to come back to, and the cart keeps its
+lines until the payment is made.
 
 ## Before Production
 

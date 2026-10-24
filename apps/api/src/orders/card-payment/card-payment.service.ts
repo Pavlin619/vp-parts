@@ -12,14 +12,11 @@ import {
   OrderNotPayableException,
   OrderPaymentProcessingException,
 } from '../orders.exceptions';
+import { CardPaymentRepository, PayableOrder } from './card-payment.repository';
 import {
-  CardPaymentRepository,
-  PayableOrder,
-  PaymentAttempt,
-} from './card-payment.repository';
-
-/** Each decline opens a fresh two-hour session, so an order takes only so many. */
-export const MAX_PAYMENT_ATTEMPTS = 5;
+  MAX_PAYMENT_ATTEMPTS,
+  UNOPENED_ORDER_HOLD_MS,
+} from './card-payment.policy';
 
 /**
  * Opens a card order's payment session for the widget — docs/PAYMENTS.md. The
@@ -40,7 +37,7 @@ export class CardPaymentService {
     orderReference: string,
   ): Promise<OrderPaymentSessionDto> {
     const order = await this.findPayableOrder(clerkId, orderReference);
-    const attempt = attemptToOpen(order.latestAttempt, new Date());
+    const attempt = attemptToOpen(order, new Date());
     const session = await this.openAttempt(order, attempt);
 
     return {
@@ -112,20 +109,33 @@ export class CardPaymentService {
 }
 
 /**
- * The open attempt is asked for again, which answers its session. One whose
- * session has ended leaves the order to be cancelled, never paid late: asked
- * for again, Dominaite would answer an expired key with a fresh session.
+ * The open attempt is asked for again, which answers its session. Once the
+ * order's time is up it is to be cancelled, never paid late: asked for again,
+ * Dominaite would answer an expired key with a fresh session. That time is the
+ * latest session's `expiresAt`, so the deadline the page shows stays true after
+ * a decline.
  */
-function attemptToOpen(latest: PaymentAttempt | null, now: Date): number {
+function attemptToOpen(
+  { latestAttempt: latest, createdAt }: PayableOrder,
+  now: Date,
+): number {
   if (!latest) {
+    if (createdAt.getTime() + UNOPENED_ORDER_HOLD_MS <= now.getTime()) {
+      throw new OrderNotPayableException();
+    }
+
     return 1;
+  }
+
+  if (latest.expiresAt <= now) {
+    throw new OrderNotPayableException();
   }
 
   if (latest.status === CardPaymentStatus.FAILED) {
     return attemptAfter(latest.attempt);
   }
 
-  if (latest.status === CardPaymentStatus.OPEN && latest.expiresAt > now) {
+  if (latest.status === CardPaymentStatus.OPEN) {
     return latest.attempt;
   }
 

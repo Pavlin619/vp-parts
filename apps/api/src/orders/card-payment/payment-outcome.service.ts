@@ -3,13 +3,20 @@ import type {
   DominaiteWebhookEvent,
   PaymentWebhookEvent,
 } from '@dominaite/merchant-sdk';
-import { CardPaymentStatus, OrderStatus } from '../../generated/prisma';
-import { PAYMENT_CURRENCY } from '../../payments';
+import { CardPaymentStatus } from '../../generated/prisma';
+import { CheckoutSessionState, PAYMENT_CURRENCY } from '../../payments';
 import {
+  CancellationSource,
   CardPaymentRepository,
+  DeliveryEffect,
   ReportedAttempt,
+  UnpaidCancellation,
   WebhookDelivery,
 } from './card-payment.repository';
+import {
+  GRACE_AFTER_EXPIRY_MS,
+  MAX_PAYMENT_ATTEMPTS,
+} from './card-payment.policy';
 
 const ATTEMPT_STATUS_BY_EVENT = {
   'payment.succeeded': CardPaymentStatus.SUCCEEDED,
@@ -22,10 +29,20 @@ type OutcomeEvent = PaymentWebhookEvent & {
   type: keyof typeof ATTEMPT_STATUS_BY_EVENT;
 };
 
+type EndedStatus = Exclude<
+  CardPaymentStatus,
+  typeof CardPaymentStatus.OPEN | typeof CardPaymentStatus.SUCCEEDED
+>;
+
+interface Payment {
+  amount: number;
+  currency: string;
+}
+
 /**
- * What Dominaite reports about a payment, applied to its attempt and order —
- * docs/PAYMENTS.md → "The webhook". Only a success for the order's whole total
- * marks it paid.
+ * What Dominaite reports about a payment, from its webhook or the sweep's
+ * read, applied to the attempt and its order — docs/PAYMENTS.md. Only a
+ * success for the order's whole total marks it paid.
  */
 @Injectable()
 export class PaymentOutcomeService {
@@ -53,14 +70,44 @@ export class PaymentOutcomeService {
     if (status === CardPaymentStatus.SUCCEEDED) {
       await this.confirm(delivery, attempt, event.data);
     } else {
-      await this.payments.closeAttempt(delivery, attempt.id, status);
+      await this.end(delivery, attempt, status, 'dominaite');
     }
   }
 
-  private async confirm(
-    delivery: WebhookDelivery,
+  /** An open session as the sweep read it. One that may still be paid is left open. */
+  async applySessionState(
     attempt: ReportedAttempt,
-    { amount, currency }: PaymentWebhookEvent['data'],
+    state: CheckoutSessionState,
+    now: Date,
+  ): Promise<void> {
+    if (state.isPaid) {
+      await this.confirm(null, attempt, state);
+    } else if (state.isTerminal) {
+      await this.end(null, attempt, endedStatusOf(state.status), 'dominaite');
+    } else if (isPastGrace(attempt, now)) {
+      await this.end(null, attempt, CardPaymentStatus.ABANDONED, 'shop');
+    }
+  }
+
+  async cancelUnpaid(
+    cancellation: UnpaidCancellation,
+    delivery: WebhookDelivery | null = null,
+  ): Promise<DeliveryEffect> {
+    const effect = await this.payments.cancelUnpaid(delivery, cancellation);
+
+    if (effect === 'applied') {
+      this.logger.log(
+        `Order ${cancellation.orderId} cancelled unpaid (${cancellation.source})`,
+      );
+    }
+
+    return effect;
+  }
+
+  private async confirm(
+    delivery: WebhookDelivery | null,
+    attempt: ReportedAttempt,
+    { amount, currency }: Payment,
   ): Promise<void> {
     if (amount !== attempt.orderTotal || currency !== PAYMENT_CURRENCY) {
       this.logger.error(
@@ -74,12 +121,55 @@ export class PaymentOutcomeService {
 
     if (effect === 'applied') {
       this.logger.log(`Order ${attempt.orderId} paid by card`);
-    } else if (attempt.orderStatus === OrderStatus.CANCELLED) {
+    } else if (effect === 'refund-due') {
       this.logger.error(
-        `Order ${attempt.orderId} was paid after it was cancelled; refund ${attempt.transactionId}`,
+        `Order ${attempt.orderId} was paid once it no longer waited for it; ` +
+          `refunding ${attempt.transactionId}`,
       );
     }
   }
+
+  /** A declined card leaves the order open for another, unless it was the last one allowed. */
+  private async end(
+    delivery: WebhookDelivery | null,
+    attempt: ReportedAttempt,
+    status: EndedStatus,
+    source: CancellationSource,
+  ): Promise<void> {
+    const isRetryable =
+      status === CardPaymentStatus.FAILED &&
+      attempt.attempt < MAX_PAYMENT_ATTEMPTS;
+
+    if (isRetryable) {
+      await this.payments.closeAttempt(delivery, attempt.id, status);
+      return;
+    }
+
+    await this.cancelUnpaid(
+      {
+        orderId: attempt.orderId,
+        closing: { attemptId: attempt.id, status },
+        source,
+      },
+      delivery,
+    );
+  }
+}
+
+/** A terminal status that is not `succeeded`. One added later, or `refunded`, reads as cancelled. */
+export function endedStatusOf(status: string): EndedStatus {
+  switch (status) {
+    case 'failed':
+      return CardPaymentStatus.FAILED;
+    case 'abandoned':
+      return CardPaymentStatus.ABANDONED;
+    default:
+      return CardPaymentStatus.CANCELLED;
+  }
+}
+
+function isPastGrace(attempt: ReportedAttempt, now: Date): boolean {
+  return now.getTime() > attempt.expiresAt.getTime() + GRACE_AFTER_EXPIRY_MS;
 }
 
 function isOutcomeEvent(event: DominaiteWebhookEvent): event is OutcomeEvent {

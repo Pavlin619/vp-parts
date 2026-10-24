@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma';
-import { PrismaService } from '../prisma';
+import { PrismaService, utcTimestamp } from '../prisma';
 
 export interface NewOutboxEvent {
   type: string;
@@ -74,12 +74,12 @@ export class OutboxRepository {
 
     const rows = await this.prisma.$queryRaw<ClaimedRow[]>`
       UPDATE "OutboxEvent"
-      SET "availableAt" = ${utc(leasedUntil)},
+      SET "availableAt" = ${utcTimestamp(leasedUntil)},
         attempts = attempts + 1,
         "claimToken" = gen_random_uuid()
       WHERE id IN (
         SELECT id FROM "OutboxEvent"
-        WHERE "availableAt" <= ${utc(now)}
+        WHERE "availableAt" <= ${utcTimestamp(now)}
           AND attempts < ${maxAttempts}
         ORDER BY "availableAt"
         LIMIT ${limit}
@@ -124,14 +124,6 @@ export class OutboxRepository {
 
 function heldBy({ eventId, claimToken }: Lease) {
   return { id: eventId, claimToken };
-}
-
-/**
- * The columns hold UTC wall time, as Prisma writes them, while a bound Date
- * arrives as a timestamptz that Postgres would compare in the session's zone.
- */
-function utc(instant: Date): Prisma.Sql {
-  return Prisma.sql`(${instant}::timestamptz AT TIME ZONE 'UTC')`;
 }
 
 function toClaimedEvent(row: ClaimedRow): ClaimedEvent {
