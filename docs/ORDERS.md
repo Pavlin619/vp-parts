@@ -683,7 +683,7 @@ Being built: [PAYMENTS.md](./PAYMENTS.md) holds the design and what is built.
   provider's webhook confirms it (`PROCESSING`, with `OrderPlaced` written
   then). Creating it only after payment would leave a paid customer with no
   order whenever the webhook's work fails. A session that ends unpaid cancels
-  the order and puts its lines back in the customer's cart.
+  the order.
 - Card payments bring the shop **into Н-18**: registration with NAP (Appendix 33)
   and an electronic order document with a unique sale number (УНП) and the
   payment id. The numbering is planned then.

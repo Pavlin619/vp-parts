@@ -312,6 +312,72 @@ describe('DominaiteGateway', () => {
     });
   });
 
+  describe('refundPayment', () => {
+    const REFUND = {
+      transactionId: TRANSACTION_ID,
+      idempotencyKey: `late-${TRANSACTION_ID}`,
+      reason: 'VP-ORD-000123',
+    };
+
+    function refundQueued(): Response {
+      return answer(202, {
+        success: true,
+        data: {
+          refundId: `re_${'0'.repeat(32)}`,
+          transactionId: TRANSACTION_ID,
+          status: 'pending',
+          currency: 'EUR',
+        },
+      });
+    }
+
+    function refundRefused(status: number, code: string): Response {
+      return answer(status, {
+        success: false,
+        error: { code, message: 'refused' },
+      });
+    }
+
+    it('refunds the whole payment under the key it is given', async () => {
+      fetchMock.mockResolvedValue(refundQueued());
+
+      await expect(gateway.refundPayment(REFUND)).resolves.toBe('queued');
+
+      const { method, path, headers, body } = sent();
+      expect(method).toBe('POST');
+      expect(path).toBe(`/merchant-api/payments/${TRANSACTION_ID}/refunds`);
+      expect(headers['Idempotency-Key']).toBe(`late-${TRANSACTION_ID}`);
+      expect(JSON.parse(body)).toEqual({ reason: 'VP-ORD-000123' });
+    });
+
+    it('answers that nothing is left to refund when the payment is refunded already', async () => {
+      fetchMock.mockResolvedValue(refundRefused(422, 'PAYMENT_NOT_REFUNDABLE'));
+
+      await expect(gateway.refundPayment(REFUND)).resolves.toBe(
+        'nothing-to-refund',
+      );
+    });
+
+    it('is unavailable, to retry with the same key, while Dominaite is still on it', async () => {
+      fetchMock.mockResolvedValue(refundRefused(409, 'DUPLICATE_REQUEST'));
+
+      await expect(gateway.refundPayment(REFUND)).rejects.toBeInstanceOf(
+        PaymentUnavailableException,
+      );
+    });
+
+    it('fails as our fault for a payment Dominaite does not know', async () => {
+      fetchMock.mockResolvedValue(refundRefused(404, 'PAYMENT_NOT_FOUND'));
+
+      const failure = gateway.refundPayment(REFUND);
+
+      await expect(failure).rejects.toThrow('PAYMENT_NOT_FOUND');
+      await expect(failure).rejects.not.toBeInstanceOf(
+        PaymentUnavailableException,
+      );
+    });
+  });
+
   it.each([
     ['answers a 5xx', () => Promise.resolve(answer(502, 'bad gateway'))],
     ['cannot be reached', () => Promise.reject(new TypeError('fetch failed'))],

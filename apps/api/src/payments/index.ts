@@ -8,5 +8,7 @@ export {
   type CheckoutSessionRequest,
   type CheckoutSessionState,
   type OpenedCheckoutSession,
+  type RefundOutcome,
+  type RefundRequest,
 } from './dominaite.gateway';
 export { DominaiteWebhooks, InvalidWebhookError } from './dominaite-webhooks';

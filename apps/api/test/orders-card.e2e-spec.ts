@@ -27,7 +27,11 @@ import {
   SqsPublisher,
 } from '../src/events';
 import { InventoryService } from '../src/inventory';
-import { MAX_PAYMENT_ATTEMPTS } from '../src/orders/card-payment/card-payment.service';
+import { MAX_PAYMENT_ATTEMPTS } from '../src/orders/card-payment/card-payment.policy';
+import {
+  CARD_PAYMENT_SWEEP_INTERVAL,
+  CardPaymentSweep,
+} from '../src/orders/card-payment/card-payment.sweep';
 import { DOMINAITE_CLIENT } from '../src/payments/dominaite.client';
 import { PrismaService } from '../src/prisma';
 import { REDIS_CLIENT } from '../src/redis';
@@ -178,8 +182,9 @@ describe('Card orders (e2e)', () => {
       builder.overrideProvider(DOMINAITE_CLIENT).useValue(dominaite);
     });
     prisma = app.get(PrismaService);
-    // The suite relays by hand, so a tick never races an assertion.
+    // The suite relays and sweeps by hand, so a tick never races an assertion.
     app.get(SchedulerRegistry).deleteInterval(OUTBOX_RELAY_INTERVAL);
+    app.get(SchedulerRegistry).deleteInterval(CARD_PAYMENT_SWEEP_INTERVAL);
   });
 
   afterAll(async () => {
@@ -369,6 +374,51 @@ describe('Card orders (e2e)', () => {
     }
 
     throw new Error(`OrderPlaced for ${orderId} was never delivered`);
+  }
+
+  const refundDueOf = (orderId: string) =>
+    prisma.outboxEvent.findMany({
+      where: {
+        type: 'CardPaymentRefundDue',
+        payload: { path: ['orderId'], equals: orderId },
+      },
+    });
+
+  async function relayRefundDue(orderId: string) {
+    expect(await refundDueOf(orderId)).toHaveLength(1);
+
+    for (let tick = 0; tick < 20; tick++) {
+      await app.get(OutboxRelay).relayDue();
+
+      if ((await refundDueOf(orderId)).length === 0) {
+        return;
+      }
+    }
+
+    throw new Error(`The refund of ${orderId} was never relayed`);
+  }
+
+  const orderOf = (orderId: string) =>
+    prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { statusHistory: { orderBy: { occurredAt: 'asc' } } },
+    });
+
+  /**
+   * Sweeps until the order leaves `PENDING_PAYMENT`. A run reads a batch of
+   * the open sessions, and other tests leave theirs open.
+   */
+  async function sweepUntilSettled(orderId: string) {
+    for (let run = 0; run < 20; run++) {
+      await app.get(CardPaymentSweep).sweep();
+      const order = await orderOf(orderId);
+
+      if (order.status !== 'PENDING_PAYMENT') {
+        return order;
+      }
+    }
+
+    throw new Error(`The sweep never settled order ${orderId}`);
   }
 
   describe('placing a card order', () => {
@@ -678,17 +728,86 @@ describe('Card orders (e2e)', () => {
       ]);
     });
 
-    it('closes the attempt on payment.abandoned, leaving the order unpaid', async () => {
+    it('cancels the order on payment.abandoned', async () => {
       const { orderId, transactionId } = await cardOrderToPay();
 
       await deliver(paymentDelivery('payment.abandoned', transactionId)).expect(
         200,
       );
 
+      const order = await orderOf(orderId);
+      expect(order.status).toBe('CANCELLED');
+      expect(order.statusHistory.at(-1)).toMatchObject({
+        status: 'CANCELLED',
+        source: 'dominaite',
+      });
       await expect(attemptsOf(orderId)).resolves.toEqual([
         expect.objectContaining({ status: 'ABANDONED' }),
       ]);
       await expect(orderPlacedOf(orderId)).resolves.toHaveLength(0);
+    });
+
+    it('cancels the order once, however often the abandonment is delivered', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      const delivery = paymentDelivery('payment.abandoned', transactionId);
+
+      await deliver(delivery).expect(200);
+      await deliver(delivery).expect(200);
+      await deliver(paymentDelivery('payment.abandoned', transactionId)).expect(
+        200,
+      );
+
+      const { statusHistory } = await orderOf(orderId);
+      expect(
+        statusHistory.filter(({ status }) => status === 'CANCELLED'),
+      ).toHaveLength(1);
+    });
+
+    it('cancels the order when the last card allowed is declined', async () => {
+      const { clerkId, orderId, orderReference } = await cardOrder();
+
+      for (let attempt = 1; attempt <= MAX_PAYMENT_ATTEMPTS; attempt++) {
+        await openPayment(clerkId, orderReference).expect(200);
+        const opened = (await attemptsOf(orderId)).at(-1)!;
+        dominaite.settle(opened.transactionId, 'failed');
+        await deliver(
+          paymentDelivery('payment.failed', opened.transactionId),
+        ).expect(200);
+      }
+
+      await expect(orderOf(orderId)).resolves.toMatchObject({
+        status: 'CANCELLED',
+      });
+    });
+
+    it('gives a payment back when it arrives after its order was cancelled', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      await deliver(paymentDelivery('payment.abandoned', transactionId)).expect(
+        200,
+      );
+
+      await deliver(paymentDelivery('payment.succeeded', transactionId)).expect(
+        200,
+      );
+
+      await expect(orderOf(orderId)).resolves.toMatchObject({
+        status: 'CANCELLED',
+        paymentReference: null,
+      });
+      await expect(orderPlacedOf(orderId)).resolves.toHaveLength(0);
+      await relayRefundDue(orderId);
+      expect(
+        dominaite.refunds.filter(
+          (refund) => refund.transactionId === transactionId,
+        ),
+      ).toEqual([
+        {
+          transactionId,
+          params: expect.objectContaining({
+            idempotencyKey: `late-${transactionId}`,
+          }),
+        },
+      ]);
     });
 
     it('answers an event it does not act on, so Dominaite stops delivering it', async () => {
@@ -744,6 +863,72 @@ describe('Card orders (e2e)', () => {
         .set('Content-Type', 'application/json')
         .send(paymentDelivery('payment.succeeded', transactionId))
         .expect(400);
+    });
+  });
+
+  describe('the sweep', () => {
+    it('marks the order paid from Dominaite’s status when the webhook never came', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      dominaite.settle(transactionId, 'paid');
+
+      const order = await sweepUntilSettled(orderId);
+
+      expect(order).toMatchObject({
+        status: 'PROCESSING',
+        paymentReference: transactionId,
+      });
+      await expect(attemptsOf(orderId)).resolves.toEqual([
+        expect.objectContaining({ status: 'SUCCEEDED' }),
+      ]);
+      await expect(orderPlacedOf(orderId)).resolves.toHaveLength(1);
+    });
+
+    it('cancels the order when Dominaite says its session was abandoned', async () => {
+      const { orderId, transactionId } = await cardOrderToPay();
+      dominaite.settle(transactionId, 'abandoned');
+
+      const order = await sweepUntilSettled(orderId);
+
+      expect(order.status).toBe('CANCELLED');
+      expect(order.statusHistory.at(-1)?.source).toBe('dominaite');
+    });
+
+    it('gives the order up once its session is past expiry and the grace after it', async () => {
+      const { orderId } = await cardOrderToPay();
+      await prisma.cardPayment.updateMany({
+        where: { orderId },
+        data: { expiresAt: new Date(Date.now() - 20 * 60_000) },
+      });
+
+      const order = await sweepUntilSettled(orderId);
+
+      expect(order.status).toBe('CANCELLED');
+      expect(order.statusHistory.at(-1)?.source).toBe('shop');
+      await expect(attemptsOf(orderId)).resolves.toEqual([
+        expect.objectContaining({ status: 'ABANDONED' }),
+      ]);
+    });
+
+    it('leaves an open session inside its time alone', async () => {
+      const { orderId } = await cardOrderToPay();
+
+      await app.get(CardPaymentSweep).sweep();
+
+      await expect(orderOf(orderId)).resolves.toMatchObject({
+        status: 'PENDING_PAYMENT',
+      });
+    });
+
+    it('cancels an order whose payment was never opened, once its hold is over', async () => {
+      const { orderId } = await cardOrder();
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { createdAt: new Date(Date.now() - 3 * 60 * 60_000) },
+      });
+
+      const order = await sweepUntilSettled(orderId);
+
+      expect(order.status).toBe('CANCELLED');
     });
   });
 });

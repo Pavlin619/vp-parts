@@ -11,11 +11,13 @@ import {
   OrderNotPayableException,
   OrderPaymentProcessingException,
 } from '../orders.exceptions';
-import { CardPaymentRepository, PayableOrder } from './card-payment.repository';
 import {
-  CardPaymentService,
-  MAX_PAYMENT_ATTEMPTS,
-} from './card-payment.service';
+  CardPaymentRepository,
+  PayableOrder,
+  PaymentAttempt,
+} from './card-payment.repository';
+import { MAX_PAYMENT_ATTEMPTS } from './card-payment.policy';
+import { CardPaymentService } from './card-payment.service';
 
 const NOW = new Date('2026-10-23T10:00:00Z');
 const CLERK_ID = 'clerk-1';
@@ -37,12 +39,27 @@ const SESSION: OpenedCheckoutSession = {
   expiresAt: new Date('2026-10-23T12:00:00Z'),
 };
 
+function attemptOf(
+  attempt: number,
+  status: PaymentAttempt['status'],
+  expiresAt: Date,
+): PaymentAttempt {
+  return {
+    id: `payment-${attempt}`,
+    attempt,
+    status,
+    transactionId: `tx-${attempt}`,
+    expiresAt,
+  };
+}
+
 function payableOrder(overrides: Partial<PayableOrder> = {}): PayableOrder {
   return {
     id: 'order-1',
     orderReference: REFERENCE,
     status: 'PENDING_PAYMENT',
     total: 4845,
+    createdAt: new Date('2026-10-23T09:30:00Z'),
     payer: PAYER,
     latestAttempt: null,
     ...overrides,
@@ -105,11 +122,7 @@ describe('CardPaymentService', () => {
 
   it('answers the session still open, by asking for the same attempt again', async () => {
     order = payableOrder({
-      latestAttempt: {
-        attempt: 2,
-        status: 'OPEN',
-        expiresAt: new Date('2026-10-23T10:30:00Z'),
-      },
+      latestAttempt: attemptOf(2, 'OPEN', new Date('2026-10-23T10:30:00Z')),
     });
 
     await openPayment();
@@ -121,11 +134,7 @@ describe('CardPaymentService', () => {
 
   it('opens the next attempt after one that failed', async () => {
     order = payableOrder({
-      latestAttempt: {
-        attempt: 1,
-        status: 'FAILED',
-        expiresAt: new Date('2026-10-23T11:00:00Z'),
-      },
+      latestAttempt: attemptOf(1, 'FAILED', new Date('2026-10-23T11:00:00Z')),
     });
 
     await openPayment();
@@ -138,11 +147,7 @@ describe('CardPaymentService', () => {
 
   it('opens the next attempt when Dominaite says the open one’s payment failed', async () => {
     order = payableOrder({
-      latestAttempt: {
-        attempt: 1,
-        status: 'OPEN',
-        expiresAt: new Date('2026-10-23T11:00:00Z'),
-      },
+      latestAttempt: attemptOf(1, 'OPEN', new Date('2026-10-23T11:00:00Z')),
     });
     openCheckoutSession
       .mockRejectedValueOnce(new CheckoutKeySpentError('failed', 'tx-1'))
@@ -173,11 +178,11 @@ describe('CardPaymentService', () => {
 
   it('opens the last attempt allowed after one that failed', async () => {
     order = payableOrder({
-      latestAttempt: {
-        attempt: MAX_PAYMENT_ATTEMPTS - 1,
-        status: 'FAILED',
-        expiresAt: new Date('2026-10-23T11:00:00Z'),
-      },
+      latestAttempt: attemptOf(
+        MAX_PAYMENT_ATTEMPTS - 1,
+        'FAILED',
+        new Date('2026-10-23T11:00:00Z'),
+      ),
     });
 
     await openPayment();
@@ -189,11 +194,11 @@ describe('CardPaymentService', () => {
 
   it('refuses another attempt once the last one allowed has failed', async () => {
     order = payableOrder({
-      latestAttempt: {
-        attempt: MAX_PAYMENT_ATTEMPTS,
-        status: 'FAILED',
-        expiresAt: new Date('2026-10-23T11:00:00Z'),
-      },
+      latestAttempt: attemptOf(
+        MAX_PAYMENT_ATTEMPTS,
+        'FAILED',
+        new Date('2026-10-23T11:00:00Z'),
+      ),
     });
 
     await expect(openPayment()).rejects.toBeInstanceOf(
@@ -204,11 +209,11 @@ describe('CardPaymentService', () => {
 
   it('refuses another attempt when Dominaite says the last one allowed has failed', async () => {
     order = payableOrder({
-      latestAttempt: {
-        attempt: MAX_PAYMENT_ATTEMPTS,
-        status: 'OPEN',
-        expiresAt: new Date('2026-10-23T11:00:00Z'),
-      },
+      latestAttempt: attemptOf(
+        MAX_PAYMENT_ATTEMPTS,
+        'OPEN',
+        new Date('2026-10-23T11:00:00Z'),
+      ),
     });
     openCheckoutSession.mockRejectedValue(
       new CheckoutKeySpentError('failed', 'tx-5'),
@@ -223,7 +228,7 @@ describe('CardPaymentService', () => {
 
   it('refuses an order whose session has ended unpaid, so it is not paid after it lapsed', async () => {
     order = payableOrder({
-      latestAttempt: { attempt: 1, status: 'OPEN', expiresAt: NOW },
+      latestAttempt: attemptOf(1, 'OPEN', NOW),
     });
 
     await expect(openPayment()).rejects.toBeInstanceOf(
@@ -236,11 +241,7 @@ describe('CardPaymentService', () => {
     'refuses an order whose last attempt is %s',
     async (status) => {
       order = payableOrder({
-        latestAttempt: {
-          attempt: 1,
-          status,
-          expiresAt: new Date('2026-10-23T11:00:00Z'),
-        },
+        latestAttempt: attemptOf(1, status, new Date('2026-10-23T11:00:00Z')),
       });
 
       await expect(openPayment()).rejects.toBeInstanceOf(
@@ -282,5 +283,35 @@ describe('CardPaymentService', () => {
       PaymentUnavailableException,
     );
     expect(recordOpened).not.toHaveBeenCalled();
+  });
+
+  describe('how long an unpaid order is held', () => {
+    it('refuses another card once the declined session’s time is up', async () => {
+      order = payableOrder({ latestAttempt: attemptOf(1, 'FAILED', NOW) });
+
+      await expect(openPayment()).rejects.toBeInstanceOf(
+        OrderNotPayableException,
+      );
+      expect(openCheckoutSession).not.toHaveBeenCalled();
+    });
+
+    it('opens the first session for an order placed inside the hold', async () => {
+      order = payableOrder({ createdAt: new Date('2026-10-23T08:01:00Z') });
+
+      await openPayment();
+
+      expect(openCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({ attempt: 1 }),
+      );
+    });
+
+    it('refuses the first session for an order placed too long ago', async () => {
+      order = payableOrder({ createdAt: new Date('2026-10-23T08:00:00Z') });
+
+      await expect(openPayment()).rejects.toBeInstanceOf(
+        OrderNotPayableException,
+      );
+      expect(openCheckoutSession).not.toHaveBeenCalled();
+    });
   });
 });

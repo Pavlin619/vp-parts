@@ -10,9 +10,33 @@ const DELIVERY = { id: 'delivery-1', type: 'payment.succeeded' };
 const ATTEMPT = {
   id: 'payment-1',
   orderId: 'order-1',
+  orderReference: 'VP-ORD-000123',
+  attempt: 1,
   transactionId: 'tx-1',
+  expiresAt: EXPIRES_AT,
   orderStatus: 'PENDING_PAYMENT' as const,
   orderTotal: 4845,
+};
+
+const ATTEMPT_ROW = {
+  id: 'payment-1',
+  orderId: 'order-1',
+  attempt: 1,
+  transactionId: 'tx-1',
+  expiresAt: EXPIRES_AT,
+  order: {
+    orderReference: 'VP-ORD-000123',
+    status: 'PENDING_PAYMENT',
+    total: 4845,
+  },
+};
+
+const LATEST_ATTEMPT = {
+  id: 'payment-2',
+  attempt: 2,
+  status: 'FAILED',
+  transactionId: 'tx-2',
+  expiresAt: EXPIRES_AT,
 };
 
 const ORDER_ROW = {
@@ -20,11 +44,12 @@ const ORDER_ROW = {
   orderReference: 'VP-ORD-000123',
   status: 'PENDING_PAYMENT',
   total: 4845,
+  createdAt: new Date('2026-10-23T10:00:00Z'),
   contactFirstName: 'Иван',
   contactLastName: 'Петров',
   contactEmail: 'ivan@example.com',
   contactPhone: '+359888123456',
-  cardPayments: [{ attempt: 2, status: 'FAILED', expiresAt: EXPIRES_AT }],
+  cardPayments: [LATEST_ATTEMPT],
 };
 
 describe('CardPaymentRepository', () => {
@@ -34,18 +59,20 @@ describe('CardPaymentRepository', () => {
 
   const tx = {
     paymentWebhookEvent: { createMany: jest.fn() },
-    cardPayment: { update: jest.fn(), updateMany: jest.fn() },
+    cardPayment: { updateMany: jest.fn() },
     order: { updateMany: jest.fn() },
     orderStatusHistory: { create: jest.fn() },
   };
 
   const prisma = {
     $transaction: jest.fn((run: (client: typeof tx) => unknown) => run(tx)),
-    order: { findFirst: jest.fn() },
+    $queryRaw: jest.fn(),
+    order: { findFirst: jest.fn(), findMany: jest.fn() },
     cardPayment: {
       createMany: jest.fn(),
       updateMany: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
   };
 
@@ -77,13 +104,14 @@ describe('CardPaymentRepository', () => {
         orderReference: 'VP-ORD-000123',
         status: 'PENDING_PAYMENT',
         total: 4845,
+        createdAt: ORDER_ROW.createdAt,
         payer: {
           firstName: 'Иван',
           lastName: 'Петров',
           email: 'ivan@example.com',
           phone: '+359888123456',
         },
-        latestAttempt: { attempt: 2, status: 'FAILED', expiresAt: EXPIRES_AT },
+        latestAttempt: LATEST_ATTEMPT,
       });
 
       expect(prisma.order.findFirst).toHaveBeenCalledWith(
@@ -152,12 +180,7 @@ describe('CardPaymentRepository', () => {
 
   describe('findReportedAttempt', () => {
     it('reads the attempt by its transaction, with what its order must be paid', async () => {
-      prisma.cardPayment.findUnique.mockResolvedValue({
-        id: 'payment-1',
-        orderId: 'order-1',
-        transactionId: 'tx-1',
-        order: { status: 'PENDING_PAYMENT', total: 4845 },
-      });
+      prisma.cardPayment.findUnique.mockResolvedValue(ATTEMPT_ROW);
 
       await expect(repository.findReportedAttempt('tx-1')).resolves.toEqual(
         ATTEMPT,
@@ -174,6 +197,77 @@ describe('CardPaymentRepository', () => {
     });
   });
 
+  describe('claimAttemptsDue', () => {
+    const NOW = new Date('2026-10-24T10:00:00Z');
+    const claim = { now: NOW, limit: 20, leaseMs: 5 * 60_000 };
+
+    it('leases the open attempts due, moving their next check on, in one statement', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'payment-1' }]);
+      prisma.cardPayment.findMany.mockResolvedValue([ATTEMPT_ROW]);
+
+      await expect(repository.claimAttemptsDue(claim)).resolves.toEqual([
+        ATTEMPT,
+      ]);
+
+      const [sql, ...values] = prisma.$queryRaw.mock.calls[0] as [
+        string[],
+        ...unknown[],
+      ];
+      const text = sql.join('?');
+      expect(text).toContain(`status = 'OPEN'`);
+      expect(text).toContain('FOR UPDATE SKIP LOCKED');
+      expect(values).toContain(20);
+      expect(JSON.stringify(values)).toContain('2026-10-24T10:05:00.000Z');
+      expect(prisma.cardPayment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['payment-1'] } } }),
+      );
+    });
+
+    it('reads nothing more when none is due', async () => {
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await expect(repository.claimAttemptsDue(claim)).resolves.toEqual([]);
+      expect(prisma.cardPayment.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('finds the orders waiting on a payment no session can make any more', async () => {
+    prisma.order.findMany.mockResolvedValue([{ id: 'order-1' }]);
+    const now = new Date('2026-10-24T10:00:00Z');
+    const placedBefore = new Date('2026-10-24T08:00:00Z');
+
+    await expect(
+      repository.findLapsedOrders({
+        now,
+        placedBefore,
+        maxAttempts: 5,
+        limit: 50,
+      }),
+    ).resolves.toEqual(['order-1']);
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: 'PENDING_PAYMENT',
+          OR: [
+            {
+              createdAt: { lt: placedBefore },
+              cardPayments: {
+                none: { OR: [{ status: 'OPEN' }, { expiresAt: { gt: now } }] },
+              },
+            },
+            {
+              cardPayments: {
+                some: { attempt: { gte: 5 }, status: 'FAILED' },
+              },
+            },
+          ],
+        },
+        take: 50,
+      }),
+    );
+  });
+
   describe('confirmPaid', () => {
     it('records the delivery, and pays the order and announces it in the same transaction', async () => {
       await expect(repository.confirmPaid(DELIVERY, ATTEMPT)).resolves.toBe(
@@ -185,8 +279,8 @@ describe('CardPaymentRepository', () => {
         data: [DELIVERY],
         skipDuplicates: true,
       });
-      expect(tx.cardPayment.update).toHaveBeenCalledWith({
-        where: { id: 'payment-1' },
+      expect(tx.cardPayment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'payment-1', status: { not: 'SUCCEEDED' } },
         data: { status: 'SUCCEEDED' },
       });
       expect(tx.order.updateMany).toHaveBeenCalledWith({
@@ -202,16 +296,43 @@ describe('CardPaymentRepository', () => {
       });
     });
 
-    it('announces nothing again for an order no longer waiting for its payment', async () => {
-      tx.order.updateMany.mockResolvedValue({ count: 0 });
+    it('pays the order from the sweep’s read, which has no delivery to record', async () => {
+      await expect(repository.confirmPaid(null, ATTEMPT)).resolves.toBe(
+        'applied',
+      );
+
+      expect(tx.paymentWebhookEvent.createMany).not.toHaveBeenCalled();
+      expect(tx.order.updateMany).toHaveBeenCalled();
+    });
+
+    it('changes nothing for an attempt already paid', async () => {
+      tx.cardPayment.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(repository.confirmPaid(DELIVERY, ATTEMPT)).resolves.toBe(
         'unchanged',
       );
 
-      expect(tx.cardPayment.update).toHaveBeenCalled();
-      expect(tx.orderStatusHistory.create).not.toHaveBeenCalled();
+      expect(tx.order.updateMany).not.toHaveBeenCalled();
       expect(append).not.toHaveBeenCalled();
+    });
+
+    it('writes the payment up to be given back when its order no longer waits for it', async () => {
+      tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(repository.confirmPaid(DELIVERY, ATTEMPT)).resolves.toBe(
+        'refund-due',
+      );
+
+      expect(tx.orderStatusHistory.create).not.toHaveBeenCalled();
+      expect(append).toHaveBeenCalledTimes(1);
+      expect(append).toHaveBeenCalledWith(tx, {
+        type: 'CardPaymentRefundDue',
+        payload: {
+          orderId: 'order-1',
+          orderReference: 'VP-ORD-000123',
+          transactionId: 'tx-1',
+        },
+      });
     });
 
     it('changes nothing for a delivery already handled', async () => {
@@ -221,7 +342,7 @@ describe('CardPaymentRepository', () => {
         'duplicate',
       );
 
-      expect(tx.cardPayment.update).not.toHaveBeenCalled();
+      expect(tx.cardPayment.updateMany).not.toHaveBeenCalled();
       expect(tx.order.updateMany).not.toHaveBeenCalled();
       expect(append).not.toHaveBeenCalled();
     });
@@ -260,6 +381,84 @@ describe('CardPaymentRepository', () => {
         repository.closeAttempt(FAILED_DELIVERY, 'payment-1', 'FAILED'),
       ).resolves.toBe('duplicate');
       expect(tx.cardPayment.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelUnpaid', () => {
+    const ABANDONED_DELIVERY = { id: 'delivery-3', type: 'payment.abandoned' };
+    const CANCELLATION = {
+      orderId: 'order-1',
+      closing: { attemptId: 'payment-1', status: 'ABANDONED' as const },
+      source: 'dominaite' as const,
+    };
+
+    it('closes the attempt and cancels the order, together', async () => {
+      await expect(
+        repository.cancelUnpaid(ABANDONED_DELIVERY, CANCELLATION),
+      ).resolves.toBe('applied');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.paymentWebhookEvent.createMany).toHaveBeenCalledWith({
+        data: [ABANDONED_DELIVERY],
+        skipDuplicates: true,
+      });
+      expect(tx.cardPayment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'payment-1', status: 'OPEN' },
+        data: { status: 'ABANDONED' },
+      });
+      expect(tx.orderStatusHistory.create).toHaveBeenCalledWith({
+        data: { orderId: 'order-1', status: 'CANCELLED', source: 'dominaite' },
+      });
+    });
+
+    // A late report of an earlier session must not end the order a later
+    // session is paying, and a paid order is never cancelled.
+    it('cancels only an order waiting for its payment with no session open or paid', async () => {
+      await repository.cancelUnpaid(null, CANCELLATION);
+
+      expect(tx.order.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'order-1',
+          status: 'PENDING_PAYMENT',
+          cardPayments: { none: { status: { in: ['OPEN', 'SUCCEEDED'] } } },
+        },
+        data: { status: 'CANCELLED' },
+      });
+      expect(
+        tx.cardPayment.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(tx.order.updateMany.mock.invocationCallOrder[0]);
+    });
+
+    it('cancels an order with no open attempt, closing none', async () => {
+      await repository.cancelUnpaid(null, {
+        orderId: 'order-1',
+        closing: null,
+        source: 'shop',
+      });
+
+      expect(tx.cardPayment.updateMany).not.toHaveBeenCalled();
+      expect(tx.orderStatusHistory.create).toHaveBeenCalledWith({
+        data: { orderId: 'order-1', status: 'CANCELLED', source: 'shop' },
+      });
+    });
+
+    it('changes nothing more when the order cannot be cancelled', async () => {
+      tx.order.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(repository.cancelUnpaid(null, CANCELLATION)).resolves.toBe(
+        'unchanged',
+      );
+
+      expect(tx.orderStatusHistory.create).not.toHaveBeenCalled();
+    });
+
+    it('changes nothing for a delivery already handled', async () => {
+      tx.paymentWebhookEvent.createMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        repository.cancelUnpaid(ABANDONED_DELIVERY, CANCELLATION),
+      ).resolves.toBe('duplicate');
+      expect(tx.order.updateMany).not.toHaveBeenCalled();
     });
   });
 });

@@ -10,7 +10,9 @@ import { PrismaModule } from '../prisma';
 import { CardPaymentController } from './card-payment/card-payment.controller';
 import { CardPaymentRepository } from './card-payment/card-payment.repository';
 import { CardPaymentService } from './card-payment/card-payment.service';
+import { CardPaymentSweep } from './card-payment/card-payment.sweep';
 import { DominaiteWebhookController } from './card-payment/dominaite-webhook.controller';
+import { LatePaymentRefundHandler } from './card-payment/late-payment-refund.handler';
 import { PaymentOutcomeService } from './card-payment/payment-outcome.service';
 import { OfficeNotificationHandler } from './emails/office-notification.handler';
 import { OrderConfirmationHandler } from './emails/order-confirmation.handler';
@@ -21,8 +23,8 @@ import { OrdersRepository } from './orders.repository';
 import { OrdersService } from './orders.service';
 
 /**
- * Placing an order, reading it back, paying a card order, and the emails and
- * the event that follow. See docs/ORDERS.md and docs/PAYMENTS.md.
+ * Placing an order, reading it back, paying a card order or cancelling it
+ * unpaid, and the emails and the event that follow. See docs/ORDERS.md and docs/PAYMENTS.md.
  */
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { OrdersService } from './orders.service';
     CardPaymentRepository,
     CardPaymentService,
     PaymentOutcomeService,
+    CardPaymentSweep,
+    LatePaymentRefundHandler,
   ],
 })
 export class OrdersModule {}

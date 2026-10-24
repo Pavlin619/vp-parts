@@ -324,13 +324,16 @@ model CardPayment {
   amount        Int
   currency      String
   expiresAt     DateTime
+  /// When the sweep next reads an open session from Dominaite. Moving it is
+  /// also the sweep's lease, so two instances never read one session at once.
+  nextCheckAt   DateTime          @default(now())
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   @@unique([orderId, attempt])
-  @@index([status, expiresAt])
+  @@index([status, nextCheckAt])
 }
 
 /// A Dominaite webhook delivery already handled. Dominaite delivers at least
